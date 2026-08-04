@@ -69,4 +69,8 @@ export const DEMO_OVERVIEW: Overview = {
     { title: "Definir alçada de aprovação", description: null, owner: "Portal Labs", state: "resolved", stateLabel: "Resolvida", origin: "biahflow", age: "há 9 dias" },
   ],
   results: { milestonesTotal: 5, milestonesDone: 2, overdue: 0, onTimePercent: 100 },
+  // A casca de demonstração não inventa apuração: sem eventos e sem premissa,
+  // a aba Resultados mostra "—" e declara a lacuna, igual a um projeto real
+  // recém-criado. Fabricar números aqui reintroduziria o que a Fase 3 removeu.
+  measured: null,
 };

@@ -311,6 +311,9 @@ class AgentKeyOut(BaseModel):
     revoked_at: datetime | None
     last_used_at: datetime | None
     rotated_from_id: uuid.UUID | None
+    #: Se ela ainda autentica. Decidido aqui, e não na tela, pelo mesmo motivo
+    #: do `active` de `MemberOut`: quem sabe a hora é quem valida a chave.
+    usable: bool
 
 
 class AgentKeyCreatedOut(AgentKeyOut):
@@ -371,6 +374,8 @@ def _as_key_out(record: AgentApiKey) -> AgentKeyOut:
         revoked_at=record.revoked_at,
         last_used_at=record.last_used_at,
         rotated_from_id=record.rotated_from_id,
+        usable=record.revoked_at is None
+        and record.expires_at > datetime.now(timezone.utc),
     )
 
 

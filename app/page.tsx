@@ -75,6 +75,32 @@ type ApiDocument = { title: string; type: string | null; author: string | null; 
 type ApiMeeting = { title: string; date: string | null; recording_url: string | null; has_transcript: boolean; status: string | null };
 type ApiPending = { title: string; description: string | null; owner_label: string | null; state: string; priority: string; origin: string; created_at: string; resolved_at: string | null };
 type ApiResults = { milestones_total: number; milestones_done: number; overdue: number; on_time_percent: number };
+type ApiAssumption = {
+  effective_from: string;
+  effective_to: string | null;
+  hourly_rate_cents: number;
+  monthly_investment_cents: number;
+  currency: string;
+  note: string | null;
+  days_in_period: number;
+};
+/** Apuração dos eventos dos agentes (Fase 3, ADR 0013) — distinta de `results`,
+ *  que projeta o andamento dos marcos. */
+type ApiMeasured = {
+  period: { from: string; to: string; days: number };
+  events_total: number;
+  hours_saved: number;
+  benefit_cents: number;
+  investment_cents: number;
+  net_cents: number;
+  roi_ratio: number | null;
+  accuracy: number | null;
+  exceptions_handled: number;
+  unattended_share: number | null;
+  failed: number;
+  assumptions: ApiAssumption[];
+  gaps: string[];
+};
 type ApiDeliverable = { name: string; state: string; link: string | null };
 type ApiPhase = { name: string; description: string | null; state: string; target_date: string | null; deliverables: ApiDeliverable[] };
 type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null };
@@ -107,6 +133,13 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
   const roi = data.roi as { net: number | null; ratio: number | null } | null;
   const health = data.health as { label: string; level: string } | null;
   const results = data.results as ApiResults | null;
+  const measured = data.measured as ApiMeasured | null;
+  // A premissa que o cliente vê ao lado do número é a que está aberta hoje; o
+  // histórico inteiro fica na tela de administração.
+  const currentAssumption =
+    measured?.assumptions?.find((item) => item.effective_to === null) ??
+    measured?.assumptions?.at(-1) ??
+    null;
 
   return {
     project: (data.project as string) ?? "",
@@ -177,6 +210,30 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
           milestonesDone: results.milestones_done,
           overdue: results.overdue,
           onTimePercent: results.on_time_percent,
+        }
+      : null,
+    measured: measured
+      ? {
+          periodDays: measured.period.days,
+          eventsTotal: measured.events_total,
+          hoursSaved: measured.hours_saved,
+          benefit: measured.benefit_cents / 100,
+          investment: measured.investment_cents / 100,
+          net: measured.net_cents / 100,
+          roiRatio: measured.roi_ratio,
+          accuracy: measured.accuracy,
+          exceptionsHandled: measured.exceptions_handled,
+          unattendedShare: measured.unattended_share,
+          failed: measured.failed,
+          assumption: currentAssumption
+            ? {
+                hourlyRate: currentAssumption.hourly_rate_cents / 100,
+                monthlyInvestment: currentAssumption.monthly_investment_cents / 100,
+                effectiveFrom: shortDate(currentAssumption.effective_from),
+                note: currentAssumption.note,
+              }
+            : null,
+          gaps: measured.gaps ?? [],
         }
       : null,
   };

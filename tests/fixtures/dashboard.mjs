@@ -67,6 +67,38 @@ export const DASHBOARD = {
     { title: "Aprovar fluxo de exceções", description: null, owner_label: "Acme Brasil", state: "open", priority: "normal", origin: "biahflow", created_at: "2026-08-02T10:00:00+00:00", resolved_at: null },
   ],
   results: { milestones_total: 3, milestones_done: 0, overdue: 0, on_time_percent: 100 },
+  // Apuração dos eventos dos agentes (Fase 3, ADR 0013). Os números batem com a
+  // premissa abaixo de propósito: 40h a R$ 150 = R$ 6.000, mais R$ 1.200 de
+  // custo evitado, contra R$ 3.000 de investimento no período → ROI de 140%.
+  measured: {
+    period: { from: "2026-07-05", to: "2026-08-05", days: 30 },
+    events_total: 1240,
+    hours_saved: 40,
+    labor_savings_cents: 600_000,
+    avoided_cost_cents: 120_000,
+    benefit_cents: 720_000,
+    investment_cents: 300_000,
+    net_cents: 420_000,
+    roi_ratio: 1.4,
+    accuracy: 0.986,
+    exceptions_handled: 120,
+    unattended_share: 0.87,
+    failed: 17,
+    events_without_assumption: 0,
+    assumptions: [
+      {
+        effective_from: "2026-06-01",
+        effective_to: null,
+        hourly_rate_cents: 15_000,
+        monthly_investment_cents: 300_000,
+        currency: "BRL",
+        note: "Contrato de implantação",
+        days_in_period: 30,
+      },
+    ],
+    assumption_basis: { days_per_month: 30, formula: "(beneficio - investimento) / investimento" },
+    gaps: [],
+  },
 };
 
 /** `GET /api/v1/me/notifications` — a caixa do projeto atual (Fase 2, ADR 0012). */

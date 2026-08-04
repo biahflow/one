@@ -229,6 +229,14 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   assert.match(layout, /Portal Labs \| Portal do Cliente/);
   assert.match(layout, /lang="pt-BR"/);
 
+  // A aba Resultados não aparece no HTML do SSR (só a ativa é renderizada), então
+  // o que se afirma aqui é a fonte: os cards leem a apuração da API e a tela
+  // mostra a premissa. Sem isso, um número poderia voltar a ser constante sem
+  // bater na guarda de literais abaixo — bastaria escolher outro valor.
+  assert.match(dashboard, /overview\.measured/);
+  assert.match(dashboard, /COMO CALCULAMOS/);
+  assert.match(dashboard, /function MeasurementBasis/);
+
   // Nada de dado fixo de volta: as abas leem `overview` (Fase 2) e a identidade
   // vem de `GET /api/v1/me` (Fase 1). `projects` e `currentUser` escapavam desta
   // guarda justamente por serem os últimos sobreviventes.
@@ -246,6 +254,15 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
     if (path !== "app/demo-overview.ts" && path !== "app/page.tsx") {
       assert.doesNotMatch(source, /DEMO_OVERVIEW/, `${path} alcança o demo fora do gate`);
     }
+    // Os três cards que a Fase 3 tirou da demonstração. A guarda acima não os
+    // pegava — eles não eram `const` no topo do módulo, e sim um array local
+    // dentro de `ResultsView`, o que é justamente por que sobreviveram tanto
+    // tempo. Aqui os literais é que ficam proibidos.
+    assert.doesNotMatch(
+      source,
+      /"12,4k"|"98,6%"|"1\.203"|"\+142%"|"↑ 2,1 p\.p\. no mês"|"87% sem intervenção humana"/,
+      `${path} ressuscitou um dos números de demonstração da aba Resultados`,
+    );
   }
 
   // O gate é uma condição só, e a única menção ao demo em `page.tsx` está

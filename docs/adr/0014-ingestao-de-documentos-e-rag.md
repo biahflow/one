@@ -41,6 +41,13 @@ financeiras. É escrita, e escrita de configuração já mora lá. O cliente nã
 pergunta, e a resposta cita o que foi indexado. Um upload no lado do cliente inverteria a
 direção do produto — o portal presta contas do projeto, não recebe material dele.
 
+> **Fechamento (ADR 0016).** O conector chegou depois, como esta seção previu, e a ordem se
+> mostrou certa: ele reaproveita o índice inteiro sem tocar em `extract.py`, `chunk.py` nem no
+> respondedor — só acrescenta uma segunda forma de encher o índice. A porta de entrada continua
+> sendo a administração; o Drive é a segunda porta, não a primeira. E o que o conector precisou
+> acrescentar (`document.origin = 'drive'`) é exatamente a extensão do §2 abaixo, pelo mesmo
+> motivo: duas fontes não podem apagar o que é da outra.
+
 ### 2. `document` ganha `origin`, senão indexar tem prazo de validade
 
 `sync_snapshot` apaga e recria os documentos do projeto a cada webhook. Um arquivo enviado no

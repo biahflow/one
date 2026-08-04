@@ -348,7 +348,9 @@ def test_webhook_syncs_new_object_types(
     snap = _snapshot(biahflow_project_id=biahflow_project_id, client_id=19)
     monkeypatch.setattr(main.settings, "biahflow_webhook_secret", "s3cr3t")
     monkeypatch.setattr(main.biahflow, "fetch_snapshot", lambda *args, **kwargs: snap)
-    monkeypatch.setattr(main, "get_session", lambda: _session_scope(db_session))
+    # O webhook pede o papel `system` (ADR 0010); o fixture já roda nele, então o
+    # stub só precisa aceitar e ignorar o argumento.
+    monkeypatch.setattr(main, "get_session", lambda *args, **kwargs: _session_scope(db_session))
 
     body = json.dumps(
         {"event": "updated", "object_type": object_type, "project_id": biahflow_project_id}

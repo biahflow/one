@@ -73,6 +73,7 @@
 @layer components {
   /* ---------- Primitivas ---------- */
   .panel,
+  .state-card,
   .metric-card {
     @apply rounded-2xl border border-line bg-white;
     box-shadow: var(--shadow-card);
@@ -215,7 +216,7 @@
 
   /* ---------- Painéis ---------- */
   .dashboard-grid { @apply grid grid-cols-[1.55fr_1fr] gap-4; }
-  .panel { @apply p-5; }
+  .panel, .state-card { @apply p-5; }
   .panel-heading { @apply mb-4 flex items-start justify-between gap-3; }
   .panel-heading .eyebrow { @apply mb-1.5; }
   .panel-heading h2, .insight-card h2 { @apply m-0 text-base font-semibold tracking-[-0.02em]; }
@@ -385,7 +386,6 @@
   .project-card--active { @apply border-brand-300 bg-brand-50/40; }
   .project-card-head { @apply mb-1.5 flex w-full items-center justify-between; }
   .project-card strong { @apply text-sm; }
-  .project-focus { @apply text-[11px] text-muted; }
   .project-meta { @apply mt-2 flex items-center gap-1.5 text-[10px] text-slate-400; }
   .project-meta b { @apply font-normal text-slate-300; }
 
@@ -465,7 +465,14 @@
   .employee-metrics span { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-slate-400; }
   .employee-metrics strong { @apply text-[13px] text-ink; }
 
-  /* ---------- Login (demo) ---------- */
+  /* ---------- Estados de página (carregando, erro, sem projeto) ---------- */
+  .state-shell { @apply grid min-h-screen place-items-center bg-canvas p-10; }
+  .state-card { @apply max-w-125 text-center; }
+  .state-card h1 { @apply mt-0 mb-2.5 text-xl font-semibold tracking-[-0.02em]; }
+  .state-card p { @apply text-[13px] leading-relaxed text-slate-600; }
+  .state-card .ai-button { @apply mx-auto mt-5; }
+
+  /* ---------- Login ---------- */
   .auth-shell { @apply grid min-h-screen grid-cols-[1.05fr_1fr] bg-canvas; }
   .auth-brand {
     @apply relative flex flex-col justify-between overflow-hidden p-10 text-white;
@@ -486,16 +493,12 @@
   .auth-form { @apply flex w-full max-w-90 flex-col; }
   .auth-form .eyebrow { @apply mb-2 text-brand-600; }
   .auth-form h2 { @apply mt-0 mb-5.5 text-2xl font-semibold tracking-[-0.03em]; }
-  .auth-field { @apply mb-3.5 grid gap-1.5; }
-  .auth-field span { @apply text-[11px] font-semibold text-slate-600; }
-  .auth-field input {
-    @apply rounded-xl border border-line px-3 py-2.5 text-[13px] text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
-  }
-  .auth-submit { @apply mt-1.5 justify-center py-3 text-sm; }
-  .auth-divider { @apply my-4.5 flex items-center gap-2.5 text-[11px] text-slate-400; }
-  .auth-divider:before, .auth-divider:after { content: ""; @apply h-px flex-1 bg-line; }
   .auth-sso {
     @apply flex items-center justify-center gap-2 rounded-xl border border-line bg-white px-3 py-3 text-[13px] font-semibold text-slate-600 transition-colors hover:border-brand-200 hover:bg-brand-50/40;
+  }
+  .auth-lead { @apply mt-0 mb-5 text-[13px] leading-relaxed text-slate-600; }
+  .auth-error {
+    @apply mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12px] text-rose-700;
   }
   .auth-hint { @apply mt-4 text-center text-[11px] text-slate-400; }
 }

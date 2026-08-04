@@ -1,0 +1,216 @@
+{
+  "project": {
+    "id": 7,
+    "name": "Automação Financeira",
+    "description": "Conciliação de contas a pagar com funcionário digital.",
+    "status": "active",
+    "start_date": "2026-08-01",
+    "due_date": "2026-09-30",
+    "is_overdue": false,
+    "client": { "id": 3, "name": "Acme Brasil" }
+  },
+  "completion": 68,
+  "milestones": [
+    {
+      "id": 1,
+      "title": "Validação de integrações",
+      "status": "in_progress",
+      "party": "client",
+      "due_date": "2026-09-09",
+      "completed_at": null,
+      "is_overdue": false
+    },
+    {
+      "id": 2,
+      "title": "Treinamento da operação",
+      "status": "todo",
+      "party": "provider",
+      "due_date": "2026-09-18",
+      "completed_at": null,
+      "is_overdue": false
+    },
+    {
+      "id": 3,
+      "title": "Entrada em produção",
+      "status": "todo",
+      "party": "client",
+      "due_date": "2026-09-30",
+      "completed_at": null,
+      "is_overdue": false
+    }
+  ],
+  "journey": {
+    "current_phase": "Prove",
+    "phases": [
+      {
+        "name": "Welcome",
+        "description": "Boas-vindas e acessos.",
+        "position": 0,
+        "status": "done",
+        "target_date": null,
+        "deliverables": [
+          { "name": "Acesso ao portal", "status": "delivered", "link": null }
+        ]
+      },
+      {
+        "name": "Discover",
+        "description": "Mapeamento dos processos.",
+        "position": 1,
+        "status": "done",
+        "target_date": null,
+        "deliverables": [
+          { "name": "Mapa dos processos", "status": "delivered", "link": null },
+          { "name": "AI Score", "status": "delivered", "link": null }
+        ]
+      },
+      {
+        "name": "Prove",
+        "description": "Piloto do funcionário digital.",
+        "position": 2,
+        "status": "active",
+        "target_date": "2026-09-20",
+        "deliverables": [
+          { "name": "Funcionário Digital", "status": "pending", "link": null },
+          { "name": "Dashboard de KPIs", "status": "pending", "link": null }
+        ]
+      },
+      {
+        "name": "Scale",
+        "description": "Expansão para mais áreas.",
+        "position": 3,
+        "status": "locked",
+        "target_date": null,
+        "deliverables": []
+      },
+      {
+        "name": "Optimize",
+        "description": "Evolução contínua.",
+        "position": 4,
+        "status": "locked",
+        "target_date": null,
+        "deliverables": []
+      }
+    ]
+  },
+  "roi": { "revenue": 726000.0, "cost": 512000.0, "net": 214000.0, "roi": 1.42 },
+  "next_meeting": { "id": 5, "title": "Comitê de projeto", "date": "2026-08-28" },
+  "health": { "label": "No prazo", "level": "green" },
+  "digital_employees": [
+    {
+      "id": 1,
+      "name": "Agente Financeiro",
+      "area": "Financeiro",
+      "description": "Concilia contas a pagar e sinaliza divergências.",
+      "status": "active",
+      "kpi_label": "Conciliação",
+      "kpi_value": "80%",
+      "hours_saved_month": 120.0,
+      "roi_month": 14000.0
+    },
+    {
+      "id": 2,
+      "name": "Agente de Atendimento",
+      "area": "Atendimento",
+      "description": "Responde dúvidas frequentes no WhatsApp.",
+      "status": "building",
+      "kpi_label": "Cobertura",
+      "kpi_value": "",
+      "hours_saved_month": null,
+      "roi_month": null
+    }
+  ],
+  "documents": [
+    {
+      "id": 41,
+      "name": "Plano de implantação v3.pdf",
+      "type": "PDF",
+      "author": "Portal Labs",
+      "link": "https://drive.example/doc-41",
+      "created_at": "2026-08-03T12:00:00+00:00"
+    },
+    {
+      "id": 42,
+      "name": "Mapa de integrações",
+      "type": "",
+      "author": "Time Acme",
+      "link": "",
+      "created_at": "2026-08-01T09:30:00+00:00"
+    },
+    {
+      "id": 43,
+      "name": "Política de exceções financeiras.docx",
+      "type": "DOCX",
+      "author": "Marina Farias",
+      "link": "",
+      "created_at": "2026-07-30T16:45:00+00:00"
+    }
+  ],
+  "meetings": [
+    {
+      "id": 5,
+      "title": "Comitê de projeto",
+      "date": "2026-08-28",
+      "recording_url": "",
+      "has_transcript": false,
+      "status": "scheduled"
+    },
+    {
+      "id": 4,
+      "title": "Revisão de integrações",
+      "date": "2026-08-21",
+      "recording_url": "https://rec.example/4",
+      "has_transcript": true,
+      "status": "held"
+    },
+    {
+      "id": 3,
+      "title": "Kickoff do projeto",
+      "date": "2026-08-07",
+      "recording_url": "https://rec.example/3",
+      "has_transcript": true,
+      "status": "held"
+    }
+  ],
+  "pendencias": [
+    {
+      "id": 71,
+      "title": "Aprovar fluxo de exceções",
+      "status": "open",
+      "party": "client",
+      "created_at": "2026-08-02T10:00:00+00:00",
+      "resolved_at": null
+    },
+    {
+      "id": 72,
+      "title": "Enviar lista de usuários piloto",
+      "status": "open",
+      "party": "client",
+      "created_at": "2026-07-31T10:00:00+00:00",
+      "resolved_at": null
+    },
+    {
+      "id": 73,
+      "title": "Validar cálculo de economia",
+      "status": "open",
+      "party": "provider",
+      "created_at": "2026-07-30T10:00:00+00:00",
+      "resolved_at": null
+    },
+    {
+      "id": 74,
+      "title": "Definir alçada de aprovação",
+      "status": "resolved",
+      "party": "provider",
+      "created_at": "2026-07-25T10:00:00+00:00",
+      "resolved_at": "2026-07-27T15:00:00+00:00"
+    }
+  ],
+  "resultados": {
+    "conclusao_pct": 68,
+    "marcos_total": 3,
+    "marcos_done": 0,
+    "atrasados": 0,
+    "no_prazo_pct": 100,
+    "status": "active"
+  }
+}

@@ -20,6 +20,11 @@ from portal_api.db.base import Base
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
+    # Append-only for the request path: portal_app holds INSERT and no SELECT
+    # (ADR 0010). SQLAlchemy's default "auto" would fetch `created_at` back with
+    # an INSERT ... RETURNING, and RETURNING requires the read the policy denies —
+    # so the write must not ask for anything back.
+    __mapper_args__ = {"eager_defaults": False}
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),

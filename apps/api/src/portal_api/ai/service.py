@@ -7,6 +7,7 @@ real evidence; otherwise the turn is a gap that creates a pendência (never an i
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -14,8 +15,12 @@ from sqlalchemy.orm import Session
 from portal_api.ai.responder import GAP_MESSAGE, get_responder
 from portal_api.ai.retrieval import Evidence, collect_evidence
 from portal_api.config import Settings
-from portal_api.models import PendingItem, PendingPriority, Project
-from portal_api.repositories import PendingItemRepository, TenantContext
+from portal_api.models import AuditLog, PendingItem, PendingPriority, Project
+from portal_api.repositories import (
+    AuditLogRepository,
+    PendingItemRepository,
+    TenantContext,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +33,29 @@ class ChatResult:
     pending_created: bool
 
 
-def _create_pendencia(session: Session, ctx: TenantContext, question: str) -> None:
-    PendingItemRepository(session, ctx).add(
+def _create_pendencia(
+    session: Session,
+    ctx: TenantContext,
+    question: str,
+    actor_user_id: uuid.UUID | None,
+) -> None:
+    pending = PendingItemRepository(session, ctx).add(
         PendingItem(
             title=f"Responder dúvida do cliente: {question[:160]}",
             description="Pergunta sem evidência suficiente no contexto do projeto (chat).",
             owner_label="Portal Labs",
             priority=PendingPriority.medium,
+        )
+    )
+    # Who asked, not what was asked: the question is customer content and does
+    # not belong in the audit log (docs/data-classification.md).
+    AuditLogRepository(session, ctx).add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            action="chat.pending_created",
+            entity_type="pending_item",
+            entity_id=pending.id,
+            data={"reason": "insufficient_context"},
         )
     )
 
@@ -45,6 +66,8 @@ def answer_question(
     project: Project,
     question: str,
     settings: Settings,
+    *,
+    actor_user_id: uuid.UUID | None = None,
 ) -> ChatResult:
     evidence = collect_evidence(session, ctx, project)
     by_id: dict[str, Evidence] = {item.id: item for item in evidence}
@@ -62,7 +85,7 @@ def answer_question(
 
     # Cite-or-gap: a factual answer without a real citation is treated as a gap.
     if not result.sufficient or not cited:
-        _create_pendencia(session, ctx, question)
+        _create_pendencia(session, ctx, question, actor_user_id)
         return ChatResult(
             answer=result.answer if not result.sufficient else GAP_MESSAGE,
             sources=[],

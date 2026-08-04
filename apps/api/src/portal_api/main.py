@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field
 
 from portal_api import access
 from portal_api.ai import service as chat_service
+from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
-from portal_api.db.session import get_session
+from portal_api.db.session import DbRole, get_session
+from portal_api.identity import resolve_user
 from portal_api.integrations import biahflow
 from portal_api.models import Organization
 from portal_api.repositories import TenantContext
@@ -60,26 +62,34 @@ def demo_dashboard() -> dict:
 
 
 @app.post("/api/v1/agent-events", status_code=status.HTTP_202_ACCEPTED)
-def ingest_agent_event(event: AgentEventIn) -> dict[str, str]:
-    """Contract boundary. Persistence and token validation land with the auth/RLS migration."""
-    if not settings.demo_mode:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Agent key required")
+def ingest_agent_event(event: AgentEventIn, principal: CurrentPrincipal) -> dict[str, str]:
+    """Contract boundary — persistence lands in Fase 3, but the gate is real now.
+
+    Was anonymous under ``DEMO_MODE``; agent runs are internal machinery, so it
+    takes an ``internal_admin`` membership on the project the event refers to.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        if access.require_project(session, user, event.project_id, access.ADMIN_ONLY) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return {"event_id": str(event.event_id), "status": "accepted"}
 
 
 @app.post("/api/v1/chat")
-def chat(message: ChatIn, request: Request) -> dict:
+def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
     """Grounded, tenant-scoped chat: cite the read model or declare the gap + pendência (ADR 0007)."""
-    email = _client_identity(request)
-    with get_session() as session:
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
         if message.project_id is not None:
-            project = access.scoped_project(session, email, message.project_id)
+            project = access.scoped_project(session, user, message.project_id)
         else:
-            project = access.client_project(session, email)
+            project = access.default_project(session, user)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
         ctx = TenantContext(organization_id=project.organization_id, project_id=project.id)
-        result = chat_service.answer_question(session, ctx, project, message.question, settings)
+        result = chat_service.answer_question(
+            session, ctx, project, message.question, settings, actor_user_id=user.id
+        )
         return {
             "answer": result.answer,
             "sources": result.sources,
@@ -104,7 +114,9 @@ async def biahflow_webhook(request: Request) -> dict:
     snapshot = biahflow.fetch_snapshot(
         settings.biahflow_base_url, settings.biahflow_read_token, int(biahflow_project_id)
     )
-    with get_session() as session:
+    # portal_system (BYPASSRLS): this is the path that creates the tenant, so
+    # there is no context to bind and the write would be denied otherwise.
+    with get_session(role=DbRole.system) as session:
         project = biahflow.sync_snapshot(session, snapshot)
         if settings.demo_mode:
             biahflow.ensure_demo_client(
@@ -113,20 +125,47 @@ async def biahflow_webhook(request: Request) -> dict:
         return {"status": "synced", "project_id": str(project.id)}
 
 
-def _client_identity(request: Request) -> str:
-    """Client email from the BFF (server-to-server). Becomes the OIDC session in production."""
-    email = request.headers.get("X-Portal-User")
-    if not email:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Client identity required")
-    return email
+@app.get("/api/v1/me")
+def me(principal: CurrentPrincipal) -> dict:
+    """Who the caller is and what they can reach — the BFF renders the chrome from this.
+
+    Returns 200 with an empty ``projects`` for an authenticated user who holds no
+    membership: authentication is not authorization, and the portal has to be able
+    to say "you have no project yet" instead of pretending the user is unknown.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        visible = access.visible_projects(session, user)
+
+        organization = None
+        if visible:
+            record = session.get(Organization, visible[0][0].organization_id)
+            organization = record.name if record else None
+
+        return {
+            "email": user.email,
+            "full_name": user.full_name,
+            "is_internal": user.is_internal,
+            "organization": organization,
+            "projects": [
+                {
+                    "id": str(project.id),
+                    "name": project.name,
+                    "slug": project.slug,
+                    "status": project.status.value,
+                }
+                for project, _ in visible
+            ],
+            "roles": sorted({role.value for _, roles in visible for role in roles}),
+        }
 
 
 @app.get("/api/v1/projects/{project_id}/dashboard")
-def project_dashboard(project_id: UUID, request: Request) -> dict:
-    """Dashboard from the read model, scoped to the client's membership (ADR 0002/0006)."""
-    email = _client_identity(request)
-    with get_session() as session:
-        project = access.scoped_project(session, email, project_id)
+def project_dashboard(project_id: UUID, principal: CurrentPrincipal) -> dict:
+    """Dashboard from the read model, scoped to the caller's membership (ADR 0002/0006)."""
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.scoped_project(session, user, project_id)
         # 404 (not 403) on any miss so we never leak which projects exist.
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -134,11 +173,11 @@ def project_dashboard(project_id: UUID, request: Request) -> dict:
 
 
 @app.get("/api/v1/me/dashboard")
-def my_dashboard(request: Request) -> dict:
-    """Dashboard for the authenticated client's own project (the BFF calls this)."""
-    email = _client_identity(request)
-    with get_session() as session:
-        project = access.client_project(session, email)
+def my_dashboard(principal: CurrentPrincipal) -> dict:
+    """Dashboard for the caller's own project (the BFF calls this)."""
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         organization = session.get(Organization, project.organization_id)

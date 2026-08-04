@@ -1,9 +1,16 @@
+import { redirect } from "next/navigation";
+
+import { auth } from "@/auth";
+import { demoShellEnabled } from "@/app/lib/demo";
+import { authorizationHeader } from "@/app/lib/session";
 import DashboardClient, {
   type JourneyPhase,
   type MeetingView,
   type Overview,
   type PendingItemView,
+  type PortalUser,
   type ProjectDocument,
+  type ProjectSummary,
 } from "./DashboardClient";
 
 // Portal status/milestone enums → rótulos PT usados na UI.
@@ -28,6 +35,12 @@ const MEETING_STATUS_LABELS: Record<string, string> = {
   scheduled: "Agendada",
   held: "Realizada",
 };
+// Papel exibido no perfil. Vem da `membership` (a autoridade), não do realm.
+const ROLE_LABELS: Record<string, string> = {
+  internal_admin: "Administrador Portal Labs",
+  internal_member: "Time Portal Labs",
+  client_member: "Cliente",
+};
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 function shortDate(iso: string | null | undefined): string {
@@ -48,54 +61,13 @@ function relativeAge(iso: string | null | undefined): string {
   return months === 1 ? "há 1 mês" : `há ${months} meses`;
 }
 
-// Fallback demo — mantém a Visão geral (e os testes de SSR) quando a API não responde.
-const DEMO_OVERVIEW: Overview = {
-  project: "Automação Financeira",
-  organization: "Acme Brasil",
-  status: "Em implementação",
-  completion: 68,
-  source: "demo",
-  nextDelivery: { title: "Treinamento da operação", detail: "18 de setembro • Em 12 dias" },
-  milestones: [
-    { title: "Validação de integrações", owner: "Time Acme", state: "Em andamento", date: "09 set" },
-    { title: "Treinamento da operação", owner: "Portal Labs", state: "Próxima entrega", date: "18 set" },
-    { title: "Entrada em produção", owner: "Time Acme", state: "Planejado", date: "30 set" },
-  ],
-  journey: {
-    currentPhase: "Prove",
-    phases: [
-      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", targetDate: "", deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null }] },
-      { name: "Discover", description: "Mapeamento dos processos.", state: "done", targetDate: "", deliverables: [{ name: "Mapa dos processos", state: "delivered", link: null }, { name: "AI Score", state: "delivered", link: null }] },
-      { name: "Prove", description: "Piloto do funcionário digital.", state: "active", targetDate: "20 set", deliverables: [{ name: "Funcionário Digital", state: "pending", link: null }, { name: "Dashboard de KPIs", state: "pending", link: null }] },
-      { name: "Scale", description: "Expansão para mais áreas.", state: "locked", targetDate: "", deliverables: [] },
-      { name: "Optimize", description: "Evolução contínua.", state: "locked", targetDate: "", deliverables: [] },
-    ],
-  },
-  roi: { net: 214000, ratio: 1.42 },
-  nextMeeting: { title: "Comitê de projeto", detail: "28 ago" },
-  health: { label: "No prazo", level: "green" },
-  digitalEmployees: [
-    { name: "Agente Financeiro", area: "Financeiro", description: "Concilia contas a pagar e sinaliza divergências.", status: "active", kpiLabel: "Conciliação", kpiValue: "80%", hoursSavedMonth: 120, roiMonth: 14000 },
-    { name: "Agente de Atendimento", area: "Atendimento", description: "Responde dúvidas frequentes no WhatsApp.", status: "building", kpiLabel: "Cobertura", kpiValue: "—", hoursSavedMonth: null, roiMonth: null },
-  ],
-  documents: [
-    { title: "Plano de implantação v3.pdf", type: "PDF", author: "Portal Labs", link: null, updated: "há 1 dia" },
-    { title: "Mapa de integrações", type: null, author: "Time Acme", link: null, updated: "há 3 dias" },
-    { title: "Política de exceções financeiras.docx", type: "DOCX", author: "Mariana Farias", link: null, updated: "há 5 dias" },
-  ],
-  meetings: [
-    { title: "Comitê de projeto", date: "28 ago", status: "Agendada", hasTranscript: false, recordingUrl: null },
-    { title: "Revisão de integrações", date: "21 ago", status: "Realizada", hasTranscript: true, recordingUrl: null },
-    { title: "Kickoff do projeto", date: "07 ago", status: "Realizada", hasTranscript: true, recordingUrl: null },
-  ],
-  pendings: [
-    { title: "Aprovar fluxo de exceções", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", origin: "biahflow", age: "há 2 dias" },
-    { title: "Enviar lista de usuários piloto", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", origin: "biahflow", age: "há 4 dias" },
-    { title: "Validar cálculo de economia", description: null, owner: "Portal Labs", state: "open", stateLabel: "Aberta", origin: "biahflow", age: "há 5 dias" },
-    { title: "Definir alçada de aprovação", description: null, owner: "Portal Labs", state: "resolved", stateLabel: "Resolvida", origin: "biahflow", age: "há 9 dias" },
-  ],
-  results: { milestonesTotal: 5, milestonesDone: 2, overdue: 0, onTimePercent: 100 },
-};
+function initialsOf(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] ?? "" : "";
+  return `${first}${last}`.toLocaleUpperCase("pt-BR");
+}
 
 type ApiMilestone = { title: string; state: string; due_date: string | null; owner_label: string | null };
 type ApiDocument = { title: string; type: string | null; author: string | null; link: string | null; updated_at: string | null };
@@ -105,104 +77,188 @@ type ApiResults = { milestones_total: number; milestones_done: number; overdue: 
 type ApiDeliverable = { name: string; state: string; link: string | null };
 type ApiPhase = { name: string; description: string | null; state: string; target_date: string | null; deliverables: ApiDeliverable[] };
 type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null };
+type ApiMe = {
+  email: string;
+  full_name: string;
+  is_internal: boolean;
+  organization: string | null;
+  projects: { id: string; name: string; slug: string; status: string }[];
+  roles: string[];
+};
 
-async function loadOverview(): Promise<Overview> {
-  const base = process.env.API_BASE_URL;
-  const email = process.env.PORTAL_CLIENT_EMAIL ?? "marina.farias@acme.com.br";
-  if (!base) return DEMO_OVERVIEW;
-  try {
-    const response = await fetch(`${base}/api/v1/me/dashboard`, {
-      headers: { "X-Portal-User": email },
-      cache: "no-store",
-    });
-    if (!response.ok) return DEMO_OVERVIEW;
-    const data = await response.json();
-    const apiMilestones: ApiMilestone[] = data.milestones ?? [];
-    const next = apiMilestones.find((milestone) => milestone.state !== "done");
-    const apiPhases: ApiPhase[] = data.journey?.phases ?? [];
-    const nextMeeting = data.next_meeting;
-    return {
-      project: data.project ?? DEMO_OVERVIEW.project,
-      organization: data.organization ?? "",
-      status: STATUS_LABELS[data.status] ?? data.status ?? DEMO_OVERVIEW.status,
-      completion: data.completion ?? 0,
-      source: "live",
-      nextDelivery: next
-        ? { title: next.title, detail: shortDate(next.due_date) }
-        : null,
-      milestones: apiMilestones.map((milestone) => ({
-        title: milestone.title,
-        owner: milestone.owner_label ?? "",
-        state: MILESTONE_LABELS[milestone.state] ?? milestone.state,
-        date: shortDate(milestone.due_date),
-      })),
-      journey: {
-        currentPhase: data.journey?.current_phase ?? null,
-        phases: apiPhases.map((phase) => ({
-          name: phase.name,
-          description: phase.description ?? "",
-          state: (["locked", "active", "done"].includes(phase.state) ? phase.state : "locked") as JourneyPhase["state"],
-          targetDate: shortDate(phase.target_date),
-          deliverables: (phase.deliverables ?? []).map((deliverable) => ({
-            name: deliverable.name,
-            state: deliverable.state === "delivered" ? "delivered" : "pending",
-            link: deliverable.link,
-          })),
+function toOverview(data: Record<string, unknown>, organization: string): Overview {
+  const apiMilestones: ApiMilestone[] = (data.milestones as ApiMilestone[]) ?? [];
+  const next = apiMilestones.find((milestone) => milestone.state !== "done");
+  const journey = data.journey as { current_phase?: string; phases?: ApiPhase[] } | undefined;
+  const apiPhases: ApiPhase[] = journey?.phases ?? [];
+  const nextMeeting = data.next_meeting as { title: string; date: string | null } | null;
+  const roi = data.roi as { net: number | null; ratio: number | null } | null;
+  const health = data.health as { label: string; level: string } | null;
+  const results = data.results as ApiResults | null;
+
+  return {
+    project: (data.project as string) ?? "",
+    organization: (data.organization as string) ?? organization,
+    status: STATUS_LABELS[data.status as string] ?? (data.status as string) ?? "",
+    completion: (data.completion as number) ?? 0,
+    source: "live",
+    nextDelivery: next ? { title: next.title, detail: shortDate(next.due_date) } : null,
+    milestones: apiMilestones.map((milestone) => ({
+      title: milestone.title,
+      owner: milestone.owner_label ?? "",
+      state: MILESTONE_LABELS[milestone.state] ?? milestone.state,
+      date: shortDate(milestone.due_date),
+    })),
+    journey: {
+      currentPhase: journey?.current_phase ?? null,
+      phases: apiPhases.map((phase) => ({
+        name: phase.name,
+        description: phase.description ?? "",
+        state: (["locked", "active", "done"].includes(phase.state) ? phase.state : "locked") as JourneyPhase["state"],
+        targetDate: shortDate(phase.target_date),
+        deliverables: (phase.deliverables ?? []).map((deliverable) => ({
+          name: deliverable.name,
+          state: deliverable.state === "delivered" ? "delivered" : "pending",
+          link: deliverable.link,
         })),
-      },
-      roi: data.roi ? { net: data.roi.net ?? null, ratio: data.roi.ratio ?? null } : null,
-      nextMeeting: nextMeeting
-        ? { title: nextMeeting.title, detail: shortDate(nextMeeting.date) }
-        : null,
-      health: data.health ? { label: data.health.label, level: data.health.level } : null,
-      digitalEmployees: ((data.digital_employees ?? []) as ApiEmployee[]).map((employee) => ({
-        name: employee.name,
-        area: employee.area,
-        description: employee.description,
-        status: employee.status,
-        kpiLabel: employee.kpi_label,
-        kpiValue: employee.kpi_value,
-        hoursSavedMonth: employee.hours_saved_month,
-        roiMonth: employee.roi_month,
       })),
-      documents: ((data.documents ?? []) as ApiDocument[]).map<ProjectDocument>((document) => ({
-        title: document.title,
-        type: document.type,
-        author: document.author,
-        link: document.link,
-        updated: relativeAge(document.updated_at),
-      })),
-      meetings: ((data.meetings ?? []) as ApiMeeting[]).map<MeetingView>((meeting) => ({
-        title: meeting.title,
-        date: shortDate(meeting.date),
-        status: meeting.status ? MEETING_STATUS_LABELS[meeting.status] ?? meeting.status : "",
-        hasTranscript: meeting.has_transcript,
-        recordingUrl: meeting.recording_url,
-      })),
-      pendings: ((data.pendings ?? []) as ApiPending[]).map<PendingItemView>((pending) => ({
-        title: pending.title,
-        description: pending.description,
-        owner: pending.owner_label,
-        state: pending.state,
-        stateLabel: PENDING_STATE_LABELS[pending.state] ?? pending.state,
-        origin: pending.origin,
-        age: relativeAge(pending.state === "resolved" ? pending.resolved_at : pending.created_at),
-      })),
-      results: data.results
-        ? {
-            milestonesTotal: (data.results as ApiResults).milestones_total,
-            milestonesDone: (data.results as ApiResults).milestones_done,
-            overdue: (data.results as ApiResults).overdue,
-            onTimePercent: (data.results as ApiResults).on_time_percent,
-          }
-        : null,
-    };
-  } catch {
-    return DEMO_OVERVIEW;
-  }
+    },
+    roi: roi ? { net: roi.net ?? null, ratio: roi.ratio ?? null } : null,
+    nextMeeting: nextMeeting ? { title: nextMeeting.title, detail: shortDate(nextMeeting.date) } : null,
+    health: health ? { label: health.label, level: health.level } : null,
+    digitalEmployees: ((data.digital_employees as ApiEmployee[]) ?? []).map((employee) => ({
+      name: employee.name,
+      area: employee.area,
+      description: employee.description,
+      status: employee.status,
+      kpiLabel: employee.kpi_label,
+      kpiValue: employee.kpi_value,
+      hoursSavedMonth: employee.hours_saved_month,
+      roiMonth: employee.roi_month,
+    })),
+    documents: ((data.documents as ApiDocument[]) ?? []).map<ProjectDocument>((document) => ({
+      title: document.title,
+      type: document.type,
+      author: document.author,
+      link: document.link,
+      updated: relativeAge(document.updated_at),
+    })),
+    meetings: ((data.meetings as ApiMeeting[]) ?? []).map<MeetingView>((meeting) => ({
+      title: meeting.title,
+      date: shortDate(meeting.date),
+      status: meeting.status ? MEETING_STATUS_LABELS[meeting.status] ?? meeting.status : "",
+      hasTranscript: meeting.has_transcript,
+      recordingUrl: meeting.recording_url,
+    })),
+    pendings: ((data.pendings as ApiPending[]) ?? []).map<PendingItemView>((pending) => ({
+      title: pending.title,
+      description: pending.description,
+      owner: pending.owner_label,
+      state: pending.state,
+      stateLabel: PENDING_STATE_LABELS[pending.state] ?? pending.state,
+      origin: pending.origin,
+      age: relativeAge(pending.state === "resolved" ? pending.resolved_at : pending.created_at),
+    })),
+    results: results
+      ? {
+          milestonesTotal: results.milestones_total,
+          milestonesDone: results.milestones_done,
+          overdue: results.overdue,
+          onTimePercent: results.on_time_percent,
+        }
+      : null,
+  };
 }
 
-export default async function Page() {
-  const overview = await loadOverview();
-  return <DashboardClient overview={overview} />;
+function toUser(me: ApiMe): PortalUser {
+  const role = me.roles[0];
+  return {
+    name: me.full_name,
+    initials: initialsOf(me.full_name),
+    email: me.email,
+    role: ROLE_LABELS[role] ?? (me.is_internal ? "Time Portal Labs" : "Cliente"),
+    org: me.organization ?? "",
+  };
+}
+
+/** Autenticado, mas ainda sem projeto: é o estado correto de quem não tem membership. */
+function NoProject({ user }: { user: PortalUser }) {
+  return (
+    <main className="state-shell">
+      <div className="state-card">
+        <p className="eyebrow">SEM PROJETO</p>
+        <h1>Você ainda não tem um projeto atribuído.</h1>
+        <p>
+          Sua conta ({user.email}) está ativa, mas ainda não foi vinculada a um projeto. O time
+          da Portal Labs precisa fazer esse vínculo — assim que ele existir, o painel aparece aqui.
+        </p>
+      </div>
+    </main>
+  );
+}
+
+// O dashboard é por usuário e por requisição: nada aqui pode ser pré-renderizado
+// no build, que roda sem sessão e sem API.
+export const dynamic = "force-dynamic";
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ project?: string }>;
+}) {
+  const base = process.env.API_BASE_URL;
+
+  if (!base) {
+    // Sem API: ou é a casca de demonstração declarada, ou é configuração errada —
+    // e configuração errada não pode virar dashboard (ADR 0010).
+    if (demoShellEnabled()) {
+      const { DEMO_OVERVIEW, DEMO_PROJECTS, DEMO_USER } = await import("./demo-overview");
+      return <DashboardClient overview={DEMO_OVERVIEW} user={DEMO_USER} projects={DEMO_PROJECTS} />;
+    }
+    throw new Error("API_BASE_URL não está configurada e DEMO_MODE não está ligado");
+  }
+
+  const session = await auth();
+  const authorization = await authorizationHeader();
+  if (!session || session.error || !authorization) redirect("/login");
+
+  const { project: projectId } = await searchParams;
+  const dashboardUrl = projectId
+    ? `${base}/api/v1/projects/${projectId}/dashboard`
+    : `${base}/api/v1/me/dashboard`;
+
+  // Uma falha de rede aqui sobe para `app/error.tsx`: indisponibilidade tem que
+  // parecer indisponibilidade, não um projeto inventado.
+  const [meResponse, dashboardResponse] = await Promise.all([
+    fetch(`${base}/api/v1/me`, { headers: authorization, cache: "no-store" }),
+    fetch(dashboardUrl, { headers: authorization, cache: "no-store" }),
+  ]);
+
+  // O token venceu entre o SSR e a chamada: volta para o login, não para o demo.
+  if (meResponse.status === 401 || dashboardResponse.status === 401) redirect("/login");
+  if (!meResponse.ok) throw new Error(`GET /api/v1/me respondeu ${meResponse.status}`);
+
+  const me: ApiMe = await meResponse.json();
+  const user = toUser(me);
+  const projects: ProjectSummary[] = me.projects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    status: STATUS_LABELS[project.status] ?? project.status,
+    current: projectId ? project.id === projectId : false,
+  }));
+
+  // 404 é a resposta de negação do portal (nunca 403): sem projeto visível, a
+  // tela diz isso com todas as letras.
+  if (dashboardResponse.status === 404) return <NoProject user={user} />;
+  if (!dashboardResponse.ok) {
+    throw new Error(`${dashboardUrl} respondeu ${dashboardResponse.status}`);
+  }
+
+  const overview = toOverview(await dashboardResponse.json(), user.org);
+  // Sem `?project=`, o atual é o que a API escolheu — marcado pelo nome.
+  const marked = projects.some((project) => project.current)
+    ? projects
+    : projects.map((project) => ({ ...project, current: project.name === overview.project }));
+
+  return <DashboardClient overview={overview} user={user} projects={marked} />;
 }

@@ -38,10 +38,23 @@ jobs:
           --health-timeout 5s
           --health-retries 15
     env:
-      DATABASE_URL: postgresql+psycopg://portal:portal_local_only@localhost:5432/portal
-      DEMO_MODE: "true"
+      # One URL per Postgres role (ADR 0010). DATABASE_URL is the request path
+      # and must stay on portal_app, the role the RLS policies apply to.
+      DATABASE_URL: postgresql+psycopg://portal_app:portal_app_ci@localhost:5432/portal
+      DATABASE_SYSTEM_URL: postgresql+psycopg://portal_system:portal_system_ci@localhost:5432/portal
+      DATABASE_MIGRATION_URL: postgresql+psycopg://portal_migrator:portal_migrator_ci@localhost:5432/portal
     steps:
       - uses: actions/checkout@v4
+      # Service containers start before the checkout, so the bootstrap cannot be
+      # mounted as a volume the way compose does it — same script, run as a step.
+      - name: Create the Postgres roles
+        run: |
+          psql "postgresql://portal:portal_local_only@localhost:5432/portal" \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=portal_app_ci \
+            -v system_password=portal_system_ci \
+            -v migrator_password=portal_migrator_ci \
+            -f infra/postgres/bootstrap/roles.sql
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -56,6 +69,36 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
       - run: docker compose build
+
+  # The only job that boots Keycloak: it is the one thing the other levels
+  # cannot prove — browser → realm → BFF callback → dashboard. Non-blocking for
+  # now, while the stack's boot time settles in CI.
+  e2e-login:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Boot the local stack
+        run: |
+          cp .env.example .env
+          docker compose up -d --build web
+      - name: Wait for the portal
+        run: |
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && exit 0
+            sleep 5
+          done
+          docker compose logs --tail 50
+          exit 1
+      - run: npm run test:e2e
+      - if: failure()
+        run: docker compose logs --tail 100
 
   dependency-review:
     if: github.event_name == 'pull_request'

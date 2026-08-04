@@ -10,11 +10,13 @@
     "build": "next build",
     "start": "next start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test:e2e": "playwright test",
     "lint": "eslint ."
   },
   "dependencies": {
     "lucide-react": "^1.28.0",
     "next": "16.2.6",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

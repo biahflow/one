@@ -50,3 +50,10 @@ __pycache__/
 .coverage
 .mypy_cache/
 .ruff_cache/
+
+# typescript
+*.tsbuildinfo
+
+# playwright
+/test-results/
+/playwright-report/

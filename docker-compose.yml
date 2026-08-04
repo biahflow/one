@@ -16,6 +16,53 @@ services:
       timeout: 5s
       retries: 15
 
+  # Cria portal_migrator/portal_app/portal_system e transfere a posse do schema
+  # (ADR 0010). Roda a cada `up` porque ./infra/postgres/init só é executado em
+  # volume novo — este serviço cobre também quem já tem banco criado.
+  db-bootstrap:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-portal_local_only}
+    volumes:
+      - ./infra/postgres/bootstrap:/bootstrap:ro
+    command: >
+      psql -h postgres -U ${POSTGRES_USER:-portal} -d ${POSTGRES_DB:-portal}
+           -v ON_ERROR_STOP=1
+           -v app_password=${POSTGRES_APP_PASSWORD:-portal_app_local_only}
+           -v system_password=${POSTGRES_SYSTEM_PASSWORD:-portal_system_local_only}
+           -v migrator_password=${POSTGRES_MIGRATOR_PASSWORD:-portal_migrator_local_only}
+           -f /bootstrap/roles.sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Aplica as migrações com o papel dono do schema. Antes desta fase nenhum
+  # contêiner rodava alembic.
+  api-migrate:
+    build:
+      context: ./apps/api
+    restart: "no"
+    command: alembic upgrade head
+    environment:
+      DATABASE_MIGRATION_URL: ${DATABASE_MIGRATION_URL:-postgresql+psycopg://portal_migrator:portal_migrator_local_only@postgres:5432/portal}
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+
+  # Usuários do realm + um projeto vindo de um snapshot Biahflow versionado, para
+  # que o login local caia num dashboard real. Idempotente: roda a cada `up`.
+  api-seed:
+    build:
+      context: ./apps/api
+    restart: "no"
+    command: python -m portal_api.seed
+    environment:
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+    depends_on:
+      api-migrate:
+        condition: service_completed_successfully
+
   redis:
     image: redis:7-alpine
     ports:
@@ -54,10 +101,28 @@ services:
       KC_DB_USERNAME: ${POSTGRES_USER:-portal}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-portal_local_only}
       KC_DB_SCHEMA: keycloak
+      # O `iss` do token é o endereço que o NAVEGADOR usa. Com o backchannel
+      # dinâmico, quem chama de dentro da rede do compose (BFF e API) continua
+      # alcançando o Keycloak por `keycloak:8080` sem quebrar o issuer (ADR 0010).
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "8080:8080"
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import:ro
+    # A imagem não tem `curl`; tem `bash`, então falamos HTTP pelo /dev/tcp. O
+    # endpoint de saúde vive na porta de gerenciamento (9000), não na 8080.
+    healthcheck:
+      test:
+        - CMD
+        - /bin/bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; grep -q "\"status\": \"UP\"" <&3'
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,15 +137,23 @@ services:
     build:
       context: ./apps/api
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal:portal_local_only@postgres:5432/portal}
+      # Caminho de requisição: papel sujeito à RLS (ADR 0010).
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
+      # Caminho de sistema: webhook e seed, que criam o tenant.
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      DEMO_MODE: ${DEMO_MODE:-true}
+      DEMO_MODE: ${DEMO_MODE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      # O `iss` do token é o endereço que o navegador usou; o JWKS é buscado pela
+      # rede interna, que é outro host (ADR 0010).
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/portal-local}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/portal-local/protocol/openid-connect/certs}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-portal-api}
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      api-seed:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -89,12 +162,13 @@ services:
       context: ./apps/api
     command: celery -A portal_api.worker.celery_app worker --loglevel=INFO
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal:portal_local_only@postgres:5432/portal}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      DEMO_MODE: ${DEMO_MODE:-true}
+      DEMO_MODE: ${DEMO_MODE:-false}
     depends_on:
-      postgres:
-        condition: service_healthy
+      api-seed:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -105,12 +179,25 @@ services:
     environment:
       # BFF → FastAPI, server-side (não expor como NEXT_PUBLIC_/VITE_).
       API_BASE_URL: http://api:8000
-      PORTAL_CLIENT_EMAIL: marina.farias@acme.com.br
+      # Auth.js: o cookie de sessão é cifrado com AUTH_SECRET e guarda o access
+      # token, que nunca chega ao navegador (ADR 0010).
+      AUTH_SECRET: ${AUTH_SECRET:-portal_auth_local_only}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_KEYCLOAK_ID: ${AUTH_KEYCLOAK_ID:-portal-web}
+      AUTH_KEYCLOAK_SECRET: ${AUTH_KEYCLOAK_SECRET:-portal-web-local-only}
+      # Público (para onde o navegador é mandado) e interno (por onde o BFF
+      # troca o código por token) — dois endereços do mesmo Keycloak.
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/portal-local}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080/realms/portal-local}
     ports:
       - "3000:3000"
     depends_on:
       api:
         condition: service_started
+      # Com login real, o web no ar antes do Keycloak significa primeiro acesso
+      # quebrado — o code exchange acontece no servidor, na subida da página.
+      keycloak:
+        condition: service_healthy
 
 volumes:
   postgres_data:

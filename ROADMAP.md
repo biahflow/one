@@ -26,13 +26,33 @@ Este documento acompanha o plano de entrega. Itens concluídos permanecem aqui p
 ## Fase 1 — Dados, identidade e acesso
 
 - [x] Criar modelos, migrações Alembic e repositórios para organização, projeto, membros, marcos, entregas, pendências, documentos, reuniões, decisões, métricas e auditoria. *(Concluído: além da fatia inicial, documentos, reuniões, decisões e eventos de agentes — tabela idempotente por `external_event_id` — na migração `0002_knowledge_and_events`. Só a camada de dados; o cálculo de ROI sobre os eventos fica na Fase 3.)*
-- [ ] Aplicar Row-Level Security no PostgreSQL e contexto de tenant por transação.
-- [ ] Integrar Keycloak ao BFF Next.js e à API FastAPI com OIDC/PKCE, sessão segura, convite e verificação de e-mail.
-- [ ] Implementar papéis `internal_admin`, `internal_member` e `client_member`, com associação explícita por projeto.
-- [ ] Substituir os dados de demonstração do dashboard por consultas reais e dados seed versionados para desenvolvimento.
+- [x] Aplicar Row-Level Security no PostgreSQL e contexto de tenant por transação.
+      *(Migração `0007_rls_tenant_context`: 15 tabelas com policy, contexto em GUCs por
+      transação e três papéis no Postgres — sem separar credencial as policies seriam
+      decorativas, porque superusuário ignora RLS. ADR 0010, FDD 007.)*
+- [x] Integrar Keycloak ao BFF Next.js e à API FastAPI com OIDC/PKCE e sessão segura.
+      *(Realm com client confidencial e mapper de audiência; Auth.js v5 no BFF com `/login`,
+      `proxy.ts` e o access token só no cookie cifrado; a API valida o JWT contra o JWKS e o
+      `X-Portal-User` não existe mais. ADR 0010, FDD 007.)*
+- [ ] Convite e verificação de e-mail via Mailpit. **É o que resta do item acima:** hoje o
+      usuário precisa existir no realm e ter membership; quem autentica sem vínculo vê a tela
+      "você ainda não tem um projeto atribuído", que é o comportamento correto, mas não há
+      fluxo para criar esse vínculo pela interface.
+- [x] Implementar papéis `internal_admin`, `internal_member` e `client_member`, com associação
+      explícita por projeto. *(`access.require_project` sobre a `membership`; o realm role é só
+      indício. Eventos de agente exigem `internal_admin`; negação é 404, nunca 403.)*
+- [x] Substituir os dados de demonstração do dashboard por consultas reais e dados seed versionados para desenvolvimento.
+      *(O BFF manda `Authorization: Bearer` e projeta `GET /api/v1/me` + o dashboard. 401 leva a
+      `/login`, 404 diz "sem projeto atribuído" e falha de rede vira painel de erro — nenhum
+      caminho leva a dado inventado, e há teste que prova. O seed (`portal_api.seed`) entra pelo
+      `sync_snapshot()` com um snapshot versionado, alinhado por `sub` ao realm.)*
 - [ ] Criar UI de administração para organizações, projetos, membros e configuração financeira.
 
-**Aceite:** um cliente autenticado só consegue consultar os projetos aos quais pertence; tentativas de acesso cruzado falham na API, no banco e na busca.
+**Aceite:** um cliente autenticado só consegue consultar os projetos aos quais pertence;
+tentativas de acesso cruzado falham na API, no banco e na busca. *Atendido para API e banco
+(`test_authorization.py`, `test_rls_isolation.py`, e o e2e de login em `tests/e2e/`); a busca
+ainda não existe — chega com o RAG da Fase 4, e o filtro por organização/projeto é requisito
+dela.*
 
 ## Fase 2 — Jornada do projeto
 

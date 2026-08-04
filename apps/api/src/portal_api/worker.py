@@ -1,7 +1,7 @@
 from celery import Celery
 
 from portal_api.config import get_settings
-from portal_api.db.session import get_session
+from portal_api.db.session import DbRole, get_session
 from portal_api.integrations import biahflow
 
 settings = get_settings()
@@ -21,6 +21,8 @@ def sync_biahflow_project(biahflow_project_id: int) -> dict[str, str]:
     snapshot = biahflow.fetch_snapshot(
         current.biahflow_base_url, current.biahflow_read_token, biahflow_project_id
     )
-    with get_session() as session:
+    # The sync *creates* the tenant, so it runs under portal_system (BYPASSRLS):
+    # there is no organization/project context to bind yet (ADR 0010).
+    with get_session(role=DbRole.system) as session:
         project = biahflow.sync_snapshot(session, snapshot)
         return {"project_id": str(project.id), "status": "synced"}

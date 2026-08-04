@@ -1,5 +1,7 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from portal_api import main
 from portal_api.main import app
 
 client = TestClient(app)
@@ -13,7 +15,11 @@ def test_health_is_available() -> None:
     assert response.json() == {"status": "ok", "service": "portal-api"}
 
 
-def test_demo_dashboard_has_expected_project_metrics() -> None:
+def test_demo_dashboard_has_expected_project_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The gate is the point of the endpoint, so the test turns it on explicitly
+    # instead of relying on DEMO_MODE being set in the environment.
+    monkeypatch.setattr(main.settings, "demo_mode", True)
+
     response = client.get("/api/v1/dashboard/demo")
 
     assert response.status_code == 200

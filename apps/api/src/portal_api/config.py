@@ -4,7 +4,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+psycopg://portal:portal_local_only@localhost:5432/portal"
+    # Uma URL por papel do Postgres (ADR 0010). `database_url` é o caminho de
+    # requisição e usa portal_app, que está sujeito à RLS; os outros dois são
+    # deliberadamente separados para que o privilégio fique na credencial.
+    database_url: str = "postgresql+psycopg://portal_app:portal_app_local_only@localhost:5432/portal"
+    database_system_url: str = (
+        "postgresql+psycopg://portal_system:portal_system_local_only@localhost:5432/portal"
+    )
+    database_migration_url: str = (
+        "postgresql+psycopg://portal_migrator:portal_migrator_local_only@localhost:5432/portal"
+    )
     redis_url: str = "redis://localhost:6379/0"
     demo_mode: bool = False
     web_origin: str = "http://localhost:3000"

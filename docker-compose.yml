@@ -16,6 +16,40 @@ services:
       timeout: 5s
       retries: 15
 
+  # Cria portal_migrator/portal_app/portal_system e transfere a posse do schema
+  # (ADR 0010). Roda a cada `up` porque ./infra/postgres/init só é executado em
+  # volume novo — este serviço cobre também quem já tem banco criado.
+  db-bootstrap:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-portal_local_only}
+    volumes:
+      - ./infra/postgres/bootstrap:/bootstrap:ro
+    command: >
+      psql -h postgres -U ${POSTGRES_USER:-portal} -d ${POSTGRES_DB:-portal}
+           -v ON_ERROR_STOP=1
+           -v app_password=${POSTGRES_APP_PASSWORD:-portal_app_local_only}
+           -v system_password=${POSTGRES_SYSTEM_PASSWORD:-portal_system_local_only}
+           -v migrator_password=${POSTGRES_MIGRATOR_PASSWORD:-portal_migrator_local_only}
+           -f /bootstrap/roles.sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Aplica as migrações com o papel dono do schema. Antes desta fase nenhum
+  # contêiner rodava alembic.
+  api-migrate:
+    build:
+      context: ./apps/api
+    restart: "no"
+    command: alembic upgrade head
+    environment:
+      DATABASE_MIGRATION_URL: ${DATABASE_MIGRATION_URL:-postgresql+psycopg://portal_migrator:portal_migrator_local_only@postgres:5432/portal}
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+
   redis:
     image: redis:7-alpine
     ports:
@@ -72,15 +106,18 @@ services:
     build:
       context: ./apps/api
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal:portal_local_only@postgres:5432/portal}
+      # Caminho de requisição: papel sujeito à RLS (ADR 0010).
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
+      # Caminho de sistema: webhook e seed, que criam o tenant.
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      DEMO_MODE: ${DEMO_MODE:-true}
+      DEMO_MODE: ${DEMO_MODE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      api-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -89,12 +126,13 @@ services:
       context: ./apps/api
     command: celery -A portal_api.worker.celery_app worker --loglevel=INFO
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal:portal_local_only@postgres:5432/portal}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      DEMO_MODE: ${DEMO_MODE:-true}
+      DEMO_MODE: ${DEMO_MODE:-false}
     depends_on:
-      postgres:
-        condition: service_healthy
+      api-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 

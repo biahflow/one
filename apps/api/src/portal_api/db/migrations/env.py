@@ -14,7 +14,7 @@ from alembic import context
 from sqlalchemy import text
 
 from portal_api.db.base import SCHEMA, Base
-from portal_api.db.session import get_engine
+from portal_api.db.session import DbRole, get_engine
 
 # Import models so every table is registered on Base.metadata.
 import portal_api.models  # noqa: F401
@@ -27,7 +27,9 @@ target_metadata = Base.metadata
 
 
 def run_migrations_online() -> None:
-    connectable = get_engine()
+    # portal_migrator owns the schema: DDL, and exemption from RLS by ownership
+    # (the policies use ENABLE, not FORCE, precisely so backfills still work).
+    connectable = get_engine(DbRole.migration)
     with connectable.connect() as connection:
         context.configure(
             connection=connection,

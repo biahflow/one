@@ -1,11 +1,29 @@
 "use client";
 
-import { ArrowLeft, FileText, RefreshCw, Trash2, Upload } from "lucide-react";
+import {
+  ArrowLeft,
+  CloudOff,
+  FolderOpen,
+  FileText,
+  Link2,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
-import { deleteDocument, uploadDocument } from "../actions";
+import {
+  deleteDocument,
+  disconnectDrive,
+  listDriveFolders,
+  setDriveFolder,
+  startDriveAuthorization,
+  syncDriveNow,
+  uploadDocument,
+  type DriveFolder,
+} from "../actions";
 
 export type IngestState = "pending" | "indexed" | "failed" | "unsupported";
 
@@ -21,7 +39,33 @@ export type ProjectDocument = {
   createdAt: string;
 };
 
+export type DriveConnection = {
+  connected: boolean;
+  folderId: string | null;
+  folderName: string | null;
+  account: string | null;
+  enabled: boolean;
+  syncState: "idle" | "running" | "failed" | null;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  documentCount: number;
+};
+
 type ProjectOption = { id: string; name: string; current: boolean };
+
+/** O que a volta do consentimento do Google diz à tela (ADR 0016). */
+const DRIVE_RESULT: Record<string, { tone: "ok" | "error"; text: string }> = {
+  connected: {
+    tone: "ok",
+    text: "Drive conectado. Escolha a pasta que o assistente pode ler.",
+  },
+  denied: { tone: "error", text: "Você recusou o acesso na tela do Google." },
+  scope: {
+    tone: "error",
+    text: "O Google concedeu um acesso diferente do pedido. O portal só aceita somente leitura.",
+  },
+  error: { tone: "error", text: "Não foi possível concluir a conexão com o Drive." },
+};
 
 /** Formatos que a API aceita — a mesma lista que a ingestão sabe ler. */
 const ACCEPT = ".pdf,.docx,.txt,.md,.markdown,.csv";
@@ -51,19 +95,102 @@ export default function KnowledgeClient({
   projectName,
   projectId,
   documents,
+  drive,
+  driveResult,
 }: {
   organization: string;
   projects: ProjectOption[];
   projectName: string;
   projectId: string;
   documents: ProjectDocument[];
+  drive: DriveConnection;
+  driveResult: string | null;
 }) {
-  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(
+    driveResult ? (DRIVE_RESULT[driveResult] ?? null) : null,
+  );
+  const [folders, setFolders] = useState<DriveFolder[] | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
   const indexed = documents.filter((item) => item.state === "indexed");
   const waiting = documents.some((item) => item.state === "pending");
+
+  // Acabou de conectar e ainda não escolheu a pasta: a lista já abre, senão a
+  // pessoa volta do Google e encontra uma tela que parece não ter mudado nada.
+  useEffect(() => {
+    if (driveResult === "connected" && drive.connected && !drive.folderId) {
+      startTransition(async () => {
+        const result = await listDriveFolders(projectId);
+        if (result.ok) setFolders(result.data ?? []);
+      });
+    }
+  }, [driveResult, drive.connected, drive.folderId, projectId]);
+
+  function connect() {
+    startTransition(async () => {
+      const result = await startDriveAuthorization(projectId);
+      if (!result.ok) {
+        setMessage({ tone: "error", text: result.error });
+        return;
+      }
+      const url = result.data?.authorize_url;
+      if (url) window.location.href = url;
+    });
+  }
+
+  function chooseFolder() {
+    startTransition(async () => {
+      const result = await listDriveFolders(projectId);
+      if (result.ok) setFolders(result.data ?? []);
+      else setMessage({ tone: "error", text: result.error });
+    });
+  }
+
+  function pickFolder(folder: DriveFolder) {
+    startTransition(async () => {
+      const result = await setDriveFolder(projectId, folder.id);
+      setMessage(
+        result.ok
+          ? { tone: "ok", text: `Pasta ${folder.name} autorizada. Sincronize para indexar.` }
+          : { tone: "error", text: result.error },
+      );
+      if (result.ok) {
+        setFolders(null);
+        router.refresh();
+      }
+    });
+  }
+
+  function syncNow() {
+    startTransition(async () => {
+      const result = await syncDriveNow(projectId);
+      setMessage(
+        result.ok
+          ? {
+              tone: "ok",
+              text: "Sincronização na fila. Atualize em alguns segundos para ver o resultado.",
+            }
+          : { tone: "error", text: result.error },
+      );
+      if (result.ok) router.refresh();
+    });
+  }
+
+  function disconnect() {
+    startTransition(async () => {
+      const result = await disconnectDrive(projectId);
+      setMessage(
+        result.ok
+          ? {
+              tone: "ok",
+              text: "Drive desconectado. Os documentos já indexados continuam no projeto.",
+            }
+          : { tone: "error", text: result.error },
+      );
+      if (result.ok) router.refresh();
+    });
+  }
 
   function submit(formData: FormData) {
     startTransition(async () => {
@@ -153,6 +280,116 @@ export default function KnowledgeClient({
               {pending ? "Enviando…" : "Enviar e indexar"}
             </button>
           </form>
+        </article>
+
+        <article className="panel" data-drive-panel>
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">GOOGLE DRIVE</p>
+              <h2>
+                {drive.connected ? drive.folderName || "Pasta não escolhida" : "Não conectado"}
+              </h2>
+            </div>
+            {drive.connected && drive.folderId && (
+              <button
+                className="icon-button"
+                aria-label="Sincronizar agora"
+                disabled={pending || !drive.enabled}
+                onClick={syncNow}
+              >
+                <RefreshCw size={16} />
+              </button>
+            )}
+          </div>
+
+          <p className="admin-lead">
+            {drive.connected
+              ? `${drive.account ?? "conta conectada"} · somente leitura, e só a pasta autorizada. Subpastas entram; atalhos, não.`
+              : "Conecte uma pasta e o portal indexa o conteúdo dela sozinho. O acesso é somente leitura e vale para uma pasta por projeto."}
+          </p>
+
+          {drive.connected && !drive.enabled && (
+            <p className="auth-error" role="status">
+              {drive.lastSyncError ??
+                "A sincronização está pausada. Reconecte a pasta para retomar."}
+            </p>
+          )}
+
+          {drive.connected && drive.enabled && drive.lastSyncError && (
+            <p className="auth-error" role="status">
+              {drive.lastSyncError}
+            </p>
+          )}
+
+          {folders !== null && (
+            <div className="field-list">
+              {folders.length === 0 && (
+                <p className="empty-state">Nenhuma pasta encontrada nesta conta.</p>
+              )}
+              {folders.map((folder) => (
+                <div className="member-row" key={folder.id}>
+                  <span className="avatar avatar--small">
+                    <FolderOpen size={15} />
+                  </span>
+                  <div className="member-identity">
+                    <strong>{folder.name}</strong>
+                  </div>
+                  <button
+                    className="ai-button"
+                    type="button"
+                    disabled={pending}
+                    onClick={() => pickFolder(folder)}
+                  >
+                    Autorizar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="admin-form">
+            {!drive.connected && (
+              <button
+                className="ai-button admin-submit"
+                type="button"
+                disabled={pending}
+                onClick={connect}
+              >
+                <Link2 size={16} />
+                {pending ? "Abrindo…" : "Conectar Google Drive"}
+              </button>
+            )}
+            {drive.connected && folders === null && (
+              <button
+                className="ai-button admin-submit"
+                type="button"
+                disabled={pending}
+                onClick={chooseFolder}
+              >
+                <FolderOpen size={16} />
+                {drive.folderId ? "Trocar de pasta" : "Escolher a pasta"}
+              </button>
+            )}
+            {drive.connected && (
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Desconectar o Google Drive"
+                disabled={pending}
+                onClick={disconnect}
+              >
+                <CloudOff size={16} />
+              </button>
+            )}
+          </div>
+
+          {drive.connected && drive.folderId && (
+            <p className="admin-lead">
+              {drive.documentCount}{" "}
+              {drive.documentCount === 1 ? "documento vindo" : "documentos vindos"} do Drive ·
+              última sincronização em {day(drive.lastSyncAt)}
+            </p>
+          )}
         </article>
 
         <article className="panel">

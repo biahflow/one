@@ -19,6 +19,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from portal_api import notifications
 from portal_api.models import (
     DeliverableState,
     DigitalEmployee,
@@ -128,7 +129,13 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
-    """Upsert a Biahflow snapshot into the portal read model. Idempotent."""
+    """Upsert a Biahflow snapshot into the portal read model. Idempotent.
+
+    Também é o produtor das notificações (ADR 0012): o portal não origina status,
+    então a única forma de saber que algo *mudou* é comparar o read model antes e
+    depois do upsert. O estado é fotografado antes de qualquer escrita e o diff
+    sai no fim — ver :mod:`portal_api.notifications`.
+    """
     project_data = snapshot["project"]
     client_data = project_data["client"]
 
@@ -148,6 +155,11 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             Project.organization_id == organization.id, Project.slug == slug
         )
     ).scalar_one_or_none()
+    # Antes de qualquer escrita: é este retrato que vira notificação lá embaixo.
+    # `None` para um projeto que ainda não existe, e é o que faz o primeiro sync
+    # chegar em silêncio em vez de com uma caixa de entrada cheia.
+    before = notifications.snapshot_state(session, project)
+
     if project is None:
         project = Project(organization_id=organization.id, slug=slug)
         session.add(project)
@@ -297,6 +309,8 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             item.created_at = opened_at
         session.add(item)
     session.flush()
+
+    notifications.emit_changes(session, project, before)
     return project
 
 

@@ -14,6 +14,7 @@ from portal_api.repositories.document import DocumentRepository
 from portal_api.repositories.meeting import MeetingRepository
 from portal_api.repositories.membership import MembershipRepository
 from portal_api.repositories.milestone import MilestoneRepository
+from portal_api.repositories.notification import NotificationRepository
 from portal_api.repositories.organization import OrganizationRepository, UserRepository
 from portal_api.repositories.pending_item import PendingItemRepository
 from portal_api.repositories.project import ProjectRepository
@@ -27,6 +28,7 @@ __all__ = [
     "MeetingRepository",
     "MembershipRepository",
     "MilestoneRepository",
+    "NotificationRepository",
     "OrganizationRepository",
     "PendingItemRepository",
     "ProjectRepository",

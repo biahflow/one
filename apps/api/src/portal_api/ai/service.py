@@ -31,6 +31,10 @@ class ChatResult:
     sources: list[str]
     confidence: str  # "grounded" | "insufficient_context"
     pending_created: bool
+    #: Id da pendência aberta, para o endpoint avisar o time interno (ADR 0012).
+    #: A notificação não nasce aqui porque o chat roda sob `portal_app`, que não
+    #: escreve em `notification` — quem escreve é o worker, sob `portal_system`.
+    pending_id: uuid.UUID | None = None
 
 
 def _create_pendencia(
@@ -38,7 +42,7 @@ def _create_pendencia(
     ctx: TenantContext,
     question: str,
     actor_user_id: uuid.UUID | None,
-) -> None:
+) -> uuid.UUID:
     pending = PendingItemRepository(session, ctx).add(
         PendingItem(
             title=f"Responder dúvida do cliente: {question[:160]}",
@@ -58,6 +62,7 @@ def _create_pendencia(
             data={"reason": "insufficient_context"},
         )
     )
+    return pending.id
 
 
 def answer_question(
@@ -85,12 +90,13 @@ def answer_question(
 
     # Cite-or-gap: a factual answer without a real citation is treated as a gap.
     if not result.sufficient or not cited:
-        _create_pendencia(session, ctx, question, actor_user_id)
+        pending_id = _create_pendencia(session, ctx, question, actor_user_id)
         return ChatResult(
             answer=result.answer if not result.sufficient else GAP_MESSAGE,
             sources=[],
             confidence="insufficient_context",
             pending_created=True,
+            pending_id=pending_id,
         )
 
     return ChatResult(

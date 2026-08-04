@@ -453,3 +453,236 @@ def test_an_administrator_cannot_revoke_their_own_access(
     )
 
     assert response.status_code == 409
+
+
+# --- chaves dos agentes e premissas financeiras (Fase 3, ADR 0013) ---------
+
+
+def test_no_client_member_reaches_the_results_administration(
+    world, authenticated, agent_pepper
+) -> None:
+    """Negativo de permissão para cada rota nova (AGENTS.md #6)."""
+    acme = world["acme"]
+    authenticated(acme.client_actor)
+    base = f"/api/v1/admin/projects/{acme.project_id}"
+
+    responses = [
+        client.get(f"{base}/keys"),
+        client.post(f"{base}/keys", json={"name": "agente"}),
+        client.post(f"{base}/keys/{uuid.uuid4()}/rotate"),
+        client.delete(f"{base}/keys/{uuid.uuid4()}"),
+        client.get(f"{base}/assumptions"),
+        client.post(
+            f"{base}/assumptions",
+            json={
+                "effective_from": "2026-01-01",
+                "hourly_rate_cents": 10_000,
+                "monthly_investment_cents": 300_000,
+            },
+        ),
+    ]
+
+    assert {response.status_code for response in responses} == {404}
+
+
+def test_an_administrator_cannot_mint_a_key_for_another_tenant(
+    world, authenticated, agent_pepper
+) -> None:
+    authenticated(world["acme"].admin)
+    globex = world["globex"]
+
+    response = client.post(
+        f"/api/v1/admin/projects/{globex.project_id}/keys", json={"name": "agente"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_the_plaintext_key_is_returned_once_and_never_stored(
+    world, authenticated, agent_pepper, migrated_engine: Engine
+) -> None:
+    from portal_api.models import AgentApiKey
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    created = client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/keys",
+        json={"name": "Agente Financeiro"},
+    )
+    listed = client.get(f"/api/v1/admin/projects/{acme.project_id}/keys")
+
+    assert created.status_code == 201
+    key = created.json()["key"]
+    assert key.startswith("plk_")
+
+    # A listagem devolve o prefixo e mais nada — não há caminho de volta ao
+    # segredo, nem pela API nem pelo banco.
+    entry = next(
+        item for item in listed.json() if item["key_id"] == created.json()["key_id"]
+    )
+    assert "key" not in entry
+    assert entry["key_prefix"] == key[:12]
+
+    with Session(migrated_engine) as session:
+        record = session.get(AgentApiKey, uuid.UUID(created.json()["key_id"]))
+        assert record.key_hash != key
+        assert key not in record.key_hash
+
+
+def test_a_minted_key_actually_authenticates_the_ingestion(
+    world, authenticated, agent_pepper
+) -> None:
+    """A ponta a ponta que interessa: o que a tela cria é o que o agente usa."""
+    acme = world["acme"]
+    authenticated(acme.admin)
+    key = client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/keys", json={"name": "agente"}
+    ).json()["key"]
+
+    ingested = client.post(
+        "/api/v1/agent-events",
+        json={
+            "event_id": str(uuid.uuid4()),
+            "project_id": str(acme.project_id),
+            "occurred_at": "2026-08-03T10:00:00Z",
+            "agent_key": "finance-agent",
+            "time_saved_seconds": 600,
+            "avoided_cost_cents": 100,
+            "run_reference": "run-1",
+        },
+        headers={"X-Agent-Key": key},
+    )
+
+    assert ingested.status_code == 202
+
+
+def test_rotating_replaces_the_key_and_keeps_the_trail(
+    world, authenticated, agent_pepper
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+    base = f"/api/v1/admin/projects/{acme.project_id}"
+    original = client.post(f"{base}/keys", json={"name": "agente"}).json()
+
+    rotated = client.post(f"{base}/keys/{original['key_id']}/rotate")
+
+    assert rotated.status_code == 201
+    assert rotated.json()["key"] != original["key"]
+    # A sucessora aponta para a antecessora: sem isso, "de onde veio esta chave"
+    # ficaria sem resposta.
+    assert rotated.json()["rotated_from_id"] == original["key_id"]
+
+    listing = {item["key_id"]: item for item in client.get(f"{base}/keys").json()}
+    assert listing[original["key_id"]]["revoked_at"] is not None
+    assert listing[rotated.json()["key_id"]]["revoked_at"] is None
+
+
+def test_a_revoked_key_stops_working_immediately(
+    world, authenticated, agent_pepper
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+    base = f"/api/v1/admin/projects/{acme.project_id}"
+    created = client.post(f"{base}/keys", json={"name": "agente"}).json()
+
+    def _ingest():
+        return client.post(
+            "/api/v1/agent-events",
+            json={
+                "event_id": str(uuid.uuid4()),
+                "project_id": str(acme.project_id),
+                "occurred_at": "2026-08-03T10:00:00Z",
+                "agent_key": "finance-agent",
+                "time_saved_seconds": 60,
+                "avoided_cost_cents": 0,
+                "run_reference": "run-x",
+            },
+            headers={"X-Agent-Key": created["key"]},
+        )
+
+    assert _ingest().status_code == 202
+    assert client.delete(f"{base}/keys/{created['key_id']}").status_code == 204
+    assert _ingest().status_code == 401
+
+
+def test_the_key_audit_never_carries_the_secret(
+    world, authenticated, agent_pepper, migrated_engine: Engine
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    created = client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/keys", json={"name": "agente"}
+    ).json()
+
+    with Session(migrated_engine) as session:
+        entry = session.execute(
+            select(AuditLog).where(
+                AuditLog.action == "agent_key.created",
+                AuditLog.entity_id == uuid.UUID(created["key_id"]),
+            )
+        ).scalars().one()
+    assert entry.data == {"key_prefix": created["key_prefix"]}
+    assert created["key"] not in f"{entry.data}"
+
+
+def test_a_new_assumption_closes_the_current_one(
+    world, authenticated, agent_pepper
+) -> None:
+    """Premissa não se edita no lugar: fecha uma, abre outra."""
+    acme = world["acme"]
+    authenticated(acme.admin)
+    base = f"/api/v1/admin/projects/{acme.project_id}/assumptions"
+
+    first = client.post(
+        base,
+        json={
+            "effective_from": "2026-01-01",
+            "hourly_rate_cents": 10_000,
+            "monthly_investment_cents": 300_000,
+        },
+    )
+    second = client.post(
+        base,
+        json={
+            "effective_from": "2026-03-01",
+            "hourly_rate_cents": 12_000,
+            "monthly_investment_cents": 300_000,
+        },
+    )
+
+    assert [first.status_code, second.status_code] == [201, 201]
+    history = {item["assumption_id"]: item for item in client.get(base).json()}
+    # A anterior foi fechada exatamente onde a nova começa: sem buraco e sem
+    # sobreposição, que é o que torna o histórico explicável.
+    assert history[first.json()["assumption_id"]]["effective_to"] == "2026-03-01"
+    assert history[second.json()["assumption_id"]]["effective_to"] is None
+
+
+def test_an_assumption_cannot_retroact_over_the_open_one(
+    world, authenticated, agent_pepper
+) -> None:
+    """Retroagir reescreveria um número já mostrado ao cliente."""
+    acme = world["acme"]
+    authenticated(acme.admin)
+    base = f"/api/v1/admin/projects/{acme.project_id}/assumptions"
+    client.post(
+        base,
+        json={
+            "effective_from": "2026-06-01",
+            "hourly_rate_cents": 10_000,
+            "monthly_investment_cents": 300_000,
+        },
+    )
+
+    response = client.post(
+        base,
+        json={
+            "effective_from": "2026-05-01",
+            "hourly_rate_cents": 99_000,
+            "monthly_investment_cents": 300_000,
+        },
+    )
+
+    assert response.status_code == 409

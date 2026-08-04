@@ -22,19 +22,29 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from portal_api import access
+from portal_api import access, agent_auth
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_admin_org, bind_invitee, get_session
 from portal_api.identity import resolve_user
 from portal_api.keycloak_admin import KeycloakAdmin, KeycloakAdminError, RealmUser
-from portal_api.models import AuditLog, MemberRole, Membership, Project, User
+from portal_api.models import (
+    SCOPE_EVENTS_WRITE,
+    AgentApiKey,
+    AuditLog,
+    MemberRole,
+    Membership,
+    Project,
+    ProjectFinancialAssumption,
+    User,
+)
 from portal_api.principal import Principal
 
 logger = logging.getLogger(__name__)
@@ -278,3 +288,317 @@ def revoke_membership(
             membership_id=membership.id,
         )
         session.delete(membership)
+
+
+# --- resultados: chaves dos agentes e premissas financeiras (ADR 0013) ------
+#
+# Moram aqui, e não em `main.py`, pelo mesmo motivo dos membros: são escrita sob
+# `portal_admin`, e manter num arquivo só o que roda com aquele grant é o que
+# torna "quem pode criar credencial" respondível lendo um arquivo.
+
+
+class AgentKeyIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    #: Sem prazo explícito vale o padrão da configuração — nunca "para sempre".
+    expires_in_days: int | None = Field(default=None, ge=1, le=730)
+
+
+class AgentKeyOut(BaseModel):
+    key_id: uuid.UUID
+    name: str
+    key_prefix: str
+    expires_at: datetime
+    revoked_at: datetime | None
+    last_used_at: datetime | None
+    rotated_from_id: uuid.UUID | None
+
+
+class AgentKeyCreatedOut(AgentKeyOut):
+    #: A chave em claro. **Só aqui, só desta vez** — o banco guarda o HMAC, e
+    #: não existe caminho para recuperá-la depois. Perdida, rotaciona-se.
+    key: str
+
+
+class AssumptionIn(BaseModel):
+    effective_from: date
+    hourly_rate_cents: int = Field(ge=0)
+    monthly_investment_cents: int = Field(ge=0)
+    currency: str = Field(default="BRL", min_length=3, max_length=3)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class AssumptionOut(BaseModel):
+    assumption_id: uuid.UUID
+    effective_from: date
+    effective_to: date | None
+    hourly_rate_cents: int
+    monthly_investment_cents: int
+    currency: str
+    note: str | None
+
+
+def _audit(
+    session: Session,
+    *,
+    project: Project,
+    actor_user_id: uuid.UUID,
+    action: str,
+    entity_type: str,
+    entity_id: uuid.UUID,
+    data: dict | None = None,
+) -> None:
+    """Auditoria genérica. Nunca recebe a chave nem o hash — só o prefixo, que
+    é público por construção (`docs/data-classification.md`)."""
+    session.add(
+        AuditLog(
+            organization_id=project.organization_id,
+            project_id=project.id,
+            actor_user_id=actor_user_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            data=data or {},
+        )
+    )
+
+
+def _as_key_out(record: AgentApiKey) -> AgentKeyOut:
+    return AgentKeyOut(
+        key_id=record.id,
+        name=record.name,
+        key_prefix=record.key_prefix,
+        expires_at=record.expires_at,
+        revoked_at=record.revoked_at,
+        last_used_at=record.last_used_at,
+        rotated_from_id=record.rotated_from_id,
+    )
+
+
+def _mint(
+    session: Session,
+    *,
+    project: Project,
+    actor_user_id: uuid.UUID,
+    name: str,
+    expires_in_days: int | None,
+    rotated_from: AgentApiKey | None = None,
+) -> tuple[AgentApiKey, str]:
+    settings = get_settings()
+    key, prefix = agent_auth.generate_key()
+    record = AgentApiKey(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        name=name,
+        key_prefix=prefix,
+        key_hash=agent_auth.hash_key(key, settings),
+        scopes=[SCOPE_EVENTS_WRITE],
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(days=expires_in_days or settings.agent_key_lifetime_days),
+        created_by_user_id=actor_user_id,
+        rotated_from_id=rotated_from.id if rotated_from else None,
+    )
+    session.add(record)
+    session.flush()
+    return record, key
+
+
+@router.get("/projects/{project_id}/keys", response_model=list[AgentKeyOut])
+def list_agent_keys(project_id: uuid.UUID, principal: CurrentPrincipal) -> list[AgentKeyOut]:
+    """As chaves do projeto, sem o segredo — ele não existe mais em lugar nenhum."""
+    with get_session(principal, role=DbRole.admin) as session:
+        _, project = _authorized(session, principal, project_id)
+        records = session.execute(
+            select(AgentApiKey)
+            .where(AgentApiKey.project_id == project.id)
+            .order_by(AgentApiKey.created_at.desc())
+        ).scalars()
+        return [_as_key_out(record) for record in records]
+
+
+@router.post(
+    "/projects/{project_id}/keys",
+    response_model=AgentKeyCreatedOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_key(
+    project_id: uuid.UUID, payload: AgentKeyIn, principal: CurrentPrincipal
+) -> AgentKeyCreatedOut:
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record, key = _mint(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            name=payload.name,
+            expires_in_days=payload.expires_in_days,
+        )
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="agent_key.created",
+            entity_type="agent_api_key",
+            entity_id=record.id,
+            data={"key_prefix": record.key_prefix},
+        )
+        return AgentKeyCreatedOut(**_as_key_out(record).model_dump(), key=key)
+
+
+@router.post(
+    "/projects/{project_id}/keys/{key_id}/rotate",
+    response_model=AgentKeyCreatedOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def rotate_agent_key(
+    project_id: uuid.UUID, key_id: uuid.UUID, principal: CurrentPrincipal
+) -> AgentKeyCreatedOut:
+    """Emite a sucessora e revoga a anterior, apontando uma para a outra.
+
+    A linha antiga não some: sem ela, "de onde veio esta chave" deixaria de ter
+    resposta, e é essa cadeia que torna uma rotação reconstituível meses depois.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        current = session.get(AgentApiKey, key_id)
+        if current is None or current.project_id != project.id:
+            raise NOT_FOUND
+
+        record, key = _mint(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            name=current.name,
+            expires_in_days=None,
+            rotated_from=current,
+        )
+        current.revoked_at = datetime.now(timezone.utc)
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="agent_key.rotated",
+            entity_type="agent_api_key",
+            entity_id=record.id,
+            data={"from_prefix": current.key_prefix, "to_prefix": record.key_prefix},
+        )
+        return AgentKeyCreatedOut(**_as_key_out(record).model_dump(), key=key)
+
+
+@router.delete(
+    "/projects/{project_id}/keys/{key_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    response_class=Response,
+)
+def revoke_agent_key(
+    project_id: uuid.UUID, key_id: uuid.UUID, principal: CurrentPrincipal
+) -> None:
+    """Revoga sem apagar: a linha é o rastro de que a chave existiu e foi usada."""
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record = session.get(AgentApiKey, key_id)
+        if record is None or record.project_id != project.id:
+            raise NOT_FOUND
+        if record.revoked_at is None:
+            record.revoked_at = datetime.now(timezone.utc)
+            _audit(
+                session,
+                project=project,
+                actor_user_id=actor.id,
+                action="agent_key.revoked",
+                entity_type="agent_api_key",
+                entity_id=record.id,
+                data={"key_prefix": record.key_prefix},
+            )
+
+
+@router.get("/projects/{project_id}/assumptions", response_model=list[AssumptionOut])
+def list_assumptions(
+    project_id: uuid.UUID, principal: CurrentPrincipal
+) -> list[AssumptionOut]:
+    with get_session(principal, role=DbRole.admin) as session:
+        _, project = _authorized(session, principal, project_id)
+        records = session.execute(
+            select(ProjectFinancialAssumption)
+            .where(ProjectFinancialAssumption.project_id == project.id)
+            .order_by(ProjectFinancialAssumption.effective_from.desc())
+        ).scalars()
+        return [
+            AssumptionOut(
+                assumption_id=record.id,
+                effective_from=record.effective_from,
+                effective_to=record.effective_to,
+                hourly_rate_cents=record.hourly_rate_cents,
+                monthly_investment_cents=record.monthly_investment_cents,
+                currency=record.currency,
+                note=record.note,
+            )
+            for record in records
+        ]
+
+
+@router.post(
+    "/projects/{project_id}/assumptions",
+    response_model=AssumptionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def open_assumption(
+    project_id: uuid.UUID, payload: AssumptionIn, principal: CurrentPrincipal
+) -> AssumptionOut:
+    """Abre uma vigência, fechando a corrente na mesma data.
+
+    Premissa não se edita no lugar: um indicador de três meses atrás precisa
+    continuar explicável pelo valor que valia naquele dia. Por isso a operação é
+    "fecha uma, abre outra" e nunca um UPDATE — e as duas coisas na mesma
+    transação, senão haveria um instante com o projeto sem premissa nenhuma.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+
+        current = session.execute(
+            select(ProjectFinancialAssumption).where(
+                ProjectFinancialAssumption.project_id == project.id,
+                ProjectFinancialAssumption.effective_to.is_(None),
+            )
+        ).scalar_one_or_none()
+        if current is not None:
+            if payload.effective_from <= current.effective_from:
+                # Retroagir sobre a vigência aberta reescreveria um passado já
+                # exibido ao cliente; o EXCLUDE do banco recusaria de todo jeito.
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="`effective_from` must be after the current assumption",
+                )
+            current.effective_to = payload.effective_from
+            session.flush()
+
+        record = ProjectFinancialAssumption(
+            organization_id=project.organization_id,
+            project_id=project.id,
+            effective_from=payload.effective_from,
+            hourly_rate_cents=payload.hourly_rate_cents,
+            monthly_investment_cents=payload.monthly_investment_cents,
+            currency=payload.currency.upper(),
+            note=payload.note,
+            created_by_user_id=actor.id,
+        )
+        session.add(record)
+        session.flush()
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="assumption.changed",
+            entity_type="project_financial_assumption",
+            entity_id=record.id,
+            data={"effective_from": payload.effective_from.isoformat()},
+        )
+        return AssumptionOut(
+            assumption_id=record.id,
+            effective_from=record.effective_from,
+            effective_to=record.effective_to,
+            hourly_rate_cents=record.hourly_rate_cents,
+            monthly_investment_cents=record.monthly_investment_cents,
+            currency=record.currency,
+            note=record.note,
+        )

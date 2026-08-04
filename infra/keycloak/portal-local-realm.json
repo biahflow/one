@@ -4,6 +4,8 @@
   "displayName": "Portal Labs (Local)",
   "sslRequired": "none",
   "bruteForceProtected": true,
+  "quickLoginCheckMilliSeconds": 0,
+  "failureFactor": 30,
   "roles": {
     "realm": [
       {

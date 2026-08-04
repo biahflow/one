@@ -89,17 +89,40 @@ concluído, confere o sino no navegador e lê o resumo na caixa do Mailpit.*
 
 ## Fase 3 — Resultados e API dos agentes
 
-- [ ] Autenticar a API de eventos com chave por projeto, hash, escopo, expiração, rotação e rate limiting.
-- [ ] Persistir eventos idempotentes e configurar investimento/valor-hora com vigência — **e a
+- [x] Autenticar a API de eventos com chave por projeto, hash, escopo, expiração, rotação e rate
+      limiting. *(`X-Agent-Key`, e só ela: um agente não tem sessão de usuário, então o Bearer
+      humano deixou de valer nesta rota. O tenant é propriedade da chave, o que permite conferir
+      o `projectId` recebido em vez de confiar nele. Só o prefixo fica em claro; o segredo vira
+      HMAC sob pepper de servidor. Rate limit em janela na própria linha da chave — sem trazer o
+      Redis para o caminho de requisição. ADR 0013, FDD 004.)*
+- [x] Persistir eventos idempotentes e configurar investimento/valor-hora com vigência — **e a
       tela para mantê-la**, que veio do item de administração da Fase 1: o número financeiro só
-      faz sentido junto do cálculo de ROI que vive aqui.
-- [ ] Calcular horas poupadas, custos evitados e ROI líquido por período, com premissas auditáveis.
-- [ ] Criar relatórios e detalhamento que expliquem cada valor exibido no dashboard.
-- [ ] Dar fonte real aos três cards ainda de demonstração na aba Resultados — transações
+      faz sentido junto do cálculo de ROI que vive aqui. *(`AgentEventRepository.ingest` existia
+      desde a Fase 1 e não era chamado; agora é. `project_financial_assumption` tem vigência com
+      `EXCLUDE USING gist`, e premissa não se edita no lugar: fecha uma, abre outra. A tela é
+      `/admin/resultados`, sob `portal_admin` como a de acesso.)*
+- [x] Calcular horas poupadas, custos evitados e ROI líquido por período, com premissas auditáveis.
+      *(`results.py`. Nada é derivado na escrita — o evento guarda os inteiros que o agente
+      reportou, e o dinheiro nasce na leitura pela premissa vigente **no dia do evento**, para um
+      aumento de valor-hora hoje não reprecificar março. Investimento rateado por dia;
+      investimento zero declara lacuna em vez de virar ROI infinito.)*
+- [x] Criar relatórios e detalhamento que expliquem cada valor exibido no dashboard.
+      *(`GET /api/v1/projects/{id}/results` devolve indicador, premissas vigentes e `gaps`; a aba
+      Resultados ganhou o bloco "Como calculamos" com período, contagem, valor-hora e fórmula.)*
+- [x] Dar fonte real aos três cards ainda de demonstração na aba Resultados — transações
       automatizadas, precisão do fluxo e exceções tratadas (marcados no código em
       `app/DashboardClient.tsx`). São os únicos números sem lastro na tela do cliente.
+      *(Saíram, junto do fallback de `roiValue()` que devolvia um percentual fixo. O evento passou
+      a carregar `outcome` e `human_intervention` — sem desfecho não haveria como sustentar
+      precisão nem exceções. O ROI projetado do Biahflow e o apurado dos eventos convivem
+      rotulados. A guarda de `rendered-html.test.mjs` não pegava esses cards, porque eram um array
+      local e não um `const` de módulo; agora os literais estão proibidos.)*
 
-**Aceite:** reenvio do mesmo evento não duplica resultado; o cliente vê a origem e a premissa de todo indicador.
+**Aceite:** reenvio do mesmo evento não duplica resultado; o cliente vê a origem e a premissa de
+todo indicador. *Atendido: `test_agent_events.py` prova a idempotência linha a linha e o par
+`accepted`/`duplicate`, e `tests/e2e/results.spec.ts` percorre a corrente inteira — a pessoa
+interna abre a vigência e emite a chave no navegador, um agente publica por HTTP (com um reenvio),
+e o cliente vê o número ao lado da premissa que o produziu.*
 
 ## Fase 4 — Conhecimento e IA contextual
 

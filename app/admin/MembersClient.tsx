@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Mail, ShieldCheck, UserMinus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Mail, ShieldCheck, UserMinus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -79,6 +79,9 @@ export default function MembersClient({
           {organization} · Projetos e organizações vêm do Biahflow; aqui você define quem tem
           acesso a eles.
         </p>
+        <Link className="text-button" href={`/admin/resultados?project=${projectId}`}>
+          Chaves dos agentes e premissas de ROI <ArrowRight size={15} />
+        </Link>
       </header>
 
       {projects.length > 1 && (

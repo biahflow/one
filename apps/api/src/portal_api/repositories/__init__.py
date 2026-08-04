@@ -11,6 +11,7 @@ from portal_api.repositories.context import TenantContext
 from portal_api.repositories.decision import DecisionRepository
 from portal_api.repositories.delivery import DeliveryRepository
 from portal_api.repositories.document import DocumentRepository
+from portal_api.repositories.financial import FinancialAssumptionRepository
 from portal_api.repositories.meeting import MeetingRepository
 from portal_api.repositories.membership import MembershipRepository
 from portal_api.repositories.milestone import MilestoneRepository
@@ -25,6 +26,7 @@ __all__ = [
     "DecisionRepository",
     "DeliveryRepository",
     "DocumentRepository",
+    "FinancialAssumptionRepository",
     "MeetingRepository",
     "MembershipRepository",
     "MilestoneRepository",

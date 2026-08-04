@@ -107,6 +107,24 @@ export type ProjectDocument = { title: string; type: string | null; author: stri
 export type MeetingView = { title: string; date: string; status: string; hasTranscript: boolean; recordingUrl: string | null };
 export type PendingItemView = { title: string; description: string | null; owner: string | null; state: string; stateLabel: string; origin: string; age: string };
 export type ProjectResults = { milestonesTotal: number; milestonesDone: number; overdue: number; onTimePercent: number };
+export type MeasuredAssumption = { hourlyRate: number; monthlyInvestment: number; effectiveFrom: string; note: string | null };
+/** O que os agentes produziram no período, apurado pela API (ADR 0013). Não se
+ *  confunde com `roi`, que é o ROI projetado vindo do snapshot do Biahflow. */
+export type MeasuredResults = {
+  periodDays: number;
+  eventsTotal: number;
+  hoursSaved: number;
+  benefit: number;
+  investment: number;
+  net: number;
+  roiRatio: number | null;
+  accuracy: number | null;
+  exceptionsHandled: number;
+  unattendedShare: number | null;
+  failed: number;
+  assumption: MeasuredAssumption | null;
+  gaps: string[];
+};
 export type JourneyDeliverable = { name: string; state: "pending" | "delivered"; link: string | null };
 export type DigitalEmployeeView = { name: string; area: string | null; description: string | null; status: string; kpiLabel: string | null; kpiValue: string | null; hoursSavedMonth: number | null; roiMonth: number | null };
 export type JourneyPhase = {
@@ -133,6 +151,7 @@ export type Overview = {
   meetings: MeetingView[];
   pendings: PendingItemView[];
   results: ProjectResults | null;
+  measured: MeasuredResults | null;
 };
 
 function firstName(fullName: string): string {
@@ -547,12 +566,24 @@ function JourneyPanel({ journey }: { journey: Overview["journey"] }) {
 }
 
 function roiValue(roi: Overview["roi"]): { value: string; note: string; positive: boolean } {
-  if (!roi || roi.ratio == null) return { value: "+142%", note: "↑ 18% desde o último mês", positive: true };
+  // Sem ROI no snapshot, um travessão. Até a Fase 3 isto devolvia um percentual
+  // fixo — o último fallback de demonstração da tela do cliente.
+  if (!roi || roi.ratio == null) {
+    return { value: "—", note: "Sem projeção no Biahflow", positive: false };
+  }
   const pct = Math.round(roi.ratio * 100);
   const note = roi.net != null
     ? `R$ ${roi.net.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} de retorno`
     : "Retorno estimado do projeto";
   return { value: `${pct >= 0 ? "+" : ""}${pct}%`, note, positive: pct >= 0 };
+}
+
+function percent(value: number | null, digits = 1): string {
+  return value == null ? "—" : `${(value * 100).toFixed(digits).replace(".", ",")}%`;
+}
+
+function compact(value: number): string {
+  return value.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 }
 
 function OverviewView({ onAsk, onAnalyze, overview, user }: { onAsk: () => void; onAnalyze: () => void; overview: Overview; user: PortalUser }) {
@@ -766,6 +797,9 @@ function PendingView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
 }
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+/** Com centavos: uma premissa precisa poder ser conferida na mão, e R$ 150,50
+ *  arredondado para R$ 151 deixaria a conta do cliente sem fechar. */
+const BRL_EXACT = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const EMPLOYEE_STATUS: Record<string, { label: string; cls: string }> = {
   active: { label: "Ativo", cls: "green" },
   paused: { label: "Pausado", cls: "" },
@@ -798,19 +832,54 @@ function DigitalEmployees({ employees }: { employees: DigitalEmployeeView[] }) {
 }
 
 function ResultsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
-  const roi = roiValue(overview.roi);
-  const hoursSaved = overview.digitalEmployees.reduce((total, employee) => total + (employee.hoursSavedMonth ?? 0), 0);
-  const savings = overview.roi?.net ?? null;
+  const projected = roiValue(overview.roi);
   const results = overview.results;
+  const measured = overview.measured;
+  const period = measured ? `Últimos ${measured.periodDays} dias` : "Sem período apurado";
+  const hasEvents = (measured?.eventsTotal ?? 0) > 0;
 
+  // Cada card diz de onde veio: o projetado é a promessa do Biahflow, o apurado
+  // é o que os eventos dos agentes sustentam. Onde falta base vai "—" com o
+  // motivo, nunca um número de demonstração (ADR 0013).
   const cards = [
-    { icon: TrendingUp, tone: "green", label: "ROI do projeto", value: roi.value, note: roi.note, positive: roi.positive },
-    { icon: Clock3, tone: "purple", label: "Horas economizadas", value: hoursSaved > 0 ? `${hoursSaved}h/mês` : "—", note: hoursSaved > 0 ? "Somadas dos Funcionários Digitais" : "Sem funcionário digital ativo" },
-    { icon: TrendingUp, tone: "", label: "Economia estimada", value: savings !== null ? BRL.format(savings) : "—", note: savings !== null ? "Valor líquido do projeto" : "Sem valor apurado" },
-    // DEMO — sem fonte até a Fase 3 (eventos dos agentes). Ver ROADMAP.md.
-    { icon: Zap, tone: "", label: "Transações automatizadas", value: "12,4k", note: "Últimos 30 dias" },
-    { icon: Target, tone: "green", label: "Precisão do fluxo", value: "98,6%", note: "↑ 2,1 p.p. no mês", positive: true },
-    { icon: Check, tone: "purple", label: "Exceções tratadas", value: "1.203", note: "87% sem intervenção humana" },
+    {
+      icon: TrendingUp, tone: "", label: "ROI projetado",
+      value: projected.value, note: projected.note, positive: projected.positive,
+    },
+    {
+      icon: TrendingUp, tone: "green", label: "ROI apurado",
+      value: percent(measured?.roiRatio ?? null, 0),
+      note: measured?.roiRatio != null ? `${BRL.format(measured.net)} líquidos · ${period}` : "Sem investimento configurado",
+      positive: (measured?.roiRatio ?? 0) >= 0 && measured?.roiRatio != null,
+    },
+    {
+      icon: Clock3, tone: "purple", label: "Horas economizadas",
+      value: hasEvents ? `${measured!.hoursSaved.toLocaleString("pt-BR")}h` : "—",
+      note: hasEvents ? `Reportadas pelos agentes · ${period}` : "Nenhum evento no período",
+    },
+    {
+      icon: TrendingUp, tone: "", label: "Economia apurada",
+      value: hasEvents ? BRL.format(measured!.benefit) : "—",
+      note: hasEvents ? "Horas ao valor-hora vigente + custos evitados" : "Sem evento para converter",
+    },
+    {
+      icon: Zap, tone: "", label: "Transações automatizadas",
+      value: hasEvents ? compact(measured!.eventsTotal) : "—",
+      note: hasEvents ? period : "Nenhum evento no período",
+    },
+    {
+      icon: Target, tone: "green", label: "Precisão do fluxo",
+      value: percent(measured?.accuracy ?? null),
+      note: hasEvents ? `${measured!.failed} execuç${measured!.failed === 1 ? "ão" : "ões"} com falha` : "Sem execuções apuradas",
+      positive: (measured?.accuracy ?? 0) >= 0.95,
+    },
+    {
+      icon: Check, tone: "purple", label: "Exceções tratadas",
+      value: measured ? measured.exceptionsHandled.toLocaleString("pt-BR") : "—",
+      note: measured?.unattendedShare != null
+        ? `${percent(measured.unattendedShare, 0)} sem intervenção humana`
+        : "Nenhuma exceção no período",
+    },
   ];
 
   return (
@@ -835,6 +904,7 @@ function ResultsView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
           </article>
         ))}
       </section>
+      <MeasurementBasis measured={measured} />
       <section className="section-gap">
         <article className="insight-card">
           <div className="insight-orb"><Bot size={24} /></div>
@@ -845,6 +915,81 @@ function ResultsView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
         </article>
       </section>
     </>
+  );
+}
+
+const GAP_LABELS: Record<string, string> = {
+  no_assumption: "Ainda não há valor-hora nem investimento configurados, então as horas dos agentes não viram dinheiro.",
+  events_outside_assumption: "Alguns eventos do período aconteceram antes da premissa vigente e entram no volume, mas não no valor.",
+  no_investment: "O investimento configurado é zero, e sem ele não há ROI a calcular.",
+  no_events: "Nenhum agente publicou evento neste período.",
+};
+
+/**
+ * Como cada número foi calculado — a outra metade do aceite da fase.
+ *
+ * Um indicador sem premissa visível é indistinguível de um chute, e foi
+ * exatamente por isso que os três cards de demonstração puderam ficar tanto
+ * tempo na tela sem ninguém notar.
+ */
+function MeasurementBasis({ measured }: { measured: MeasuredResults | null }) {
+  if (!measured) return null;
+  const { assumption, gaps } = measured;
+
+  return (
+    <section className="section-gap">
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">COMO CALCULAMOS</p>
+            <h2>A premissa por trás dos números</h2>
+          </div>
+        </div>
+        <div className="field-list">
+          <div className="field-row">
+            <span className="field-label">Período</span>
+            <span className="field-value">Últimos {measured.periodDays} dias</span>
+          </div>
+          <div className="field-row">
+            <span className="field-label">Eventos considerados</span>
+            <span className="field-value">{measured.eventsTotal.toLocaleString("pt-BR")}</span>
+          </div>
+          {assumption && (
+            <>
+              <div className="field-row">
+                <span className="field-label">Valor-hora vigente</span>
+                <span className="field-value">
+                  {BRL_EXACT.format(assumption.hourlyRate)} · desde {assumption.effectiveFrom}
+                </span>
+              </div>
+              <div className="field-row">
+                <span className="field-label">Investimento mensal</span>
+                <span className="field-value">
+                  {BRL_EXACT.format(assumption.monthlyInvestment)} · rateado por dia no período
+                </span>
+              </div>
+              {assumption.note && (
+                <div className="field-row">
+                  <span className="field-label">Observação</span>
+                  <span className="field-value">{assumption.note}</span>
+                </div>
+              )}
+            </>
+          )}
+          <div className="field-row">
+            <span className="field-label">Fórmula do ROI</span>
+            <span className="field-value">(economia apurada − investimento) ÷ investimento</span>
+          </div>
+        </div>
+        {gaps.length > 0 && (
+          <ul className="empty-note">
+            {gaps.map((gap) => (
+              <li key={gap}>{GAP_LABELS[gap] ?? gap}</li>
+            ))}
+          </ul>
+        )}
+      </article>
+    </section>
   );
 }
 

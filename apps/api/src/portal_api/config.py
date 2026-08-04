@@ -71,6 +71,19 @@ class Settings(BaseSettings):
     # falha de conexão a cada webhook. O compose liga.
     notifications_email_enabled: bool = False
 
+    # API de eventos dos agentes (Fase 3, ADR 0013). O pepper entra no HMAC que
+    # substitui a chave no banco: a entropia da própria chave é o que a torna
+    # inquebrável, e o pepper é o que impede um vazamento **só do banco** de
+    # virar chave utilizável. Vazio significa "nenhuma chave autentica" — falha
+    # fechada, para um ambiente mal configurado não abrir a rota de ingestão.
+    agent_key_pepper: str = ""
+    #: Requisições por chave por minuto. Janela deslizante guardada na própria
+    #: linha da chave, sem Redis no caminho de requisição.
+    agent_events_rate_limit: int = 120
+    #: Validade padrão de uma chave nova. Prazo é obrigatório: credencial de
+    #: máquina sem expiração é credencial que ninguém troca.
+    agent_key_lifetime_days: int = 180
+
     # Chat contextual (Fase 3, ADR 0007). Sem chave → respondedor offline determinístico.
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-4-8"

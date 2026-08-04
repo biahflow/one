@@ -13,13 +13,16 @@ import { authorizationHeader } from "@/app/lib/session";
  */
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+/** Quando a resposta da API importa para a tela — o caso da chave em claro. */
+export type DataResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 const GENERIC_ERROR = "Não foi possível concluir. Tente novamente.";
 
-async function callApi(
+async function request<T>(
   path: string,
   init: RequestInit,
-): Promise<ActionResult> {
+  messages: Record<number, string> = {},
+): Promise<DataResult<T | null>> {
   const base = process.env.API_BASE_URL;
   const authorization = await authorizationHeader();
   if (!base || !authorization) return { ok: false, error: GENERIC_ERROR };
@@ -32,14 +35,15 @@ async function callApi(
     });
     if (response.ok) {
       revalidatePath("/admin");
-      return { ok: true };
+      revalidatePath("/admin/resultados");
+      const data = response.status === 204 ? null : ((await response.json()) as T);
+      return { ok: true, data };
     }
     // 404 é a negação do portal (nunca 403) e chega aqui como "não encontrado";
     // não vale a pena distinguir para o usuário: em ambos os casos ele não
     // deveria estar vendo esta tela.
-    if (response.status === 409) {
-      return { ok: false, error: "Você não pode remover o seu próprio acesso." };
-    }
+    const mapped = messages[response.status];
+    if (mapped) return { ok: false, error: mapped };
     if (response.status === 502) {
       return { ok: false, error: "O provedor de identidade não respondeu. Tente de novo." };
     }
@@ -47,6 +51,15 @@ async function callApi(
   } catch {
     return { ok: false, error: GENERIC_ERROR };
   }
+}
+
+async function callApi(
+  path: string,
+  init: RequestInit,
+  messages: Record<number, string> = {},
+): Promise<ActionResult> {
+  const result = await request<unknown>(path, init, messages);
+  return result.ok ? { ok: true } : result;
 }
 
 export async function inviteMember(
@@ -71,7 +84,86 @@ export async function revokeMembership(
   projectId: string,
   membershipId: string,
 ): Promise<ActionResult> {
-  return callApi(`/api/v1/admin/projects/${projectId}/members/${membershipId}`, {
+  return callApi(
+    `/api/v1/admin/projects/${projectId}/members/${membershipId}`,
+    { method: "DELETE" },
+    { 409: "Você não pode remover o seu próprio acesso." },
+  );
+}
+
+/**
+ * Chaves dos agentes e premissas financeiras (ADR 0013).
+ *
+ * A chave em claro atravessa daqui para a tela **uma vez**: a API só a devolve
+ * na criação, e não há como recuperá-la depois. Por isso estas são as únicas
+ * ações que carregam corpo de volta.
+ */
+
+export type CreatedKey = { key: string; key_prefix: string; name: string };
+
+export async function createAgentKey(
+  projectId: string,
+  formData: FormData,
+): Promise<DataResult<CreatedKey | null>> {
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { ok: false, error: "Dê um nome à chave." };
+
+  return request<CreatedKey>(`/api/v1/admin/projects/${projectId}/keys`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function rotateAgentKey(
+  projectId: string,
+  keyId: string,
+): Promise<DataResult<CreatedKey | null>> {
+  return request<CreatedKey>(
+    `/api/v1/admin/projects/${projectId}/keys/${keyId}/rotate`,
+    { method: "POST" },
+  );
+}
+
+export async function revokeAgentKey(
+  projectId: string,
+  keyId: string,
+): Promise<ActionResult> {
+  return callApi(`/api/v1/admin/projects/${projectId}/keys/${keyId}`, {
     method: "DELETE",
   });
+}
+
+export async function openAssumption(
+  projectId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const effectiveFrom = String(formData.get("effective_from") ?? "").trim();
+  // A tela pede reais; a API fala centavos, porque o cálculo não pode carregar
+  // erro de ponto flutuante.
+  const hourlyRate = Number(formData.get("hourly_rate") ?? NaN);
+  const investment = Number(formData.get("monthly_investment") ?? NaN);
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!effectiveFrom || Number.isNaN(hourlyRate) || Number.isNaN(investment)) {
+    return { ok: false, error: "Preencha vigência, valor-hora e investimento." };
+  }
+  if (hourlyRate < 0 || investment < 0) {
+    return { ok: false, error: "Valores não podem ser negativos." };
+  }
+
+  return callApi(
+    `/api/v1/admin/projects/${projectId}/assumptions`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        effective_from: effectiveFrom,
+        hourly_rate_cents: Math.round(hourlyRate * 100),
+        monthly_investment_cents: Math.round(investment * 100),
+        note: note || null,
+      }),
+    },
+    {
+      409: "A vigência precisa começar depois da premissa atual — o histórico não é reescrito.",
+    },
+  );
 }

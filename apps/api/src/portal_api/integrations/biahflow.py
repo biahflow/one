@@ -19,7 +19,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from portal_api import notifications
+from portal_api import notifications, results
 from portal_api.models import (
     DeliverableState,
     DigitalEmployee,
@@ -42,6 +42,7 @@ from portal_api.models import (
     ProjectStatus,
     User,
 )
+from portal_api.repositories import TenantContext
 
 # Biahflow status/state → portal enums.
 PROJECT_STATUS_MAP: dict[str, ProjectStatus] = {
@@ -526,4 +527,16 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
             for pending in pendings
         ],
         "results": _results_projection(milestones),
+        # Apuração dos eventos dos agentes (Fase 3, ADR 0013). Vai junto do
+        # dashboard para os cards de Resultados terem fonte sem uma segunda ida
+        # à rede no SSR. É outra coisa que `results`, que projeta os marcos: um
+        # é andamento, o outro é o que os agentes produziram.
+        "measured": results.to_payload(
+            results.compute_results(
+                session,
+                TenantContext(
+                    organization_id=project.organization_id, project_id=project.id
+                ),
+            )
+        ),
     }

@@ -1,20 +1,24 @@
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from portal_api import access, admin
+from portal_api import access, admin, agent_auth, results
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
-from portal_api.db.session import DbRole, get_session
+from portal_api.db.session import DbRole, bind_tenant, get_session
 from portal_api.identity import resolve_user
 from portal_api.integrations import biahflow
-from portal_api.models import Organization
-from portal_api.repositories import NotificationRepository, TenantContext
+from portal_api.models import AgentEvent, AgentEventOutcome, AuditLog, Organization
+from portal_api.repositories import (
+    AgentEventRepository,
+    NotificationRepository,
+    TenantContext,
+)
 
 settings = get_settings()
 app = FastAPI(title="Portal Labs API", version="0.1.0", docs_url="/docs")
@@ -33,11 +37,16 @@ app.include_router(admin.router)
 class AgentEventIn(BaseModel):
     event_id: UUID
     project_id: UUID
-    occurred_at: date
+    occurred_at: datetime
     agent_key: str = Field(min_length=3, max_length=80)
     time_saved_seconds: int = Field(ge=0)
     avoided_cost_cents: int = Field(ge=0)
     run_reference: str = Field(min_length=1, max_length=160)
+    #: Desfecho da execução. Sem ele não há como dar fonte a precisão do fluxo
+    #: nem a exceções tratadas — os dois cards que a Fase 3 tira da demonstração.
+    outcome: AgentEventOutcome = AgentEventOutcome.success
+    human_intervention: bool = False
+    event_type: str = Field(default="agent_run", min_length=3, max_length=120)
 
 
 class ChatIn(BaseModel):
@@ -74,17 +83,63 @@ def demo_dashboard() -> dict:
 
 
 @app.post("/api/v1/agent-events", status_code=status.HTTP_202_ACCEPTED)
-def ingest_agent_event(event: AgentEventIn, principal: CurrentPrincipal) -> dict[str, str]:
-    """Contract boundary — persistence lands in Fase 3, but the gate is real now.
+def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
+    """Recebe um evento de execução, autenticado por chave de projeto (ADR 0013).
 
-    Was anonymous under ``DEMO_MODE``; agent runs are internal machinery, so it
-    takes an ``internal_admin`` membership on the project the event refers to.
+    A rota é **só por chave**: um agente não tem sessão de usuário, e o Bearer
+    humano que valia até a Fase 2 deixou de valer aqui. Quem responde "qual
+    projeto" é a credencial, então o ``projectId`` do corpo é conferido contra
+    ela — discordar é 404, nunca 403, como no resto da API.
+
+    A gravação roda em outra transação, sob ``portal_app`` com o tenant ligado,
+    para o banco continuar sendo a segunda barreira na única rota que recebe
+    identificador de fora.
     """
-    with get_session(principal) as session:
-        user = resolve_user(session, principal)
-        if access.require_project(session, user, event.project_id, access.ADMIN_ONLY) is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return {"event_id": str(event.event_id), "status": "accepted"}
+    identity = agent_auth.authenticate(request)
+    if event.project_id != identity.project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    ctx = TenantContext(
+        organization_id=identity.organization_id, project_id=identity.project_id
+    )
+    occurred_at = event.occurred_at
+    if occurred_at.tzinfo is None:
+        # Sem fuso, o instante seria interpretado pelo relógio do servidor e o
+        # evento poderia cair no período errado. UTC é o contrato.
+        occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+
+    with get_session(role=DbRole.app) as session:
+        bind_tenant(session, ctx)
+        stored, created = AgentEventRepository(session, ctx).ingest(
+            AgentEvent(
+                event_type=event.event_type,
+                occurred_at=occurred_at,
+                external_event_id=str(event.event_id),
+                agent_key=event.agent_key,
+                outcome=event.outcome,
+                human_intervention=event.human_intervention,
+                time_saved_seconds=event.time_saved_seconds,
+                avoided_cost_cents=event.avoided_cost_cents,
+                run_reference=event.run_reference,
+            )
+        )
+        if created:
+            # Sem payload e sem a chave: `docs/data-classification.md` proíbe
+            # segredo e dado confidencial no log de auditoria.
+            session.add(
+                AuditLog(
+                    organization_id=ctx.organization_id,
+                    project_id=ctx.project_id,
+                    action="agent_event.ingested",
+                    entity_type="agent_event",
+                    entity_id=stored.id,
+                    data={"agent_key": event.agent_key, "outcome": event.outcome.value},
+                )
+            )
+    return {
+        "event_id": str(event.event_id),
+        "status": "accepted" if created else "duplicate",
+    }
 
 
 @app.post("/api/v1/chat")
@@ -200,6 +255,41 @@ def project_dashboard(project_id: UUID, principal: CurrentPrincipal) -> dict:
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
         return biahflow.build_dashboard(session, project)
+
+
+@app.get("/api/v1/projects/{project_id}/results")
+def project_results(
+    project_id: UUID,
+    principal: CurrentPrincipal,
+    from_: date | None = Query(default=None, alias="from"),
+    to: date | None = None,
+) -> dict:
+    """O detalhamento por trás de cada número da aba Resultados (ADR 0013).
+
+    Devolve o indicador **e** a premissa que o produziu, mais as lacunas quando
+    falta base — é aqui que "o cliente vê a origem e a premissa de todo
+    indicador" deixa de ser promessa. Leitura pelo caminho normal: a premissa é
+    client-safe, o `portal_app` tem SELECT nela e a RLS escopa o resto.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.scoped_project(session, user, project_id)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        period = (
+            results.Period(start=from_, end=to)
+            if from_ is not None and to is not None
+            else results.Period.last_days()
+        )
+        if period.days <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="`to` must be after `from`",
+            )
+        ctx = TenantContext(
+            organization_id=project.organization_id, project_id=project.id
+        )
+        return results.to_payload(results.compute_results(session, ctx, period))
 
 
 @app.get("/api/v1/me/dashboard")

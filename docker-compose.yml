@@ -88,10 +88,28 @@ services:
       KC_DB_USERNAME: ${POSTGRES_USER:-portal}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-portal_local_only}
       KC_DB_SCHEMA: keycloak
+      # O `iss` do token é o endereço que o NAVEGADOR usa. Com o backchannel
+      # dinâmico, quem chama de dentro da rede do compose (BFF e API) continua
+      # alcançando o Keycloak por `keycloak:8080` sem quebrar o issuer (ADR 0010).
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "8080:8080"
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import:ro
+    # A imagem não tem `curl`; tem `bash`, então falamos HTTP pelo /dev/tcp. O
+    # endpoint de saúde vive na porta de gerenciamento (9000), não na 8080.
+    healthcheck:
+      test:
+        - CMD
+        - /bin/bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3; grep -q "\"status\": \"UP\"" <&3'
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,6 +171,10 @@ services:
     depends_on:
       api:
         condition: service_started
+      # Com login real, o web no ar antes do Keycloak significa primeiro acesso
+      # quebrado — o code exchange acontece no servidor, na subida da página.
+      keycloak:
+        condition: service_healthy
 
 volumes:
   postgres_data:

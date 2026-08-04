@@ -2,6 +2,7 @@
   "realm": "portal-local",
   "enabled": true,
   "displayName": "Portal Labs (Local)",
+  "bruteForceProtected": true,
   "roles": {
     "realm": [
       { "name": "internal_admin" },
@@ -12,11 +13,80 @@
   "clients": [
     {
       "clientId": "portal-web",
-      "name": "Portal Labs local web",
-      "publicClient": true,
+      "name": "Portal Labs local web (BFF)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "portal-web-local-only",
       "standardFlowEnabled": true,
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"]
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:3000/api/auth/callback/keycloak"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3000/login"
+      },
+      "protocolMappers": [
+        {
+          "name": "portal-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "portal-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "portal-api",
+      "name": "Portal Labs API (resource server)",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "username": "marina.farias",
+      "email": "marina.farias@acme.com.br",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Marina",
+      "lastName": "Farias",
+      "credentials": [
+        { "type": "password", "value": "portal_local_only", "temporary": false }
+      ],
+      "realmRoles": ["client_member"]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "username": "helena.dias",
+      "email": "helena.dias@portallabs.com.br",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Helena",
+      "lastName": "Dias",
+      "credentials": [
+        { "type": "password", "value": "portal_local_only", "temporary": false }
+      ],
+      "realmRoles": ["internal_admin"]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "username": "rafael.costa",
+      "email": "rafael.costa@portallabs.com.br",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Rafael",
+      "lastName": "Costa",
+      "credentials": [
+        { "type": "password", "value": "portal_local_only", "temporary": false }
+      ],
+      "realmRoles": ["internal_member"]
     }
   ]
 }

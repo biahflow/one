@@ -13,7 +13,13 @@ function startServer() {
   const child = spawn("npx", ["next", "start", "-p", String(port)], {
     cwd: projectRoot,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NODE_ENV: "production" },
+    // AUTH_SECRET is what decrypts the session cookie; without it every request
+    // to a gated route is a 500 instead of the redirect we are asserting.
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      AUTH_SECRET: process.env.AUTH_SECRET ?? "portal_auth_test_only",
+    },
   });
 
   const origin = `http://127.0.0.1:${port}`;
@@ -24,12 +30,13 @@ function startServer() {
 
   const ready = (async () => {
     // `next start` prints "Ready" on stdout, but polling is sturdier than parsing.
+    // `/` now answers 307 to an anonymous request, so `/login` is the probe.
     for (let attempt = 0; attempt < 120; attempt += 1) {
       if (child.exitCode !== null) {
         throw new Error(`next start exited early (${child.exitCode}):\n${stderr}`);
       }
       try {
-        const probe = await fetch(origin, { headers: { accept: "text/html" } });
+        const probe = await fetch(`${origin}/login`, { headers: { accept: "text/html" } });
         if (probe.ok) return origin;
       } catch {
         // not listening yet
@@ -42,10 +49,10 @@ function startServer() {
   return { child, ready };
 }
 
-async function render() {
+async function render(path = "/", init = {}) {
   serverPromise ??= startServer();
   const origin = await serverPromise.ready;
-  return fetch(origin, { headers: { accept: "text/html" } });
+  return fetch(`${origin}${path}`, { headers: { accept: "text/html" }, ...init });
 }
 
 after(() => {
@@ -83,27 +90,25 @@ async function readSources() {
   return new Map(contents);
 }
 
-test("server-renders the customer portal dashboard", async () => {
-  const response = await render();
+test("closes the portal to anonymous visitors", async () => {
+  const response = await render("/", { redirect: "manual" });
+
+  // The first automated proof that the portal is shut: before Fase 1 this was a
+  // 200 with a fabricated dashboard.
+  assert.equal(response.status, 307);
+  assert.match(response.headers.get("location") ?? "", /\/login$/);
+});
+
+test("server-renders the login page", async () => {
+  const response = await render("/login");
   assert.equal(response.status, 200);
   const html = await response.text();
 
   assert.match(html, /<title>Portal Labs \| Portal do Cliente<\/title>/i);
-  assert.match(html, /Bom dia, Marina\./);
-  assert.match(html, /Automação Financeira/);
-  assert.match(html, /ROI do projeto/);
-  assert.match(html, /Você está aqui/);
-  assert.match(html, /SUA JORNADA/);
-  assert.match(html, /No prazo/);
-  assert.match(html, /Funcionários Digitais/);
-  assert.match(html, /Agente Financeiro/);
-  assert.match(html, /Perguntar à IA/);
-  // Fase 2: pendências, documentos e reuniões vêm do read model (fallback demo no SSR).
-  assert.match(html, /Pendências abertas/);
-  assert.match(html, /Aprovar fluxo de exceções/);
-  assert.match(html, /Atualizações recentes/);
-  assert.match(html, /Plano de implantação v3\.pdf/);
-  assert.match(html, /Comitê de projeto/);
+  assert.match(html, /Acompanhe seus projetos de IA em um só lugar\./);
+  assert.match(html, /Entrar com SSO da empresa/);
+  // Sem campo de senha: a credencial nunca chega a este domínio (ADR 0010).
+  assert.doesNotMatch(html, /type="password"/);
   assert.doesNotMatch(html, /Your site is taking shape/);
   assert.doesNotMatch(html, /codex-preview/);
 });

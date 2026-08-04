@@ -179,6 +179,16 @@ services:
     environment:
       # BFF → FastAPI, server-side (não expor como NEXT_PUBLIC_/VITE_).
       API_BASE_URL: http://api:8000
+      # Auth.js: o cookie de sessão é cifrado com AUTH_SECRET e guarda o access
+      # token, que nunca chega ao navegador (ADR 0010).
+      AUTH_SECRET: ${AUTH_SECRET:-portal_auth_local_only}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_KEYCLOAK_ID: ${AUTH_KEYCLOAK_ID:-portal-web}
+      AUTH_KEYCLOAK_SECRET: ${AUTH_KEYCLOAK_SECRET:-portal-web-local-only}
+      # Público (para onde o navegador é mandado) e interno (por onde o BFF
+      # troca o código por token) — dois endereços do mesmo Keycloak.
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/portal-local}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080/realms/portal-local}
     ports:
       - "3000:3000"
     depends_on:

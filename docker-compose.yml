@@ -50,6 +50,19 @@ services:
       db-bootstrap:
         condition: service_completed_successfully
 
+  # Usuários do realm + um projeto vindo de um snapshot Biahflow versionado, para
+  # que o login local caia num dashboard real. Idempotente: roda a cada `up`.
+  api-seed:
+    build:
+      context: ./apps/api
+    restart: "no"
+    command: python -m portal_api.seed
+    environment:
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+    depends_on:
+      api-migrate:
+        condition: service_completed_successfully
+
   redis:
     image: redis:7-alpine
     ports:
@@ -139,7 +152,7 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      api-migrate:
+      api-seed:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -154,7 +167,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
     depends_on:
-      api-migrate:
+      api-seed:
         condition: service_completed_successfully
       redis:
         condition: service_healthy

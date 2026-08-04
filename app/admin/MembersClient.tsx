@@ -82,6 +82,9 @@ export default function MembersClient({
         <Link className="text-button" href={`/admin/resultados?project=${projectId}`}>
           Chaves dos agentes e premissas de ROI <ArrowRight size={15} />
         </Link>
+        <Link className="text-button" href={`/admin/conhecimento?project=${projectId}`}>
+          Documentos que o assistente pode citar <ArrowRight size={15} />
+        </Link>
       </header>
 
       {projects.length > 1 && (

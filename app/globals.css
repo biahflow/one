@@ -310,6 +310,13 @@
     @apply flex items-center gap-1 rounded-md bg-brand-50 px-1.5 py-1 text-[9px] text-brand-700;
   }
   .pending-created { @apply flex items-center gap-1 py-1.5 text-[10px] text-success-600; }
+  /* Avaliação da resposta (ADR 0015). Discreta por desenho: é um sinal de
+     qualidade para o time interno, não uma ação que o cliente precise notar. */
+  .message-feedback { @apply mt-1 flex gap-1; }
+  .message-feedback button {
+    @apply grid h-6 w-6 place-items-center rounded-md border border-transparent text-muted transition-colors hover:border-line hover:bg-white hover:text-brand-600;
+  }
+  .message-feedback button.is-active { @apply border-brand-200 bg-brand-50 text-brand-700; }
   .chat-suggestions { @apply flex gap-1.5 overflow-auto border-t border-line px-3 py-2.5; }
   .chat-suggestions button {
     @apply rounded-full border border-line bg-white px-2.5 py-1.5 text-[10px] whitespace-nowrap text-muted transition-colors hover:border-brand-200 hover:text-brand-700;

@@ -11,6 +11,10 @@ export async function POST(request: Request): Promise<Response> {
 
   const payload = await request.json().catch(() => ({}));
   const question = typeof payload?.question === "string" ? payload.question.trim() : "";
+  // A thread a continuar (ADR 0015). Ausente abre uma nova — quem decide isso é a
+  // API, então aqui só repassamos: um id inválido não é erro do BFF.
+  const conversationId =
+    typeof payload?.conversation_id === "string" ? payload.conversation_id : undefined;
   if (!question) {
     return Response.json({ error: "empty question" }, { status: 400 });
   }
@@ -27,7 +31,7 @@ export async function POST(request: Request): Promise<Response> {
     const response = await fetch(`${base}/api/v1/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authorization },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, conversation_id: conversationId }),
       cache: "no-store",
     });
     if (!response.ok) {

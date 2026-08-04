@@ -1,0 +1,34 @@
+// BFF proxy do histórico da conversa (Fase 4, ADR 0015). Mesma forma do proxy do
+// chat ao lado: o navegador não vê a URL da API e a identidade viaja no access
+// token lido do cookie de sessão (ADR 0010).
+//
+// Degradar aqui é de propósito. Sem API — ou com ela fora do ar — o chat continua
+// abrindo com a saudação e o fallback offline; devolver erro faria o painel
+// inteiro deixar de abrir por causa de um histórico que talvez nem exista.
+
+import { authorizationHeader } from "@/app/lib/session";
+
+export async function GET(): Promise<Response> {
+  const base = process.env.API_BASE_URL;
+  if (!base) {
+    return Response.json({ error: "history unavailable" }, { status: 503 });
+  }
+
+  const authorization = await authorizationHeader();
+  if (!authorization) {
+    return Response.json({ error: "not authenticated" }, { status: 401 });
+  }
+
+  try {
+    const response = await fetch(`${base}/api/v1/me/conversations/latest`, {
+      headers: { ...authorization },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return Response.json({ error: "history failed" }, { status: response.status });
+    }
+    return Response.json(await response.json());
+  } catch {
+    return Response.json({ error: "history unavailable" }, { status: 503 });
+  }
+}

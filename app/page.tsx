@@ -6,6 +6,7 @@ import { authorizationHeader } from "@/app/lib/session";
 import DashboardClient, {
   type JourneyPhase,
   type MeetingView,
+  type NotificationCenter,
   type Overview,
   type PendingItemView,
   type PortalUser,
@@ -81,10 +82,21 @@ type ApiMe = {
   email: string;
   full_name: string;
   is_internal: boolean;
+  notify_by_email: boolean;
   organization: string | null;
   projects: { id: string; name: string; slug: string; status: string }[];
   roles: string[];
 };
+type ApiNotification = {
+  id: string;
+  kind: string;
+  title: string;
+  detail: string | null;
+  link: string | null;
+  occurred_at: string;
+  read: boolean;
+};
+type ApiNotifications = { unread_count: number; items: ApiNotification[] };
 
 function toOverview(data: Record<string, unknown>, organization: string): Overview {
   const apiMilestones: ApiMilestone[] = (data.milestones as ApiMilestone[]) ?? [];
@@ -179,6 +191,23 @@ function toUser(me: ApiMe): PortalUser {
     role: ROLE_LABELS[role] ?? (me.is_internal ? "Time Portal Labs" : "Cliente"),
     org: me.organization ?? "",
     isInternal: me.is_internal,
+    notifyByEmail: me.notify_by_email,
+  };
+}
+
+function toNotifications(data: ApiNotifications | null): NotificationCenter {
+  if (!data) return { unreadCount: 0, items: [] };
+  return {
+    unreadCount: data.unread_count,
+    items: data.items.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      detail: item.detail,
+      link: item.link,
+      age: relativeAge(item.occurred_at),
+      read: item.read,
+    })),
   };
 }
 
@@ -230,9 +259,10 @@ export default async function Page({
 
   // Uma falha de rede aqui sobe para `app/error.tsx`: indisponibilidade tem que
   // parecer indisponibilidade, não um projeto inventado.
-  const [meResponse, dashboardResponse] = await Promise.all([
+  const [meResponse, dashboardResponse, notificationsResponse] = await Promise.all([
     fetch(`${base}/api/v1/me`, { headers: authorization, cache: "no-store" }),
     fetch(dashboardUrl, { headers: authorization, cache: "no-store" }),
+    fetch(`${base}/api/v1/me/notifications`, { headers: authorization, cache: "no-store" }),
   ]);
 
   // O token venceu entre o SSR e a chamada: volta para o login, não para o demo.
@@ -261,5 +291,18 @@ export default async function Page({
     ? projects
     : projects.map((project) => ({ ...project, current: project.name === overview.project }));
 
-  return <DashboardClient overview={overview} user={user} projects={marked} />;
+  // A caixa de avisos não derruba o dashboard: um 404 aqui só quer dizer que a
+  // API não resolveu projeto para esta chamada, e o resto da tela já sabe disso.
+  const notifications = toNotifications(
+    notificationsResponse.ok ? await notificationsResponse.json() : null,
+  );
+
+  return (
+    <DashboardClient
+      overview={overview}
+      user={user}
+      projects={marked}
+      notifications={notifications}
+    />
+  );
 }

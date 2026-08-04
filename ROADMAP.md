@@ -69,7 +69,12 @@ dela.*
       distinção de origem: espelhadas do Biahflow vs. abertas pela IA por lacuna de contexto,
       que sobrevivem ao sync (`PendingItem.origin`, migração `0006_portal_sync_fields`).
       *Prioridade, comentários e vínculo a conversas seguem pendentes.*
-- [ ] Criar central de notificações e e-mails via Mailpit local/provedor configurável em produção.
+- [x] Criar central de notificações e e-mails via Mailpit local/provedor configurável em produção.
+      *(O produtor é o sync: `sync_snapshot` compara o read model antes e depois do snapshot e
+      grava uma linha por destinatário — o portal continua sem originar status. Sino com
+      contagem real, central com histórico e um e-mail de resumo por lote de sync, com
+      preferência por conta. `dedupe_key` é o que faz o webhook reenviado não repetir aviso nem
+      e-mail. ADR 0012, FDD 005.)*
 - [x] Implementar página de reuniões: título, data, link de gravação e indicação de transcrição,
       espelhados do snapshot. *O texto da transcrição e as decisões extraídas dependem da
       ingestão de texto da Fase 4.*
@@ -78,7 +83,9 @@ dela.*
       `GET /api/v1/me/dashboard` no lugar dos dados de demonstração. *Filtros seguem pendentes.*
 
 **Aceite:** equipe interna atualiza o projeto **no Biahflow**; o cliente acompanha as alterações
-no portal em quase tempo real. O aviso por e-mail e a central de notificações continuam pendentes.
+no portal em quase tempo real — e é avisado delas, no sino e por e-mail, sem precisar abrir o
+portal para descobrir. *Atendido: `tests/e2e/notifications.spec.ts` sincroniza um marco
+concluído, confere o sino no navegador e lê o resumo na caixa do Mailpit.*
 
 ## Fase 3 — Resultados e API dos agentes
 

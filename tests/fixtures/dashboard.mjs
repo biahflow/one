@@ -11,6 +11,7 @@ export const ME = {
   email: "marina.farias@acme.com.br",
   full_name: "Marina Farias",
   is_internal: false,
+  notify_by_email: true,
   organization: "Acme Brasil",
   projects: [
     {
@@ -66,4 +67,29 @@ export const DASHBOARD = {
     { title: "Aprovar fluxo de exceções", description: null, owner_label: "Acme Brasil", state: "open", priority: "normal", origin: "biahflow", created_at: "2026-08-02T10:00:00+00:00", resolved_at: null },
   ],
   results: { milestones_total: 3, milestones_done: 0, overdue: 0, on_time_percent: 100 },
+};
+
+/** `GET /api/v1/me/notifications` — a caixa do projeto atual (Fase 2, ADR 0012). */
+export const NOTIFICATIONS = {
+  unread_count: 2,
+  items: [
+    {
+      id: "aaaaaaaa-1111-4222-8333-444444444444",
+      kind: "milestone_done",
+      title: "Marco concluído",
+      detail: "Validação de integrações",
+      link: null,
+      occurred_at: "2026-08-03T12:00:00+00:00",
+      read: false,
+    },
+    {
+      id: "bbbbbbbb-1111-4222-8333-444444444444",
+      kind: "document_added",
+      title: "Novo documento no projeto",
+      detail: "Plano de implantação v3.pdf",
+      link: null,
+      occurred_at: "2026-08-02T09:00:00+00:00",
+      read: false,
+    },
+  ],
 };

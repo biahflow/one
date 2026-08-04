@@ -10,6 +10,7 @@ from portal_api.models.decision import Decision
 from portal_api.models.document import Document, DocumentSource
 from portal_api.models.identity import MemberRole, Membership, User
 from portal_api.models.meeting import Meeting
+from portal_api.models.notification import Notification, NotificationKind
 from portal_api.models.organization import Organization
 from portal_api.models.project import (
     Delivery,
@@ -46,6 +47,8 @@ __all__ = [
     "Membership",
     "Milestone",
     "MilestoneState",
+    "Notification",
+    "NotificationKind",
     "Organization",
     "PendingItem",
     "PendingOrigin",

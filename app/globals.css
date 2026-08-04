@@ -342,6 +342,9 @@
   .popover-row strong { @apply text-xs; }
   .popover-row span { @apply text-[10px] text-slate-400; }
   .popover-row span b { @apply px-0.5 font-normal text-slate-300; }
+  .popover-all {
+    @apply flex w-full items-center justify-center gap-1.5 border-0 border-t border-line bg-transparent px-3.5 py-2.5 text-[11px] font-semibold text-brand-600 transition-colors hover:bg-brand-50;
+  }
   .popover-menu { @apply min-w-[210px] p-1.5; }
   .popover-menu button,
   .popover-menu a {
@@ -351,6 +354,25 @@
   .popover-user strong { @apply block text-xs; }
   .popover-user small { @apply text-[10px] text-muted; }
   .popover--up { @apply top-auto right-auto bottom-[calc(100%+10px)] left-0; }
+
+  /* ---------- Central de notificações (Fase 2) ---------- */
+  .dashboard-grid--single { @apply grid-cols-1; }
+  .notification-list { @apply grid gap-0.5; }
+  .notification-row {
+    @apply grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-line/70 px-0.5 py-3 no-underline;
+  }
+  .notification-row:last-child { @apply border-b-0; }
+  .notification-row strong { @apply block text-xs text-ink; }
+  .notification-row > div > span { @apply text-[11px] text-muted; }
+  .notification-row small { @apply text-[10px] whitespace-nowrap text-slate-400; }
+  a.notification-row { @apply transition-colors hover:bg-slate-50; }
+  .notification-icon {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500;
+  }
+  /* Não lida: o mesmo roxo da marca, para o olho achar sem precisar de legenda. */
+  .notification-row--unread .notification-icon { @apply bg-brand-50 text-brand-600; }
+  .notification-row--unread strong { @apply font-bold; }
+  .empty-note { @apply px-0.5 py-4 text-xs leading-relaxed text-muted; }
 
   /* ---------- Perfil e configurações ---------- */
   .profile-head { @apply mb-4 flex items-center gap-3.5 border-b border-line pt-1 pb-4.5; }

@@ -16,6 +16,7 @@ export const DEMO_USER: PortalUser = {
   role: "Cliente",
   org: "Acme Brasil",
   isInternal: false,
+  notifyByEmail: true,
 };
 
 export const DEMO_PROJECTS: ProjectSummary[] = [

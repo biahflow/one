@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,6 +27,8 @@ from portal_api.models import (
     AuditLog,
     MemberRole,
     Membership,
+    Notification,
+    NotificationKind,
     Organization,
     PendingItem,
     Project,
@@ -370,3 +373,103 @@ def test_a_gap_in_the_chat_writes_a_pendencia_and_an_audit_entry(
     assert entry.entity_id == pendings[0].id
     # Não anônima: o autor da pergunta fica registrado.
     assert entry.actor_user_id is not None
+
+
+# --- notificações e preferências (Fase 2, ADR 0012) ------------------------
+
+
+def test_notifications_require_a_project(world: World, authenticated) -> None:
+    """Sem membership não há projeto, e sem projeto a caixa não existe — 404."""
+    stranger = Actor(
+        subject=f"sub-stranger-{uuid.uuid4().hex[:8]}",
+        email=f"stranger-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="Estranho",
+    )
+    authenticated(stranger)
+
+    assert client.get("/api/v1/me/notifications").status_code == 404
+    assert client.post("/api/v1/me/notifications/read", json={}).status_code == 404
+
+
+def test_a_client_only_sees_and_reads_their_own_notifications(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """Duas pessoas, um projeto: cada uma só alcança a própria linha.
+
+    As linhas entram por uma sessão comitada de verdade, e não pela ``db_session``
+    transacional: o app responde em outra conexão e não enxergaria uma transação
+    ainda aberta — a mesma razão do fixture ``world``.
+    """
+    tag = uuid.uuid4().hex[:8]
+    with Session(migrated_engine) as setup:
+        owner = setup.execute(
+            select(User).where(User.external_subject == world.acme.client.subject)
+        ).scalar_one()
+        colleague = User(
+            email=f"colega-{tag}@example.com",
+            full_name="Colega",
+            external_subject=f"sub-colega-{tag}",
+        )
+        setup.add(colleague)
+        setup.flush()
+        setup.add(
+            Membership(
+                organization_id=world.acme.organization_id,
+                project_id=world.acme.project_id,
+                user_id=colleague.id,
+                role=MemberRole.client_member,
+            )
+        )
+        for recipient, title in ((owner, "Para o cliente"), (colleague, "Para o colega")):
+            setup.add(
+                Notification(
+                    organization_id=world.acme.organization_id,
+                    project_id=world.acme.project_id,
+                    user_id=recipient.id,
+                    kind=NotificationKind.milestone_done,
+                    title=title,
+                    occurred_at=datetime.now(timezone.utc),
+                    dedupe_key=f"{title}-{tag}",
+                )
+            )
+        setup.commit()
+        colleague_id = colleague.id
+
+    try:
+        authenticated(world.acme.client)
+        listed = client.get("/api/v1/me/notifications").json()
+
+        assert [item["title"] for item in listed["items"]] == ["Para o cliente"]
+        assert listed["unread_count"] == 1
+
+        marked = client.post("/api/v1/me/notifications/read", json={}).json()
+        assert marked["marked"] == 1
+        assert client.get("/api/v1/me/notifications").json()["unread_count"] == 0
+
+        # A do colega continua não lida: marcar "todas" é todas *as suas*.
+        with Session(migrated_engine) as check:
+            others = check.execute(
+                select(Notification).where(Notification.user_id == colleague_id)
+            ).scalars().all()
+            assert [item.read_at for item in others] == [None]
+    finally:
+        with Session(migrated_engine) as cleanup:
+            cleanup.execute(
+                delete(Notification).where(
+                    Notification.project_id == world.acme.project_id
+                )
+            )
+            cleanup.execute(delete(User).where(User.id == colleague_id))
+            cleanup.commit()
+
+
+def test_the_email_preference_belongs_to_the_caller(world: World, authenticated) -> None:
+    """Não recebe id de usuário: a preferência é sempre a de quem chamou."""
+    authenticated(world.acme.client)
+
+    assert client.patch(
+        "/api/v1/me/preferences", json={"notify_by_email": False}
+    ).json() == {"notify_by_email": False}
+    assert client.patch(
+        "/api/v1/me/preferences", json={"notify_by_email": True}
+    ).json() == {"notify_by_email": True}

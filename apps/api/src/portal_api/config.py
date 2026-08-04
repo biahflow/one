@@ -57,6 +57,20 @@ class Settings(BaseSettings):
     portal_client_email: str = "marina.farias@acme.com.br"
     portal_client_name: str = "Marina Farias"
 
+    # Notificações por e-mail (Fase 2, ADR 0012). O convite sai pelo SMTP do
+    # realm; este é o do próprio portal. Local é o Mailpit do compose, e em
+    # produção qualquer SMTP — nenhum SDK de provedor entra por causa disso.
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = False
+    notifications_from_email: str = "portal@portallabs.local"
+    notifications_from_name: str = "Portal Labs"
+    # Desligado por padrão: um ambiente sem SMTP configurado não deve empilhar
+    # falha de conexão a cada webhook. O compose liga.
+    notifications_email_enabled: bool = False
+
     # Chat contextual (Fase 3, ADR 0007). Sem chave → respondedor offline determinístico.
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-4-8"

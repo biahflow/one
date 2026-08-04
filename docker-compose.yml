@@ -158,6 +158,12 @@ services:
       KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-portal-admin}
       KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-portal-admin-local-only}
       PORTAL_WEB_URL: ${PORTAL_WEB_URL:-http://localhost:3000}
+      # Notificações por e-mail (ADR 0012). Local é o Mailpit; em produção é o
+      # SMTP do provedor, e só estas variáveis mudam.
+      NOTIFICATIONS_EMAIL_ENABLED: ${NOTIFICATIONS_EMAIL_ENABLED:-true}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
     ports:
       - "8000:8000"
     depends_on:
@@ -175,6 +181,12 @@ services:
       DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
+      # É o worker que manda o e-mail; a API só enfileira (ADR 0012).
+      NOTIFICATIONS_EMAIL_ENABLED: ${NOTIFICATIONS_EMAIL_ENABLED:-true}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
+      PORTAL_WEB_URL: ${PORTAL_WEB_URL:-http://localhost:3000}
     depends_on:
       api-seed:
         condition: service_completed_successfully

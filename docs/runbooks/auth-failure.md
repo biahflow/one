@@ -65,6 +65,19 @@ O corpo do 401 é sempre opaco, de propósito. O motivo está no log estruturado
 `localhost:8080` (e é esse valor que entra no `iss`), enquanto o container da API o alcança em
 `keycloak:8080`. São duas settings separadas justamente por isso.
 
+## Sintoma: o usuário volta para `/login` sem ter saído
+
+O `proxy.ts` trata "refresh falhou" como "sem sessão", de propósito — a alternativa seria um
+dashboard cujas requisições voltam todas 401. A marca é `token.error` no cookie, e a causa está
+no `callbacks.jwt` de `auth.ts`:
+
+- **refresh token expirado ou já usado.** O Keycloak rotaciona o refresh token; se uma resposta
+  se perdeu, o token guardado ficou para trás e o próximo refresh falha. Sair e entrar resolve.
+- **`KEYCLOAK_INTERNAL_URL` errado.** O refresh é server-to-server: ele usa o endereço interno,
+  não o público. Se só o login funciona e a sessão morre alguns minutos depois, é este.
+- **Sessão de SSO encerrada no Keycloak** (logout em outra aba, ou `bruteForceProtected` tendo
+  bloqueado a conta).
+
 ## Sintoma: Keycloak fora do ar
 
 Login novo para de funcionar; sessões já emitidas continuam válidas até expirar, e a API segue

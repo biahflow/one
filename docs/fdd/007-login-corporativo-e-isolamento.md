@@ -13,20 +13,22 @@ promessa de RLS da ADR 0002 em policies que existem e mordem.
 **Não objetivos.** Convite e verificação de e-mail (Mailpit), UI de administração de
 organizações/projetos/membros e configuração financeira. Seguem na fase seguinte.
 
-**Entregue nesta fatia** (etapas 3–5 do plano da Fase 1): RLS com contexto por transação,
-validação de JWT na FastAPI, papéis aplicados por endpoint e `GET /api/v1/me`.
-**Ainda aberto:** realm e usuários semeados no Keycloak, Auth.js v5 no BFF, tela `/login` e o
-fim do fallback demo do `app/page.tsx`. Enquanto isso, o portal web continua exibindo o
-dashboard de demonstração, porque sem token a API responde 401 e o BFF cai no fallback.
+**Entregue** (etapas 3–11 do plano da Fase 1): RLS com contexto por transação, validação de
+JWT na FastAPI, papéis por endpoint e `GET /api/v1/me`; realm com client confidencial e
+usuários semeados; seed alinhado ao realm pelo `sub`; Auth.js v5 no BFF com `/login`, portão de
+sessão e logout de verdade; e o fim do fallback de demonstração no `app/page.tsx`.
 
 ## Jornada e interface
 
-Hoje, com a fatia entregue: o navegador não muda. A API deixou de aceitar qualquer requisição
-sem token, e o BFF ainda não tem como obter um.
+`/` sem sessão redireciona para `/login`, que tem um botão só — o SSO da empresa; não há mais
+campo de senha, porque a credencial nunca chega a este domínio. Na volta do Keycloak, o
+dashboard mostra o nome vindo do token, a organização e os projetos vêm de `GET /api/v1/me`, e
+trocar de projeto recarrega os dados (`/?project=<id>`) em vez de só trocar o cabeçalho. O menu
+de perfil encerra a sessão no cookie **e** no Keycloak, então o F5 não devolve o dashboard.
 
-Quando a etapa 8 entrar: `/` sem sessão redireciona para `/login`; o botão de SSO leva ao
-Keycloak; na volta, o dashboard mostra o nome real vindo do token e o menu de perfil encerra a
-sessão de verdade (o "F5 volta" do booleano atual desaparece).
+Quando a API nega ou some, a tela diz o que houve: 401 volta para `/login`, 404 vira "você
+ainda não tem um projeto atribuído", e falha de rede vira painel de erro. Nenhum desses
+caminhos leva a dado inventado.
 
 ## Dados, API e permissões
 
@@ -74,7 +76,9 @@ Isolamento no banco: 15 tabelas com RLS, contexto publicado em GUCs por transaç
    sua organização. ✔
 5. Usuário semeado sem `sub` é ligado no primeiro login, e o `sub` persiste. ✔
 6. Toda tabela nova com `organization_id` nasce com policy — cobrado por meta-teste. ✔
-7. Login no navegador ponta a ponta. ✘ *(etapa 8)*
+7. Login no navegador ponta a ponta, com logout que o F5 não desfaz. ✔ *(`tests/e2e/login.spec.ts`)*
+8. Nenhuma falha da API produz dado fabricado — o demo só existe atrás de `demoShellEnabled()`,
+   e há teste que falha se alguém alcançá-lo por fora. ✔
 
 ## Testes e avaliações de IA
 
@@ -86,6 +90,13 @@ Isolamento no banco: 15 tabelas com RLS, contexto publicado em GUCs por transaç
   `kid` desconhecido e e-mail não verificado.
 - `apps/api/tests/test_authorization.py` — negativos de permissão pelo stack HTTP real.
 - `apps/api/tests/test_dashboard_scope.py` — gates de identidade e escopo por membership.
+- `apps/api/tests/test_seed_matches_realm.py` — realm e `SEED_USERS` 1:1 (inclusive o mapper de
+  audiência, sem o qual todo token válido seria rejeitado); roda sem Keycloak e sem Postgres.
+- `tests/rendered-html.test.mjs` — SSR anônimo (307 para `/login`), `/login` renderizada e SSR
+  autenticado com cookie forjado pelo `encode()` do Auth.js sobre uma API de mentira que exige
+  Bearer; mais a varredura que impede o retorno de `X-Portal-User` e de dado fixo.
+- `tests/e2e/login.spec.ts` — o navegador de verdade contra o realm de verdade: cliente,
+  interno por membership org-wide, e o fim de sessão.
 
 Avaliações de IA: **não se aplica — esta feature não altera prompt, recuperador, modelo ou
 ferramenta.** A única interseção com o chat é o registro de auditoria da pendência.

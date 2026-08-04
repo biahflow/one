@@ -26,8 +26,18 @@
 - **Auditoria.** `chat.pending_created` em `audit_log` com o autor (e sem o texto da pergunta);
   `identity.linked` e `identity.provisioned` em log estruturado, porque no primeiro login ainda
   não há organização.
-- **Ainda aberto nesta fase:** rate limit em autenticação (será `bruteForceProtected` no realm),
-  sessão no navegador e o fim do fallback demo do BFF.
+- **Sessão no navegador.** O BFF é um client confidencial: o code exchange (PKCE) acontece no
+  servidor e o access token fica no cookie cifrado do Auth.js, **fora** do objeto `session` e
+  portanto fora de qualquer bundle. `proxy.ts` fecha tudo que não é `/login`, respondendo 401
+  em `/api/` para que um `fetch` não receba a tela de login como se fosse dado. Sair apaga o
+  cookie **e** encerra a sessão de SSO no Keycloak (logout RP-initiated).
+- **Rate limit em autenticação:** `bruteForceProtected` no realm — o Keycloak bloqueia a conta
+  após tentativas seguidas, sem código nosso.
+- **Fim do fallback demo.** 401, 404, rede e 5xx deixaram de virar dashboard fabricado. A casca
+  de demonstração exige, ao mesmo tempo, nenhuma API configurada **e** `DEMO_MODE=true`
+  (`app/lib/demo.ts`), e um teste falha se `DEMO_OVERVIEW` for alcançável fora desse gate.
+- **Ainda aberto:** convite e verificação de e-mail (Mailpit), UI de administração, e a revisão
+  das dependências apontadas pelo `npm audit` antes de produção (Fase 5).
 
 ## Dados e IA
 

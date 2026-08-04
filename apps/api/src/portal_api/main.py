@@ -6,16 +6,24 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from portal_api import access, admin, agent_auth, results
+from portal_api import access, admin, agent_auth, conversations, results
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_tenant, get_session
 from portal_api.identity import resolve_user
 from portal_api.integrations import biahflow
-from portal_api.models import AgentEvent, AgentEventOutcome, AuditLog, Organization
+from portal_api.models import (
+    AgentEvent,
+    AgentEventOutcome,
+    AuditLog,
+    ConversationMessage,
+    Organization,
+)
 from portal_api.repositories import (
     AgentEventRepository,
+    ConversationMessageRepository,
+    ConversationRepository,
     NotificationRepository,
     TenantContext,
 )
@@ -52,6 +60,16 @@ class AgentEventIn(BaseModel):
 class ChatIn(BaseModel):
     question: str = Field(min_length=3, max_length=2_000)
     project_id: UUID | None = None
+    #: A thread a continuar. Ausente abre uma nova — é assim que "nova conversa"
+    #: funciona sem endpoint próprio (ADR 0015).
+    conversation_id: UUID | None = None
+
+
+class FeedbackIn(BaseModel):
+    helpful: bool
+    #: Opcional, e o campo mais informativo do conjunto: o polegar diz que
+    #: errou, o comentário diz o quê.
+    comment: str | None = Field(default=None, max_length=500)
 
 
 class NotificationsReadIn(BaseModel):
@@ -157,12 +175,25 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
         result = chat_service.answer_question(
             session, ctx, project, message.question, settings, actor_user_id=user.id
         )
+        # Persistido na mesma transação da resposta (ADR 0015): um turno
+        # respondido e não gravado apareceria na tela e sumiria no reload, que é
+        # pior do que não ter histórico.
+        conversation, answer = conversations.append_turn(
+            session,
+            ctx,
+            user_id=user.id,
+            conversation_id=message.conversation_id,
+            question=message.question,
+            result=result,
+        )
         project_id = project.id
         response = {
             "answer": result.answer,
             "sources": result.sources,
             "confidence": result.confidence,
             "pending_created": result.pending_created,
+            "conversation_id": str(conversation.id),
+            "message_id": str(answer.id),
         }
 
     # Depois do commit, pelo mesmo motivo do webhook: o worker lê a pendência do
@@ -358,6 +389,83 @@ def read_notifications(payload: NotificationsReadIn, principal: CurrentPrincipal
             session, TenantContext(project.organization_id, project.id)
         ).mark_read(user.id, payload.ids)
         return {"marked": marked}
+
+
+# --- conversas do chat (Fase 4, ADR 0015) ----------------------------------
+
+
+def _message_payload(message: ConversationMessage) -> dict:
+    return {
+        "id": str(message.id),
+        "role": message.role.value,
+        "text": message.text,
+        "confidence": message.confidence.value if message.confidence else None,
+        # O rótulo exibido é remontado das partes gravadas, na mesma forma de
+        # `Evidence.citation`, para o histórico mostrar exatamente o que a
+        # resposta mostrou na hora.
+        "sources": [
+            f"{item['source']} — {item['location']}" if item.get("location") else item["source"]
+            for item in (message.citations or [])
+        ],
+        "pending_created": message.pending_item_id is not None,
+        "feedback": message.feedback.value if message.feedback else None,
+    }
+
+
+@app.get("/api/v1/me/conversations/latest")
+def my_latest_conversation(principal: CurrentPrincipal) -> dict:
+    """A thread corrente do projeto atual, para o chat voltar como estava.
+
+    Escopada ao projeto pela mesma razão da caixa de avisos (:func:`my_notifications`):
+    as policies leem as GUCs de organização/projeto, que só existem depois que
+    ``access.default_project`` resolveu *um* projeto.
+
+    Sem conversa nenhuma, devolve ``conversation_id: null`` e lista vazia — não é
+    404, porque "ainda não perguntei nada" não é ausência de recurso.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        ctx = TenantContext(project.organization_id, project.id)
+        conversation = ConversationRepository(session, ctx).latest_for_user(user.id)
+        if conversation is None:
+            return {"conversation_id": None, "messages": []}
+        messages = ConversationMessageRepository(session, ctx).list_for_conversation(
+            conversation.id, user.id, limit=conversations.HISTORY_LIMIT
+        )
+        return {
+            "conversation_id": str(conversation.id),
+            "title": conversation.title,
+            "messages": [_message_payload(message) for message in messages],
+        }
+
+
+@app.post("/api/v1/me/conversations/messages/{message_id}/feedback")
+def rate_answer(message_id: UUID, payload: FeedbackIn, principal: CurrentPrincipal) -> dict:
+    """Avalia uma resposta do assistente. Mensagem de outra pessoa é 404, como sempre.
+
+    O id da mensagem basta: ele já pertence a uma conversa, que já pertence a uma
+    pessoa. Pedir o id da conversa junto seria pedir ao cliente um dado que o
+    servidor não usaria para decidir nada.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        message = conversations.record_feedback(
+            session,
+            TenantContext(project.organization_id, project.id),
+            user_id=user.id,
+            message_id=message_id,
+            helpful=payload.helpful,
+            comment=payload.comment,
+        )
+        if message is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+        return {"id": str(message.id), "feedback": message.feedback.value}
 
 
 @app.patch("/api/v1/me/preferences")

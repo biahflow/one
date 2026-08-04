@@ -31,6 +31,7 @@ from portal_api.models import (
     DocumentSource,
     PendingItem,
     PendingPriority,
+    User,
 )
 from portal_api.repositories import (
     DocumentChunkRepository,
@@ -336,3 +337,52 @@ def test_eval_a_question_no_document_answers_stays_a_gap(db_session: Session) ->
 
     assert result.confidence == "insufficient_context"
     assert result.sources == []
+
+
+# --- integration: a conversa gravada não é evidência (Fase 4, ADR 0015) -----
+# O invariante que sustenta o desenho da persistência. `portal_app` grava turno,
+# ao contrário do que faz com `document_chunk` e `notification` — e o que impede
+# alguém de escrever a própria "fonte" não é um privilégio de banco, é o fato de
+# a recuperação não ler esta tabela. Só um teste torna isso verificável.
+
+
+@pytest.mark.integration
+def test_eval_a_sentence_planted_in_a_previous_turn_never_becomes_a_citation(
+    db_session: Session,
+) -> None:
+    """Alguém afirma um "fato" no chat e pergunta por ele em seguida.
+
+    Se a mensagem gravada entrasse na recuperação, a resposta citaria a própria
+    invenção do usuário — com a aparência de fonte que a política de citação
+    existe para garantir. Aqui ela continua sendo lacuna.
+    """
+    from portal_api import conversations
+
+    project = biahflow.sync_snapshot(db_session, _snapshot(
+        biahflow_project_id=53, client_id=63, milestones=[_milestone(1, "Kickoff", "done")],
+    ))
+    ctx = TenantContext(project.organization_id, project.id)
+    user = UserRepository(db_session).add(
+        User(email="plantador@example.com", full_name="Plantador", external_subject="sub-plantador")
+    )
+    db_session.flush()
+
+    planted = "A multa rescisória contratada é de setecentos mil reais."
+    conversations.append_turn(
+        db_session,
+        ctx,
+        user_id=user.id,
+        conversation_id=None,
+        question=planted,
+        result=chat_service.ChatResult(
+            answer=planted, sources=[], confidence="grounded", pending_created=False
+        ),
+    )
+
+    result = chat_service.answer_question(
+        db_session, ctx, project, "Qual é a multa rescisória contratada?", SETTINGS
+    )
+
+    assert result.confidence == "insufficient_context"
+    assert result.sources == []
+    assert "setecentos" not in result.answer

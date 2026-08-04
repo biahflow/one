@@ -35,6 +35,10 @@ class ChatResult:
     #: A notificação não nasce aqui porque o chat roda sob `portal_app`, que não
     #: escreve em `notification` — quem escreve é o worker, sob `portal_system`.
     pending_id: uuid.UUID | None = None
+    #: As evidências citadas, inteiras. ``sources`` continua sendo a projeção de
+    #: exibição; quem grava a conversa (ADR 0015) precisa do ``id`` da evidência,
+    #: e recuperá-lo a partir do rótulo seria adivinhar.
+    cited: tuple[Evidence, ...] = ()
 
 
 def _create_pendencia(
@@ -109,4 +113,5 @@ def answer_question(
         sources=[item.citation for item in cited],
         confidence="grounded",
         pending_created=False,
+        cited=tuple(cited),
     )

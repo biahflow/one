@@ -178,7 +178,10 @@ def test_a_key_cannot_publish_into_another_project(
 
     assert response.status_code == 404
     with Session(migrated_engine) as session:
-        assert session.execute(select(AgentEvent)).scalars().all() == []
+        stored = session.execute(
+            select(AgentEvent).where(AgentEvent.project_id == tenant.project_id)
+        ).scalars().all()
+    assert stored == []
 
 
 # --- ritmo -----------------------------------------------------------------
@@ -215,7 +218,9 @@ def test_a_new_window_lets_the_producer_through_again(
 
     # Envelhece a janela em vez de dormir um minuto no teste.
     with Session(migrated_engine) as session:
-        record = session.execute(select(AgentApiKey)).scalars().one()
+        record = session.execute(
+            select(AgentApiKey).where(AgentApiKey.project_id == tenant.project_id)
+        ).scalars().one()
         record.window_started_at = datetime.now(timezone.utc) - timedelta(minutes=2)
         session.commit()
 
@@ -268,5 +273,7 @@ def test_using_a_key_stamps_last_used(
     _post(_body(tenant), key)
 
     with Session(migrated_engine) as session:
-        record = session.execute(select(AgentApiKey)).scalars().one()
+        record = session.execute(
+            select(AgentApiKey).where(AgentApiKey.project_id == tenant.project_id)
+        ).scalars().one()
     assert record.last_used_at is not None

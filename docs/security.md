@@ -33,7 +33,14 @@
   em `/api/` para que um `fetch` não receba a tela de login como se fosse dado. Sair apaga o
   cookie **e** encerra a sessão de SSO no Keycloak (logout RP-initiated).
 - **Rate limit em autenticação:** `bruteForceProtected` no realm — o Keycloak bloqueia a conta
-  após tentativas seguidas, sem código nosso.
+  após tentativas seguidas (`failureFactor: 30`), sem código nosso. O que está **desligado** é
+  só a heurística de *quick login* (`quickLoginCheckMilliSeconds: 0`): por padrão ela trava a
+  conta por 60s quando dois logins do mesmo usuário chegam a menos de um segundo um do outro,
+  ainda que nenhum tenha falhado. Isso não é defesa contra adivinhação de senha — o contador de
+  falhas é — e derruba o e2e, que autentica o mesmo administrador em specs seguidos.
+- **Rate limit na API de eventos (ADR 0013):** janela deslizante por chave, contada na própria
+  linha da chave no Postgres. Estourar responde **429 com `Retry-After`**, e não 401, porque o
+  produtor precisa distinguir ritmo de credencial — senão retenta para sempre.
 - **Fim do fallback demo.** 401, 404, rede e 5xx deixaram de virar dashboard fabricado. A casca
   de demonstração exige, ao mesmo tempo, nenhuma API configurada **e** `DEMO_MODE=true`
   (`app/lib/demo.ts`), e um teste falha se `DEMO_OVERVIEW` for alcançável fora desse gate.

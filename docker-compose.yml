@@ -164,6 +164,11 @@ services:
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
       NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
+      # API de eventos dos agentes (ADR 0013). O pepper entra no HMAC que
+      # substitui a chave no banco; vazio significa "nenhuma chave autentica",
+      # então o local traz um valor óbvio e produção precisa do seu.
+      AGENT_KEY_PEPPER: ${AGENT_KEY_PEPPER:-agent-pepper-local-only}
+      AGENT_EVENTS_RATE_LIMIT: ${AGENT_EVENTS_RATE_LIMIT:-120}
     ports:
       - "8000:8000"
     depends_on:

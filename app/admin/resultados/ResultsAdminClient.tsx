@@ -122,7 +122,10 @@ export default function ResultsAdminClient({
   }
 
   return (
-    <main className="admin-shell">
+    // O projeto administrado fica legível na marcação: com um projeto só não há
+    // seletor nem `?project=` na URL, e "qual projeto esta tela está mexendo"
+    // deixaria de ter resposta observável.
+    <main className="admin-shell" data-project-id={projectId}>
       <header className="admin-head">
         <Link className="admin-back" href="/admin">
           <ArrowLeft size={16} /> Administração de acesso

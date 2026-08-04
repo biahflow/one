@@ -797,6 +797,9 @@ function PendingView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
 }
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+/** Com centavos: uma premissa precisa poder ser conferida na mão, e R$ 150,50
+ *  arredondado para R$ 151 deixaria a conta do cliente sem fechar. */
+const BRL_EXACT = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const EMPLOYEE_STATUS: Record<string, { label: string; cls: string }> = {
   active: { label: "Ativo", cls: "green" },
   paused: { label: "Pausado", cls: "" },
@@ -956,13 +959,13 @@ function MeasurementBasis({ measured }: { measured: MeasuredResults | null }) {
               <div className="field-row">
                 <span className="field-label">Valor-hora vigente</span>
                 <span className="field-value">
-                  {BRL.format(assumption.hourlyRate)} · desde {assumption.effectiveFrom}
+                  {BRL_EXACT.format(assumption.hourlyRate)} · desde {assumption.effectiveFrom}
                 </span>
               </div>
               <div className="field-row">
                 <span className="field-label">Investimento mensal</span>
                 <span className="field-value">
-                  {BRL.format(assumption.monthlyInvestment)} · rateado por dia no período
+                  {BRL_EXACT.format(assumption.monthlyInvestment)} · rateado por dia no período
                 </span>
               </div>
               {assumption.note && (

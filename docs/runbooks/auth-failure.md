@@ -107,6 +107,24 @@ pendente" e nenhum e-mail chegou. Em ordem de probabilidade:
 4. **Link expirado.** `INVITATION_LIFESPAN_SECONDS` (24h por padrão). Reconvidar é idempotente:
    não cria conta nova nem duplica vínculo, só reenvia.
 
+## Sintoma: conta bloqueada por `user_temporarily_disabled`
+
+Aparece no log do Keycloak como `type="LOGIN_ERROR" ... error="user_temporarily_disabled"`, com
+a senha certa. É o `bruteForceProtected` do realm. Ver o estado e limpar:
+
+```bash
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh config credentials \
+  --server http://localhost:8080 --realm master --user admin --password admin_local_only
+docker compose exec keycloak /opt/keycloak/bin/kcadm.sh \
+  delete attack-detection/brute-force/users -r portal-local
+```
+
+**A pegadinha da configuração:** o realm é importado com `--import-realm`, cuja estratégia é
+`IGNORE_EXISTING`, e ele vive no schema `keycloak` do Postgres. Editar
+`infra/keycloak/portal-local-realm.json` **não altera uma stack que já subiu** — vale só para um
+ambiente novo. Para aplicar no que existe, use `kcadm.sh update realms/portal-local -s <campo>=…`
+ou derrube o schema e deixe reimportar.
+
 ## Sintoma: Keycloak fora do ar
 
 Login novo para de funcionar; sessões já emitidas continuam válidas até expirar, e a API segue

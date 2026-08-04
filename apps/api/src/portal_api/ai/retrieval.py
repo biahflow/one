@@ -3,15 +3,24 @@
 Per docs/ai/context-contract.md the retriever receives the tenant/project context and only
 returns evidence matching it. The scoped repositories enforce that filter, so a caller can
 never retrieve another project's rows.
+
+Duas fontes, uma forma. :func:`collect_evidence` lê o read model estruturado
+(projeto, marcos, pendências) e :func:`collect_document_evidence` lê o índice dos
+documentos por similaridade (ADR 0014). As duas devolvem :class:`Evidence`, e é
+por isso que ligar o RAG não custou uma linha no prompt, no respondedor ou na
+política de citação: o contrato entre recuperação e resposta já era este.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy.orm import Session
 
+from portal_api.ai.embeddings import get_embedder
+from portal_api.config import Settings
 from portal_api.models import (
     MilestoneState,
     PendingState,
@@ -19,10 +28,14 @@ from portal_api.models import (
     ProjectStatus,
 )
 from portal_api.repositories import (
+    DocumentChunkRepository,
+    DocumentRepository,
     MilestoneRepository,
     PendingItemRepository,
     TenantContext,
 )
+
+logger = logging.getLogger(__name__)
 
 PROJECT_STATUS_LABELS: dict[ProjectStatus, str] = {
     ProjectStatus.discovery: "em descoberta",
@@ -102,4 +115,51 @@ def collect_evidence(session: Session, ctx: TenantContext, project: Project) -> 
             )
         )
 
+    return evidence
+
+
+def collect_document_evidence(
+    session: Session, ctx: TenantContext, question: str, settings: Settings
+) -> list[Evidence]:
+    """Os trechos de documento mais próximos da pergunta, dentro do tenant.
+
+    O corte de distância vem do próprio embedder, e não da configuração da
+    recuperação: ele é uma propriedade do espaço vetorial (ver
+    :mod:`portal_api.ai.embeddings`). Sem trecho dentro do corte a lista volta
+    vazia — que é como esta função declara "não há evidência", deixando o
+    serviço abrir a pendência em vez de citar o menos distante.
+    """
+    if not question.strip():
+        return []
+
+    embedder = get_embedder(settings)
+    try:
+        vector = embedder.embed_query(question)
+    except Exception as exc:
+        # Provedor fora do ar degrada para o read model estruturado, que já
+        # responde parte das perguntas. Ficar sem chat inteiro seria pior.
+        logger.warning("Embeddings indisponíveis; recuperando só o read model: %s", exc)
+        return []
+
+    matches = DocumentChunkRepository(session, ctx).search(
+        vector, limit=settings.rag_top_k, max_distance=embedder.max_distance
+    )
+    documents = DocumentRepository(session, ctx)
+    titles: dict[str, str] = {}
+    evidence: list[Evidence] = []
+    for chunk, _distance in matches:
+        key = str(chunk.document_id)
+        if key not in titles:
+            document = documents.get(chunk.document_id)
+            if document is None:
+                continue
+            titles[key] = document.title
+        evidence.append(
+            Evidence(
+                id=f"chunk-{chunk.id}",
+                source=f"Documento: {titles[key]}",
+                location=chunk.location,
+                text=chunk.text,
+            )
+        )
     return evidence

@@ -23,6 +23,11 @@ from sqlalchemy.orm import Session
 
 from portal_api.db.session import DbRole, get_session
 from portal_api.models import (
+    EMBEDDING_DIMENSIONS,
+    Document,
+    DocumentChunk,
+    DocumentOrigin,
+    DocumentSource,
     MemberRole,
     Membership,
     Milestone,
@@ -387,6 +392,108 @@ def test_the_app_role_cannot_create_a_notification(
                 "project": tenant_a.project_id,
                 "user": tenant_a.user_id,
             },
+        )
+
+
+# 3c — o índice dos documentos (Fase 4, ADR 0014) ---------------------------------
+
+
+@pytest.fixture(scope="session")
+def indexed_documents(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    """Um documento indexado por tenant. Escopo de sessão pelo mesmo motivo do
+    ``tenants``: o teardown apaga linhas comitadas de outra conexão."""
+    chunks: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in tenants:
+            document = Document(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                title="Contrato",
+                source=DocumentSource.upload,
+                origin=DocumentOrigin.portal,
+            )
+            session.add(document)
+            session.flush()
+            chunk = DocumentChunk(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                document_id=document.id,
+                ordinal=0,
+                text="O contrato prevê suporte por 12 meses.",
+                location="página 1",
+                char_count=38,
+                embedding=[0.0] * EMBEDDING_DIMENSIONS,
+                embedding_model="offline-hashing-v1-1024",
+                content_hash=f"hash-{tenant.organization_id}",
+            )
+            session.add(chunk)
+            session.flush()
+            chunks[tenant.organization_id] = chunk.id
+        session.commit()
+
+    yield chunks
+
+    with Session(migrated_engine) as session:
+        session.execute(delete(DocumentChunk).where(DocumentChunk.id.in_(chunks.values())))
+        session.commit()
+
+
+def test_another_tenants_document_chunk_is_invisible(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    indexed_documents: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """A recuperação do chat lê por aqui: sem esta policy, uma pergunta bem
+    escolhida devolveria o contrato do vizinho como citação."""
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = {c.id for c in rls_session.execute(select(DocumentChunk)).scalars().all()}
+
+    assert indexed_documents[tenant_a.organization_id] in visible
+    assert indexed_documents[tenant_b.organization_id] not in visible
+
+
+def test_the_app_role_cannot_write_the_index(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Quem escreve o índice é o worker sob ``portal_system``.
+
+    O caminho de requisição só lê conhecimento — se ele pudesse gravar um trecho,
+    poderia gravar a "evidência" que quisesse ver citada.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text(
+                "INSERT INTO document_chunk"
+                " (id, organization_id, project_id, document_id, ordinal, text,"
+                "  location, char_count, content_hash)"
+                " VALUES (gen_random_uuid(), :org, :project, gen_random_uuid(), 0,"
+                "         'forjado', '', 7, 'x')"
+            ),
+            {"org": tenant_a.organization_id, "project": tenant_a.project_id},
+        )
+
+
+def test_the_app_role_cannot_rewrite_an_indexed_excerpt(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    indexed_documents: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text("UPDATE document_chunk SET text = 'adulterado' WHERE id = :id"),
+            {"id": indexed_documents[tenant_a.organization_id]},
         )
 
 

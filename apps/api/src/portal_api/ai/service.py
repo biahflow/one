@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from portal_api.ai.responder import GAP_MESSAGE, get_responder
-from portal_api.ai.retrieval import Evidence, collect_evidence
+from portal_api.ai.retrieval import Evidence, collect_document_evidence, collect_evidence
 from portal_api.config import Settings
 from portal_api.models import AuditLog, PendingItem, PendingPriority, Project
 from portal_api.repositories import (
@@ -74,7 +74,12 @@ def answer_question(
     *,
     actor_user_id: uuid.UUID | None = None,
 ) -> ChatResult:
-    evidence = collect_evidence(session, ctx, project)
+    # Read model estruturado + trechos dos documentos indexados (ADR 0014). As
+    # duas fontes entram na mesma lista porque a política de citação vale igual
+    # para as duas: o que não estiver aqui não pode ser afirmado.
+    evidence = collect_evidence(session, ctx, project) + collect_document_evidence(
+        session, ctx, question, settings
+    )
     by_id: dict[str, Evidence] = {item.id: item for item in evidence}
 
     try:

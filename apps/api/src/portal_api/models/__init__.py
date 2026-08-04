@@ -8,7 +8,14 @@ from portal_api.models.agent_event import AgentEvent, AgentEventOutcome
 from portal_api.models.agent_key import SCOPE_EVENTS_WRITE, AgentApiKey
 from portal_api.models.audit import AuditLog
 from portal_api.models.decision import Decision
-from portal_api.models.document import Document, DocumentSource
+from portal_api.models.document import (
+    EMBEDDING_DIMENSIONS,
+    Document,
+    DocumentChunk,
+    DocumentIngestState,
+    DocumentOrigin,
+    DocumentSource,
+)
 from portal_api.models.financial import ProjectFinancialAssumption
 from portal_api.models.identity import MemberRole, Membership, User
 from portal_api.models.meeting import Meeting
@@ -34,6 +41,7 @@ from portal_api.models.project import (
 )
 
 __all__ = [
+    "EMBEDDING_DIMENSIONS",
     "SCOPE_EVENTS_WRITE",
     "AgentApiKey",
     "AgentEvent",
@@ -46,6 +54,9 @@ __all__ = [
     "DigitalEmployee",
     "DigitalEmployeeStatus",
     "Document",
+    "DocumentChunk",
+    "DocumentIngestState",
+    "DocumentOrigin",
     "DocumentSource",
     "Meeting",
     "MemberRole",

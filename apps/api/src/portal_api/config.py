@@ -89,6 +89,42 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-4-8"
     chat_prompt_version: str = "chat-2026-08-03"
 
+    # Storage dos documentos (Fase 4, ADR 0014). Local é o MinIO do compose; em
+    # produção é o S3, e só estas variáveis mudam. Sem credencial o upload
+    # responde 503 em vez de gravar metadado de um arquivo que não existe —
+    # um `document` sem objeto seria uma linha que nunca vira evidência.
+    storage_endpoint_url: str = "http://localhost:9000"
+    storage_bucket: str = "portal-documents"
+    storage_access_key: str = ""
+    storage_secret_key: str = ""
+    storage_region: str = "us-east-1"
+    #: Teto do upload. Vale como primeira barreira; o tamanho real é conferido
+    #: enquanto o arquivo é lido, porque `content-length` vem do cliente.
+    document_max_bytes: int = 25 * 1024 * 1024
+
+    # Índice do projeto (Fase 4, ADR 0014). Sem VOYAGE_API_KEY o embedder é o
+    # offline determinístico — mesma forma da ADR 0007 para o respondedor: CI e
+    # demo rodam sem chave e sem rede, e a dimensão da coluna não muda.
+    voyage_api_key: str = ""
+    voyage_model: str = "voyage-3"
+    #: Dimensão da coluna `document_chunk.embedding`. Mudar aqui exige migração
+    #: **e** reindexação: um vetor de outra dimensão não é comparável.
+    embedding_dimensions: int = 1024
+    #: Chunks recuperados por pergunta.
+    rag_top_k: int = 6
+    #: Corte de distância de cosseno. Sem ele toda pergunta acha "o chunk menos
+    #: distante" e a citação vira ruído com aparência de fonte. São dois valores
+    #: porque são dois espaços: o do provedor aproxima pergunta e resposta sem
+    #: palavra em comum, e o offline é lexical — num deles a distância entre uma
+    #: pergunta curta e um parágrafo longo é sempre alta, mesmo quando o
+    #: parágrafo responde. Um número só deixaria a demo sem citar nada ou o
+    #: provedor citando ruído.
+    rag_max_distance: float = 0.6
+    rag_offline_max_distance: float = 0.92
+    #: Tamanho alvo do chunk, em caracteres, e a sobreposição entre vizinhos.
+    chunk_size_chars: int = 1200
+    chunk_overlap_chars: int = 150
+
     # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
     # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.
     # Sem isso, quem segue o `cp .env.example .env` do README não consegue rodar

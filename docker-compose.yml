@@ -169,12 +169,26 @@ services:
       # então o local traz um valor óbvio e produção precisa do seu.
       AGENT_KEY_PEPPER: ${AGENT_KEY_PEPPER:-agent-pepper-local-only}
       AGENT_EVENTS_RATE_LIMIT: ${AGENT_EVENTS_RATE_LIMIT:-120}
+      # Storage dos documentos (ADR 0014). A API grava o objeto no upload; quem
+      # lê de volta para indexar é o worker, com as mesmas variáveis.
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-http://minio:9000}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-portal-documents}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-portal-minio}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-portal-minio-local-only}
+      # As mesmas do worker, e não por simetria: a API embute a *pergunta* para
+      # buscar no índice que o worker embutiu. Dois embedders diferentes nos dois
+      # lados seriam dois espaços vetoriais, e a recuperação devolveria ruído sem
+      # nenhum erro aparecer.
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3}
     ports:
       - "8000:8000"
     depends_on:
       api-seed:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   worker:
@@ -192,10 +206,21 @@ services:
       SMTP_PORT: ${SMTP_PORT:-1025}
       NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
       PORTAL_WEB_URL: ${PORTAL_WEB_URL:-http://localhost:3000}
+      # Ingestão dos documentos (ADR 0014): é aqui que o arquivo vira texto,
+      # chunk e embedding. Sem VOYAGE_API_KEY o embedder é o offline
+      # determinístico, e a stack local indexa sem chave nenhuma.
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-http://minio:9000}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-portal-documents}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-portal-minio}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-portal-minio-local-only}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3}
     depends_on:
       api-seed:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   web:

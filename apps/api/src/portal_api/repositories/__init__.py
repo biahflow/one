@@ -10,7 +10,7 @@ from portal_api.repositories.base import Repository, TenantScopedRepository
 from portal_api.repositories.context import TenantContext
 from portal_api.repositories.decision import DecisionRepository
 from portal_api.repositories.delivery import DeliveryRepository
-from portal_api.repositories.document import DocumentRepository
+from portal_api.repositories.document import DocumentChunkRepository, DocumentRepository
 from portal_api.repositories.financial import FinancialAssumptionRepository
 from portal_api.repositories.meeting import MeetingRepository
 from portal_api.repositories.membership import MembershipRepository
@@ -25,6 +25,7 @@ __all__ = [
     "AuditLogRepository",
     "DecisionRepository",
     "DeliveryRepository",
+    "DocumentChunkRepository",
     "DocumentRepository",
     "FinancialAssumptionRepository",
     "MeetingRepository",

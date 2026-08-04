@@ -194,6 +194,50 @@ def agent_key(
 
 
 @pytest.fixture
+def fake_storage(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
+    """Storage de objetos em memória (Fase 4, ADR 0014).
+
+    O adapter real é fino e o que ele fala é S3; quem prova essa conversa é o
+    ``tests/e2e/documents.spec.ts``, contra o MinIO do compose. Aqui interessa o
+    que acontece com os bytes **depois** — extração, chunking, embeddings — e
+    para isso um dicionário basta e não exige um serviço no ar.
+    """
+    from portal_api import storage
+
+    objects: dict[str, bytes] = {}
+
+    def _put(_settings, key: str, data: bytes, _content_type: str | None) -> None:
+        objects[key] = data
+
+    def _get(_settings, key: str) -> bytes:
+        if key not in objects:
+            raise storage.StorageError(f"Falha ao ler {key}")
+        return objects[key]
+
+    def _delete(_settings, key: str) -> None:
+        objects.pop(key, None)
+
+    monkeypatch.setattr(storage, "put_object", _put)
+    monkeypatch.setattr(storage, "get_object", _get)
+    monkeypatch.setattr(storage, "delete_object", _delete)
+    return objects
+
+
+@pytest.fixture
+def queued_ingestions(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Intercepta o enfileiramento da ingestão, para o teste rodá-la quando quiser.
+
+    Sem isto o upload publicaria de verdade no Redis do compose, e o worker que
+    estiver de pé pegaria a task no meio do teste.
+    """
+    from portal_api import worker
+
+    queued: list[str] = []
+    monkeypatch.setattr(worker, "queue_document_ingestion", queued.append)
+    return queued
+
+
+@pytest.fixture
 def bind_context(rls_session: Session) -> Callable[..., None]:
     """Set the RLS GUCs on ``rls_session``.
 

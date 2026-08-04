@@ -1,13 +1,28 @@
 alembic==1.16.1
 anthropic==0.69.0
+# Cliente S3 do storage de documentos (Fase 4). É o mesmo cliente para o MinIO
+# local e para o S3 de produção — só muda o endpoint.
+boto3==1.43.64
 celery==5.5.3
 fastapi==0.115.12
 httpx==0.28.1
+# Upload multipart: o FastAPI só aceita `UploadFile` com ele instalado.
+python-multipart==0.0.20
+# Tipo `Vector` do pgvector para o SQLAlchemy/Alembic. A extensão em si já é
+# criada pelo bootstrap do Postgres (infra/postgres/bootstrap/roles.sql).
+pgvector==0.4.1
 psycopg[binary]==3.2.9
 pydantic-settings==2.10.1
 # [crypto] traz o `cryptography` das assinaturas RS256; o PyJWKClient já cacheia
 # o JWKS e refaz o fetch quando aparece um `kid` desconhecido (ADR 0010).
 pyjwt[crypto]==2.13.0
+# Extração de texto dos documentos indexados (Fase 4, ADR 0014). Ambos são puros
+# em Python: a imagem da API não ganha dependência de sistema por causa disto.
+pypdf==6.14.2
+python-docx==1.2.0
 redis==6.2.0
 sqlalchemy==2.0.41
 uvicorn[standard]==0.34.3
+# Embeddings (ADR 0014). Import preguiçoso no adapter, como o `anthropic`: sem
+# VOYAGE_API_KEY o portal indexa com o embedder offline e nada disto é chamado.
+voyageai==0.5.0

@@ -24,6 +24,11 @@ from portal_api import main
 from portal_api.integrations import biahflow
 from portal_api.main import app
 from portal_api.models import (
+    Document,
+    DocumentChunk,
+    DocumentIngestState,
+    DocumentOrigin,
+    DocumentSource,
     Milestone,
     MilestoneState,
     Organization,
@@ -314,6 +319,61 @@ def test_sync_replaces_biahflow_pendings_but_keeps_portal_ones(db_session: Sessi
     assert "Falta evidência sobre o cálculo de economia" in titles  # não foi apagada
     assert "Definir alçada de aprovação" not in titles  # espelhada: substituída
     assert titles.count("Aprovar fluxo de exceções") == 1  # não duplicou
+
+
+@pytest.mark.integration
+def test_sync_replaces_biahflow_documents_but_keeps_the_uploaded_ones(
+    db_session: Session,
+) -> None:
+    """O arquivo enviado no portal — e o índice dele — sobrevive ao webhook.
+
+    Mesma razão da pendência acima: o sync substitui o que espelha, e só isso.
+    Sem a distinção de origem, indexar um documento seria trabalho com prazo de
+    validade até o próximo snapshot.
+    """
+    snap = _snapshot(biahflow_project_id=25, client_id=23)
+    project = biahflow.sync_snapshot(db_session, snap)
+    uploaded = Document(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        title="Contrato assinado.pdf",
+        source=DocumentSource.upload,
+        origin=DocumentOrigin.portal,
+        ingest_state=DocumentIngestState.indexed,
+    )
+    db_session.add(uploaded)
+    db_session.flush()
+    db_session.add(
+        DocumentChunk(
+            organization_id=project.organization_id,
+            project_id=project.id,
+            document_id=uploaded.id,
+            ordinal=0,
+            text="O suporte contratado dura 12 meses.",
+            location="página 1",
+            char_count=35,
+            content_hash="hash-do-trecho",
+        )
+    )
+    db_session.flush()
+
+    biahflow.sync_snapshot(db_session, snap)
+
+    survivors = list(
+        db_session.execute(
+            select(Document).where(Document.project_id == project.id)
+        ).scalars()
+    )
+    titles = [document.title for document in survivors]
+    assert "Contrato assinado.pdf" in titles
+    assert titles.count("Contrato assinado.pdf") == 1
+    # E o índice não foi levado junto por CASCADE.
+    assert (
+        db_session.execute(
+            select(DocumentChunk).where(DocumentChunk.document_id == uploaded.id)
+        ).first()
+        is not None
+    )
 
 
 @pytest.mark.integration

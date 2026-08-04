@@ -686,3 +686,232 @@ def test_an_assumption_cannot_retroact_over_the_open_one(
     )
 
     assert response.status_code == 409
+
+
+# --- conhecimento do projeto (Fase 4, ADR 0014) ---------------------------
+# O upload é a única porta pela qual um arquivo entra no portal, e ela é de
+# administração: o cliente pergunta, não envia.
+
+
+def _file(name: str = "contrato.txt", content: bytes = b"O suporte dura 12 meses.", mime: str = "text/plain"):
+    return {"file": (name, content, mime)}
+
+
+def test_no_client_member_reaches_the_knowledge_administration(
+    world, authenticated, fake_storage
+) -> None:
+    """Negativo de permissão para cada rota nova (AGENTS.md #6)."""
+    acme = world["acme"]
+    authenticated(acme.client_actor)
+    base = f"/api/v1/admin/projects/{acme.project_id}/documents"
+
+    responses = [
+        client.get(base),
+        client.post(base, files=_file(), data={"title": "Contrato"}),
+        client.delete(f"{base}/{uuid.uuid4()}"),
+    ]
+
+    assert {response.status_code for response in responses} == {404}
+    assert fake_storage == {}, "não deve nem chegar ao storage"
+
+
+def test_an_administrator_cannot_upload_into_another_tenant(
+    world, authenticated, fake_storage
+) -> None:
+    authenticated(world["acme"].admin)
+    globex = world["globex"]
+
+    response = client.post(
+        f"/api/v1/admin/projects/{globex.project_id}/documents",
+        files=_file(),
+        data={"title": "Contrato"},
+    )
+
+    assert response.status_code == 404
+    assert fake_storage == {}
+
+
+def test_an_upload_is_stored_pending_and_queued_for_indexing(
+    world, authenticated, fake_storage, queued_ingestions, migrated_engine
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+    base = f"/api/v1/admin/projects/{acme.project_id}/documents"
+
+    created = client.post(base, files=_file(), data={"title": "Contrato de suporte"})
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["title"] == "Contrato de suporte"
+    assert body["ingest_state"] == "pending"
+    assert body["chunk_count"] == 0
+    assert body["byte_size"] == len(b"O suporte dura 12 meses.")
+    # A chave do objeto carrega o tenant inteiro.
+    (key,) = fake_storage
+    assert key.startswith(f"org/{acme.organization_id}/project/{acme.project_id}/document/")
+    assert queued_ingestions == [body["document_id"]]
+
+    listed = client.get(base).json()
+    assert [item["document_id"] for item in listed] == [body["document_id"]]
+
+    _cleanup_documents(migrated_engine, acme.project_id)
+
+
+def test_the_markdown_the_browser_calls_octet_stream_is_still_accepted(
+    world, authenticated, fake_storage, queued_ingestions, migrated_engine
+) -> None:
+    """O tipo é conferido no servidor; o palpite pelo nome é a segunda tentativa."""
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    created = client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/documents",
+        files={"file": ("notas.md", b"# Notas\n\nO escopo fechou.", "application/octet-stream")},
+        data={"title": ""},
+    )
+
+    assert created.status_code == 201
+    assert created.json()["mime_type"] == "text/markdown"
+    # Sem título informado, o nome do arquivo serve de rótulo.
+    assert created.json()["title"] == "notas.md"
+
+    _cleanup_documents(migrated_engine, acme.project_id)
+
+
+def test_a_format_the_portal_cannot_read_never_reaches_the_storage(
+    world, authenticated, fake_storage, queued_ingestions
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    response = client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/documents",
+        files={"file": ("planilha.zip", b"PK\x03\x04", "application/zip")},
+    )
+
+    assert response.status_code == 415
+    assert fake_storage == {}
+    assert queued_ingestions == []
+
+
+def test_a_file_over_the_cap_is_refused_before_anything_is_written(
+    world, authenticated, fake_storage, monkeypatch
+) -> None:
+    from portal_api.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "document_max_bytes", 32)
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    response = client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/documents",
+        files=_file(content=b"x" * 64),
+    )
+
+    assert response.status_code == 413
+    assert fake_storage == {}
+
+
+def test_an_empty_file_is_refused(world, authenticated, fake_storage) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    response = client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/documents", files=_file(content=b"")
+    )
+
+    assert response.status_code == 422
+    assert fake_storage == {}
+
+
+def test_deleting_removes_the_row_the_index_and_the_object(
+    world, authenticated, fake_storage, queued_ingestions, migrated_engine
+) -> None:
+    from portal_api import worker
+    from portal_api.models import Document, DocumentChunk
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    base = f"/api/v1/admin/projects/{acme.project_id}/documents"
+    document_id = client.post(base, files=_file(), data={"title": "Contrato"}).json()["document_id"]
+    worker.ingest_document(document_id)
+
+    assert client.get(base).json()[0]["chunk_count"] > 0
+
+    removed = client.delete(f"{base}/{document_id}")
+
+    assert removed.status_code == 204
+    assert client.get(base).json() == []
+    assert fake_storage == {}
+    with Session(migrated_engine) as session:
+        assert session.get(Document, uuid.UUID(document_id)) is None
+        assert (
+            session.execute(
+                select(DocumentChunk).where(
+                    DocumentChunk.document_id == uuid.UUID(document_id)
+                )
+            ).first()
+            is None
+        )
+
+
+def test_a_document_mirrored_from_biahflow_is_not_deletable_here(
+    world, authenticated, fake_storage, migrated_engine
+) -> None:
+    """Ele volta no próximo sync; prometer a remoção seria mentir (ADR 0006)."""
+    from portal_api.models import Document, DocumentOrigin, DocumentSource
+
+    acme = world["acme"]
+    with Session(migrated_engine) as session:
+        mirrored = Document(
+            organization_id=acme.organization_id,
+            project_id=acme.project_id,
+            title="Ata do Biahflow",
+            source=DocumentSource.drive,
+            origin=DocumentOrigin.biahflow,
+        )
+        session.add(mirrored)
+        session.commit()
+        mirrored_id = mirrored.id
+
+    authenticated(acme.admin)
+    response = client.delete(
+        f"/api/v1/admin/projects/{acme.project_id}/documents/{mirrored_id}"
+    )
+
+    assert response.status_code == 404
+    _cleanup_documents(migrated_engine, acme.project_id)
+
+
+def test_the_upload_is_audited_without_the_content(
+    world, authenticated, fake_storage, queued_ingestions, migrated_engine
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    client.post(
+        f"/api/v1/admin/projects/{acme.project_id}/documents",
+        files=_file(content=b"Valor confidencial: 1.000.000"),
+        data={"title": "Contrato"},
+    )
+
+    with Session(migrated_engine) as session:
+        entry = session.execute(
+            select(AuditLog).where(
+                AuditLog.project_id == acme.project_id,
+                AuditLog.action == "document.uploaded",
+            )
+        ).scalar_one()
+        assert entry.data == {"mime_type": "text/plain", "byte_size": 29}
+        assert "confidencial" not in repr(entry.data)
+
+    _cleanup_documents(migrated_engine, acme.project_id)
+
+
+def _cleanup_documents(engine: Engine, project_id: uuid.UUID) -> None:
+    """As rotas comitam de verdade; o que elas deixaram sai aqui."""
+    from portal_api.models import Document
+
+    with Session(engine) as session:
+        session.execute(delete(Document).where(Document.project_id == project_id))
+        session.commit()

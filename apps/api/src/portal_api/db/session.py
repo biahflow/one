@@ -1,18 +1,22 @@
-"""Engines, sessions and the per-transaction tenant context (ADR 0010).
+"""Engines, sessions and the per-transaction tenant context (ADR 0010/0011).
 
-Three Postgres roles, three engines. ``portal_app`` is the request path and is
+Four Postgres roles, four engines. ``portal_app`` is the request path and is
 subject to Row-Level Security; ``portal_system`` carries ``BYPASSRLS`` for the
-paths that *create* a tenant (the Biahflow webhook and the seed); and
-``portal_migrator`` owns the schema and runs Alembic.
+paths that *create* a tenant (the Biahflow webhook and the seed);
+``portal_migrator`` owns the schema and runs Alembic; and ``portal_admin`` —
+also subject to RLS — is the only one that may write ``membership``.
 
 The RLS policies read their scope from GUCs set with ``set_config(..., true)``
-inside the transaction, in two stages:
+inside the transaction, in three stages:
 
   stage 1  portal.subject, portal.email  → the caller's own ``user`` row
            portal.user_id                → ``membership``, and through it
                                            ``organization`` and ``project``
   stage 2  portal.organization_id,       → the project-scoped tables
            portal.project_id
+  stage 3  portal.admin_organization_id  → other people's membership, for the
+                                           admin role only, and only after the
+                                           caller's ``internal_admin`` was checked
 
 Every GUC is fail-closed: ``current_setting(..., true)`` returns NULL when it
 was never set, the policy predicate is then NULL rather than TRUE, and the row
@@ -47,6 +51,10 @@ class DbRole(str, enum.Enum):
     app = "app"
     system = "system"
     migration = "migration"
+    #: Convite e revogação de membros (ADR 0011). Sujeito à RLS como o `app`;
+    #: o que muda é o grant de escrita em `membership` e as policies presas à
+    #: GUC de organização administrada.
+    admin = "admin"
 
 
 def _url_for(role: DbRole) -> str:
@@ -55,6 +63,7 @@ def _url_for(role: DbRole) -> str:
         DbRole.app: settings.database_url,
         DbRole.system: settings.database_system_url,
         DbRole.migration: settings.database_migration_url,
+        DbRole.admin: settings.database_admin_url,
     }[role]
     if not url:
         # Fail closed: never silently fall back to another role's credential.
@@ -145,6 +154,56 @@ def bind_tenant(session: Session, ctx: "TenantContext") -> None:
     )
 
 
+def bind_admin_org(session: Session, organization_id: uuid.UUID) -> None:
+    """Stage 3: unlock the access-control tables for one organization (ADR 0011).
+
+    Publish this **only after** verifying that the caller holds ``internal_admin``
+    there. Until it is set the admin policies see NULL and the transaction can
+    read exactly what any other caller could — the caller's own memberships —
+    which is what makes the verification itself trustworthy.
+
+    Monotonic like :func:`bind_tenant`: rebinding to another organization inside
+    one transaction is a programming error, and silently allowing it would be a
+    cross-tenant write.
+    """
+    current = session.execute(
+        text("SELECT nullif(current_setting('portal.admin_organization_id', true), '')")
+    ).scalar()
+    value = str(organization_id)
+    if current not in (None, value):
+        raise RuntimeError(
+            f"Transaction is already administering organization {current}; refusing to rebind"
+        )
+    session.execute(
+        text("SELECT set_config('portal.admin_organization_id', :organization_id, true)"),
+        {"organization_id": value},
+    )
+
+
+def bind_invitee(session: Session, subject: str) -> None:
+    """Stage 3 (continued): the one person being invited, by Keycloak subject.
+
+    Without this an administrator could not even *find* someone who already has
+    an account through another organization — ``user_admin_read`` only covers
+    people who hold a membership in the organization being administered — and
+    would collide on the unique e-mail instead.
+
+    Keyed on the subject rather than the e-mail on purpose: the subject is what
+    the realm just confirmed, so the reach is one row that the caller already
+    holds a handle to, not "any e-mail I care to guess".
+    """
+    session.execute(
+        text("SELECT set_config('portal.invitee_subject', :subject, true)"),
+        {"subject": subject},
+    )
+
+
+#: Papéis que trabalham em nome de alguém. O `system` e o `migration` não têm
+#: identidade — ligar um principal a eles seria contexto sem efeito, já que um
+#: ignora a RLS e o outro é dono das tabelas.
+IDENTIFIED_ROLES = frozenset({DbRole.app, DbRole.admin})
+
+
 @contextmanager
 def get_session(
     principal: Principal | None = None, *, role: DbRole = DbRole.app
@@ -156,7 +215,7 @@ def get_session(
     Postgres reverts at the end of the transaction — a plain ``SET`` would leak
     into the next request that reuses the pooled connection.
     """
-    if principal is not None and role is not DbRole.app:
+    if principal is not None and role not in IDENTIFIED_ROLES:
         raise ValueError(f"A principal cannot run under the {role.value} role")
 
     session = session_factory(role)()

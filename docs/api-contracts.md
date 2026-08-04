@@ -8,6 +8,17 @@ para não revelar que o projeto existe.
 `roles` do próprio chamador. Um usuário autenticado sem membership recebe 200 com `projects`
 vazio: autenticar não é autorizar.
 
+As rotas de administração de acesso (ADR 0011) exigem `internal_admin` **no projeto** e vivem
+sob `/api/v1/admin`:
+
+- `GET /projects/{id}/members` — nome, e-mail, papel e `active` (e-mail já confirmado no realm;
+  `false` é convite pendente).
+- `POST /projects/{id}/members` — `email`, `fullName` e `role`. Cria a conta no realm se
+  faltar, grava o vínculo e dispara o e-mail de definir senha + verificar endereço. Idempotente
+  por e-mail, e com **resposta uniforme** para endereço conhecido e desconhecido.
+- `DELETE /projects/{id}/members/{membershipId}` — remove o vínculo; a conta permanece.
+  Revogar o próprio acesso responde 409.
+
 `POST /api/v1/agent-events` recebe `eventId`, `projectId`, `occurredAt`, `agentKey`, `timeSavedSeconds`, `avoidedCostCents` e `runReference`. O `eventId` é idempotente por projeto.
 
 `POST /api/v1/chat` recebe `projectId` e `question`; devolve texto, `sources`, confiança e, quando necessário, a pendência criada. Contratos completos serão publicados automaticamente pelo OpenAPI do FastAPI.

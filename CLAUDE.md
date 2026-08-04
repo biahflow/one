@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Portal Labs — a multi-tenant client portal where customers track AI project progress, results, and decisions, with a context-aware assistant that answers **only** with evidence from the project (citations, never invention). Product docs are PT-BR; code, API, and DB identifiers are English.
 
-The repo is a monorepo, and Fase 1 (identity, roles, RLS) is complete on both halves. **The API** validates the OIDC access token, authorizes from the `membership` and enforces Row-Level Security (ADR 0010) — every client endpoint requires `Authorization: Bearer` and answers 404, never 403, on a denial. **The web layer** is a real OIDC client: Auth.js v5 does the code exchange server-side, `proxy.ts` closes everything but `/login`, and `app/page.tsx` renders from the API. There is no fallback to fabricated data any more — 401 goes to `/login`, 404 says "no project assigned", a network failure is an error panel. What is still open: invitation/e-mail verification, the admin UI, and RAG (`ROADMAP.md`).
+The repo is a monorepo, and Fase 1 (identity, roles, RLS) is complete on both halves. **The API** validates the OIDC access token, authorizes from the `membership` and enforces Row-Level Security (ADR 0010) — every client endpoint requires `Authorization: Bearer` and answers 404, never 403, on a denial. **The web layer** is a real OIDC client: Auth.js v5 does the code exchange server-side, `proxy.ts` closes everything but `/login`, and `app/page.tsx` renders from the API. There is no fallback to fabricated data any more — 401 goes to `/login`, 404 says "no project assigned", a network failure is an error panel. Fase 1 is now closed end to end: an internal admin invites someone at `/admin`, the person gets an e-mail from Keycloak, sets a password and lands on their project. What is still open: notifications (Fase 2), the results/ROI pipeline (Fase 3) and RAG (Fase 4) — see `ROADMAP.md`.
 
 ## Architecture
 
@@ -31,8 +31,11 @@ Three credentials, one per kind of work, and `DATABASE_URL` is the request path:
 | `DATABASE_URL` | `portal_app` — API and worker request path | **subject to it** |
 | `DATABASE_SYSTEM_URL` | `portal_system` — Biahflow webhook, sync, seed | `BYPASSRLS` |
 | `DATABASE_MIGRATION_URL` | `portal_migrator` — owns the schema, runs Alembic | exempt as owner |
+| `DATABASE_ADMIN_URL` | `portal_admin` — `/api/v1/admin/*`, the only writer of `membership` | **subject to it** |
 
 `get_session(principal)` publishes the tenant context as transaction-local GUCs, in two stages: identity (`portal.subject`, `portal.email`, `portal.user_id`) and tenant (`portal.organization_id`, `portal.project_id`). The policies read those, and `current_setting(..., true)` returns NULL when unset — so **missing context yields zero rows, never an unscoped read**. `access.scoped_project`/`default_project` call `bind_tenant` themselves; if you add a resolver that returns a project, it must do the same or every later read comes back empty (`docs/runbooks/auth-failure.md`).
+
+**Writing `membership` goes through `portal_admin` and nothing else (ADR 0011).** Its policies key on a third-stage GUC, `portal.admin_organization_id`, which `bind_admin_org` publishes *after* the caller's `internal_admin` was verified — before that the transaction sees only the caller's own memberships, which is what keeps the check from being circular. A fourth GUC, `portal.invitee_subject`, opens exactly one `user` row: the person being invited. Every admin policy is `TO portal_admin`, so the request credential is not merely missing the grant — the policy does not apply to it.
 
 **Every new table carrying `organization_id` ships with a policy in the same migration.** A meta-test in `test_rls_isolation.py` fails CI otherwise. The app role holds `SELECT` almost everywhere, `INSERT` only on `pending_item` and `audit_log`, and `INSERT/UPDATE` on `user` — mirroring "the portal never originates status" (ADR 0006/0008) in the database itself.
 - **`apps/api/src/portal_api/worker.py`** — Celery worker for async jobs (Drive/document ingestion), gated on Redis.
@@ -109,6 +112,7 @@ CI (`.github/workflows/ci.yml`) runs four gates you should reproduce locally bef
 
 - REST under `/api/v1`; Pydantic payloads and standardized errors.
 - Web tests assert against **server-rendered HTML** (`tests/rendered-html.test.mjs` boots `next start` and matches strings like the page title and dashboard copy). If you change dashboard text/structure, update these assertions. The second test scans every source file under `app/` and `components/` to guard against reintroducing hardcoded tab data (the Fase 2 regression) and starter leftovers.
+- Access administration lives in `portal_api/admin.py` (an `APIRouter`), never in `main.py`: it is the only surface that runs under `portal_admin`, and keeping it apart is what makes "who can write membership" answerable by reading one file.
 - API demo endpoints branch on `settings.demo_mode`; keep that gate when adding contract stubs that lack real auth. A new client endpoint takes `principal: CurrentPrincipal` — a `Depends`, not a header read — and ships with a negative-permission test (`test_authorization.py`).
 - Adding a realm user means adding it to `SEED_USERS` in the same commit, with the same UUID — the consistency test is what keeps "authenticates but matches no row" from shipping.
 - Every feature ships with an FDD (`docs/fdd/`) carrying acceptance criteria, telemetry, tests, and AI eval cases; prompt/retriever/model/tool changes require AI evals (`docs/ai/`).

@@ -43,6 +43,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg://portal_app:portal_app_ci@localhost:5432/portal
       DATABASE_SYSTEM_URL: postgresql+psycopg://portal_system:portal_system_ci@localhost:5432/portal
       DATABASE_MIGRATION_URL: postgresql+psycopg://portal_migrator:portal_migrator_ci@localhost:5432/portal
+      DATABASE_ADMIN_URL: postgresql+psycopg://portal_admin:portal_admin_ci@localhost:5432/portal
     steps:
       - uses: actions/checkout@v4
       # Service containers start before the checkout, so the bootstrap cannot be
@@ -54,6 +55,7 @@ jobs:
             -v app_password=portal_app_ci \
             -v system_password=portal_system_ci \
             -v migrator_password=portal_migrator_ci \
+            -v admin_password=portal_admin_ci \
             -f infra/postgres/bootstrap/roles.sql
       - uses: actions/setup-python@v5
         with:

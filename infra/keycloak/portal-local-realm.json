@@ -6,9 +6,15 @@
   "bruteForceProtected": true,
   "roles": {
     "realm": [
-      { "name": "internal_admin" },
-      { "name": "internal_member" },
-      { "name": "client_member" }
+      {
+        "name": "internal_admin"
+      },
+      {
+        "name": "internal_member"
+      },
+      {
+        "name": "client_member"
+      }
     ]
   },
   "clients": [
@@ -21,8 +27,13 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["http://localhost:3000/api/auth/callback/keycloak"],
-      "webOrigins": ["http://localhost:3000"],
+      "redirectUris": [
+        "http://localhost:3000/api/auth/callback/keycloak",
+        "http://localhost:3000/login"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
       "attributes": {
         "post.logout.redirect.uris": "http://localhost:3000/login"
       },
@@ -47,6 +58,17 @@
       "publicClient": false,
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "portal-admin",
+      "name": "Portal Labs API (convite de acesso)",
+      "description": "Service account usado só para criar usuario e disparar o e-mail de convite.",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "portal-admin-local-only",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
     }
   ],
   "users": [
@@ -59,9 +81,15 @@
       "firstName": "Marina",
       "lastName": "Farias",
       "credentials": [
-        { "type": "password", "value": "portal_local_only", "temporary": false }
+        {
+          "type": "password",
+          "value": "portal_local_only",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["client_member"]
+      "realmRoles": [
+        "client_member"
+      ]
     },
     {
       "id": "00000000-0000-4000-8000-000000000002",
@@ -72,9 +100,15 @@
       "firstName": "Helena",
       "lastName": "Dias",
       "credentials": [
-        { "type": "password", "value": "portal_local_only", "temporary": false }
+        {
+          "type": "password",
+          "value": "portal_local_only",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["internal_admin"]
+      "realmRoles": [
+        "internal_admin"
+      ]
     },
     {
       "id": "00000000-0000-4000-8000-000000000003",
@@ -85,9 +119,42 @@
       "firstName": "Rafael",
       "lastName": "Costa",
       "credentials": [
-        { "type": "password", "value": "portal_local_only", "temporary": false }
+        {
+          "type": "password",
+          "value": "portal_local_only",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["internal_member"]
+      "realmRoles": [
+        "internal_member"
+      ]
+    },
+    {
+      "username": "service-account-portal-admin",
+      "enabled": true,
+      "serviceAccountClientId": "portal-admin",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users"
+        ]
+      }
     }
-  ]
+  ],
+  "smtpServer": {
+    "host": "mailpit",
+    "port": "1025",
+    "from": "portal@portallabs.local",
+    "fromDisplayName": "Portal Labs",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  },
+  "clientScopeMappings": {},
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "pt-BR",
+    "en"
+  ],
+  "defaultLocale": "pt-BR"
 }

@@ -4,7 +4,8 @@
 -- POSTGRES_USER e nasce SUPERUSER. Superusuário ignora Row-Level Security
 -- incondicionalmente, e `FORCE ROW LEVEL SECURITY` não corrige isso (FORCE só
 -- estende a RLS ao *dono* da tabela). A correção é não conectar como
--- superusuário no caminho de requisição — por isso os três papéis abaixo.
+-- superusuário no caminho de requisição — por isso os quatro papéis abaixo, um
+-- por tipo de trabalho: migrar, servir requisição, sincronizar e administrar.
 --
 -- `portal` permanece superusuário de propósito: o Keycloak usa essa credencial
 -- (KC_DB_USERNAME) e migra o próprio schema a cada upgrade de versão.
@@ -12,6 +13,7 @@
 -- Uso:
 --   psql -v ON_ERROR_STOP=1 \
 --        -v app_password=... -v system_password=... -v migrator_password=... \
+--        -v admin_password=... \
 --        -f roles.sql
 --
 -- Rodado pelo serviço `db-bootstrap` do docker-compose a cada `up` (cobre tanto
@@ -39,6 +41,9 @@ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'portal_system') THEN
     CREATE ROLE portal_system;
   END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'portal_admin') THEN
+    CREATE ROLE portal_admin;
+  END IF;
 END
 $$;
 
@@ -62,6 +67,18 @@ ALTER ROLE portal_app
 ALTER ROLE portal_system
   WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS
   PASSWORD :'system_password';
+
+-- Caminho de administração de acesso: os endpoints /api/v1/admin, que convidam e
+-- revogam membros (ADR 0011). É o único papel com escrita em `membership`, e
+-- continua NOBYPASSRLS — o alcance vem de uma GUC publicada só depois de a
+-- autorização ser verificada, não de um privilégio de escapar da RLS.
+--
+-- O motivo de ser uma credencial separada e não mais um GRANT no portal_app: com
+-- o grant no caminho de requisição, qualquer bug em qualquer endpoint poderia
+-- escrever controle de acesso, com só uma GUC no caminho. Sem o grant, não pode.
+ALTER ROLE portal_admin
+  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS
+  PASSWORD :'admin_password';
 
 -- 3. Posse do schema e das tabelas já existentes ------------------------------
 -- Em volume novo o loop não encontra nada e as tabelas nascem do migrator. Em
@@ -100,9 +117,9 @@ END
 $$;
 
 -- 4. Acesso ao schema ---------------------------------------------------------
-GRANT USAGE ON SCHEMA portal TO portal_app, portal_system;
+GRANT USAGE ON SCHEMA portal TO portal_app, portal_system, portal_admin;
 -- A extensão `vector` vive em public; a recuperação da Fase 4 precisará do tipo.
-GRANT USAGE ON SCHEMA public TO portal_app, portal_system;
+GRANT USAGE ON SCHEMA public TO portal_app, portal_system, portal_admin;
 
 -- 5. Privilégios do caminho de sistema nas tabelas já existentes --------------
 -- O portal_system tem BYPASSRLS e é o caminho de sistema (webhook, worker,
@@ -120,10 +137,14 @@ ALTER DEFAULT PRIVILEGES FOR ROLE portal_migrator IN SCHEMA portal
   GRANT SELECT ON TABLES TO portal_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE portal_migrator IN SCHEMA portal
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO portal_system;
+-- O portal_admin também nasce só com leitura: as escritas dele são poucas e
+-- concedidas tabela a tabela na migração 0008, junto das policies correspondentes.
+ALTER DEFAULT PRIVILEGES FOR ROLE portal_migrator IN SCHEMA portal
+  GRANT SELECT ON TABLES TO portal_admin;
 
 -- 7. Relatório ----------------------------------------------------------------
 \echo 'Papéis do Portal Labs:'
 SELECT rolname, rolsuper, rolbypassrls, rolcanlogin
 FROM pg_roles
-WHERE rolname IN ('portal', 'portal_migrator', 'portal_app', 'portal_system')
+WHERE rolname IN ('portal', 'portal_migrator', 'portal_app', 'portal_system', 'portal_admin')
 ORDER BY rolname;

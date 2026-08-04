@@ -23,7 +23,8 @@
 - **Fail-closed no banco.** As policies leem o contexto de GUCs da transação; contexto ausente
   devolve zero linhas. O papel da aplicação (`portal_app`) não é superusuário nem tem
   `BYPASSRLS` — há teste que falha se alguém apontar a aplicação para uma credencial que tenha.
-- **Auditoria.** `chat.pending_created` em `audit_log` com o autor (e sem o texto da pergunta);
+- **Auditoria.** `membership.invited` e `membership.revoked` com o autor e o vínculo, **sem o
+  e-mail**; `chat.pending_created` em `audit_log` com o autor (e sem o texto da pergunta);
   `identity.linked` e `identity.provisioned` em log estruturado, porque no primeiro login ainda
   não há organização.
 - **Sessão no navegador.** O BFF é um client confidencial: o code exchange (PKCE) acontece no
@@ -36,8 +37,15 @@
 - **Fim do fallback demo.** 401, 404, rede e 5xx deixaram de virar dashboard fabricado. A casca
   de demonstração exige, ao mesmo tempo, nenhuma API configurada **e** `DEMO_MODE=true`
   (`app/lib/demo.ts`), e um teste falha se `DEMO_OVERVIEW` for alcançável fora desse gate.
-- **Ainda aberto:** convite e verificação de e-mail (Mailpit), UI de administração, e a revisão
-  das dependências apontadas pelo `npm audit` antes de produção (Fase 5).
+- **Convite e verificação de e-mail (ADR 0011).** Quem manda o e-mail é o Keycloak
+  (`UPDATE_PASSWORD` + `VERIFY_EMAIL` numa ação só), por um service account separado do client
+  de login — quem autentica usuário não precisa poder criá-lo. A resposta do convite é uniforme
+  para e-mail conhecido e desconhecido, para não virar oráculo de "quem já é cliente".
+- **Escrita em `membership` só pelo papel `portal_admin`**, que é `NOBYPASSRLS` e alcança uma
+  organização por vez, via GUC publicada depois da verificação. O papel do caminho de
+  requisição não tem o privilégio, e há teste que consulta o catálogo para garantir.
+- **Ainda aberto:** revisão das dependências apontadas pelo `npm audit` antes de produção
+  (Fase 5).
 
 ## Dados e IA
 

@@ -25,6 +25,7 @@ import {
   Search,
   Send,
   Settings,
+  ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
@@ -82,7 +83,7 @@ const notifications = [
 ];
 
 /** Quem está logado, projetado de `GET /api/v1/me` — a membership é a autoridade. */
-export type PortalUser = { name: string; initials: string; email: string; role: string; org: string };
+export type PortalUser = { name: string; initials: string; email: string; role: string; org: string; isInternal: boolean };
 /** Um projeto que o usuário alcança. `current` é o que está sendo exibido. */
 export type ProjectSummary = { id: string; name: string; status: string; current: boolean };
 
@@ -895,6 +896,9 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
       <button onClick={() => onNavigate("Meu perfil")}><User size={15} /> Meu perfil</button>
       <button onClick={() => onNavigate("Configurações")}><Settings size={15} /> Configurações</button>
       <button onClick={() => onNavigate("Trocar projeto")}><Building2 size={15} /> Trocar projeto</button>
+      {/* Só para a equipe interna. A tela existe de qualquer forma; quem manda
+          é a API, que responde 404 para quem não é `internal_admin`. */}
+      {user.isInternal && <a href="/admin"><ShieldCheck size={15} /> Administração</a>}
       <form action={signOutAction}><button type="submit"><LogOut size={15} /> Sair</button></form>
     </div>
   );

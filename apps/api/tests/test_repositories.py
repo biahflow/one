@@ -224,7 +224,7 @@ def _make_event(external_id: str) -> AgentEvent:
         event_type="ticket_resolved",
         occurred_at=datetime.now(timezone.utc),
         external_event_id=external_id,
-        hours_saved=2,
+        time_saved_seconds=7_200,
     )
 
 
@@ -232,23 +232,27 @@ def test_agent_event_ingest_is_idempotent(db_session: Session, two_tenants) -> N
     org_a, _, project_a, _ = two_tenants
     repo = AgentEventRepository(db_session, TenantContext(org_a.id, project_a.id))
 
-    first = repo.ingest(_make_event("evt-1"))
-    again = repo.ingest(_make_event("evt-1"))  # same producer id → no duplicate
+    first, created = repo.ingest(_make_event("evt-1"))
+    again, created_again = repo.ingest(_make_event("evt-1"))  # mesmo id → sem duplicata
 
     assert again.id == first.id
     assert len(repo.list()) == 1
+    # O produtor precisa distinguir "gravei" de "já estava lá" para depurar um
+    # pipeline; as duas respostas são inofensivas, mas não são a mesma notícia.
+    assert (created, created_again) == (True, False)
 
 
 def test_agent_event_is_isolated_across_tenants(
     db_session: Session, two_tenants
 ) -> None:
     org_a, org_b, project_a, project_b = two_tenants
-    owned = AgentEventRepository(
+    owned, _ = AgentEventRepository(
         db_session, TenantContext(org_a.id, project_a.id)
     ).ingest(_make_event("evt-shared"))
 
     other = AgentEventRepository(db_session, TenantContext(org_b.id, project_b.id))
     assert other.get(owned.id) is None
     # Same external id in another tenant is a distinct row (uniqueness is per project).
-    other_event = other.ingest(_make_event("evt-shared"))
+    other_event, created = other.ingest(_make_event("evt-shared"))
     assert other_event.id != owned.id
+    assert created is True

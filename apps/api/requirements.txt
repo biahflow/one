@@ -1,0 +1,10 @@
+alembic==1.16.1
+anthropic==0.69.0
+celery==5.5.3
+fastapi==0.115.12
+httpx==0.28.1
+psycopg[binary]==3.2.9
+pydantic-settings==2.10.1
+redis==6.2.0
+sqlalchemy==2.0.41
+uvicorn[standard]==0.34.3

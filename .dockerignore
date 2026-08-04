@@ -1,0 +1,16 @@
+node_modules
+dist
+.wrangler
+.git
+.env
+docs
+apps
+tests
+examples
+drizzle
+db
+infra
+README.md
+PRD.md
+AGENTS.md
+npm-debug.log*

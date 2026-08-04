@@ -1,0 +1,9 @@
+# FDD 003 — Conhecimento do projeto
+
+Membro interno associa uma pasta Google Drive por projeto e envia transcrições com link de gravação. Apenas conteúdo da pasta autorizada é sincronizado e indexado.
+
+## Estado
+
+- **Camada de dados (Fase 1) — feito:** modelos e repositórios `TenantScoped` para `document` (metadados: fonte, chave de storage, id externo do Drive), `meeting` (link de gravação, transcrição, resumo) e `decision` (com vínculo opcional à reunião). Migração `0002_knowledge_and_events`; isolamento por organização/projeto coberto por testes de permissão negativa em `apps/api/tests/test_repositories.py`.
+- **Origem e abas (Fase 2) — feito:** documentos e reuniões **vêm do snapshot do Biahflow** (ADR 0006/0008), não de digitação no portal, e aparecem nas abas Documentos e Reuniões e em "Atualizações recentes". Migração `0006_portal_sync_fields` acrescenta `document.link`/`author_label` e `meeting.status`/`has_transcript`. O texto da transcrição não atravessa — o snapshot informa apenas se ela existe. O portal é read-only: gravação e transcrição são registradas no Biahflow. Cobertura em `apps/api/tests/test_biahflow_integration.py` e caso negativo de tenant em `test_dashboard_scope.py`.
+- **Pendente (Fase 4 / ADR 0004):** sync OAuth somente-leitura do Google Drive, armazenamento real no MinIO/S3, extração de texto, chunking, embeddings `pgvector` e recuperação filtrada por tenant.

@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --cov=portal_api --cov-report=term-missing"
+markers = [
+    "integration: tests that require a reachable PostgreSQL database",
+]
+
+[tool.coverage.run]
+branch = true

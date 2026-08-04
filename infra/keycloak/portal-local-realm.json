@@ -1,0 +1,22 @@
+{
+  "realm": "portal-local",
+  "enabled": true,
+  "displayName": "Portal Labs (Local)",
+  "roles": {
+    "realm": [
+      { "name": "internal_admin" },
+      { "name": "internal_member" },
+      { "name": "client_member" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "portal-web",
+      "name": "Portal Labs local web",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"]
+    }
+  ]
+}

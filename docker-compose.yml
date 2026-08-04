@@ -181,6 +181,18 @@ services:
       # nenhum erro aparecer.
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
       VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3}
+      # Conector do Google Drive (ADR 0016). Local aponta para o stub, e os dois
+      # endereços diferentes não são engano: o *navegador* vai ao authorize
+      # (localhost) e o *servidor* vai ao token e à API (rede interna) — a mesma
+      # separação de OIDC_ISSUER/OIDC_JWKS_URL. Em produção só estas mudam.
+      GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID:-portal-drive-local}
+      GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET:-portal-drive-local-only}
+      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:-http://localhost:3000/admin/conhecimento/drive-callback}
+      GOOGLE_OAUTH_AUTHORIZE_URL: ${GOOGLE_OAUTH_AUTHORIZE_URL:-http://localhost:19100/authorize}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-http://drive-stub:19100/token}
+      GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-http://drive-stub:19100/drive/v3}
+      # Protege o refresh token no banco, então não pode viver no banco.
+      DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}
     ports:
       - "8000:8000"
     depends_on:
@@ -215,6 +227,16 @@ services:
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-portal-minio-local-only}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
       VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3}
+      # O worker é quem fala com o Drive de verdade: a API só monta a URL de
+      # consentimento e troca o código (ADR 0016).
+      GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID:-portal-drive-local}
+      GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET:-portal-drive-local-only}
+      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:-http://localhost:3000/admin/conhecimento/drive-callback}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-http://drive-stub:19100/token}
+      GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-http://drive-stub:19100/drive/v3}
+      DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}
+      DRIVE_SYNC_ENABLED: ${DRIVE_SYNC_ENABLED:-true}
+      DRIVE_SYNC_INTERVAL_SECONDS: ${DRIVE_SYNC_INTERVAL_SECONDS:-900}
     depends_on:
       api-seed:
         condition: service_completed_successfully
@@ -222,6 +244,45 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+
+  # O agendador do sync do Drive (ADR 0016). Serviço separado do worker porque o
+  # beat **é singleton**: duas réplicas significam ticks duplicados. A guarda de
+  # sobreposição em `_claim_drive_sync` faz o segundo sync virar no-op, mas contar
+  # com ela no caso normal seria desenhar para o acidente.
+  beat:
+    build:
+      context: ./apps/api
+    command: >
+      celery -A portal_api.worker.celery_app beat --loglevel=INFO
+      --schedule=/tmp/celerybeat-schedule
+    deploy:
+      replicas: 1
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DRIVE_SYNC_ENABLED: ${DRIVE_SYNC_ENABLED:-true}
+      DRIVE_SYNC_INTERVAL_SECONDS: ${DRIVE_SYNC_INTERVAL_SECONDS:-900}
+    depends_on:
+      api-seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Google Drive de mentira, só para a stack local e o e2e (ADR 0016). Mesma
+  # imagem da API — nenhum build novo — e a única forma de provar o conector ponta
+  # a ponta sem credencial do Google.
+  drive-stub:
+    build:
+      context: ./apps/api
+    command: uvicorn portal_api.devtools.drive_stub:app --host 0.0.0.0 --port 19100
+    ports:
+      - "19100:19100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:19100/drive/v3/about')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   web:
     build:

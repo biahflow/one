@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from portal_api import admin as admin_module
 from portal_api.auth import bearer_principal
-from portal_api.keycloak_admin import RealmUser
+from portal_api.keycloak_admin import KeycloakAdminError, RealmUser
 from portal_api.main import app
 from portal_api.models import (
     AuditLog,
@@ -66,9 +66,13 @@ class FakeKeycloak:
     known: dict[str, RealmUser] = field(default_factory=dict)
     created: list[str] = field(default_factory=list)
     invitations: list[str] = field(default_factory=list)
+    unverified: set[str] = field(default_factory=set)
 
     def find_by_email(self, email: str) -> RealmUser | None:
         return self.known.get(email)
+
+    def unverified_emails(self) -> set[str]:
+        return set(self.unverified)
 
     def create_user(self, email: str, full_name: str) -> RealmUser:
         self.created.append(email)
@@ -76,6 +80,7 @@ class FakeKeycloak:
             subject=f"sub-realm-{uuid.uuid4().hex[:10]}", email=email, email_verified=False
         )
         self.known[email] = user
+        self.unverified.add(email)
         return user
 
     def send_invitation(self, subject: str) -> None:
@@ -248,18 +253,41 @@ def test_revoking_a_membership_from_another_project_is_not_found(
 # --- listagem --------------------------------------------------------------
 
 
-def test_listing_shows_the_projects_members_and_who_already_entered(
-    world, authenticated
+def test_listing_shows_the_projects_members_and_who_is_still_pending(
+    world, authenticated, keycloak
 ) -> None:
+    """"Convite pendente" é o e-mail ainda não confirmado no realm — o único
+    sinal que distingue "convidei" de "entrou"."""
     acme = world["acme"]
+    keycloak.unverified.add(acme.client_actor.email)
     authenticated(acme.admin)
 
     body = client.get(f"/api/v1/admin/projects/{acme.project_id}/members").json()
 
-    emails = {member["email"] for member in body}
-    assert emails == {acme.admin.email, acme.client_actor.email}
-    assert all(member["active"] for member in body), "todos já têm `sub` gravado"
-    assert world["globex"].client_actor.email not in emails
+    by_email = {member["email"]: member for member in body}
+    assert set(by_email) == {acme.admin.email, acme.client_actor.email}
+    assert by_email[acme.admin.email]["active"] is True
+    assert by_email[acme.client_actor.email]["active"] is False
+    assert world["globex"].client_actor.email not in by_email
+
+
+def test_listing_survives_the_identity_provider_being_down(
+    world, authenticated, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saber quem já entrou é conveniência; a lista de acesso não pode sumir junto."""
+    acme = world["acme"]
+
+    class Broken(FakeKeycloak):
+        def unverified_emails(self) -> set[str]:
+            raise KeycloakAdminError("keycloak down")
+
+    monkeypatch.setattr(admin_module, "KeycloakAdmin", lambda _settings: Broken())
+    authenticated(acme.admin)
+
+    response = client.get(f"/api/v1/admin/projects/{acme.project_id}/members")
+
+    assert response.status_code == 200
+    assert all(member["active"] for member in response.json())
 
 
 # --- convite ---------------------------------------------------------------

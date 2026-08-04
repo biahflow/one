@@ -178,6 +178,7 @@ function toUser(me: ApiMe): PortalUser {
     email: me.email,
     role: ROLE_LABELS[role] ?? (me.is_internal ? "Time Portal Labs" : "Cliente"),
     org: me.organization ?? "",
+    isInternal: me.is_internal,
   };
 }
 

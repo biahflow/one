@@ -137,6 +137,28 @@ class KeycloakAdmin:
             email_verified=bool(user.get("emailVerified")),
         )
 
+    def unverified_emails(self) -> set[str]:
+        """E-mails do realm que ainda não foram confirmados.
+
+        Uma chamada só, filtrando no próprio Keycloak, em vez de uma por membro:
+        é o que permite a tela dizer "convite pendente" sem virar N requisições.
+        Falha aqui **não** derruba a listagem — quem chama trata como "não sei",
+        porque saber quem já entrou é conveniência, não controle de acesso.
+        """
+        response = self._request(
+            "GET",
+            "/users",
+            params={"emailVerified": "false", "briefRepresentation": "true", "max": 500},
+        )
+        if response.status_code >= 400:
+            logger.warning("keycloak.failed", extra={"what": "unverified_emails"})
+            raise KeycloakAdminError("Keycloak user listing failed")
+        return {
+            (user.get("email") or "").lower()
+            for user in response.json()
+            if user.get("email")
+        }
+
     def create_user(self, email: str, full_name: str) -> RealmUser:
         """Cria a conta no realm. O `id` que ela recebe **é** o `sub` do token."""
         first, _, last = full_name.strip().partition(" ")

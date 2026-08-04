@@ -15,6 +15,7 @@ export const DEMO_USER: PortalUser = {
   email: "marina.farias@acme.com.br",
   role: "Cliente",
   org: "Acme Brasil",
+  isInternal: false,
 };
 
 export const DEMO_PROJECTS: ProjectSummary[] = [

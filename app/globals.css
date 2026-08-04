@@ -343,8 +343,9 @@
   .popover-row span { @apply text-[10px] text-slate-400; }
   .popover-row span b { @apply px-0.5 font-normal text-slate-300; }
   .popover-menu { @apply min-w-[210px] p-1.5; }
-  .popover-menu button {
-    @apply flex w-full items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-2.5 text-left text-xs text-slate-600 transition-colors hover:bg-slate-100 hover:text-ink;
+  .popover-menu button,
+  .popover-menu a {
+    @apply flex w-full items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-2.5 text-left text-xs text-slate-600 no-underline transition-colors hover:bg-slate-100 hover:text-ink;
   }
   .popover-user { @apply mb-1 flex items-center gap-2 border-b border-line px-2.5 pt-2.5 pb-3; }
   .popover-user strong { @apply block text-xs; }
@@ -471,6 +472,33 @@
   .state-card h1 { @apply mt-0 mb-2.5 text-xl font-semibold tracking-[-0.02em]; }
   .state-card p { @apply text-[13px] leading-relaxed text-slate-600; }
   .state-card .ai-button { @apply mx-auto mt-5; }
+
+  /* ---------- Administração de acesso ---------- */
+  .admin-shell { @apply mx-auto min-h-screen max-w-[1080px] px-11 pt-9 pb-16; }
+  .admin-head { @apply mb-7; }
+  .admin-back {
+    @apply mb-5 inline-flex items-center gap-1.5 text-xs text-slate-500 no-underline transition-colors hover:text-brand-600;
+  }
+  .admin-head .eyebrow { @apply mb-2.5 text-brand-600; }
+  .admin-head h1 { @apply m-0 text-3xl leading-tight font-semibold tracking-[-0.035em]; }
+  .admin-lead { @apply mt-2 mb-0 text-[13px] leading-relaxed text-muted; }
+  .admin-projects { @apply mb-5 flex flex-wrap gap-2; }
+  .admin-projects a { @apply no-underline; }
+  .admin-note {
+    @apply mb-4 rounded-xl border border-success-600/25 bg-success-50 px-3 py-2.5 text-[12px] text-success-600;
+  }
+  .member-row { @apply flex items-center gap-3 border-b border-line py-3 last:border-b-0; }
+  .member-identity { @apply grid min-w-0 flex-1 gap-0.5; }
+  .member-identity strong { @apply truncate text-[13px]; }
+  .member-identity span { @apply truncate text-[11px] text-muted; }
+  .admin-form { @apply mt-4 flex flex-col; }
+  .admin-form .auth-field { @apply mb-3.5 grid gap-1.5; }
+  .admin-form .auth-field span { @apply text-[11px] font-semibold text-slate-600; }
+  .admin-form .auth-field input,
+  .admin-form .auth-field select {
+    @apply rounded-xl border border-line bg-white px-3 py-2.5 text-[13px] text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  }
+  .admin-submit { @apply mt-1.5 justify-center py-3 text-sm disabled:opacity-60; }
 
   /* ---------- Login ---------- */
   .auth-shell { @apply grid min-h-screen grid-cols-[1.05fr_1fr] bg-canvas; }

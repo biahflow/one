@@ -57,8 +57,9 @@ class MemberOut(BaseModel):
     email: str
     full_name: str
     role: MemberRole
-    #: Já entrou pelo menos uma vez (tem `sub` gravado). Convite pendente é
-    #: `False`, e é a única forma de a tela distinguir os dois estados.
+    #: E-mail já confirmado no realm. `False` é convite pendente — a única forma
+    #: de a tela distinguir "convidei" de "entrou". Na dúvida (provedor de
+    #: identidade fora do ar) vale `True`: é rótulo, não permissão.
     active: bool
 
 
@@ -121,8 +122,16 @@ def _realm_user(admin: KeycloakAdmin, email: str, full_name: str) -> RealmUser:
 
 @router.get("/projects/{project_id}/members", response_model=list[MemberOut])
 def list_members(project_id: uuid.UUID, principal: CurrentPrincipal) -> list[MemberOut]:
+    settings = get_settings()
+
     with get_session(principal, role=DbRole.admin) as session:
         _, project = _authorized(session, principal, project_id)
+
+        try:
+            pending = KeycloakAdmin(settings).unverified_emails()
+        except KeycloakAdminError:
+            # Degrada em vez de derrubar a tela: o rótulo some, a lista fica.
+            pending = set()
 
         rows = session.execute(
             select(Membership, User)
@@ -140,7 +149,7 @@ def list_members(project_id: uuid.UUID, principal: CurrentPrincipal) -> list[Mem
                 email=user.email,
                 full_name=user.full_name,
                 role=membership.role,
-                active=user.external_subject is not None,
+                active=user.email.lower() not in pending,
             )
             for membership, user in rows
         ]
@@ -224,7 +233,7 @@ def invite_member(
             email=user.email,
             full_name=user.full_name,
             role=membership.role,
-            active=user.external_subject is not None and realm_user.email_verified,
+            active=realm_user.email_verified,
         )
 
 

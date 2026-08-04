@@ -78,6 +78,17 @@ no `callbacks.jwt` de `auth.ts`:
 - **Sessão de SSO encerrada no Keycloak** (logout em outra aba, ou `bruteForceProtected` tendo
   bloqueado a conta).
 
+## Sintoma: "HTTPS required" na tela do Keycloak
+
+A tela de login do realm responde 400 com "We are sorry… HTTPS required". É o `sslRequired` do
+realm: no padrão (`external`) o Keycloak exige TLS para quem não chega pelo loopback — e uma
+requisição publicada por porta do Docker chega pelo gateway da rede, não pelo loopback. O realm
+local declara `"sslRequired": "none"` justamente para não depender dessa heurística; se o
+sintoma voltar, confirme que o realm importado é o versionado (o import é ignorado quando o
+realm **já existe** no banco: apague o schema `keycloak`, rode `db-bootstrap` e reinicie).
+
+Em ambiente com TLS, o valor correto é o padrão — não copie `none` para fora do local.
+
 ## Sintoma: Keycloak fora do ar
 
 Login novo para de funcionar; sessões já emitidas continuam válidas até expirar, e a API segue

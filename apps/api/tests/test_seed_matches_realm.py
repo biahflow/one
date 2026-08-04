@@ -42,6 +42,18 @@ def test_realm_users_match_the_seed_one_to_one() -> None:
         assert realm_user["realmRoles"] == [seed_user.role.value]
 
 
+def test_local_realm_is_declared_http_only() -> None:
+    """`sslRequired: none` é deliberado — e só vale para este realm de desenvolvimento.
+
+    A stack local inteira é HTTP (`KC_HOSTNAME: http://localhost:8080`). Sem esta
+    declaração o Keycloak decide por heurística de "requisição local", e quem chega
+    pelo gateway do Docker leva "HTTPS required" — o login quebra num ambiente e
+    funciona em outro. Produção usa TLS (`docs/security.md`); este arquivo não é o
+    realm de produção.
+    """
+    assert _realm()["sslRequired"] == "none"
+
+
 def test_realm_declares_the_three_roles_of_the_enum() -> None:
     realm_roles = {role["name"] for role in _realm()["roles"]["realm"]}
     assert realm_roles == {role.value for role in MemberRole}

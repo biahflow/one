@@ -2,6 +2,7 @@
   "realm": "portal-local",
   "enabled": true,
   "displayName": "Portal Labs (Local)",
+  "sslRequired": "none",
   "bruteForceProtected": true,
   "roles": {
     "realm": [

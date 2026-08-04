@@ -21,24 +21,31 @@ Negação é sempre 404, nunca 403 — a mesma regra do resto da API.
 from __future__ import annotations
 
 import logging
+import mimetypes
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from portal_api import access, agent_auth
+from portal_api import access, agent_auth, storage
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_admin_org, bind_invitee, get_session
 from portal_api.identity import resolve_user
+from portal_api.ingestion import SUPPORTED_MIME_TYPES
 from portal_api.keycloak_admin import KeycloakAdmin, KeycloakAdminError, RealmUser
 from portal_api.models import (
     SCOPE_EVENTS_WRITE,
     AgentApiKey,
     AuditLog,
+    Document,
+    DocumentChunk,
+    DocumentIngestState,
+    DocumentOrigin,
+    DocumentSource,
     MemberRole,
     Membership,
     Project,
@@ -607,3 +614,218 @@ def open_assumption(
             currency=record.currency,
             note=record.note,
         )
+
+
+# --- Conhecimento do projeto (Fase 4, ADR 0014) -------------------------------
+# Mora aqui pela mesma razão das chaves e das premissas: é escrita, roda sob
+# `portal_admin` e é a única porta pela qual um arquivo entra no portal. O
+# cliente não envia documento — ele pergunta, e a resposta cita o que foi
+# indexado.
+
+
+class DocumentOut(BaseModel):
+    document_id: uuid.UUID
+    title: str
+    mime_type: str | None
+    byte_size: int | None
+    #: `pending` | `indexed` | `failed` | `unsupported`. É o que a tela mostra
+    #: para explicar por que um documento ainda não responde no chat.
+    ingest_state: DocumentIngestState
+    ingest_error: str | None
+    chunk_count: int
+    indexed_at: datetime | None
+    created_at: datetime
+
+
+def _as_document_out(record: Document, chunk_count: int) -> DocumentOut:
+    return DocumentOut(
+        document_id=record.id,
+        title=record.title,
+        mime_type=record.mime_type,
+        byte_size=record.byte_size,
+        ingest_state=record.ingest_state,
+        ingest_error=record.ingest_error,
+        chunk_count=chunk_count,
+        indexed_at=record.indexed_at,
+        created_at=record.created_at,
+    )
+
+
+def _resolved_mime(file: UploadFile) -> str:
+    """O tipo do arquivo, conferido no servidor.
+
+    O navegador manda `application/octet-stream` para extensões que ele não
+    conhece (`.md` é o caso comum), então o palpite pelo nome existe — mas só
+    como segunda tentativa, e o resultado ainda precisa passar pela allowlist.
+    """
+    declared = (file.content_type or "").split(";")[0].strip().lower()
+    if declared and declared != "application/octet-stream":
+        return declared
+    name = (file.filename or "").lower()
+    if name.endswith(".md") or name.endswith(".markdown"):
+        return "text/markdown"
+    guessed, _ = mimetypes.guess_type(name)
+    return (guessed or "").lower()
+
+
+@router.get("/projects/{project_id}/documents", response_model=list[DocumentOut])
+def list_documents(project_id: uuid.UUID, principal: CurrentPrincipal) -> list[DocumentOut]:
+    """Os documentos do projeto e o estado do índice de cada um."""
+    with get_session(principal, role=DbRole.admin) as session:
+        _, project = _authorized(session, principal, project_id)
+        records = list(
+            session.execute(
+                select(Document)
+                .where(Document.project_id == project.id)
+                .order_by(Document.created_at.desc())
+            ).scalars()
+        )
+        counts = dict(
+            session.execute(
+                select(DocumentChunk.document_id, func.count(DocumentChunk.id))
+                .where(DocumentChunk.project_id == project.id)
+                .group_by(DocumentChunk.document_id)
+            ).all()
+        )
+        return [_as_document_out(record, counts.get(record.id, 0)) for record in records]
+
+
+@router.post(
+    "/projects/{project_id}/documents",
+    response_model=DocumentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def upload_document(
+    project_id: uuid.UUID,
+    principal: CurrentPrincipal,
+    file: UploadFile = File(...),
+    title: str = Form(default=""),
+) -> DocumentOut:
+    """Recebe o arquivo, guarda o objeto e enfileira a indexação.
+
+    A ordem importa: a linha nasce primeiro (é dela que sai o id que compõe a
+    chave do objeto), o objeto vai em seguida e o commit fecha por último. Assim
+    um storage fora do ar derruba a transação inteira e não deixa um `document`
+    apontando para um arquivo que não existe. O contrário — objeto órfão depois
+    de um commit que falhou — é o erro barato: ocupa espaço e não mente.
+    """
+    settings = get_settings()
+    mime_type = _resolved_mime(file)
+    if mime_type not in SUPPORTED_MIME_TYPES:
+        # 415 e não 404: aqui não há nada a esconder, o chamador já provou que
+        # administra o projeto. O que ele precisa saber é que o formato não entra.
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported media type: {mime_type or 'unknown'}",
+        )
+
+    # Um a mais que o teto: é assim que se sabe que passou sem carregar o resto.
+    data = file.file.read(settings.document_max_bytes + 1)
+    if len(data) > settings.document_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds {settings.document_max_bytes} bytes",
+        )
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Empty file"
+        )
+
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record = Document(
+            organization_id=project.organization_id,
+            project_id=project.id,
+            title=(title.strip() or file.filename or "Documento")[:200],
+            source=DocumentSource.upload,
+            origin=DocumentOrigin.portal,
+            mime_type=mime_type,
+            byte_size=len(data),
+            author_label=actor.full_name,
+            ingest_state=DocumentIngestState.pending,
+        )
+        session.add(record)
+        session.flush()
+
+        key = storage.object_key(
+            project.organization_id, project.id, record.id, file.filename or "", storage.digest(data)
+        )
+        try:
+            storage.put_object(settings, key, data, mime_type)
+        except storage.StorageDisabled as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Document storage is not configured",
+            ) from exc
+        except storage.StorageError as exc:
+            logger.exception("Falha ao gravar o documento no storage")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail="Storage unavailable"
+            ) from exc
+
+        record.storage_key = key
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="document.uploaded",
+            entity_type="document",
+            entity_id=record.id,
+            data={"mime_type": mime_type, "byte_size": len(data)},
+        )
+        response = _as_document_out(record, 0)
+
+    # Fora da transação, como o webhook: o worker vai ler a linha do banco, então
+    # ela precisa estar comitada antes de a task rodar.
+    from portal_api.worker import queue_document_ingestion
+
+    queue_document_ingestion(str(response.document_id))
+    return response
+
+
+@router.delete(
+    "/projects/{project_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    response_class=Response,
+)
+def delete_document(
+    project_id: uuid.UUID, document_id: uuid.UUID, principal: CurrentPrincipal
+) -> None:
+    """Remove documento, índice e arquivo.
+
+    Aqui se apaga de verdade — ao contrário da chave de agente, que é revogada
+    para preservar o rastro. Um documento enviado por engano é conteúdo do
+    cliente no lugar errado, e mantê-lo "revogado" seria manter o problema. Os
+    trechos vão junto por CASCADE; a retenção por organização é da Fase 5.
+    """
+    settings = get_settings()
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record = session.get(Document, document_id)
+        if record is None or record.project_id != project.id:
+            raise NOT_FOUND
+        if record.origin != DocumentOrigin.portal:
+            # Documento espelhado do Biahflow volta no próximo sync; apagá-lo
+            # aqui prometeria uma remoção que o portal não tem como cumprir.
+            raise NOT_FOUND
+
+        storage_key = record.storage_key
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="document.deleted",
+            entity_type="document",
+            entity_id=record.id,
+            data={"mime_type": record.mime_type},
+        )
+        session.delete(record)
+
+    if storage_key:
+        try:
+            storage.delete_object(settings, storage_key)
+        except (storage.StorageDisabled, storage.StorageError):
+            # A linha já se foi e é ela que a tela mostra. Objeto órfão vira
+            # limpeza de retenção, não um erro na cara de quem apagou.
+            logger.warning("Objeto %s não removido do storage", storage_key)

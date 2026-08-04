@@ -23,8 +23,17 @@ from sqlalchemy.orm import Session
 
 from portal_api.db.session import DbRole, get_session
 from portal_api.models import (
+    EMBEDDING_DIMENSIONS,
+    Conversation,
+    ConversationMessage,
+    ConversationRole,
+    Document,
+    DocumentChunk,
+    DocumentOrigin,
+    DocumentSource,
     MemberRole,
     Membership,
+    MessageConfidence,
     Milestone,
     Notification,
     NotificationKind,
@@ -388,6 +397,288 @@ def test_the_app_role_cannot_create_a_notification(
                 "user": tenant_a.user_id,
             },
         )
+
+
+# 3c — o índice dos documentos (Fase 4, ADR 0014) ---------------------------------
+
+
+@pytest.fixture(scope="session")
+def indexed_documents(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    """Um documento indexado por tenant. Escopo de sessão pelo mesmo motivo do
+    ``tenants``: o teardown apaga linhas comitadas de outra conexão."""
+    chunks: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in tenants:
+            document = Document(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                title="Contrato",
+                source=DocumentSource.upload,
+                origin=DocumentOrigin.portal,
+            )
+            session.add(document)
+            session.flush()
+            chunk = DocumentChunk(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                document_id=document.id,
+                ordinal=0,
+                text="O contrato prevê suporte por 12 meses.",
+                location="página 1",
+                char_count=38,
+                embedding=[0.0] * EMBEDDING_DIMENSIONS,
+                embedding_model="offline-hashing-v1-1024",
+                content_hash=f"hash-{tenant.organization_id}",
+            )
+            session.add(chunk)
+            session.flush()
+            chunks[tenant.organization_id] = chunk.id
+        session.commit()
+
+    yield chunks
+
+    with Session(migrated_engine) as session:
+        session.execute(delete(DocumentChunk).where(DocumentChunk.id.in_(chunks.values())))
+        session.commit()
+
+
+def test_another_tenants_document_chunk_is_invisible(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    indexed_documents: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """A recuperação do chat lê por aqui: sem esta policy, uma pergunta bem
+    escolhida devolveria o contrato do vizinho como citação."""
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = {c.id for c in rls_session.execute(select(DocumentChunk)).scalars().all()}
+
+    assert indexed_documents[tenant_a.organization_id] in visible
+    assert indexed_documents[tenant_b.organization_id] not in visible
+
+
+def test_the_app_role_cannot_write_the_index(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Quem escreve o índice é o worker sob ``portal_system``.
+
+    O caminho de requisição só lê conhecimento — se ele pudesse gravar um trecho,
+    poderia gravar a "evidência" que quisesse ver citada.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text(
+                "INSERT INTO document_chunk"
+                " (id, organization_id, project_id, document_id, ordinal, text,"
+                "  location, char_count, content_hash)"
+                " VALUES (gen_random_uuid(), :org, :project, gen_random_uuid(), 0,"
+                "         'forjado', '', 7, 'x')"
+            ),
+            {"org": tenant_a.organization_id, "project": tenant_a.project_id},
+        )
+
+
+def test_the_app_role_cannot_rewrite_an_indexed_excerpt(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    indexed_documents: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text("UPDATE document_chunk SET text = 'adulterado' WHERE id = :id"),
+            {"id": indexed_documents[tenant_a.organization_id]},
+        )
+
+
+# 3d — as conversas do chat (Fase 4, ADR 0015) -----------------------------------
+
+
+@pytest.fixture(scope="session")
+def recorded_conversations(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    """Um turno respondido por tenant, com a citação que ele mostrou.
+
+    Escopo de sessão pelo mesmo motivo do ``tenants`` e do ``indexed_documents``:
+    o teardown apaga linhas comitadas de outra conexão.
+    """
+    answers: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in tenants:
+            conversation = Conversation(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                user_id=tenant.user_id,
+                title="Qual é o status?",
+                last_message_at=datetime.now(timezone.utc),
+            )
+            session.add(conversation)
+            session.flush()
+            answer = ConversationMessage(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                conversation_id=conversation.id,
+                user_id=tenant.user_id,
+                ordinal=0,
+                role=ConversationRole.assistant,
+                text="O projeto está em implementação.",
+                confidence=MessageConfidence.grounded,
+                citations=[
+                    {"evidence_id": "project", "source": "Status do projeto", "location": "40%"}
+                ],
+            )
+            session.add(answer)
+            session.flush()
+            answers[tenant.organization_id] = answer.id
+        session.commit()
+
+    yield answers
+
+    with Session(migrated_engine) as session:
+        session.execute(
+            delete(Conversation).where(
+                Conversation.project_id.in_([t.project_id for t in tenants])
+            )
+        )
+        session.commit()
+
+
+def test_another_tenants_conversation_is_invisible(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    recorded_conversations: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = {m.id for m in rls_session.execute(select(ConversationMessage)).scalars()}
+
+    assert recorded_conversations[tenant_a.organization_id] in visible
+    assert recorded_conversations[tenant_b.organization_id] not in visible
+
+
+def test_a_colleague_in_the_same_project_does_not_see_your_conversation(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    recorded_conversations: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Como a notificação, e por isso mesmo: a linha pertence a uma pessoa.
+
+    O tenant certo, o usuário errado — o predicado de tenant sozinho deixaria o
+    colega ler a conversa inteira do vizinho de projeto.
+    """
+    tenant_a, _ = tenants
+    bind_context(
+        subject=tenant_a.subject,
+        email=tenant_a.email,
+        user_id=uuid.uuid4(),  # colega do mesmo projeto
+        organization_id=tenant_a.organization_id,
+        project_id=tenant_a.project_id,
+    )
+
+    assert rls_session.execute(select(Conversation)).scalars().all() == []
+    assert rls_session.execute(select(ConversationMessage)).scalars().all() == []
+
+
+def test_rating_an_answer_is_allowed_but_rewriting_it_is_not(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    recorded_conversations: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """O grant de coluna é o que separa registrar de reescrever (ADR 0015).
+
+    Sem ele, "achei ruim" seria licença para trocar a resposta e as fontes que
+    ela mostrou — e o histórico deixaria de valer como registro do que o portal
+    de fato respondeu.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+    answer_id = recorded_conversations[tenant_a.organization_id]
+
+    rls_session.execute(
+        text(
+            "UPDATE conversation_message"
+            " SET feedback = 'not_helpful', feedback_at = now() WHERE id = :id"
+        ),
+        {"id": answer_id},
+    )
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text("UPDATE conversation_message SET text = 'adulterado' WHERE id = :id"),
+            {"id": answer_id},
+        )
+
+
+def test_the_app_role_cannot_rewrite_the_citations_it_was_shown(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    recorded_conversations: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """A citação gravada é o registro do que a pessoa viu, não um campo editável."""
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text("UPDATE conversation_message SET citations = '[]'::jsonb WHERE id = :id"),
+            {"id": recorded_conversations[tenant_a.organization_id]},
+        )
+
+
+def test_writing_a_conversation_into_someone_elses_name_is_rejected(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """``portal_app`` insere aqui — é a única tabela em que ele origina o dado.
+
+    O que a policy de INSERT garante é que ele só a origina *para si*: um
+    ``user_id`` de outra pessoa não passa pelo ``WITH CHECK``.
+    """
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="row-level security"):
+        rls_session.execute(
+            text(
+                "INSERT INTO conversation"
+                " (id, organization_id, project_id, user_id, title, last_message_at)"
+                " VALUES (gen_random_uuid(), :org, :project, :other, 'forjada', now())"
+            ),
+            {
+                "org": tenant_a.organization_id,
+                "project": tenant_a.project_id,
+                "other": tenant_b.user_id,
+            },
+        )
+
+
+def test_the_app_role_cannot_delete_a_conversation(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    recorded_conversations: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Apagar por organização é retenção (Fase 5), e não será o caminho de requisição."""
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(text("DELETE FROM conversation"))
 
 
 # 4 — the system path -------------------------------------------------------------

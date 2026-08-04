@@ -20,6 +20,7 @@ import {
   MapPin,
   Menu,
   MessageCircleMore,
+  MessageSquarePlus,
   MoreHorizontal,
   PanelLeftClose,
   Search,
@@ -28,6 +29,8 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  ThumbsDown,
+  ThumbsUp,
   TrendingUp,
   User,
   UsersRound,
@@ -37,7 +40,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   markNotificationsReadAction,
@@ -50,6 +53,11 @@ type ChatMessage = {
   text: string;
   sources?: string[];
   pending?: boolean;
+  // Só existe quando o turno foi gravado pela API (ADR 0015): sem id não há o que
+  // avaliar, e é assim que a saudação e o fallback offline ficam sem polegares —
+  // avaliar uma resposta que não foi registrada não levaria a lugar nenhum.
+  id?: string;
+  feedback?: "helpful" | "not_helpful" | null;
 };
 
 const navItems = [
@@ -219,6 +227,10 @@ export default function DashboardClient({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>(() => greeting(user));
+  // A thread corrente. `null` faz o próximo turno abrir uma nova — é o que o
+  // botão "Nova conversa" faz, sem precisar de rota própria (ADR 0015).
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const historyLoaded = useRef(false);
   // Pendências que a IA abriu nesta sessão: já existem no banco, mas a página é renderizada
   // no servidor, então são espelhadas aqui até o próximo carregamento.
   const [aiPendings, setAiPendings] = useState<PendingItemView[]>([]);
@@ -252,6 +264,75 @@ export default function DashboardClient({
     setMessages((current) => [...current, answer]);
   }
 
+  // Hidrata o painel com a conversa que a API guardou (ADR 0015). Roda ao abrir o
+  // chat, e não no carregamento da página, porque a maioria das visitas não abre
+  // o assistente — e o histórico só existe para quem já perguntou algo.
+  useEffect(() => {
+    if (!chatOpen || historyLoaded.current) return;
+    // Ref e não estado: a guarda existe para a busca não repetir, e marcá-la não
+    // é informação que a tela precise renderizar.
+    historyLoaded.current = true;
+    let current = true;
+    (async () => {
+      try {
+        const response = await fetch("/api/chat/history", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!current || !data.conversation_id || !data.messages?.length) return;
+        setConversationId(data.conversation_id);
+        setMessages(
+          data.messages.map((message: {
+            id: string;
+            role: "user" | "assistant";
+            text: string;
+            sources?: string[];
+            pending_created?: boolean;
+            feedback?: "helpful" | "not_helpful" | null;
+          }) => ({
+            id: message.id,
+            role: message.role,
+            text: message.text,
+            sources: message.sources,
+            pending: message.pending_created,
+            feedback: message.feedback ?? null,
+          })),
+        );
+      } catch {
+        // Sem histórico, o painel abre com a saudação — que é o estado inicial.
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [chatOpen]);
+
+  /** Começa do zero: sem id, a API abre outra thread no próximo turno. */
+  function startNewConversation() {
+    setConversationId(null);
+    setMessages(greeting(user));
+  }
+
+  async function rateAnswer(messageId: string, helpful: boolean) {
+    // Otimista, e sem desfazer em caso de erro: o polegar é opinião, não estado
+    // do projeto — insistir num rollback visível custaria mais do que vale.
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? { ...message, feedback: helpful ? "helpful" : "not_helpful" }
+          : message,
+      ),
+    );
+    try {
+      await fetch("/api/chat/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: messageId, helpful }),
+      });
+    } catch {
+      // Silencioso de propósito, pelo mesmo motivo.
+    }
+  }
+
   async function sendQuestion(event?: FormEvent, preset?: string) {
     event?.preventDefault();
     const value = (preset ?? question).trim();
@@ -264,15 +345,18 @@ export default function DashboardClient({
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: value }),
+        body: JSON.stringify({ question: value, conversation_id: conversationId }),
       });
       if (!response.ok) throw new Error("chat unavailable");
       const data = await response.json();
+      setConversationId(data.conversation_id ?? null);
       pushAnswer({
+        id: data.message_id,
         role: "assistant",
         text: data.answer,
         sources: data.sources,
         pending: data.pending_created,
+        feedback: null,
       });
       // Espelha a pendência que a API acabou de criar (mesmo título de `ai/service.py`).
       if (data.pending_created) {
@@ -458,13 +542,33 @@ export default function DashboardClient({
 
       {chatOpen && (
         <section className="chat-panel" aria-label="Assistente de IA do projeto">
-          <header className="chat-header"><div className="ai-avatar"><Sparkles size={16} /></div><div><strong>Assistente do projeto</strong><span><i /> Contexto atualizado</span></div><button className="icon-button" onClick={() => setChatOpen(false)} aria-label="Fechar chat"><X size={19} /></button></header>
+          <header className="chat-header"><div className="ai-avatar"><Sparkles size={16} /></div><div><strong>Assistente do projeto</strong><span><i /> Contexto atualizado</span></div><button className="icon-button" onClick={startNewConversation} aria-label="Iniciar nova conversa" title="Nova conversa"><MessageSquarePlus size={19} /></button><button className="icon-button" onClick={() => setChatOpen(false)} aria-label="Fechar chat"><X size={19} /></button></header>
           <div className="chat-messages">
             {messages.map((message, index) => (
-              <div className={`message message--${message.role}`} key={`${message.role}-${index}`}>
+              <div className={`message message--${message.role}`} key={message.id ?? `${message.role}-${index}`}>
                 <p>{message.text}</p>
-                {message.sources && <div className="message-sources">{message.sources.map((source) => <span key={source}><FileText size={12} /> {source}</span>)}</div>}
+                {/* `?.length` e não só `?`: o histórico devolve `[]` para a pergunta
+                    do usuário, e um array vazio ainda é verdadeiro — renderizava uma
+                    faixa de fontes vazia debaixo de cada pergunta. */}
+                {message.sources?.length ? <div className="message-sources">{message.sources.map((source) => <span key={source}><FileText size={12} /> {source}</span>)}</div> : null}
                 {message.pending && <small className="pending-created"><Check size={13} /> Pendência criada para Portal Labs</small>}
+                {/* Só a resposta gravada aceita polegar: sem id não há o que avaliar. */}
+                {message.role === "assistant" && message.id && (
+                  <div className="message-feedback">
+                    <button
+                      className={message.feedback === "helpful" ? "is-active" : undefined}
+                      onClick={() => rateAnswer(message.id!, true)}
+                      aria-pressed={message.feedback === "helpful"}
+                      aria-label="Esta resposta ajudou"
+                    ><ThumbsUp size={13} /></button>
+                    <button
+                      className={message.feedback === "not_helpful" ? "is-active" : undefined}
+                      onClick={() => rateAnswer(message.id!, false)}
+                      aria-pressed={message.feedback === "not_helpful"}
+                      aria-label="Esta resposta não ajudou"
+                    ><ThumbsDown size={13} /></button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

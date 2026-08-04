@@ -36,6 +36,7 @@ async function request<T>(
     if (response.ok) {
       revalidatePath("/admin");
       revalidatePath("/admin/resultados");
+      revalidatePath("/admin/conhecimento");
       const data = response.status === 204 ? null : ((await response.json()) as T);
       return { ok: true, data };
     }
@@ -129,6 +130,65 @@ export async function revokeAgentKey(
   keyId: string,
 ): Promise<ActionResult> {
   return callApi(`/api/v1/admin/projects/${projectId}/keys/${keyId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Conhecimento do projeto (Fase 4, ADR 0014).
+ *
+ * O upload é a única ação que não fala JSON: o arquivo atravessa como multipart,
+ * e por isso ela não passa pelo `request()` acima — quem define o `boundary` do
+ * corpo é o próprio fetch, e fixar `Content-Type` aqui o quebraria.
+ */
+
+const MAX_UPLOAD_MESSAGES: Record<number, string> = {
+  413: "Arquivo grande demais para o portal.",
+  415: "Formato não suportado. Envie PDF, DOCX, TXT, Markdown ou CSV.",
+  422: "O arquivo está vazio.",
+  502: "O storage de documentos não respondeu. Tente de novo.",
+  503: "O storage de documentos não está configurado neste ambiente.",
+};
+
+export async function uploadDocument(
+  projectId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const base = process.env.API_BASE_URL;
+  const authorization = await authorizationHeader();
+  if (!base || !authorization) return { ok: false, error: GENERIC_ERROR };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Escolha um arquivo." };
+  }
+
+  const body = new FormData();
+  body.append("file", file);
+  body.append("title", String(formData.get("title") ?? "").trim());
+
+  try {
+    const response = await fetch(`${base}/api/v1/admin/projects/${projectId}/documents`, {
+      method: "POST",
+      headers: authorization,
+      body,
+      cache: "no-store",
+    });
+    if (response.ok) {
+      revalidatePath("/admin/conhecimento");
+      return { ok: true };
+    }
+    return { ok: false, error: MAX_UPLOAD_MESSAGES[response.status] ?? GENERIC_ERROR };
+  } catch {
+    return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
+export async function deleteDocument(
+  projectId: string,
+  documentId: string,
+): Promise<ActionResult> {
+  return callApi(`/api/v1/admin/projects/${projectId}/documents/${documentId}`, {
     method: "DELETE",
   });
 }

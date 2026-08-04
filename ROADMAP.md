@@ -126,14 +126,47 @@ e o cliente vê o número ao lado da premissa que o produziu.*
 
 ## Fase 4 — Conhecimento e IA contextual
 
-- [ ] Implementar conector Google Drive OAuth somente leitura, uma pasta permitida por projeto e sincronização idempotente.
-- [ ] Armazenar arquivos no MinIO/S3, validar upload, extrair texto e manter metadados de fonte, página e data.
-- [ ] Implementar chunking, embeddings, `pgvector` e recuperação estritamente filtrada por organização/projeto.
-- [ ] Conectar o provedor de IA por adaptador, prompts versionados e saídas estruturadas validadas.
-- [ ] Persistir conversas, citações, feedback e pendências geradas por lacuna de contexto.
-- [ ] Criar dataset de avaliação e bloquear regressão em citações, isolamento, lacunas e prompt injection.
+- [ ] Implementar conector Google Drive OAuth somente leitura, uma pasta permitida por projeto e
+      sincronização idempotente. *Deliberadamente depois do índice: o conector é uma forma de
+      **encher** o índice, e fazê-lo primeiro faria a primeira prova de que o chat cita documento
+      depender de credencial de um provedor externo que o ambiente local não tem (ADR 0014).*
+- [x] Armazenar arquivos no MinIO/S3, validar upload, extrair texto e manter metadados de fonte,
+      página e data. *(`portal_api/storage.py` fala S3 — MinIO local, S3 em produção — e a chave do
+      objeto carrega o tenant inteiro. A porta de entrada é `/admin/conhecimento`, sob
+      `portal_admin`, ao lado das chaves e premissas: o cliente pergunta, não envia. `document`
+      ganhou `origin`, senão o sync do Biahflow apagaria todo arquivo enviado no snapshot seguinte
+      — a mesma coluna que `pending_item` ganhou na Fase 2, pelo mesmo motivo. ADR 0014, FDD 009.)*
+- [x] Implementar chunking, embeddings, `pgvector` e recuperação estritamente filtrada por
+      organização/projeto. *(O trecho **nunca cruza a virada de página**: é o que faz "página 3" na
+      citação ser verdade e não estimativa. Quem escreve o índice é o worker sob `portal_system` —
+      `portal_app` fica SELECT-only em `document_chunk`, porque um caminho de requisição que pode
+      gravar trecho pode gravar a "evidência" que quer ver citada. Índice HNSW por distância de
+      cosseno, com corte que permite à recuperação dizer "não há evidência".)*
+- [x] Conectar o provedor de IA por adaptador, prompts versionados e saídas estruturadas validadas.
+      *(O respondedor veio na Fase 3, ADR 0007; a Fase 4 acrescentou o adapter de **embeddings** na
+      mesma forma — Voyage com chave, projeção determinística por hashing sem ela, na mesma
+      dimensão da coluna. O corte de distância pertence ao adapter e não à recuperação: são dois
+      espaços vetoriais diferentes, e um número só serviria mal aos dois.)*
+- [x] Persistir conversas, citações, feedback e pendências geradas por lacuna de contexto. *(A
+      conversa deixou o `useState` do navegador: o turno guarda pergunta, resposta, `confidence`, a
+      pendência que a lacuna abriu e as citações **como foram exibidas**. `portal_app` ganha INSERT
+      pela primeira vez numa tabela que ele *origina* — e o que impede alguém de plantar uma frase e
+      vê-la citada depois não é privilégio de banco, é `conversation_message` não ser fonte de
+      recuperação, com um eval que executa o ataque. O feedback é GRANT de coluna, como o `read_at`
+      da notificação: avalia-se a resposta, não se reescreve. Falta a tela que lê esse sinal — sem
+      dado acumulado ela mostraria zero. ADR 0015, FDD 002.)*
+- [x] Criar dataset de avaliação e bloquear regressão em citações, isolamento, lacunas e prompt
+      injection. *(`docs/ai/eval-dataset.md` deixou de ser um parágrafo e virou a lista dos casos
+      que `test_chat_ai.py` executa — agora incluindo página correta na citação, documento de outro
+      projeto e prompt injection dentro do trecho. Roda determinístico em CI, sem chave nenhuma.)*
 
-**Aceite:** perguntas sobre produção, decisões financeiras e pendências retornam fontes corretas; falta de evidência cria uma pendência, sem resposta inventada.
+**Aceite:** perguntas sobre produção, decisões financeiras e pendências retornam fontes corretas;
+falta de evidência cria uma pendência, sem resposta inventada. *Atendido para o que foi indexado:
+`tests/e2e/documents.spec.ts` sobe um arquivo com um termo inédito pela tela de administração,
+espera a indexação e vê o cliente receber a citação daquele documento; `tests/e2e/chat.spec.ts`
+recarrega a página e encontra a mesma resposta com a mesma citação, que é como se prova que ela
+existe fora do navegador. O que ainda não entra no índice é o conteúdo do Drive, que depende do
+conector acima — o único item aberto da fase.*
 
 ## Fase 5 — Segurança e produção
 

@@ -78,8 +78,12 @@ def get_engine(role: DbRole = DbRole.app) -> Engine:
         pool_pre_ping=True,
         future=True,
         # Pin every connection to the portal schema so unqualified DDL and
-        # reflection both target it (see portal_api.db.base).
-        connect_args={"options": f"-csearch_path={SCHEMA}"},
+        # reflection both target it (see portal_api.db.base). ``public`` vem
+        # **depois**, e só por causa do tipo `vector`: a extensão do pgvector é
+        # criada lá pelo bootstrap, e sem isso `VECTOR(1024)` não resolve. Como
+        # `portal` continua sendo o primeiro, tabela nova sem qualificação segue
+        # nascendo nele e a reflexão continua enxergando só ele.
+        connect_args={"options": f"-csearch_path={SCHEMA},public"},
     )
 
 

@@ -25,6 +25,7 @@ from portal_api.models import (
     DigitalEmployee,
     DigitalEmployeeStatus,
     Document,
+    DocumentOrigin,
     DocumentSource,
     Meeting,
     MemberRole,
@@ -251,8 +252,17 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             )
         )
 
-    # Documentos: metadados apenas (o arquivo continua no Drive/Biahflow até a Fase 4).
-    session.execute(delete(Document).where(Document.project_id == project.id))
+    # Documentos: metadados apenas — o arquivo do Biahflow continua no Drive. Só
+    # os espelhados de lá são substituídos; os de origem `portal` (enviados na
+    # tela de administração e indexados, ADR 0014) sobrevivem ao sync, pelo mesmo
+    # motivo das pendências abaixo. Sem esta distinção, todo arquivo enviado
+    # morreria — junto do índice dele — no próximo webhook.
+    session.execute(
+        delete(Document).where(
+            Document.project_id == project.id,
+            Document.origin == DocumentOrigin.biahflow,
+        )
+    )
     for document in snapshot.get("documents", []):
         link = document.get("link") or None
         session.add(
@@ -261,6 +271,7 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
                 project_id=project.id,
                 title=document["name"],
                 source=DocumentSource.drive if link else DocumentSource.upload,
+                origin=DocumentOrigin.biahflow,
                 external_id=str(document["id"]),
                 link=link,
                 author_label=document.get("author") or None,

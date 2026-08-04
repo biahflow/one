@@ -41,6 +41,11 @@ def _norm(text: str) -> str:
     return stripped.lower()
 
 
+def _query_tokens(q: str) -> set[str]:
+    """Termos com sinal na pergunta — os curtos aparecem em qualquer frase."""
+    return {tok for tok in re.findall(r"\w+", q) if len(tok) >= 4}
+
+
 class Responder(Protocol):
     def answer(self, evidence: list[Evidence], question: str) -> ResponderResult: ...
 
@@ -62,19 +67,41 @@ class OfflineResponder:
         def by(pred) -> list[Evidence]:  # type: ignore[no-untyped-def]
             return [item for item in evidence if pred(item)]
 
+        # O trecho de documento entra em todos os ramos (ADR 0014): a recuperação
+        # por similaridade já filtrou por relevância antes de chegar aqui, então
+        # descartá-lo por não ser marco nem pendência seria jogar fora a única
+        # evidência que responde a pergunta. Os ramos abaixo continuam mandando
+        # em *qual* evidência estruturada é pertinente.
+        documents = self._matching_documents(evidence, q)
+
         # Priority-ordered, gated topics: the most specific intent wins and only matches its
         # own evidence — never falling back to an unrelated fact.
         if any(kw in q for kw in _PRODUCTION_KW):
-            return by(lambda e: "produc" in _norm(f"{e.source} {e.text}"))
+            return by(lambda e: "produc" in _norm(f"{e.source} {e.text}")) + documents
         if any(kw in q for kw in _PENDING_KW):
-            return by(lambda e: e.id.startswith("pending"))
+            return by(lambda e: e.id.startswith("pending")) + documents
         if any(kw in q for kw in _SCHEDULE_KW):
-            return by(lambda e: e.id.startswith("milestone"))
+            return by(lambda e: e.id.startswith("milestone")) + documents
         if any(kw in q for kw in _STATUS_KW):
-            return by(lambda e: e.id == "project")
+            return by(lambda e: e.id == "project") + documents
         # Generic fallback: direct token overlap with the evidence.
-        tokens = {tok for tok in re.findall(r"\w+", q) if len(tok) >= 4}
+        tokens = _query_tokens(q)
         return by(lambda e: any(tok in _norm(f"{e.source} {e.text}") for tok in tokens))
+
+    def _matching_documents(self, evidence: list[Evidence], q: str) -> list[Evidence]:
+        """Trechos que compartilham ao menos um termo da pergunta.
+
+        A segunda peneira existe porque o corte de distância é generoso por
+        desenho: um trecho que veio junto do relevante, mas não fala do assunto,
+        viraria citação de enfeite embaixo de uma resposta correta.
+        """
+        tokens = _query_tokens(q)
+        return [
+            item
+            for item in evidence
+            if item.id.startswith("chunk-")
+            and any(tok in _norm(item.text) for tok in tokens)
+        ]
 
 
 class AnthropicResponder:

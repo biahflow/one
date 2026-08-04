@@ -397,6 +397,29 @@ def test_notifications_require_a_project(world: World, authenticated) -> None:
     assert client.post("/api/v1/me/notifications/read", json={}).status_code == 404
 
 
+def test_conversations_require_a_project(world: World, authenticated) -> None:
+    """Sem membership não há projeto, e sem projeto não há conversa — 404 (ADR 0015).
+
+    Vale para o feedback também: ele resolve o projeto antes de olhar a mensagem,
+    então quem não pertence a lugar nenhum não descobre nem que o id existe.
+    """
+    stranger = Actor(
+        subject=f"sub-mudo-{uuid.uuid4().hex[:8]}",
+        email=f"mudo-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="Sem Projeto",
+    )
+    authenticated(stranger)
+
+    assert client.get("/api/v1/me/conversations/latest").status_code == 404
+    assert (
+        client.post(
+            f"/api/v1/me/conversations/messages/{uuid.uuid4()}/feedback",
+            json={"helpful": True},
+        ).status_code
+        == 404
+    )
+
+
 def test_a_client_only_sees_and_reads_their_own_notifications(
     world: World, authenticated, migrated_engine: Engine
 ) -> None:

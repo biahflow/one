@@ -32,6 +32,7 @@ services:
            -v app_password=${POSTGRES_APP_PASSWORD:-portal_app_local_only}
            -v system_password=${POSTGRES_SYSTEM_PASSWORD:-portal_system_local_only}
            -v migrator_password=${POSTGRES_MIGRATOR_PASSWORD:-portal_migrator_local_only}
+           -v admin_password=${POSTGRES_ADMIN_PASSWORD:-portal_admin_local_only}
            -f /bootstrap/roles.sql
     depends_on:
       postgres:
@@ -141,6 +142,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
       # Caminho de sistema: webhook e seed, que criam o tenant.
       DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+      # Caminho de administração: o único que escreve `membership` (ADR 0011).
+      DATABASE_ADMIN_URL: ${DATABASE_ADMIN_URL:-postgresql+psycopg://portal_admin:portal_admin_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}

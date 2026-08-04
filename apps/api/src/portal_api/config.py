@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     database_migration_url: str = (
         "postgresql+psycopg://portal_migrator:portal_migrator_local_only@localhost:5432/portal"
     )
+    # Caminho de administração de acesso (ADR 0011): o único papel com escrita em
+    # `membership`. Separado do `database_url` justamente para que o caminho de
+    # requisição não carregue esse privilégio.
+    database_admin_url: str = (
+        "postgresql+psycopg://portal_admin:portal_admin_local_only@localhost:5432/portal"
+    )
     redis_url: str = "redis://localhost:6379/0"
     demo_mode: bool = False
     web_origin: str = "http://localhost:3000"

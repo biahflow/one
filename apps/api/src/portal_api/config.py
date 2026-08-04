@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     oidc_jwks_cache_seconds: int = 300
     oidc_leeway_seconds: int = 30
 
+    # Convite de acesso (ADR 0011). O endereço é o interno: é conversa
+    # servidor-a-servidor, a mesma separação do par issuer/JWKS acima.
+    keycloak_internal_url: str = "http://localhost:8080"
+    keycloak_realm: str = "portal-local"
+    keycloak_admin_client_id: str = "portal-admin"
+    keycloak_admin_client_secret: str = ""
+    # Client de login: é o dono do `redirect_uri` para onde o convite volta.
+    keycloak_web_client_id: str = "portal-web"
+    portal_web_url: str = "http://localhost:3000"
+    invitation_lifespan_seconds: int = 86_400
+
     # Integração com o Biahflow (ADR 0006) — fonte da verdade do status.
     biahflow_base_url: str = "http://localhost:19000/api/v1"
     biahflow_read_token: str = ""

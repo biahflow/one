@@ -24,8 +24,13 @@ def _realm() -> dict:
     return json.loads(REALM_PATH.read_text(encoding="utf-8"))
 
 
+def _people() -> list[dict]:
+    """Usuários de verdade — service accounts não têm `sub` nem entram no seed."""
+    return [u for u in _realm()["users"] if "serviceAccountClientId" not in u]
+
+
 def test_realm_users_match_the_seed_one_to_one() -> None:
-    realm_users = {user["id"]: user for user in _realm()["users"]}
+    realm_users = {user["id"]: user for user in _people()}
     seeded = {user.subject: user for user in SEED_USERS}
 
     assert realm_users.keys() == seeded.keys(), "realm e SEED_USERS divergem no `sub`"
@@ -75,6 +80,34 @@ def test_web_client_is_confidential_and_mints_the_api_audience() -> None:
         if mapper["protocolMapper"] == "oidc-audience-mapper"
     }
     assert "portal-api" in audiences
+
+
+def test_invitation_needs_its_own_client_smtp_and_permissions() -> None:
+    """O convite depende de três coisas cuja falta só aparece em produção.
+
+    Sem SMTP o Keycloak aceita o pedido e ninguém recebe nada; sem
+    `manage-users` a criação falha; e o client do convite tem de ser separado do
+    `portal-web`, porque quem autentica usuário não precisa poder criá-lo.
+    """
+    realm = _realm()
+
+    assert realm["smtpServer"]["host"], "sem SMTP o convite é enviado para lugar nenhum"
+
+    clients = {client["clientId"]: client for client in realm["clients"]}
+    admin = clients["portal-admin"]
+    assert admin["serviceAccountsEnabled"] is True
+    assert admin["standardFlowEnabled"] is False, "não é client de login de usuário"
+
+    service_account = next(
+        user
+        for user in realm["users"]
+        if user.get("serviceAccountClientId") == "portal-admin"
+    )
+    assert set(service_account["clientRoles"]["realm-management"]) == {
+        "manage-users",
+        "view-users",
+    }
+    assert "manage-users" not in str(clients["portal-web"]), "o client de login não administra"
 
 
 def test_seed_snapshot_is_loadable_and_shaped_like_a_biahflow_payload() -> None:

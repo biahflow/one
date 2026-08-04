@@ -34,7 +34,10 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+
+import { signOutAction } from "./actions";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -78,7 +81,10 @@ const notifications = [
   { title: "Transcrição pronta", detail: "Comitê de projeto — 28 ago", age: "há 3 dias" },
 ];
 
-type Project = { org: string; focus: string; logo: string; status: string; completion: number };
+/** Quem está logado, projetado de `GET /api/v1/me` — a membership é a autoridade. */
+export type PortalUser = { name: string; initials: string; email: string; role: string; org: string };
+/** Um projeto que o usuário alcança. `current` é o que está sendo exibido. */
+export type ProjectSummary = { id: string; name: string; status: string; current: boolean };
 
 export type OverviewMilestone = { title: string; owner: string; state: string; date: string };
 export type ProjectDocument = { title: string; type: string | null; author: string | null; link: string | null; updated: string };
@@ -113,27 +119,18 @@ export type Overview = {
   results: ProjectResults | null;
 };
 
-const projects: Project[] = [
-  { org: "Acme Brasil", focus: "Automação Financeira", logo: "A", status: "Em implementação", completion: 68 },
-  { org: "Beta Varejo", focus: "Atendimento com IA", logo: "B", status: "Em produção", completion: 100 },
-  { org: "Contoso", focus: "Previsão de Demanda", logo: "C", status: "Descoberta", completion: 24 },
-];
+function firstName(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] ?? fullName;
+}
 
-const currentUser = {
-  name: "Marina Farias",
-  initials: "MF",
-  email: "marina.farias@acme.com.br",
-  role: "Patrocinadora do projeto",
-  org: "Acme Brasil",
-  phone: "+55 11 98888-1234",
-};
-
-const initialMessages: ChatMessage[] = [
-  {
-    role: "assistant",
-    text: "Olá, Marina. Posso encontrar decisões, entregas e resultados deste projeto para você.",
-  },
-];
+function greeting(user: PortalUser): ChatMessage[] {
+  return [
+    {
+      role: "assistant",
+      text: `Olá, ${firstName(user.name)}. Posso encontrar decisões, entregas e resultados deste projeto para você.`,
+    },
+  ];
+}
 
 function answerFor(question: string): ChatMessage {
   const normalized = question.toLocaleLowerCase("pt-BR");
@@ -170,25 +167,35 @@ function answerFor(question: string): ChatMessage {
   };
 }
 
-export default function DashboardClient({ overview }: { overview: Overview }) {
+export default function DashboardClient({
+  overview,
+  user,
+  projects,
+}: {
+  overview: Overview;
+  user: PortalUser;
+  projects: ProjectSummary[];
+}) {
+  const router = useRouter();
   const [activeNav, setActiveNav] = useState("Visão geral");
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => greeting(user));
   // Pendências que a IA abriu nesta sessão: já existem no banco, mas a página é renderizada
   // no servidor, então são espelhadas aqui até o próximo carregamento.
   const [aiPendings, setAiPendings] = useState<PendingItemView[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [menu, setMenu] = useState<null | "search" | "notifications" | "profile" | "profile-side">(null);
   const [notifRead, setNotifRead] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(true);
-  const [activeProject, setActiveProject] = useState<Project>(projects[0]);
+
+  // Não há mais estado de projeto: quem manda é a URL, porque trocar de projeto
+  // significa buscar outro dashboard na API (`/?project=<id>`).
+  const activeProject = projects.find((project) => project.current) ?? projects[0] ?? null;
 
   const toggleMenu = (target: typeof menu) => setMenu((current) => (current === target ? null : target));
   const goTo = (label: string) => { setActiveNav(label); setMenu(null); setMobileNavOpen(false); };
-  const logout = () => { setMenu(null); setLoggedIn(false); };
-  const selectProject = (project: Project) => { setActiveProject(project); setActiveNav("Visão geral"); };
+  const selectProject = (project: ProjectSummary) => router.push(`/?project=${project.id}`);
 
   const suggestedQuestions = useMemo(
     () => [
@@ -269,24 +276,21 @@ export default function DashboardClient({ overview }: { overview: Overview }) {
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
       case "Meu perfil":
-        return <ProfileView onAsk={askAi} project={activeProject} />;
+        return <ProfileView onAsk={askAi} user={user} projectName={overview.project} />;
       case "Configurações":
         return <SettingsView onAsk={askAi} />;
       case "Trocar projeto":
-        return <ProjectsView activeProject={activeProject} onSelect={selectProject} onAsk={askAi} />;
+        return <ProjectsView projects={projects} onSelect={selectProject} onAsk={askAi} />;
       default:
         return (
           <OverviewView
+            user={user}
             onAsk={askAi}
             overview={view}
             onAnalyze={() => sendQuestion(undefined, "Mostre todas as pendências.")}
           />
         );
     }
-  }
-
-  if (!loggedIn) {
-    return <LoginView onEnter={() => setLoggedIn(true)} />;
   }
 
   return (
@@ -305,8 +309,8 @@ export default function DashboardClient({ overview }: { overview: Overview }) {
         </div>
 
         <button className="project-switcher" aria-label="Trocar projeto" onClick={() => goTo("Trocar projeto")}>
-          <span className="project-logo">{activeProject.logo}</span>
-          <span><strong>{activeProject.org}</strong><small>{activeProject.focus}</small></span>
+          <span className="project-logo">{(activeProject?.name ?? user.org).slice(0, 1)}</span>
+          <span><strong>{user.org}</strong><small>{activeProject?.name ?? overview.project}</small></span>
           <ChevronDown size={16} />
         </button>
 
@@ -329,11 +333,11 @@ export default function DashboardClient({ overview }: { overview: Overview }) {
           <button className="nav-item" onClick={() => { setChatOpen(true); setMobileNavOpen(false); }}><HelpCircle size={18} /><span>Central de ajuda</span></button>
           <div className="sidebar-menu">
             <button className="profile-card" onClick={() => toggleMenu("profile-side")} aria-label="Abrir menu do usuário">
-              <span className="avatar avatar--small">{currentUser.initials}</span>
-              <span><strong>{currentUser.name}</strong><small>{currentUser.org}</small></span>
+              <span className="avatar avatar--small">{user.initials}</span>
+              <span><strong>{user.name}</strong><small>{user.org}</small></span>
               <MoreHorizontal size={17} />
             </button>
-            {menu === "profile-side" && <ProfileMenu up onNavigate={goTo} onLogout={logout} />}
+            {menu === "profile-side" && <ProfileMenu up user={user} onNavigate={goTo} />}
           </div>
         </div>
       </aside>
@@ -344,7 +348,7 @@ export default function DashboardClient({ overview }: { overview: Overview }) {
       <section className="content-area">
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Abrir menu"><Menu size={21} /></button>
-          <div className="breadcrumb"><span>{activeProject.org}</span><b>/</b><strong>{activeNav}</strong></div>
+          <div className="breadcrumb"><span>{user.org}</span><b>/</b><strong>{activeNav}</strong></div>
           <div className="topbar-actions">
             <div className="topbar-menu">
               <button className="icon-button" aria-label="Pesquisar" onClick={() => toggleMenu("search")}><Search size={20} /></button>
@@ -367,8 +371,8 @@ export default function DashboardClient({ overview }: { overview: Overview }) {
               )}
             </div>
             <div className="topbar-menu">
-              <button className="avatar avatar-button" aria-label="Abrir menu do usuário" onClick={() => toggleMenu("profile")}>{currentUser.initials}</button>
-              {menu === "profile" && <ProfileMenu onNavigate={goTo} onLogout={logout} />}
+              <button className="avatar avatar-button" aria-label="Abrir menu do usuário" onClick={() => toggleMenu("profile")}>{user.initials}</button>
+              {menu === "profile" && <ProfileMenu user={user} onNavigate={goTo} />}
             </div>
           </div>
         </header>
@@ -498,7 +502,7 @@ function roiValue(roi: Overview["roi"]): { value: string; note: string; positive
   return { value: `${pct >= 0 ? "+" : ""}${pct}%`, note, positive: pct >= 0 };
 }
 
-function OverviewView({ onAsk, onAnalyze, overview }: { onAsk: () => void; onAnalyze: () => void; overview: Overview }) {
+function OverviewView({ onAsk, onAnalyze, overview, user }: { onAsk: () => void; onAnalyze: () => void; overview: Overview; user: PortalUser }) {
   const timeline = overview.milestones;
   const open = openPendings(overview);
   const roi = roiValue(overview.roi);
@@ -509,7 +513,7 @@ function OverviewView({ onAsk, onAnalyze, overview }: { onAsk: () => void; onAna
   ].slice(0, 5);
   return (
     <>
-      <ViewHero eyebrow={overview.project.toLocaleUpperCase("pt-BR")} title="Bom dia, Marina." subtitle="Veja o que está acontecendo no seu projeto." onAsk={onAsk} />
+      <ViewHero eyebrow={overview.project.toLocaleUpperCase("pt-BR")} title={`Bom dia, ${firstName(user.name)}.`} subtitle="Veja o que está acontecendo no seu projeto." onAsk={onAsk} />
 
       <JourneyPanel journey={overview.journey} />
 
@@ -791,14 +795,14 @@ function ResultsView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
   );
 }
 
-function ProfileView({ onAsk, project }: { onAsk: () => void; project: Project }) {
+function ProfileView({ onAsk, user, projectName }: { onAsk: () => void; user: PortalUser; projectName: string }) {
+  // Só o que a API conhece: telefone não existe no modelo e deixou de ser exibido.
   const fields = [
-    { label: "Nome", value: currentUser.name },
-    { label: "E-mail", value: currentUser.email },
-    { label: "Telefone", value: currentUser.phone },
-    { label: "Função", value: currentUser.role },
-    { label: "Organização", value: currentUser.org },
-    { label: "Projeto atual", value: project.focus },
+    { label: "Nome", value: user.name },
+    { label: "E-mail", value: user.email },
+    { label: "Função", value: user.role },
+    { label: "Organização", value: user.org },
+    { label: "Projeto atual", value: projectName },
   ];
   return (
     <>
@@ -806,8 +810,8 @@ function ProfileView({ onAsk, project }: { onAsk: () => void; project: Project }
       <article className="panel">
         <div className="panel-heading"><div><p className="eyebrow">DADOS PESSOAIS</p><h2>Informações da conta</h2></div><button className="details-link">Editar <ArrowUpRight size={15} /></button></div>
         <div className="profile-head">
-          <span className="avatar avatar--lg">{currentUser.initials}</span>
-          <div><strong>{currentUser.name}</strong><span>{currentUser.role} <b>•</b> {currentUser.org}</span></div>
+          <span className="avatar avatar--lg">{user.initials}</span>
+          <div><strong>{user.name}</strong><span>{user.role} <b>•</b> {user.org}</span></div>
         </div>
         <div className="field-list">
           {fields.map((field) => (
@@ -859,65 +863,39 @@ function SettingsView({ onAsk }: { onAsk: () => void }) {
   );
 }
 
-function ProjectsView({ activeProject, onSelect, onAsk }: { activeProject: Project; onSelect: (project: Project) => void; onAsk: () => void }) {
+function ProjectsView({ projects, onSelect, onAsk }: { projects: ProjectSummary[]; onSelect: (project: ProjectSummary) => void; onAsk: () => void }) {
   return (
     <>
       <ViewHero eyebrow="PROJETOS" title="Trocar projeto" subtitle="Escolha qual projeto você quer acompanhar." onAsk={onAsk} />
+      {projects.length === 0 && <p className="empty-state">Nenhum projeto vinculado à sua conta ainda.</p>}
       <section className="card-grid" aria-label="Lista de projetos">
-        {projects.map((project) => {
-          const current = project.org === activeProject.org;
-          return (
-            <button className={`panel project-card ${current ? "project-card--active" : ""}`} key={project.org} onClick={() => onSelect(project)}>
-              <div className="project-card-head">
-                <span className="project-logo project-logo--lg">{project.logo}</span>
-                {current && <span className="state state--1">Atual</span>}
-              </div>
-              <strong>{project.org}</strong>
-              <span className="project-focus">{project.focus}</span>
-              <div className="project-meta"><span>{project.status}</span><b>•</b><span>{project.completion}% concluído</span></div>
-            </button>
-          );
-        })}
+        {projects.map((project) => (
+          <button
+            className={`panel project-card ${project.current ? "project-card--active" : ""}`}
+            key={project.id}
+            onClick={() => onSelect(project)}
+          >
+            <div className="project-card-head">
+              <span className="project-logo project-logo--lg">{project.name.slice(0, 1)}</span>
+              {project.current && <span className="state state--1">Atual</span>}
+            </div>
+            <strong>{project.name}</strong>
+            <div className="project-meta"><span>{project.status}</span></div>
+          </button>
+        ))}
       </section>
     </>
   );
 }
 
-function LoginView({ onEnter }: { onEnter: () => void }) {
-  return (
-    <main className="auth-shell">
-      <aside className="auth-brand">
-        <div className="brand-row auth-brand-row"><div className="brand-mark"><Sparkles size={17} /></div><span>portal<span>labs</span></span></div>
-        <div className="auth-brand-copy">
-          <h1>Acompanhe seus projetos de IA em um só lugar.</h1>
-          <p>Status, resultados, decisões e um assistente que responde só com evidências do seu projeto.</p>
-        </div>
-        <p className="auth-brand-foot">Portal do Cliente</p>
-      </aside>
-      <section className="auth-form-wrap">
-        <form className="auth-form" onSubmit={(event) => { event.preventDefault(); onEnter(); }}>
-          <p className="eyebrow">BEM-VINDO DE VOLTA</p>
-          <h2>Entrar na sua conta</h2>
-          <label className="auth-field"><span>E-mail</span><input type="email" defaultValue={currentUser.email} placeholder="voce@empresa.com" aria-label="E-mail" /></label>
-          <label className="auth-field"><span>Senha</span><input type="password" defaultValue="demo1234" placeholder="Sua senha" aria-label="Senha" /></label>
-          <button type="submit" className="ai-button auth-submit">Entrar</button>
-          <div className="auth-divider"><span>ou</span></div>
-          <button type="button" className="auth-sso" onClick={onEnter}><Building2 size={16} /> Entrar com SSO da empresa</button>
-          <p className="auth-hint">Ambiente de demonstração — qualquer envio leva ao portal.</p>
-        </form>
-      </section>
-    </main>
-  );
-}
-
-function ProfileMenu({ up, onNavigate, onLogout }: { up?: boolean; onNavigate: (label: string) => void; onLogout: () => void }) {
+function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser; onNavigate: (label: string) => void }) {
   return (
     <div className={`popover popover-menu ${up ? "popover--up" : ""}`}>
-      <div className="popover-user"><span className="avatar avatar--small">{currentUser.initials}</span><div><strong>{currentUser.name}</strong><small>{currentUser.org}</small></div></div>
+      <div className="popover-user"><span className="avatar avatar--small">{user.initials}</span><div><strong>{user.name}</strong><small>{user.org}</small></div></div>
       <button onClick={() => onNavigate("Meu perfil")}><User size={15} /> Meu perfil</button>
       <button onClick={() => onNavigate("Configurações")}><Settings size={15} /> Configurações</button>
       <button onClick={() => onNavigate("Trocar projeto")}><Building2 size={15} /> Trocar projeto</button>
-      <button onClick={onLogout}><LogOut size={15} /> Sair</button>
+      <form action={signOutAction}><button type="submit"><LogOut size={15} /> Sair</button></form>
     </div>
   );
 }

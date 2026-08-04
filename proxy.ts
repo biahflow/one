@@ -18,6 +18,7 @@ import type { NextAuthRequest } from "next-auth";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
 import { auth } from "@/auth";
+import { demoShellEnabled } from "@/app/lib/demo";
 
 /** Declaring the second parameter is what picks the *middleware* overload of
  *  `auth()`; without it TypeScript resolves the route-handler one and the
@@ -27,6 +28,9 @@ type Gate = (request: NextAuthRequest, event: NextFetchEvent) => Response | unde
 const gate = auth(((request) => {
   const { pathname } = request.nextUrl;
   if (pathname === "/login") return;
+  // A única exceção do portão, e ela exige as duas condições ao mesmo tempo:
+  // nenhuma API configurada e DEMO_MODE ligado de propósito (`app/lib/demo.ts`).
+  if (demoShellEnabled()) return;
   if (request.auth && !request.auth.error) return;
 
   if (pathname.startsWith("/api/")) {

@@ -21,8 +21,9 @@ from sqlalchemy import Engine, delete, select, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
-from portal_api.db.session import DbRole, get_session
+from portal_api.db.session import DbRole, bind_admin_org, get_session
 from portal_api.models import (
+    DRIVE_READONLY_SCOPE,
     EMBEDDING_DIMENSIONS,
     Conversation,
     ConversationMessage,
@@ -41,6 +42,7 @@ from portal_api.models import (
     PendingItem,
     PendingState,
     Project,
+    ProjectDriveConnection,
     ProjectStatus,
     User,
 )
@@ -679,6 +681,104 @@ def test_the_app_role_cannot_delete_a_conversation(
 
     with pytest.raises(ProgrammingError, match="permission denied"):
         rls_session.execute(text("DELETE FROM conversation"))
+
+
+# 3e — a conexão do Drive (Fase 4, ADR 0016) -------------------------------------
+
+
+@pytest.fixture(scope="session")
+def drive_connections(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    """Uma pasta conectada por tenant. Escopo de sessão pelo mesmo motivo dos
+    demais: o teardown apaga linhas comitadas de outra conexão."""
+    connections: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in tenants:
+            connection = ProjectDriveConnection(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                folder_id=f"folder-{tenant.organization_id}",
+                folder_name="Contratos",
+                google_account_email="interno@portallabs.local",
+                refresh_token_sealed="v1.deadbeef.bm9uY2U.Y2lwaGVy",
+                granted_scope=DRIVE_READONLY_SCOPE,
+            )
+            session.add(connection)
+            session.flush()
+            connections[tenant.organization_id] = connection.id
+        session.commit()
+
+    yield connections
+
+    with Session(migrated_engine) as session:
+        session.execute(
+            delete(ProjectDriveConnection).where(
+                ProjectDriveConnection.id.in_(connections.values())
+            )
+        )
+        session.commit()
+
+
+def test_the_app_role_cannot_read_a_drive_connection(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    drive_connections: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Nem a do próprio projeto — mesmo desenho de ``agent_api_key``.
+
+    O papel herda o SELECT do ``ALTER DEFAULT PRIVILEGES``, mas nenhuma policy é
+    ``TO portal_app``, então a leitura volta vazia. É a diferença entre "você não
+    tem permissão" e "a regra não é sobre você", e é o que guarda o refresh token
+    do caminho de requisição: o cliente pergunta ao chat, nunca lê a credencial
+    que abasteceu o índice.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = rls_session.execute(select(ProjectDriveConnection)).scalars().all()
+
+    assert visible == []
+
+
+def test_the_app_role_cannot_write_a_drive_connection(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Sem GRANT: quem escreve a conexão é ``portal_admin``, e só pela tela."""
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text(
+                "INSERT INTO project_drive_connection"
+                " (id, organization_id, project_id, folder_id, enabled, sync_state)"
+                " VALUES (gen_random_uuid(), :org, :project, 'forjada', true, 'idle')"
+            ),
+            {"org": tenant_a.organization_id, "project": tenant_a.project_id},
+        )
+
+
+def test_another_tenants_drive_connection_is_invisible_to_the_admin(
+    tenants: tuple[Tenant, Tenant],
+    drive_connections: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """A GUC de terceiro estágio recorta a administração por organização.
+
+    Sem isto, um ``internal_admin`` de uma organização enxergaria a pasta — e o
+    endereço da pasta — de outra.
+    """
+    tenant_a, tenant_b = tenants
+
+    with get_session(role=DbRole.admin) as session:
+        bind_admin_org(session, tenant_a.organization_id)
+        visible = {
+            c.id for c in session.execute(select(ProjectDriveConnection)).scalars().all()
+        }
+
+    assert drive_connections[tenant_a.organization_id] in visible
+    assert drive_connections[tenant_b.organization_id] not in visible
 
 
 # 4 — the system path -------------------------------------------------------------

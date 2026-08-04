@@ -20,8 +20,10 @@ Negação é sempre 404, nunca 403 — a mesma regra do resto da API.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import mimetypes
+import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -30,12 +32,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from portal_api import access, agent_auth, storage
+from portal_api import access, agent_auth, crypto, storage
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_admin_org, bind_invitee, get_session
 from portal_api.identity import resolve_user
 from portal_api.ingestion import SUPPORTED_MIME_TYPES
+from portal_api.integrations import google_drive
 from portal_api.keycloak_admin import KeycloakAdmin, KeycloakAdminError, RealmUser
 from portal_api.models import (
     SCOPE_EVENTS_WRITE,
@@ -46,9 +49,11 @@ from portal_api.models import (
     DocumentIngestState,
     DocumentOrigin,
     DocumentSource,
+    DriveSyncState,
     MemberRole,
     Membership,
     Project,
+    ProjectDriveConnection,
     ProjectFinancialAssumption,
     User,
 )
@@ -807,7 +812,9 @@ def delete_document(
             raise NOT_FOUND
         if record.origin != DocumentOrigin.portal:
             # Documento espelhado do Biahflow volta no próximo sync; apagá-lo
-            # aqui prometeria uma remoção que o portal não tem como cumprir.
+            # aqui prometeria uma remoção que o portal não tem como cumprir. Vale
+            # igual para o que veio do Drive (ADR 0016): a forma de removê-lo é
+            # tirá-lo da pasta, e aí o sync o remove daqui.
             raise NOT_FOUND
 
         storage_key = record.storage_key
@@ -829,3 +836,469 @@ def delete_document(
             # A linha já se foi e é ela que a tela mostra. Objeto órfão vira
             # limpeza de retenção, não um erro na cara de quem apagou.
             logger.warning("Objeto %s não removido do storage", storage_key)
+
+
+# --- Conector do Google Drive (Fase 4, ADR 0016) -------------------------------
+# Mesma vizinhança e mesma razão do bloco acima: é escrita, roda sob
+# `portal_admin` e continua sendo a administração que decide o que o assistente
+# enxerga. O que muda é a credencial — pela primeira vez o portal guarda um
+# segredo de terceiro que precisa voltar em claro (`crypto.py`).
+#
+# O segredo **nunca** sai daqui. `DriveConnectionOut` não carrega o refresh token
+# nem nada derivado dele, e é diferente da chave de agente de propósito: aquela
+# atravessa uma vez porque quem a usa é o cliente; esta só é usada pelo servidor.
+
+
+class DriveConnectionOut(BaseModel):
+    #: Vai na resposta porque o callback do OAuth não sabe para onde voltar: ele
+    #: chega só com `code` e `state`, e o projeto sai da linha achada pelo state.
+    project_id: uuid.UUID | None
+    connected: bool
+    folder_id: str | None
+    folder_name: str | None
+    google_account_email: str | None
+    enabled: bool
+    sync_state: DriveSyncState | None
+    last_sync_at: datetime | None
+    last_sync_error: str | None
+    last_sync_stats: dict[str, object] | None
+    document_count: int
+
+
+class DriveFolderIn(BaseModel):
+    folder_id: str = Field(min_length=1, max_length=255)
+
+
+class DriveFolderOut(BaseModel):
+    id: str
+    name: str
+
+
+class DriveAuthorizeOut(BaseModel):
+    authorize_url: str
+
+
+class DriveCallbackIn(BaseModel):
+    code: str = Field(min_length=1, max_length=2048)
+    state: str = Field(min_length=1, max_length=512)
+
+
+def _disconnected() -> DriveConnectionOut:
+    return DriveConnectionOut(
+        project_id=None,
+        connected=False,
+        folder_id=None,
+        folder_name=None,
+        google_account_email=None,
+        enabled=False,
+        sync_state=None,
+        last_sync_at=None,
+        last_sync_error=None,
+        last_sync_stats=None,
+        document_count=0,
+    )
+
+
+def _as_drive_out(record: ProjectDriveConnection, documents: int) -> DriveConnectionOut:
+    return DriveConnectionOut(
+        project_id=record.project_id,
+        connected=record.refresh_token_sealed is not None,
+        folder_id=record.folder_id,
+        folder_name=record.folder_name,
+        google_account_email=record.google_account_email,
+        enabled=record.enabled,
+        sync_state=record.sync_state,
+        last_sync_at=record.last_sync_at,
+        last_sync_error=record.last_sync_error,
+        last_sync_stats=record.last_sync_stats,
+        document_count=documents,
+    )
+
+
+def _drive_connection(session: Session, project: Project) -> ProjectDriveConnection | None:
+    return session.execute(
+        select(ProjectDriveConnection).where(
+            ProjectDriveConnection.project_id == project.id
+        )
+    ).scalar_one_or_none()
+
+
+def _drive_document_count(session: Session, project: Project) -> int:
+    return int(
+        session.execute(
+            select(func.count(Document.id)).where(
+                Document.project_id == project.id,
+                Document.origin == DocumentOrigin.drive,
+            )
+        ).scalar_one()
+    )
+
+
+def _drive_unavailable(exc: Exception) -> HTTPException:
+    """503 para "não configurado", 502 para "o Google não respondeu".
+
+    Mesma distinção do storage, e ela importa para a tela: uma é problema de
+    ambiente e a outra passa sozinha.
+    """
+    if isinstance(exc, google_drive.DriveDisabled):
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Drive connector is not configured",
+        )
+    if isinstance(exc, google_drive.DriveAuthError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google Drive authorization is no longer valid",
+        )
+    logger.exception("Falha ao falar com o Google Drive")
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY, detail="Google Drive unavailable"
+    )
+
+
+def _drive_access_token(record: ProjectDriveConnection, settings) -> str:
+    if not record.refresh_token_sealed:
+        raise google_drive.DriveAuthError("connection has no refresh token")
+    aad = crypto.aad_for(record.organization_id, record.project_id)
+    refresh_token = crypto.unseal(record.refresh_token_sealed, aad=aad, settings=settings)
+    return google_drive.refresh_access_token(
+        settings, refresh_token, client=google_drive.session_client()
+    )
+
+
+@router.get("/projects/{project_id}/drive", response_model=DriveConnectionOut)
+def get_drive_connection(
+    project_id: uuid.UUID, principal: CurrentPrincipal
+) -> DriveConnectionOut:
+    """O estado da conexão. Responde 200 com `connected: false` quando não há.
+
+    Projeto sem Drive não é 404: a tela precisa desenhar o botão de conectar, e
+    404 aqui a faria confundir "você não administra este projeto" com "ninguém
+    conectou ainda".
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        _, project = _authorized(session, principal, project_id)
+        record = _drive_connection(session, project)
+        if record is None:
+            return _disconnected()
+        return _as_drive_out(record, _drive_document_count(session, project))
+
+
+@router.post(
+    "/projects/{project_id}/drive/authorize-url",
+    response_model=DriveAuthorizeOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def start_drive_authorization(
+    project_id: uuid.UUID, principal: CurrentPrincipal
+) -> DriveAuthorizeOut:
+    """Monta a URL de consentimento e guarda o lastro do `state`.
+
+    O `state` vai em claro para o navegador e **em hash** para o banco, pela mesma
+    razão da chave de agente: o valor em claro não precisa existir aqui para ser
+    conferido depois. Junto dele ficam o prazo e quem pediu — o callback recusa se
+    voltar tarde ou em outra sessão.
+    """
+    settings = get_settings()
+    try:
+        google_drive.ensure_configured(settings)
+        # Falha cedo se a cifra não estiver configurada: conectar sem poder selar
+        # o refresh token deixaria uma conexão que nunca sincroniza.
+        crypto.ensure_configured(settings)
+    except (google_drive.DriveDisabled, crypto.SealedSecretError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Drive connector is not configured",
+        ) from exc
+
+    state = secrets.token_urlsafe(32)
+    verifier = google_drive.generate_code_verifier()
+
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record = _drive_connection(session, project)
+        if record is None:
+            record = ProjectDriveConnection(
+                organization_id=project.organization_id, project_id=project.id
+            )
+            session.add(record)
+        record.oauth_state_hash = _hash_state(state)
+        record.oauth_state_expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=settings.drive_oauth_state_ttl_seconds
+        )
+        record.oauth_code_verifier = verifier
+        record.oauth_requested_by_user_id = actor.id
+        session.flush()
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="drive.authorize_started",
+            entity_type="project_drive_connection",
+            entity_id=record.id,
+            data={},
+        )
+
+    return DriveAuthorizeOut(
+        authorize_url=google_drive.authorize_url(
+            settings, state=state, code_verifier=verifier
+        )
+    )
+
+
+@router.post("/drive/callback", response_model=DriveConnectionOut)
+def finish_drive_authorization(
+    payload: DriveCallbackIn, principal: CurrentPrincipal
+) -> DriveConnectionOut:
+    """Fecha o consentimento: troca o código, sela o refresh token e grava.
+
+    **Sem `project_id` no caminho**, e isso não é economia de rota: o projeto sai
+    da linha encontrada pelo `state`, do mesmo jeito que o tenant da ADR 0013 sai
+    da chave em vez do corpo. Um `project_id` aqui seria um identificador de fora
+    para desconfiar, e não há motivo para aceitá-lo.
+
+    O `state` é consumido **antes** da troca — quem chega em segundo não acha mais
+    nada. Se a troca falhar depois disso, a pessoa reconecta; o contrário deixaria
+    um `state` válido para reapresentar.
+    """
+    settings = get_settings()
+    claimed = _claim_oauth_state(payload.state)
+    if claimed is None:
+        raise NOT_FOUND
+    project_id, verifier, requested_by = claimed
+
+    try:
+        tokens = google_drive.exchange_code(
+            settings, payload.code, verifier, client=google_drive.session_client()
+        )
+    except (google_drive.DriveDisabled, google_drive.DriveError, google_drive.DriveAuthError) as exc:
+        raise _drive_unavailable(exc) from exc
+
+    if not google_drive.scope_is_exactly_readonly(tokens.scope, settings):
+        # Consentiu diferente do que foi pedido. Recusa sem gravar: aceitar "mais
+        # do que pedi" faria do escopo somente-leitura uma intenção, não um controle.
+        logger.warning("drive.scope_refused", extra={"project_id": str(project_id)})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only the read-only Drive scope is accepted",
+        )
+    if not tokens.refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google returned no refresh token; try connecting again",
+        )
+
+    email = None
+    try:
+        email = google_drive.account_email(
+            settings, tokens.access_token, client=google_drive.session_client()
+        )
+    except (google_drive.DriveError, google_drive.DriveAuthError):
+        # Rótulo, não permissão: a conexão vale mesmo sem ele.
+        logger.info("drive.account_email_unavailable")
+
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        if actor.id != requested_by:
+            # O `state` prova que é o mesmo fluxo; isto prova que é a mesma pessoa.
+            raise NOT_FOUND
+        record = _drive_connection(session, project)
+        if record is None:
+            raise NOT_FOUND
+
+        aad = crypto.aad_for(record.organization_id, record.project_id)
+        record.refresh_token_sealed = crypto.seal(
+            tokens.refresh_token, aad=aad, settings=settings
+        )
+        record.granted_scope = tokens.scope
+        record.google_account_email = email
+        record.connected_by_user_id = actor.id
+        record.connected_at = datetime.now(timezone.utc)
+        record.disconnected_at = None
+        record.enabled = True
+        record.sync_state = DriveSyncState.idle
+        record.last_sync_error = None
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="drive.connected",
+            entity_type="project_drive_connection",
+            entity_id=record.id,
+            data={"account": email or ""},
+        )
+        return _as_drive_out(record, _drive_document_count(session, project))
+
+
+@router.get("/projects/{project_id}/drive/folders", response_model=list[DriveFolderOut])
+def list_drive_folders(
+    project_id: uuid.UUID, principal: CurrentPrincipal
+) -> list[DriveFolderOut]:
+    """As pastas da conta conectada, para a pessoa escolher qual autorizar.
+
+    No lugar do Google Picker: ele é script de terceiro na página, e o portal não
+    carrega script externo.
+    """
+    settings = get_settings()
+    with get_session(principal, role=DbRole.admin) as session:
+        _, project = _authorized(session, principal, project_id)
+        record = _drive_connection(session, project)
+        if record is None or record.refresh_token_sealed is None:
+            raise NOT_FOUND
+        try:
+            token = _drive_access_token(record, settings)
+            folders = google_drive.list_folders(
+                settings, token, client=google_drive.session_client()
+            )
+        except crypto.SealedSecretError as exc:
+            raise _drive_unavailable(google_drive.DriveDisabled(str(exc))) from exc
+        except (google_drive.DriveDisabled, google_drive.DriveError, google_drive.DriveAuthError) as exc:
+            raise _drive_unavailable(exc) from exc
+    return [DriveFolderOut(id=folder.id, name=folder.name) for folder in folders]
+
+
+@router.put("/projects/{project_id}/drive/folder", response_model=DriveConnectionOut)
+def set_drive_folder(
+    project_id: uuid.UUID, payload: DriveFolderIn, principal: CurrentPrincipal
+) -> DriveConnectionOut:
+    """Fixa a pasta autorizada, conferindo antes que o id é mesmo de uma pasta.
+
+    Trocar de pasta é ação explícita e auditada: ela é a fronteira de tudo o que o
+    conector faz, e mudá-la em silêncio mudaria o que o assistente enxerga sem
+    deixar rastro.
+    """
+    settings = get_settings()
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record = _drive_connection(session, project)
+        if record is None or record.refresh_token_sealed is None:
+            raise NOT_FOUND
+        try:
+            token = _drive_access_token(record, settings)
+            folder = google_drive.get_folder(
+                settings, token, payload.folder_id, client=google_drive.session_client()
+            )
+        except crypto.SealedSecretError as exc:
+            raise _drive_unavailable(google_drive.DriveDisabled(str(exc))) from exc
+        except (google_drive.DriveDisabled, google_drive.DriveError, google_drive.DriveAuthError) as exc:
+            raise _drive_unavailable(exc) from exc
+
+        record.folder_id = folder.id
+        record.folder_name = folder.name
+        record.enabled = True
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="drive.folder_changed",
+            entity_type="project_drive_connection",
+            entity_id=record.id,
+            data={"folder_id": folder.id},
+        )
+        return _as_drive_out(record, _drive_document_count(session, project))
+
+
+@router.post(
+    "/projects/{project_id}/drive/sync", status_code=status.HTTP_202_ACCEPTED
+)
+def sync_drive_now(project_id: uuid.UUID, principal: CurrentPrincipal) -> dict[str, str]:
+    """Enfileira uma sincronização. 202 porque quem responde é o worker."""
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record = _drive_connection(session, project)
+        if record is None or record.refresh_token_sealed is None or not record.folder_id:
+            raise NOT_FOUND
+        if record.sync_state == DriveSyncState.running:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="A sync is already running"
+            )
+        record.enabled = True
+        record.last_sync_error = None
+        connection_id = record.id
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="drive.sync_requested",
+            entity_type="project_drive_connection",
+            entity_id=record.id,
+            data={},
+        )
+
+    # Fora da transação, como o upload: o worker lê a linha do banco.
+    from portal_api.worker import queue_drive_sync
+
+    queue_drive_sync(str(connection_id))
+    return {"status": "queued"}
+
+
+@router.delete(
+    "/projects/{project_id}/drive",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    response_class=Response,
+)
+def disconnect_drive(project_id: uuid.UUID, principal: CurrentPrincipal) -> None:
+    """Revoga a conexão — e revoga, não apaga.
+
+    O segredo some da linha; a linha fica. É a mesma escolha da chave de agente:
+    ela é o rastro de que este projeto leu aquele Drive, e de quando deixou de ler.
+    Os documentos já indexados permanecem, porque desconectar é parar de trazer
+    novidade, não apagar o que o cliente já tinha.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, project = _authorized(session, principal, project_id)
+        record = _drive_connection(session, project)
+        if record is None:
+            raise NOT_FOUND
+        record.refresh_token_sealed = None
+        record.oauth_state_hash = None
+        record.oauth_state_expires_at = None
+        record.oauth_code_verifier = None
+        record.enabled = False
+        record.disconnected_at = datetime.now(timezone.utc)
+        record.sync_state = DriveSyncState.idle
+        _audit(
+            session,
+            project=project,
+            actor_user_id=actor.id,
+            action="drive.disconnected",
+            entity_type="project_drive_connection",
+            entity_id=record.id,
+            data={},
+        )
+
+
+def _hash_state(state: str) -> str:
+    return hashlib.sha256(state.encode()).hexdigest()
+
+
+def _claim_oauth_state(state: str) -> tuple[uuid.UUID, str, uuid.UUID | None] | None:
+    """Acha a conexão pelo `state`, confere o prazo e **consome** o lastro.
+
+    Roda sob ``portal_system`` porque neste ponto ainda não há organização para
+    ligar — ela sai da linha encontrada, exatamente como o tenant sai da chave em
+    ``agent_auth.authenticate``. A autorização de verdade vem depois, no
+    ``_authorized`` de sempre: o `state` não abre porta nenhuma sozinho.
+    """
+    now = datetime.now(timezone.utc)
+    with get_session(role=DbRole.system) as session:
+        record = session.execute(
+            select(ProjectDriveConnection).where(
+                ProjectDriveConnection.oauth_state_hash == _hash_state(state)
+            )
+        ).scalar_one_or_none()
+        if record is None or record.oauth_state_expires_at is None:
+            return None
+        expires_at = record.oauth_state_expires_at
+        verifier = record.oauth_code_verifier or ""
+        project_id = record.project_id
+        requested_by = record.oauth_requested_by_user_id
+
+        record.oauth_state_hash = None
+        record.oauth_state_expires_at = None
+        record.oauth_code_verifier = None
+
+        if expires_at <= now:
+            return None
+    return project_id, verifier, requested_by

@@ -125,6 +125,53 @@ class Settings(BaseSettings):
     chunk_size_chars: int = 1200
     chunk_overlap_chars: int = 150
 
+    # Conector do Google Drive (Fase 4, ADR 0016). Sem client id/secret o portal
+    # responde 503 nas rotas do conector: aqui não há caminho offline que
+    # signifique alguma coisa — um "Drive determinístico" não seria o Drive de
+    # ninguém —, então a falha é fechada como a do storage, e não degradada como
+    # a do embedder.
+    google_drive_client_id: str = ""
+    google_drive_client_secret: str = ""
+    #: Para onde o Google devolve o navegador depois do consentimento. Fica
+    #: **fora** de `/api/` de propósito: `proxy.ts` responde 401 JSON sob `/api/`
+    #: e só redireciona para `/login` fora dele, e o callback é uma navegação de
+    #: navegador — uma sessão expirada durante o consentimento entregaria JSON no
+    #: lugar da tela de login.
+    google_drive_redirect_uri: str = "http://localhost:3000/admin/conhecimento/drive-callback"
+    #: Escopo único, e somente leitura. O threat model cobra isto explicitamente
+    #: ("OAuth Drive excessivo | escopo readonly e folder allowlist").
+    google_drive_scope: str = "https://www.googleapis.com/auth/drive.readonly"
+    #: As três bases existem separadas para poderem apontar a um stub local, do
+    #: mesmo jeito que `biahflow_base_url` aponta. É o que permite ao e2e provar
+    #: o conector inteiro sem credencial do Google.
+    google_oauth_authorize_url: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    google_oauth_token_url: str = "https://oauth2.googleapis.com/token"
+    google_drive_api_base_url: str = "https://www.googleapis.com/drive/v3"
+    #: Chave AES-256-GCM do `crypto.py`, 32 bytes em base64url. Vazia = nenhuma
+    #: conexão do Drive funciona. Ela protege o refresh token no banco, então não
+    #: pode viver no banco.
+    drive_token_encryption_key: str = ""
+    #: A chave anterior, durante uma rotação. O pepper da ADR 0013 não precisa de
+    #: par porque chave de agente se reemite; um refresh token não — girar sem
+    #: janela de decifra obrigaria cada projeto a refazer o consentimento no
+    #: Google. O sync seguinte re-sela com a atual e a anterior pode sair.
+    drive_token_encryption_key_previous: str = ""
+    #: Desligado por padrão: uma stack local sem credencial não deve acordar a
+    #: cada 15 minutos para falhar contra o Google.
+    drive_sync_enabled: bool = False
+    drive_sync_interval_seconds: int = 900
+    #: A pasta autorizada é uma árvore, não uma lista. Profundidade e teto são o
+    #: que impedem uma pasta compartilhada enorme de virar um sync sem fim — e
+    #: são o limite que o teste de travessia exercita.
+    drive_max_depth: int = 5
+    drive_max_files: int = 500
+    #: Uma sincronização considerada travada depois disto pode ser recomeçada.
+    #: Sem essa janela, um worker morto no meio do sync deixaria a conexão
+    #: parada para sempre atrás da guarda de sobreposição.
+    drive_sync_stale_after_seconds: int = 1800
+    #: Validade do `state` do OAuth entre pedir o consentimento e voltar dele.
+    drive_oauth_state_ttl_seconds: int = 600
+
     # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
     # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.
     # Sem isso, quem segue o `cp .env.example .env` do README não consegue rodar

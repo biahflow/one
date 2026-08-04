@@ -22,6 +22,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -48,10 +49,16 @@ class DocumentOrigin(str, enum.Enum):
     (ADR 0006). Sem esta distinção, um arquivo enviado no portal morreria no
     próximo webhook — o mesmo motivo pelo qual ``PendingItem`` ganhou `origin`
     na Fase 2.
+
+    ``drive`` é um terceiro valor e não um reuso de ``DocumentSource.drive``
+    (ADR 0016): aquele já marca o documento que o Biahflow espelha como metadado
+    e link, sem arquivo nenhum. Os dois falam do Drive e querem dizer coisas
+    opostas — um é "existe lá", o outro é "veio de lá e está indexado aqui".
     """
 
     biahflow = "biahflow"
     portal = "portal"
+    drive = "drive"
 
 
 class DocumentIngestState(str, enum.Enum):
@@ -70,6 +77,23 @@ class DocumentIngestState(str, enum.Enum):
 
 class Document(Base, _ProjectChildMixin, TimestampMixin):
     __tablename__ = "document"
+    __table_args__ = (
+        # Reconciliação idempotente do conector do Drive (ADR 0016): o arquivo do
+        # Drive é encontrado pelo par (projeto, id externo), e o banco garante que
+        # ele não vira duas linhas.
+        #
+        # O predicado tem de ser comparação de enum: um predicado de índice só
+        # aceita função IMMUTABLE, e o cast de enum para texto é STABLE. O texto
+        # aqui tem de ser idêntico ao da migração 0013, senão o `alembic check`
+        # passa a ver deriva.
+        Index(
+            "uq_document_project_id_external_id",
+            "project_id",
+            "external_id",
+            unique=True,
+            postgresql_where=text("origin = 'drive'"),
+        ),
+    )
 
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     source: Mapped[DocumentSource] = mapped_column(

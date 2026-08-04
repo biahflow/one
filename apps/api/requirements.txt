@@ -16,6 +16,11 @@ pydantic-settings==2.10.1
 # [crypto] traz o `cryptography` das assinaturas RS256; o PyJWKClient já cacheia
 # o JWKS e refaz o fetch quando aparece um `kid` desconhecido (ADR 0010).
 pyjwt[crypto]==2.13.0
+# Declarada direta desde o conector do Drive (ADR 0016), embora já chegasse pelo
+# `pyjwt[crypto]`: o `crypto.py` importa `cryptography` pelo próprio nome, e
+# depender de trânsito de outra biblioteca para um módulo de cifra é dívida — o
+# dia em que o PyJWT trocar de backend, a cifra do refresh token some junto.
+cryptography==50.0.0
 # Extração de texto dos documentos indexados (Fase 4, ADR 0014). Ambos são puros
 # em Python: a imagem da API não ganha dependência de sistema por causa disto.
 pypdf==6.14.2

@@ -23,7 +23,10 @@
 7. **E2E: Playwright em Docker Compose** (`tests/e2e/`), o único nível que sobe o Keycloak de
    verdade — porque é o único que prova o que os outros não alcançam: redirect do anônimo,
    code exchange no callback do BFF, dashboard com o nome vindo do token, e o "Sair" que o F5
-   não desfaz. Cliente e equipe interna, esta última entrando pela membership org-wide.
+   não desfaz. Cliente e equipe interna, esta última entrando pela membership org-wide. O
+   `invite.spec.ts` vai além e **lê a caixa do Mailpit pela API** (`:8025/api/v1/search`) para
+   seguir o link do convite, definir a senha e entrar: é o único ponto onde "o e-mail chega"
+   é verificado, e por isso os testes de API podem dublar o Keycloak sem perder nada.
 8. Avaliação de IA: dataset versionado, casos adversariais e rubric de correção/citação.
 
 Cobertura mínima inicial: 80% para código de domínio e componentes críticos. Não use cobertura como substituto de cenários de autorização, segurança ou IA.

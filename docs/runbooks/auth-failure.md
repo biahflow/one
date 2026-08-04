@@ -89,6 +89,24 @@ realm **já existe** no banco: apague o schema `keycloak`, rode `db-bootstrap` e
 
 Em ambiente com TLS, o valor correto é o padrão — não copie `none` para fora do local.
 
+## Sintoma: o convite não chega
+
+O `POST /api/v1/admin/projects/{id}/members` respondeu 201, a pessoa aparece como "convite
+pendente" e nenhum e-mail chegou. Em ordem de probabilidade:
+
+1. **SMTP do realm.** É a causa mais comum e a mais silenciosa: sem `smtpServer`, o Keycloak
+   aceita o `execute-actions-email` e não manda nada. Confira em
+   *Realm settings → Email*, ou no JSON versionado (`infra/keycloak/portal-local-realm.json`).
+   Local, o destino é o Mailpit em `mailpit:1025`, e a caixa fica em `localhost:8025`.
+2. **Service account sem permissão.** 502 na resposta, com `keycloak.failed` no log: o client
+   `portal-admin` precisa de `manage-users` **e** `view-users` do `realm-management`.
+   `test_seed_matches_realm.py` cobra isso no build justamente porque a falta só aparece
+   quando alguém tenta convidar.
+3. **`redirect_uri` recusado.** O link do convite volta para `PORTAL_WEB_URL/login`, que
+   precisa estar nos `redirectUris` do client `portal-web`.
+4. **Link expirado.** `INVITATION_LIFESPAN_SECONDS` (24h por padrão). Reconvidar é idempotente:
+   não cria conta nova nem duplica vínculo, só reenvia.
+
 ## Sintoma: Keycloak fora do ar
 
 Login novo para de funcionar; sessões já emitidas continuam válidas até expirar, e a API segue

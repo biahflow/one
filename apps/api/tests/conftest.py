@@ -92,6 +92,22 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
     yield from _transactional_session(migrated_engine)
 
 
+@pytest.fixture(scope="session")
+def admin_engine(migrated_engine: Engine) -> Engine:
+    """The access-administration credential (ADR 0011).
+
+    Also subject to RLS — what it has that ``portal_app`` does not is the grant
+    to write ``membership`` and a set of policies keyed on the third-stage GUC.
+    """
+    return get_engine(DbRole.admin)
+
+
+@pytest.fixture
+def admin_session(admin_engine: Engine) -> Iterator[Session]:
+    """A ``portal_admin`` session, rolled back after each test."""
+    yield from _transactional_session(admin_engine)
+
+
 @pytest.fixture
 def rls_session(app_engine: Engine) -> Iterator[Session]:
     """A ``portal_app`` session — the one the policies actually apply to.
@@ -129,6 +145,41 @@ def bind_context(rls_session: Session) -> Callable[..., None]:
         }
         for name, value in values.items():
             rls_session.execute(
+                text("SELECT set_config(:name, :value, true)"),
+                {"name": name, "value": value},
+            )
+
+    return _bind
+
+
+@pytest.fixture
+def bind_admin_context(admin_session: Session) -> Callable[..., None]:
+    """Set the GUCs on ``admin_session`` — including the third stage (ADR 0011).
+
+    Same idea as ``bind_context``: any subset, so a test can assert what is
+    visible *before* ``portal.admin_organization_id`` is published, which is the
+    window in which the endpoint verifies the caller's own role.
+    """
+
+    def _bind(
+        *,
+        subject: str | None = None,
+        email: str | None = None,
+        user_id: uuid.UUID | None = None,
+        admin_organization_id: uuid.UUID | None = None,
+        invitee_subject: str | None = None,
+    ) -> None:
+        values = {
+            "portal.subject": subject or "",
+            "portal.email": (email or "").lower(),
+            "portal.user_id": str(user_id) if user_id else "",
+            "portal.admin_organization_id": (
+                str(admin_organization_id) if admin_organization_id else ""
+            ),
+            "portal.invitee_subject": invitee_subject or "",
+        }
+        for name, value in values.items():
+            admin_session.execute(
                 text("SELECT set_config(:name, :value, true)"),
                 {"name": name, "value": value},
             )

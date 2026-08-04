@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from portal_api import access
+from portal_api import access, admin
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
@@ -25,6 +25,9 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+# Administração de acesso (ADR 0011): conjunto coeso, e o único que roda sob o
+# papel `portal_admin`, por isso em módulo próprio.
+app.include_router(admin.router)
 
 
 class AgentEventIn(BaseModel):

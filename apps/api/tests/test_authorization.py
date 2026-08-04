@@ -278,21 +278,59 @@ def test_a_seeded_row_is_claimed_on_first_login(
 # --- roles ----------------------------------------------------------------
 
 
-def test_agent_events_are_closed_to_clients(world: World, authenticated) -> None:
-    """Was anonymous under DEMO_MODE; a membership alone is no longer enough."""
+def _event_body(project_id: uuid.UUID) -> dict:
+    return {
+        "event_id": str(uuid.uuid4()),
+        "project_id": str(project_id),
+        "occurred_at": "2026-08-03T10:00:00Z",
+        "agent_key": "finance-agent",
+        "time_saved_seconds": 120,
+        "avoided_cost_cents": 5000,
+        "run_reference": "run-001",
+    }
+
+
+def test_agent_events_reject_a_human_session(world: World, authenticated) -> None:
+    """A rota é só por chave desde a Fase 3 (ADR 0013).
+
+    Até a Fase 2 um `internal_admin` publicava evento com o próprio Bearer. Um
+    agente não tem sessão de usuário, então o Bearer deixou de valer aqui — e um
+    cliente autenticado, que nunca pôde, continua não podendo.
+    """
     authenticated(world.acme.client)
+
+    response = client.post("/api/v1/agent-events", json=_event_body(world.acme.project_id))
+
+    assert response.status_code == 401
+
+
+def test_a_project_key_publishes_into_its_own_project(world: World, agent_key) -> None:
+    key = agent_key(world.acme)
 
     response = client.post(
         "/api/v1/agent-events",
-        json={
-            "event_id": str(uuid.uuid4()),
-            "project_id": str(world.acme.project_id),
-            "occurred_at": "2026-08-03",
-            "agent_key": "finance-agent",
-            "time_saved_seconds": 120,
-            "avoided_cost_cents": 5000,
-            "run_reference": "run-001",
-        },
+        json=_event_body(world.acme.project_id),
+        headers={"X-Agent-Key": key},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"
+
+
+def test_a_key_cannot_publish_into_another_organizations_project(
+    world: World, agent_key
+) -> None:
+    """A propriedade que os testes de Bearer protegiam, agora provada por chave.
+
+    O corpo pede um projeto; a credencial diz outro. Quem manda é a credencial,
+    e a recusa é 404 — nunca 403 — para não revelar que o projeto existe.
+    """
+    key = agent_key(world.acme)
+
+    response = client.post(
+        "/api/v1/agent-events",
+        json=_event_body(world.globex.project_id),
+        headers={"X-Agent-Key": key},
     )
 
     assert response.status_code == 404
@@ -303,41 +341,9 @@ def test_internal_staff_reach_the_organizations_project(world: World, authentica
     authenticated(world.staff)
 
     dashboard = client.get("/api/v1/me/dashboard")
-    event = client.post(
-        "/api/v1/agent-events",
-        json={
-            "event_id": str(uuid.uuid4()),
-            "project_id": str(world.acme.project_id),
-            "occurred_at": "2026-08-03",
-            "agent_key": "finance-agent",
-            "time_saved_seconds": 120,
-            "avoided_cost_cents": 5000,
-            "run_reference": "run-001",
-        },
-    )
 
     assert dashboard.status_code == 200
     assert dashboard.json()["project"] == world.acme.project_name
-    assert event.status_code == 202
-
-
-def test_staff_cannot_post_events_for_another_organization(world: World, authenticated) -> None:
-    authenticated(world.staff)
-
-    response = client.post(
-        "/api/v1/agent-events",
-        json={
-            "event_id": str(uuid.uuid4()),
-            "project_id": str(world.globex.project_id),
-            "occurred_at": "2026-08-03",
-            "agent_key": "finance-agent",
-            "time_saved_seconds": 120,
-            "avoided_cost_cents": 5000,
-            "run_reference": "run-001",
-        },
-    )
-
-    assert response.status_code == 404
 
 
 # --- the app role's only writes -------------------------------------------

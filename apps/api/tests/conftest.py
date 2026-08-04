@@ -120,6 +120,80 @@ def rls_session(app_engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture
+def agent_pepper(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Configura o pepper do HMAC das chaves de agente (ADR 0013).
+
+    ``hash_key`` levanta sem ele de propósito — falha fechada, para um ambiente
+    mal configurado não abrir a rota de ingestão com hash previsível. Os testes
+    precisam então ligá-lo explicitamente, e o valor é local a cada teste.
+    """
+    from portal_api.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "agent_key_pepper", "pepper-for-tests")
+    return "pepper-for-tests"
+
+
+@pytest.fixture
+def agent_key(
+    migrated_engine: Engine, agent_pepper: str
+) -> Iterator[Callable[..., str]]:
+    """Cria uma chave real de um projeto e devolve a chave **em claro**.
+
+    Grava por uma sessão própria e comitada: a API responde em outra conexão e
+    não enxergaria a transação aberta de um fixture rolled-back — o mesmo motivo
+    pelo qual o ``world`` de ``test_authorization.py`` comita.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import delete
+
+    from portal_api.agent_auth import generate_key, hash_key
+    from portal_api.models import AgentApiKey, AgentEvent, AuditLog
+
+    created: list[uuid.UUID] = []
+    touched: set[uuid.UUID] = set()
+
+    def _create(tenant, *, expires_in_days: int = 30, scopes=None, revoked: bool = False) -> str:
+        key, prefix = generate_key()
+        with Session(migrated_engine) as session:
+            record = AgentApiKey(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                name="test key",
+                key_prefix=prefix,
+                key_hash=hash_key(key),
+                scopes=["events:write"] if scopes is None else scopes,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=expires_in_days),
+                revoked_at=datetime.now(timezone.utc) if revoked else None,
+            )
+            session.add(record)
+            session.commit()
+            created.append(record.id)
+            touched.add(tenant.project_id)
+        return key
+
+    yield _create
+
+    # A ingestão comita — é uma requisição HTTP de verdade, não uma transação do
+    # teste — então o que ela deixou para trás precisa sair aqui, ou um teste
+    # posterior herda eventos e linhas de auditoria que não pediu.
+    with Session(migrated_engine) as session:
+        for project_id in touched:
+            session.execute(delete(AgentEvent).where(AgentEvent.project_id == project_id))
+            session.execute(
+                delete(AuditLog).where(
+                    AuditLog.project_id == project_id,
+                    AuditLog.action == "agent_event.ingested",
+                )
+            )
+        for key_id in created:
+            record = session.get(AgentApiKey, key_id)
+            if record is not None:
+                session.delete(record)
+        session.commit()
+
+
+@pytest.fixture
 def bind_context(rls_session: Session) -> Callable[..., None]:
     """Set the RLS GUCs on ``rls_session``.
 

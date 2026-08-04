@@ -147,9 +147,14 @@ e o cliente vê o número ao lado da premissa que o produziu.*
       mesma forma — Voyage com chave, projeção determinística por hashing sem ela, na mesma
       dimensão da coluna. O corte de distância pertence ao adapter e não à recuperação: são dois
       espaços vetoriais diferentes, e um número só serviria mal aos dois.)*
-- [ ] Persistir conversas, citações, feedback e pendências geradas por lacuna de contexto. *A
-      pendência por lacuna já existe desde a Fase 3; o que falta é o histórico da conversa e o
-      feedback.*
+- [x] Persistir conversas, citações, feedback e pendências geradas por lacuna de contexto. *(A
+      conversa deixou o `useState` do navegador: o turno guarda pergunta, resposta, `confidence`, a
+      pendência que a lacuna abriu e as citações **como foram exibidas**. `portal_app` ganha INSERT
+      pela primeira vez numa tabela que ele *origina* — e o que impede alguém de plantar uma frase e
+      vê-la citada depois não é privilégio de banco, é `conversation_message` não ser fonte de
+      recuperação, com um eval que executa o ataque. O feedback é GRANT de coluna, como o `read_at`
+      da notificação: avalia-se a resposta, não se reescreve. Falta a tela que lê esse sinal — sem
+      dado acumulado ela mostraria zero. ADR 0015, FDD 002.)*
 - [x] Criar dataset de avaliação e bloquear regressão em citações, isolamento, lacunas e prompt
       injection. *(`docs/ai/eval-dataset.md` deixou de ser um parágrafo e virou a lista dos casos
       que `test_chat_ai.py` executa — agora incluindo página correta na citação, documento de outro
@@ -158,8 +163,10 @@ e o cliente vê o número ao lado da premissa que o produziu.*
 **Aceite:** perguntas sobre produção, decisões financeiras e pendências retornam fontes corretas;
 falta de evidência cria uma pendência, sem resposta inventada. *Atendido para o que foi indexado:
 `tests/e2e/documents.spec.ts` sobe um arquivo com um termo inédito pela tela de administração,
-espera a indexação e vê o cliente receber a citação daquele documento. O que ainda não entra no
-índice é o conteúdo do Drive, que depende do conector acima.*
+espera a indexação e vê o cliente receber a citação daquele documento; `tests/e2e/chat.spec.ts`
+recarrega a página e encontra a mesma resposta com a mesma citação, que é como se prova que ela
+existe fora do navegador. O que ainda não entra no índice é o conteúdo do Drive, que depende do
+conector acima — o único item aberto da fase.*
 
 ## Fase 5 — Segurança e produção
 

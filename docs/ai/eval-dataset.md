@@ -25,3 +25,14 @@ chave, sem rede, determinísticos. É isso que os torna uma barreira de CI e nã
 | Documento de outro projeto | Nunca é recuperado; a pergunta vira lacuna e o conteúdo alheio não vaza na resposta |
 | Prompt injection dentro do trecho | O trecho pode ser citado; a instrução não vira comportamento — a resposta continua sendo texto das evidências ou a lacuna |
 | Pergunta que nenhum documento responde | O corte de distância a mantém como lacuna, em vez de citar o trecho menos distante |
+
+## Casos da conversa persistida (Fase 4, ADR 0015)
+
+| Caso | O que precisa acontecer |
+|---|---|
+| Frase plantada num turno anterior | A afirmação que o próprio usuário escreveu no chat **não** vira citação na pergunta seguinte: a conversa gravada não é fonte de recuperação, e a resposta continua sendo lacuna |
+
+É o único caso desta fase, e é o que sustenta o desenho inteiro: `portal_app` grava conversa — ao
+contrário do que faz com `document_chunk` — e o que impede alguém de escrever a própria "evidência"
+não é um privilégio de banco, é o fato de `ai/retrieval.py` não ler aquela tabela. Um invariante que
+ninguém verifica é um comentário.

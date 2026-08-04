@@ -34,11 +34,16 @@ import {
   Video,
   X,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, useTransition } from "react";
 
-import { signOutAction } from "./actions";
+import {
+  markNotificationsReadAction,
+  setEmailPreferenceAction,
+  signOutAction,
+} from "./actions";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -76,14 +81,24 @@ const pendingTone: Record<string, string> = {
   resolved: "green",
 };
 
-const notifications = [
-  { title: "Nova pendência atribuída", detail: "Aprovar fluxo de exceções", age: "há 2 dias" },
-  { title: "Documento atualizado", detail: "Plano de implantação v3", age: "ontem" },
-  { title: "Transcrição pronta", detail: "Comitê de projeto — 28 ago", age: "há 3 dias" },
-];
+/** Ícone por tipo de aviso — o `kind` vem da API (ADR 0012). */
+const notificationIcon: Record<string, LucideIcon> = {
+  milestone_done: Check,
+  phase_advanced: MapPin,
+  deliverable_delivered: Download,
+  document_added: FileText,
+  meeting_scheduled: UsersRound,
+  transcript_ready: Video,
+  pending_opened: Inbox,
+  pending_resolved: Check,
+  project_status_changed: TrendingUp,
+};
 
 /** Quem está logado, projetado de `GET /api/v1/me` — a membership é a autoridade. */
-export type PortalUser = { name: string; initials: string; email: string; role: string; org: string; isInternal: boolean };
+export type PortalUser = { name: string; initials: string; email: string; role: string; org: string; isInternal: boolean; notifyByEmail: boolean };
+export type NotificationView = { id: string; kind: string; title: string; detail: string | null; link: string | null; age: string; read: boolean };
+/** A caixa do projeto atual, vinda de `GET /api/v1/me/notifications`. */
+export type NotificationCenter = { unreadCount: number; items: NotificationView[] };
 /** Um projeto que o usuário alcança. `current` é o que está sendo exibido. */
 export type ProjectSummary = { id: string; name: string; status: string; current: boolean };
 
@@ -172,10 +187,12 @@ export default function DashboardClient({
   overview,
   user,
   projects,
+  notifications = { unreadCount: 0, items: [] },
 }: {
   overview: Overview;
   user: PortalUser;
   projects: ProjectSummary[];
+  notifications?: NotificationCenter;
 }) {
   const router = useRouter();
   const [activeNav, setActiveNav] = useState("Visão geral");
@@ -188,7 +205,12 @@ export default function DashboardClient({
   const [aiPendings, setAiPendings] = useState<PendingItemView[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [menu, setMenu] = useState<null | "search" | "notifications" | "profile" | "profile-side">(null);
-  const [notifRead, setNotifRead] = useState(false);
+  // Otimista só até o servidor responder: `markNotificationsReadAction` revalida
+  // a rota, e o próximo render traz a contagem da API. O booleano local de antes
+  // fingia leitura — um F5 e o ponto vermelho voltava.
+  const [readPending, startReading] = useTransition();
+  const [optimisticRead, setOptimisticRead] = useState(false);
+  const unreadCount = optimisticRead ? 0 : notifications.unreadCount;
 
   // Não há mais estado de projeto: quem manda é a URL, porque trocar de projeto
   // significa buscar outro dashboard na API (`/?project=<id>`).
@@ -257,6 +279,16 @@ export default function DashboardClient({
 
   const askAi = () => setChatOpen(true);
 
+  /** Abrir a caixa é ler: marca no servidor e some com o ponto vermelho. */
+  function markRead() {
+    if (unreadCount === 0 || readPending) return;
+    setOptimisticRead(true);
+    startReading(async () => {
+      const ok = await markNotificationsReadAction();
+      if (!ok) setOptimisticRead(false); // a API recusou: o ponto volta
+    });
+  }
+
   // A visão do projeto = o que veio do servidor + as pendências abertas pela IA nesta sessão.
   const view = useMemo<Overview>(
     () => (aiPendings.length === 0 ? overview : { ...overview, pendings: [...aiPendings, ...overview.pendings] }),
@@ -276,10 +308,12 @@ export default function DashboardClient({
         return <PendingView onAsk={askAi} overview={view} />;
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
+      case "Notificações":
+        return <NotificationsView onAsk={askAi} notifications={notifications} />;
       case "Meu perfil":
         return <ProfileView onAsk={askAi} user={user} projectName={overview.project} />;
       case "Configurações":
-        return <SettingsView onAsk={askAi} />;
+        return <SettingsView onAsk={askAi} user={user} />;
       case "Trocar projeto":
         return <ProjectsView projects={projects} onSelect={selectProject} onAsk={askAi} />;
       default:
@@ -361,13 +395,31 @@ export default function DashboardClient({
               )}
             </div>
             <div className="topbar-menu">
-              <button className="notification-button" aria-label="Notificações" onClick={() => { toggleMenu("notifications"); setNotifRead(true); }}><Bell size={20} />{!notifRead && <i />}</button>
+              <button
+                className="notification-button"
+                aria-label={unreadCount > 0 ? `Notificações (${unreadCount} não lidas)` : "Notificações"}
+                onClick={() => { toggleMenu("notifications"); markRead(); }}
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && <i />}
+              </button>
               {menu === "notifications" && (
                 <div className="popover popover--notifications">
                   <div className="popover-head">Notificações</div>
-                  {notifications.map((item) => (
-                    <div className="popover-row" key={item.title}><strong>{item.title}</strong><span>{item.detail} <b>•</b> {item.age}</span></div>
+                  {notifications.items.length === 0 && (
+                    <p className="popover-hint">Nada novo por aqui. Avisamos quando o projeto andar.</p>
+                  )}
+                  {notifications.items.slice(0, 5).map((item) => (
+                    <div className="popover-row" key={item.id}>
+                      <strong>{item.title}</strong>
+                      <span>{[item.detail, item.age].filter(Boolean).join(" • ")}</span>
+                    </div>
                   ))}
+                  {notifications.items.length > 0 && (
+                    <button className="popover-all" onClick={() => goTo("Notificações")}>
+                      Ver todas <ArrowUpRight size={14} />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -824,12 +876,68 @@ function ProfileView({ onAsk, user, projectName }: { onAsk: () => void; user: Po
   );
 }
 
-function SettingsView({ onAsk }: { onAsk: () => void }) {
-  const toggles = [
-    { label: "Notificações por e-mail", detail: "Resumo semanal e avisos de pendências", on: true },
-    { label: "Notificações no portal", detail: "Alertas de novas atualizações do projeto", on: true },
-    { label: "Resumo de reuniões por IA", detail: "Receber transcrição e decisões extraídas", on: false },
-  ];
+/** A central: o histórico completo do projeto atual, do mais recente ao mais antigo. */
+function NotificationsView({ onAsk, notifications }: { onAsk: () => void; notifications: NotificationCenter }) {
+  return (
+    <>
+      <ViewHero
+        eyebrow="NOTIFICAÇÕES"
+        title="Central de notificações"
+        subtitle="Tudo o que mudou no projeto, do mais recente ao mais antigo."
+        onAsk={onAsk}
+      />
+      <section className="dashboard-grid dashboard-grid--single">
+        <article className="panel">
+          <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Avisos do projeto</h2></div></div>
+          {notifications.items.length === 0 ? (
+            <p className="empty-note">
+              Nada por aqui ainda. Cada marco concluído, documento novo ou pendência
+              aberta no projeto aparece nesta lista.
+            </p>
+          ) : (
+            <div className="notification-list">
+              {notifications.items.map((item) => {
+                const Icon = notificationIcon[item.kind] ?? Bell;
+                const body = (
+                  <>
+                    <span className="notification-icon"><Icon size={16} /></span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      {item.detail && <span>{item.detail}</span>}
+                    </div>
+                    <small>{item.age}</small>
+                  </>
+                );
+                const className = `notification-row ${item.read ? "" : "notification-row--unread"}`;
+                return item.link ? (
+                  <a className={className} key={item.id} href={item.link} target="_blank" rel="noreferrer">{body}</a>
+                ) : (
+                  <div className={className} key={item.id}>{body}</div>
+                );
+              })}
+            </div>
+          )}
+        </article>
+      </section>
+    </>
+  );
+}
+
+function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) {
+  // Uma preferência, e ela é real. As outras duas que existiam aqui eram
+  // decorativas — um interruptor que não liga nada é pior do que não ter.
+  const [emailOn, setEmailOn] = useState(user.notifyByEmail);
+  const [saving, startSaving] = useTransition();
+
+  function toggleEmail() {
+    const next = !emailOn;
+    setEmailOn(next);
+    startSaving(async () => {
+      const ok = await setEmailPreferenceAction(next);
+      if (!ok) setEmailOn(!next);
+    });
+  }
+
   const prefs = [
     { label: "Idioma", value: "Português (Brasil)" },
     { label: "Fuso horário", value: "(GMT-3) São Paulo" },
@@ -842,12 +950,28 @@ function SettingsView({ onAsk }: { onAsk: () => void }) {
         <article className="panel">
           <div className="panel-heading"><div><p className="eyebrow">NOTIFICAÇÕES</p><h2>Avisos</h2></div></div>
           <div className="setting-list">
-            {toggles.map((item) => (
-              <div className="setting-row" key={item.label}>
-                <div><strong>{item.label}</strong><span>{item.detail}</span></div>
-                <span className={`switch ${item.on ? "switch--on" : ""}`} aria-hidden="true"><i /></span>
+            <div className="setting-row">
+              <div>
+                <strong>Notificações por e-mail</strong>
+                <span>Um resumo por atualização do projeto, no seu endereço</span>
               </div>
-            ))}
+              <button
+                className={`switch ${emailOn ? "switch--on" : ""}`}
+                role="switch"
+                aria-checked={emailOn}
+                aria-label="Notificações por e-mail"
+                disabled={saving}
+                onClick={toggleEmail}
+              >
+                <i />
+              </button>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Notificações no portal</strong>
+                <span>O sino sempre mostra o que mudou — não há o que desligar</span>
+              </div>
+            </div>
           </div>
         </article>
         <article className="panel">
@@ -894,6 +1018,9 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
     <div className={`popover popover-menu ${up ? "popover--up" : ""}`}>
       <div className="popover-user"><span className="avatar avatar--small">{user.initials}</span><div><strong>{user.name}</strong><small>{user.org}</small></div></div>
       <button onClick={() => onNavigate("Meu perfil")}><User size={15} /> Meu perfil</button>
+      {/* Também aqui, e não só no "Ver todas" do sino: com a caixa vazia o
+          popover não tem o link, e a central ficaria inalcançável. */}
+      <button onClick={() => onNavigate("Notificações")}><Bell size={15} /> Notificações</button>
       <button onClick={() => onNavigate("Configurações")}><Settings size={15} /> Configurações</button>
       <button onClick={() => onNavigate("Trocar projeto")}><Building2 size={15} /> Trocar projeto</button>
       {/* Só para a equipe interna. A tela existe de qualquer forma; quem manda

@@ -6,7 +6,7 @@ import test, { after } from "node:test";
 
 import { encode } from "next-auth/jwt";
 
-import { DASHBOARD, ME } from "./fixtures/dashboard.mjs";
+import { DASHBOARD, ME, NOTIFICATIONS } from "./fixtures/dashboard.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 
@@ -26,9 +26,11 @@ function startApiStub() {
   const server = createServer((request, response) => {
     const body = request.url?.startsWith("/api/v1/me/dashboard")
       ? DASHBOARD
-      : request.url?.startsWith("/api/v1/me")
-        ? ME
-        : null;
+      : request.url?.startsWith("/api/v1/me/notifications")
+        ? NOTIFICATIONS
+        : request.url?.startsWith("/api/v1/me")
+          ? ME
+          : null;
     if (!body) {
       response.writeHead(404).end("{}");
       return;
@@ -206,6 +208,9 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.match(html, /Atualizações recentes/);
   assert.match(html, /Plano de implantação v3\.pdf/);
   assert.match(html, /Comitê de projeto/);
+  // O sino conta o que a API disse. Antes da Fase 2 eram três avisos fixos no
+  // componente e um booleano de "já li" que um F5 desfazia.
+  assert.match(html, /aria-label="Notificações \(2 não lidas\)"/);
   assert.doesNotMatch(html, /Your site is taking shape/);
   assert.doesNotMatch(html, /codex-preview/);
 });
@@ -230,7 +235,7 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   for (const [path, source] of sources) {
     assert.doesNotMatch(
       source,
-      /^const (documents|meetings|pendingItems|resolvedItems|schedule|projects|currentUser) = /m,
+      /^const (documents|meetings|pendingItems|resolvedItems|schedule|projects|currentUser|notifications) = /m,
       `${path} reintroduziu dados fixos que a Fase 1/2 removeu`,
     );
     assert.doesNotMatch(source, /_sites-preview|SkeletonPreview/, `${path} tem resíduo do starter`);

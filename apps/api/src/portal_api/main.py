@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from portal_api import access
 from portal_api.ai import service as chat_service
 from portal_api.config import get_settings
-from portal_api.db.session import get_session
+from portal_api.db.session import DbRole, get_session
 from portal_api.integrations import biahflow
 from portal_api.models import Organization
 from portal_api.repositories import TenantContext
@@ -104,7 +104,9 @@ async def biahflow_webhook(request: Request) -> dict:
     snapshot = biahflow.fetch_snapshot(
         settings.biahflow_base_url, settings.biahflow_read_token, int(biahflow_project_id)
     )
-    with get_session() as session:
+    # portal_system (BYPASSRLS): this is the path that creates the tenant, so
+    # there is no context to bind and the write would be denied otherwise.
+    with get_session(role=DbRole.system) as session:
         project = biahflow.sync_snapshot(session, snapshot)
         if settings.demo_mode:
             biahflow.ensure_demo_client(

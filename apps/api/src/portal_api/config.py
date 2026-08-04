@@ -62,7 +62,13 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-4-8"
     chat_prompt_version: str = "chat-2026-08-03"
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
+    # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.
+    # Sem isso, quem segue o `cp .env.example .env` do README não consegue rodar
+    # pytest — o CI não tem `.env` e passava sem notar.
+    model_config = SettingsConfigDict(
+        env_file=".env", case_sensitive=False, extra="ignore"
+    )
 
 
 @lru_cache

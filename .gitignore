@@ -53,3 +53,7 @@ __pycache__/
 
 # typescript
 *.tsbuildinfo
+
+# playwright
+/test-results/
+/playwright-report/

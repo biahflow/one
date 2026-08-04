@@ -70,6 +70,36 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose build
 
+  # The only job that boots Keycloak: it is the one thing the other levels
+  # cannot prove — browser → realm → BFF callback → dashboard. Non-blocking for
+  # now, while the stack's boot time settles in CI.
+  e2e-login:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Boot the local stack
+        run: |
+          cp .env.example .env
+          docker compose up -d --build web
+      - name: Wait for the portal
+        run: |
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/login && exit 0
+            sleep 5
+          done
+          docker compose logs --tail 50
+          exit 1
+      - run: npm run test:e2e
+      - if: failure()
+        run: docker compose logs --tail 100
+
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

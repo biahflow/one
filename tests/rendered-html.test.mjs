@@ -1,14 +1,74 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import test, { after } from "node:test";
+
+import { encode } from "next-auth/jwt";
+
+import { DASHBOARD, ME } from "./fixtures/dashboard.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 
+const AUTH_SECRET = "portal_auth_test_only";
+/** Cookie name on http; it doubles as the salt of the encryption key. */
+const SESSION_COOKIE = "authjs.session-token";
+
 /** Boot `next start` once for the whole file and reuse it across tests. */
 let serverPromise;
+let apiStub;
 
-function startServer() {
+/**
+ * Stands in for the FastAPI. Lets the SSR path be exercised for real — the same
+ * fetches, the same projection — without Postgres, Keycloak or Python.
+ */
+function startApiStub() {
+  const server = createServer((request, response) => {
+    const body = request.url?.startsWith("/api/v1/me/dashboard")
+      ? DASHBOARD
+      : request.url?.startsWith("/api/v1/me")
+        ? ME
+        : null;
+    if (!body) {
+      response.writeHead(404).end("{}");
+      return;
+    }
+    // The BFF must be sending the access token; answering 401 otherwise is what
+    // makes the assertions below prove the token travelled.
+    if (!(request.headers.authorization ?? "").startsWith("Bearer ")) {
+      response.writeHead(401, { "content-type": "application/json" }).end("{}");
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body));
+  });
+
+  const listening = new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${server.address().port}`));
+  });
+  return { server, listening };
+}
+
+/** A session cookie built with Auth.js' own primitives — no browser needed. */
+async function sessionCookie() {
+  const token = await encode({
+    token: {
+      name: ME.full_name,
+      email: ME.email,
+      sub: "00000000-0000-4000-8000-000000000001",
+      accessToken: "stub-access-token",
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    },
+    secret: AUTH_SECRET,
+    salt: SESSION_COOKIE,
+    maxAge: 3600,
+  });
+  return `${SESSION_COOKIE}=${token}`;
+}
+
+async function startServer() {
+  apiStub ??= startApiStub();
+  const apiBaseUrl = await apiStub.listening;
+
   const port = 3100 + Math.floor(Math.random() * 800);
   const child = spawn("npx", ["next", "start", "-p", String(port)], {
     cwd: projectRoot,
@@ -18,7 +78,9 @@ function startServer() {
     env: {
       ...process.env,
       NODE_ENV: "production",
-      AUTH_SECRET: process.env.AUTH_SECRET ?? "portal_auth_test_only",
+      AUTH_SECRET,
+      API_BASE_URL: apiBaseUrl,
+      DEMO_MODE: "false",
     },
   });
 
@@ -49,20 +111,28 @@ function startServer() {
   return { child, ready };
 }
 
-async function render(path = "/", init = {}) {
+async function server() {
   serverPromise ??= startServer();
-  const origin = await serverPromise.ready;
-  return fetch(`${origin}${path}`, { headers: { accept: "text/html" }, ...init });
+  return serverPromise;
 }
 
-after(() => {
-  serverPromise?.child.kill("SIGTERM");
+async function render(path = "/", init = {}) {
+  const { ready } = await server();
+  const origin = await ready;
+  const { headers, ...rest } = init;
+  return fetch(`${origin}${path}`, { headers: { accept: "text/html", ...headers }, ...rest });
+}
+
+after(async () => {
+  (await serverPromise)?.child.kill("SIGTERM");
+  apiStub?.server.close();
 });
 
 /** Every source file we author, so guards survive files being split up. */
 async function sourceFiles() {
   const roots = ["app", "components"];
-  const found = [];
+  // Auth.js e o portão de sessão moram na raiz e também precisam ser varridos.
+  const found = ["auth.ts", "proxy.ts"];
 
   async function walk(dir) {
     let entries;
@@ -113,6 +183,33 @@ test("server-renders the login page", async () => {
   assert.doesNotMatch(html, /codex-preview/);
 });
 
+test("server-renders the dashboard for an authenticated session", async () => {
+  const response = await render("/", { headers: { cookie: await sessionCookie() } });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  // Nome e organização vêm de `GET /api/v1/me`; o resto, do dashboard. Antes
+  // desta fase eram constantes no componente e um fallback de demonstração.
+  assert.match(html, /<title>Portal Labs \| Portal do Cliente<\/title>/i);
+  assert.match(html, /Bom dia, Marina\./);
+  assert.match(html, /Acme Brasil/);
+  assert.match(html, /Automação Financeira/);
+  assert.match(html, /ROI do projeto/);
+  assert.match(html, /Você está aqui/);
+  assert.match(html, /SUA JORNADA/);
+  assert.match(html, /No prazo/);
+  assert.match(html, /Funcionários Digitais/);
+  assert.match(html, /Agente Financeiro/);
+  assert.match(html, /Perguntar à IA/);
+  assert.match(html, /Pendências abertas/);
+  assert.match(html, /Aprovar fluxo de exceções/);
+  assert.match(html, /Atualizações recentes/);
+  assert.match(html, /Plano de implantação v3\.pdf/);
+  assert.match(html, /Comitê de projeto/);
+  assert.doesNotMatch(html, /Your site is taking shape/);
+  assert.doesNotMatch(html, /codex-preview/);
+});
+
 test("keeps product metadata and avoids disposable starter artifacts", async () => {
   const sources = await readSources();
   const page = sources.get("app/page.tsx");
@@ -127,16 +224,39 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   assert.match(layout, /Portal Labs \| Portal do Cliente/);
   assert.match(layout, /lang="pt-BR"/);
 
-  // As abas do projeto leem `overview` (API), não mais arrays fixos — a guarda vale para
-  // todo componente, já que as views vivem em `components/dashboard/`.
+  // Nada de dado fixo de volta: as abas leem `overview` (Fase 2) e a identidade
+  // vem de `GET /api/v1/me` (Fase 1). `projects` e `currentUser` escapavam desta
+  // guarda justamente por serem os últimos sobreviventes.
   for (const [path, source] of sources) {
     assert.doesNotMatch(
       source,
-      /^const (documents|meetings|pendingItems|resolvedItems|schedule) = /m,
-      `${path} reintroduziu dados fixos que a Fase 2 removeu`,
+      /^const (documents|meetings|pendingItems|resolvedItems|schedule|projects|currentUser) = /m,
+      `${path} reintroduziu dados fixos que a Fase 1/2 removeu`,
     );
     assert.doesNotMatch(source, /_sites-preview|SkeletonPreview/, `${path} tem resíduo do starter`);
+    // O header de identidade forjada e o e-mail em variável de ambiente saíram
+    // do repositório inteiro quando o token OIDC entrou (ADR 0010).
+    assert.doesNotMatch(source, /X-Portal-User|PORTAL_CLIENT_EMAIL/, `${path} ressuscitou a identidade por header`);
+    // Dado de demonstração alcançável de um lugar só (ver a asserção abaixo).
+    if (path !== "app/demo-overview.ts" && path !== "app/page.tsx") {
+      assert.doesNotMatch(source, /DEMO_OVERVIEW/, `${path} alcança o demo fora do gate`);
+    }
   }
+
+  // O gate é uma condição só, e a única menção ao demo em `page.tsx` está
+  // literalmente dentro dele: é isto que torna "nenhum caminho leva a dado
+  // inventado" uma afirmação verificável, e não uma promessa.
+  assert.match(
+    sources.get("app/lib/demo.ts"),
+    /!process\.env\.API_BASE_URL && process\.env\.DEMO_MODE === "true"/,
+  );
+  const gate = page.match(/if \(demoShellEnabled\(\)\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(gate, "o gate do demo sumiu de app/page.tsx");
+  assert.doesNotMatch(
+    page.replace(gate[0], ""),
+    /DEMO_OVERVIEW/,
+    "app/page.tsx alcança o demo fora do gate",
+  );
 
   assert.doesNotMatch(page, /_sites-preview|SkeletonPreview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);

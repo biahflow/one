@@ -113,6 +113,11 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      # O `iss` do token é o endereço que o navegador usou; o JWKS é buscado pela
+      # rede interna, que é outro host (ADR 0010).
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/portal-local}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/portal-local/protocol/openid-connect/certs}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-portal-api}
     ports:
       - "8000:8000"
     depends_on:
@@ -143,7 +148,6 @@ services:
     environment:
       # BFF → FastAPI, server-side (não expor como NEXT_PUBLIC_/VITE_).
       API_BASE_URL: http://api:8000
-      PORTAL_CLIENT_EMAIL: marina.farias@acme.com.br
     ports:
       - "3000:3000"
     depends_on:

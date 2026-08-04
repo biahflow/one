@@ -18,6 +18,19 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     web_origin: str = "http://localhost:3000"
 
+    # OIDC (ADR 0010). A API é *resource server*: só valida o token, nunca faz
+    # code exchange. `oidc_issuer` e `oidc_jwks_url` são separadas de propósito —
+    # o `iss` do token é o endereço que o navegador usa (localhost:8080), mas o
+    # container da API só alcança o Keycloak pela rede interna (keycloak:8080).
+    oidc_issuer: str = "http://localhost:8080/realms/portal-local"
+    oidc_jwks_url: str = "http://localhost:8080/realms/portal-local/protocol/openid-connect/certs"
+    oidc_audience: str = "portal-api"
+    oidc_algorithms: tuple[str, ...] = ("RS256",)
+    # Clientes autorizados a emitir tokens para esta API (claim `azp`).
+    oidc_allowed_azp: tuple[str, ...] = ("portal-web",)
+    oidc_jwks_cache_seconds: int = 300
+    oidc_leeway_seconds: int = 30
+
     # Integração com o Biahflow (ADR 0006) — fonte da verdade do status.
     biahflow_base_url: str = "http://localhost:19000/api/v1"
     biahflow_read_token: str = ""

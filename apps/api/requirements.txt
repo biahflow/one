@@ -5,6 +5,9 @@ fastapi==0.115.12
 httpx==0.28.1
 psycopg[binary]==3.2.9
 pydantic-settings==2.10.1
+# [crypto] traz o `cryptography` das assinaturas RS256; o PyJWKClient já cacheia
+# o JWKS e refaz o fetch quando aparece um `kid` desconhecido (ADR 0010).
+pyjwt[crypto]==2.13.0
 redis==6.2.0
 sqlalchemy==2.0.41
 uvicorn[standard]==0.34.3

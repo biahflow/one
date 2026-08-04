@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 from portal_api import access
 from portal_api.integrations import biahflow
 from portal_api.main import app
-from portal_api.models import Membership, Project
+from portal_api.models import Membership, Project, User
+from portal_api.repositories import UserRepository
 
 client = TestClient(app)
 
@@ -60,9 +61,17 @@ def _synced(session: Session, *, biahflow_project_id: int, client_id: int, email
 
 # --- unit: identity gate ---------------------------------------------------
 
-def test_dashboard_endpoints_require_client_identity() -> None:
+def test_dashboard_endpoints_require_a_token() -> None:
+    """Sem `Authorization: Bearer` não há principal, e o gate responde 401 (ADR 0010)."""
     assert client.get(f"/api/v1/projects/{uuid.uuid4()}/dashboard").status_code == 401
     assert client.get("/api/v1/me/dashboard").status_code == 401
+    assert client.get("/api/v1/me").status_code == 401
+
+
+def test_a_malformed_token_is_rejected_too() -> None:
+    headers = {"Authorization": "Bearer not-a-jwt"}
+
+    assert client.get("/api/v1/me/dashboard", headers=headers).status_code == 401
 
 
 # --- integration: membership scoping --------------------------------------
@@ -70,9 +79,10 @@ def test_dashboard_endpoints_require_client_identity() -> None:
 @pytest.mark.integration
 def test_member_can_resolve_own_project(db_session: Session) -> None:
     project = _synced(db_session, biahflow_project_id=21, client_id=31, email="ana@acme.test")
+    ana = UserRepository(db_session).get_by_email("ana@acme.test")
 
-    assert access.scoped_project(db_session, "ana@acme.test", project.id).id == project.id  # type: ignore[union-attr]
-    assert access.client_project(db_session, "ana@acme.test").id == project.id  # type: ignore[union-attr]
+    assert access.scoped_project(db_session, ana, project.id).id == project.id  # type: ignore[union-attr]
+    assert access.default_project(db_session, ana).id == project.id  # type: ignore[union-attr]
 
 
 @pytest.mark.integration
@@ -80,12 +90,16 @@ def test_non_member_and_unknown_user_are_denied(db_session: Session) -> None:
     """Negative permission: another client's project and unknown users resolve to None (→404)."""
     mine = _synced(db_session, biahflow_project_id=22, client_id=32, email="ana@acme.test")
     theirs = biahflow.sync_snapshot(db_session, _snapshot(biahflow_project_id=23, client_id=99))
+    ana = UserRepository(db_session).get_by_email("ana@acme.test")
 
     # membro de 'mine' não alcança o projeto de outro tenant
-    assert access.scoped_project(db_session, "ana@acme.test", theirs.id) is None
-    # usuário desconhecido não alcança nada
-    assert access.scoped_project(db_session, "ghost@acme.test", mine.id) is None
-    assert access.client_project(db_session, "ghost@acme.test") is None
+    assert access.scoped_project(db_session, ana, theirs.id) is None
+    # usuário sem vínculo nenhum não alcança nada
+    stranger = UserRepository(db_session).add(
+        User(email="ghost@acme.test", full_name="Ghost", external_subject="sub-ghost")
+    )
+    assert access.scoped_project(db_session, stranger, mine.id) is None
+    assert access.default_project(db_session, stranger) is None
 
 
 @pytest.mark.integration

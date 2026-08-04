@@ -22,7 +22,7 @@ from portal_api.ai.retrieval import Evidence, collect_evidence
 from portal_api.config import get_settings
 from portal_api.integrations import biahflow
 from portal_api.models import PendingItem, PendingPriority
-from portal_api.repositories import PendingItemRepository, TenantContext
+from portal_api.repositories import PendingItemRepository, TenantContext, UserRepository
 
 SETTINGS = get_settings()  # anthropic_api_key vazio → OfflineResponder
 
@@ -190,6 +190,7 @@ def test_eval_evidence_is_isolated_to_the_project(db_session: Session) -> None:
 
     # E o endpoint nega acesso ao projeto de outro tenant (permissão negativa).
     biahflow.ensure_demo_client(db_session, mine, "ana@acme.test", "Ana")
+    ana = UserRepository(db_session).get_by_email("ana@acme.test")
     theirs = biahflow.sync_snapshot(db_session, _snapshot(
         biahflow_project_id=47, client_id=1000, milestones=[]))
-    assert access.scoped_project(db_session, "ana@acme.test", theirs.id) is None
+    assert access.scoped_project(db_session, ana, theirs.id) is None

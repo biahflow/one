@@ -26,10 +26,20 @@ Este documento acompanha o plano de entrega. Itens concluídos permanecem aqui p
 ## Fase 1 — Dados, identidade e acesso
 
 - [x] Criar modelos, migrações Alembic e repositórios para organização, projeto, membros, marcos, entregas, pendências, documentos, reuniões, decisões, métricas e auditoria. *(Concluído: além da fatia inicial, documentos, reuniões, decisões e eventos de agentes — tabela idempotente por `external_event_id` — na migração `0002_knowledge_and_events`. Só a camada de dados; o cálculo de ROI sobre os eventos fica na Fase 3.)*
-- [ ] Aplicar Row-Level Security no PostgreSQL e contexto de tenant por transação.
-- [ ] Integrar Keycloak ao BFF Next.js e à API FastAPI com OIDC/PKCE, sessão segura, convite e verificação de e-mail.
-- [ ] Implementar papéis `internal_admin`, `internal_member` e `client_member`, com associação explícita por projeto.
+- [x] Aplicar Row-Level Security no PostgreSQL e contexto de tenant por transação.
+      *(Migração `0007_rls_tenant_context`: 15 tabelas com policy, contexto em GUCs por
+      transação e três papéis no Postgres — sem separar credencial as policies seriam
+      decorativas, porque superusuário ignora RLS. ADR 0010, FDD 007.)*
+- [ ] Integrar Keycloak ao BFF Next.js e à API FastAPI com OIDC/PKCE, sessão segura, convite e
+      verificação de e-mail. **Metade feita:** a API valida o JWT contra o JWKS do realm e o
+      `X-Portal-User` deixou de existir. Faltam o realm com client confidencial, o Auth.js v5
+      no BFF com a tela `/login`, e o convite/verificação de e-mail via Mailpit.
+- [x] Implementar papéis `internal_admin`, `internal_member` e `client_member`, com associação
+      explícita por projeto. *(`access.require_project` sobre a `membership`; o realm role é só
+      indício. Eventos de agente exigem `internal_admin`; negação é 404, nunca 403.)*
 - [ ] Substituir os dados de demonstração do dashboard por consultas reais e dados seed versionados para desenvolvimento.
+      *(A API já responde só com dados reais; o BFF ainda cai no `DEMO_OVERVIEW` porque não tem
+      sessão para obter token. Sai junto com o Auth.js, com o seed versionado.)*
 - [ ] Criar UI de administração para organizações, projetos, membros e configuração financeira.
 
 **Aceite:** um cliente autenticado só consegue consultar os projetos aos quais pertence; tentativas de acesso cruzado falham na API, no banco e na busca.

@@ -108,11 +108,11 @@ type ApiEmployee = { name: string; area: string | null; description: string | nu
 
 async function loadOverview(): Promise<Overview> {
   const base = process.env.API_BASE_URL;
-  const email = process.env.PORTAL_CLIENT_EMAIL ?? "marina.farias@acme.com.br";
   if (!base) return DEMO_OVERVIEW;
   try {
+    // Sem sessão OIDC ainda (Fase 1, etapa 8): a API responde 401 e caímos no
+    // fallback demo abaixo. O `Authorization: Bearer` entra aqui com o Auth.js.
     const response = await fetch(`${base}/api/v1/me/dashboard`, {
-      headers: { "X-Portal-User": email },
       cache: "no-store",
     });
     if (!response.ok) return DEMO_OVERVIEW;

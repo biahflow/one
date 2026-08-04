@@ -4,6 +4,6 @@ Cliente pergunta em linguagem natural. A IA recupera somente fontes do projeto, 
 
 ## Fase 3 — implementação (ADR 0007)
 
-Grounded QA sobre o read model estruturado (Projeto, Marcos, Pendências), escopado por tenant via `X-Portal-User`. Provedor por adapter: Claude (`claude-opus-4-8`) quando há `ANTHROPIC_API_KEY`, senão respondedor offline determinístico. Documentos como texto (pgvector) seguem na ADR 0004 (Fase 4).
+Grounded QA sobre o read model estruturado (Projeto, Marcos, Pendências), escopado por tenant a partir do principal do token OIDC (ADR 0010; antes era o header `X-Portal-User`). Provedor por adapter: Claude (`claude-opus-4-8`) quando há `ANTHROPIC_API_KEY`, senão respondedor offline determinístico. Documentos como texto (pgvector) seguem na ADR 0004 (Fase 4).
 
 **Critérios de aceite:** toda afirmação factual cita evidência real; sem evidência → cria pendência e retorna `confidence="insufficient_context"`; cliente só acessa o próprio projeto (permissão negativa → 404); instrução dentro da evidência é tratada como dado. **Testes/evals:** `apps/api/tests/test_chat_ai.py` cobre os 8 casos de `docs/ai/eval-dataset.md` e roda determinístico em CI (sem chave).

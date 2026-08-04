@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import Engine, delete, select, text
@@ -25,6 +26,8 @@ from portal_api.models import (
     MemberRole,
     Membership,
     Milestone,
+    Notification,
+    NotificationKind,
     Organization,
     PendingItem,
     PendingState,
@@ -45,6 +48,7 @@ class Tenant:
     subject: str
     email: str
     milestone_id: uuid.UUID
+    notification_id: uuid.UUID
 
 
 @pytest.fixture(scope="session")
@@ -101,6 +105,21 @@ def tenants(migrated_engine: Engine) -> Iterator[tuple[Tenant, Tenant]]:
             session.add(milestone)
             session.flush()
 
+            # A única tabela cuja linha tem dono (ADR 0012): a policy soma
+            # `user_id` ao tenant, e é isso que os testes abaixo cobram.
+            notification = Notification(
+                organization_id=org.id,
+                project_id=project.id,
+                user_id=user.id,
+                kind=NotificationKind.milestone_done,
+                title="Marco concluído",
+                detail=f"Kickoff {name}",
+                occurred_at=datetime.now(timezone.utc),
+                dedupe_key=f"milestone:kickoff-{name}-{tag}:done",
+            )
+            session.add(notification)
+            session.flush()
+
             built.append(
                 Tenant(
                     organization_id=org.id,
@@ -109,6 +128,7 @@ def tenants(migrated_engine: Engine) -> Iterator[tuple[Tenant, Tenant]]:
                     subject=user.external_subject or "",
                     email=user.email,
                     milestone_id=milestone.id,
+                    notification_id=notification.id,
                 )
             )
         session.commit()
@@ -283,6 +303,91 @@ def test_a_user_row_belonging_to_someone_else_is_invisible(
 
     assert [u.id for u in users] == [tenant_a.user_id]
     assert rls_session.get(User, tenant_b.user_id) is None
+
+
+# 3b — the one table with an owner (ADR 0012) -------------------------------------
+
+
+def test_a_notification_addressed_to_someone_else_is_invisible(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Mesmo tenant não basta: a notificação é de uma pessoa.
+
+    Os dois tenants aqui são organizações diferentes, então este teste sozinho
+    passaria só com o predicado de tenant — o de baixo é que separa as duas
+    condições.
+    """
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = {n.id for n in rls_session.execute(select(Notification)).scalars()}
+
+    assert visible == {tenant_a.notification_id}
+    assert rls_session.get(Notification, tenant_b.notification_id) is None
+
+
+def test_a_colleague_in_the_same_project_does_not_see_your_notifications(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """O contexto certo, o usuário errado: zero linhas."""
+    tenant_a, _ = tenants
+    bind_context(
+        subject=tenant_a.subject,
+        email=tenant_a.email,
+        user_id=uuid.uuid4(),  # colega do mesmo projeto
+        organization_id=tenant_a.organization_id,
+        project_id=tenant_a.project_id,
+    )
+
+    assert rls_session.execute(select(Notification)).scalars().all() == []
+
+
+def test_marking_read_is_allowed_but_rewriting_the_notice_is_not(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """O grant é de coluna: ``read_at`` sim, ``title`` não.
+
+    A policy decide *quais linhas*, nunca *quais colunas* — sem o
+    ``GRANT UPDATE (read_at, updated_at)`` da migração 0009, "marcar como lida"
+    seria licença para reescrever o aviso.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    rls_session.execute(
+        text("UPDATE notification SET read_at = now() WHERE id = :id"),
+        {"id": tenant_a.notification_id},
+    )
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text("UPDATE notification SET title = 'tampered' WHERE id = :id"),
+            {"id": tenant_a.notification_id},
+        )
+
+
+def test_the_app_role_cannot_create_a_notification(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Quem emite é o sync, sob ``portal_system``. O caminho de requisição não origina."""
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text(
+                "INSERT INTO notification"
+                " (id, organization_id, project_id, user_id, kind, title,"
+                "  occurred_at, dedupe_key)"
+                " VALUES (gen_random_uuid(), :org, :project, :user,"
+                "         'milestone_done', 'forjada', now(), 'forjada')"
+            ),
+            {
+                "org": tenant_a.organization_id,
+                "project": tenant_a.project_id,
+                "user": tenant_a.user_id,
+            },
+        )
 
 
 # 4 — the system path -------------------------------------------------------------

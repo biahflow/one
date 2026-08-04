@@ -30,6 +30,12 @@ class User(Base, TimestampMixin):
     is_internal: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # Preferência de e-mail das notificações (Fase 2). Liga por padrão: quem foi
+    # convidado para acompanhar um projeto quer saber quando ele anda; a tela de
+    # Configurações é onde se desliga.
+    notify_by_email: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
 
 class Membership(Base, TimestampMixin):

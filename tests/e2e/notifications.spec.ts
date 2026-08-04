@@ -51,14 +51,16 @@ send_project_digests(project_id)
 print(project_id)
 `;
 
+/** Devolve o título do documento recém-sincronizado, ou `null` sem stack no ar. */
 function syncSomethingNew(): string | null {
   const marker = `e2e-${Date.now().toString(36)}`;
   try {
-    return execFileSync(
+    execFileSync(
       "docker",
       ["compose", "exec", "-T", "api", "python", "-c", SYNC_SCRIPT, marker],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-    ).trim();
+    );
+    return `Ata do comite ${marker}`;
   } catch {
     return null; // sem docker à mão: os testes se pulam em vez de mentir
   }
@@ -75,18 +77,25 @@ async function signIn(page: Page, user: { username: string; password: string }) 
 }
 
 /** Cada teste cria o próprio fato novo: assim nenhum depende da ordem do outro. */
+let lastChange: string | null = null;
+
 test.beforeEach(() => {
-  test.skip(syncSomethingNew() === null, "Precisa da stack local no ar (docker compose up)");
+  lastChange = syncSomethingNew();
+  test.skip(lastChange === null, "Precisa da stack local no ar (docker compose up)");
 });
 
-test("um marco concluído no Biahflow vira aviso no sino e e-mail na caixa", async ({ page }) => {
+test("uma mudança no Biahflow vira aviso no sino e e-mail na caixa", async ({ page }) => {
   await signIn(page, CLIENT);
 
   const bell = page.getByRole("button", { name: /^Notificações/ });
   await expect(bell).toHaveAttribute("aria-label", /\d+ não lidas/);
 
   await bell.click();
-  await expect(page.getByText("Marco concluído").first()).toBeVisible();
+  // Dentro do popover, e o aviso desta rodada: o mesmo documento também aparece
+  // em "Atualizações recentes", e a caixa acumula entre execuções.
+  const popover = page.locator(".popover--notifications");
+  await expect(popover.getByText("Novo documento no projeto").first()).toBeVisible();
+  await expect(popover.getByText(lastChange!, { exact: false })).toBeVisible();
 
   // Um resumo por lote de sync, não um e-mail por aviso.
   const inbox = await page.request.get(

@@ -17,6 +17,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from portal_api.config import Settings
@@ -143,6 +145,53 @@ def get_object(settings: Settings, key: str) -> bytes:
         return response["Body"].read()
     except Exception as exc:
         raise StorageError(f"Falha ao ler {key}") from exc
+
+
+@dataclass(frozen=True)
+class StoredObject:
+    """Os bytes **e** o content type, que ``get_object`` descarta.
+
+    Existe para o backup (ADR 0019): restaurar só os bytes devolveria todo PDF
+    como ``application/octet-stream``, e a URL assinada faria o navegador baixar
+    o arquivo em vez de abrir a página 3 — que é justamente o que a ADR 0017
+    trocou por um link.
+    """
+
+    key: str
+    data: bytes
+    content_type: str | None
+
+
+def fetch_object(settings: Settings, key: str) -> StoredObject:
+    client = _client(settings)
+    try:
+        response = client.get_object(Bucket=settings.storage_bucket, Key=key)
+        return StoredObject(
+            key=key,
+            data=response["Body"].read(),
+            content_type=response.get("ContentType"),
+        )
+    except Exception as exc:
+        raise StorageError(f"Falha ao ler {key}") from exc
+
+
+def iter_keys(settings: Settings, prefix: str = "") -> Iterator[str]:
+    """Percorre as chaves sob um prefixo, página a página.
+
+    ``prefix`` vazio é o bucket inteiro, que é o caso do backup completo; um
+    prefixo de organização (``org/<id>/``) é o backup de um tenant só. A regra da
+    barra final de ``delete_prefix`` vale aqui pelo mesmo motivo — o S3 compara
+    texto, não caminho —, mas aqui ela não é imposta: listar demais é inofensivo,
+    apagar demais não.
+    """
+    client = _client(settings)
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=settings.storage_bucket, Prefix=prefix):
+            for item in page.get("Contents", []):
+                yield item["Key"]
+    except Exception as exc:
+        raise StorageError(f"Falha ao listar o prefixo {prefix!r}") from exc
 
 
 def presigned_get_url(settings: Settings, key: str, ttl_seconds: int) -> str:

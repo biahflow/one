@@ -22,7 +22,19 @@
 \set ON_ERROR_STOP on
 
 -- 1. Extensões e schemas -----------------------------------------------------
-CREATE EXTENSION IF NOT EXISTS vector;
+-- As duas extensões ficam em `public` **explicitamente**. Sem o WITH SCHEMA
+-- elas nascem no primeiro schema do search_path, e foi assim que o btree_gist
+-- acabou dentro de `portal` (a migração 0010 o criou com o search_path já
+-- fixado em `portal,public`) — o que faz um `DROP SCHEMA portal` do restore
+-- falhar por dependência. Em `public` a extensão sobrevive ao schema.
+--
+-- O btree_gist estava só na migração 0010, e não aqui: um restore não roda
+-- migrações, então o dump do schema `portal` chegava num banco sem a classe de
+-- operadores do `EXCLUDE USING gist` de `project_financial_assumption` e
+-- falhava. Extensão não entra em `pg_dump -n portal` — ela é objeto de banco,
+-- não de schema, pela mesma razão que papel é objeto de cluster (ADR 0019).
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
 CREATE SCHEMA IF NOT EXISTS portal;
 CREATE SCHEMA IF NOT EXISTS keycloak;
 

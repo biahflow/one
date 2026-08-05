@@ -57,3 +57,7 @@ __pycache__/
 # playwright
 /test-results/
 /playwright-report/
+
+# Saída de `scripts/backup.sh` (ADR 0019). Um dump do banco nunca entra no git,
+# cifrado ou não.
+/backups/

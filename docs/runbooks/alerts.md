@@ -17,6 +17,8 @@ Até lá o substrato é o log JSON no stdout de cada serviço, que qualquer cole
 | `erasure.failed` / `erasure.storage_failed` | qualquer ocorrência | Um apagamento pedido não foi cumprido. É obrigação contratual e o pedido fica `failed` no banco, visível — mas ninguém olha uma tabela sem motivo. | `incident-response.md` |
 | `health.database_unavailable` | 2 em 5 min | O caminho de requisição perdeu o Postgres. O `/health/ready` já está em 503 e o compose/orquestrador já tirou a réplica do balanceamento. | `auth-failure.md` (a RLS sem contexto devolve zero linhas, que **se parece** com isto) |
 | ausência de `task.started` com `root=beat` | 2× `RETENTION_INTERVAL_SECONDS` | O agendador parou. É alerta **por ausência** porque o `beat` não tem healthcheck: com tick de 15 min a 24 h, nenhuma sonda barata distingue "parado" de "entre ticks" (ver o comentário no `docker-compose.yml`). | `drive-sync-failure.md` |
+| ausência de backup bem-sucedido | 26 h | Também **por ausência**, e pela razão contrária à do `beat`: o backup não roda no `beat` (é operação, não aplicação — ADR 0019), então nada dentro do portal sabe que ele deveria ter rodado. 26 h e não 24 para um backup diário atrasado não acordar ninguém. | `backup-restore.md` |
+| `backup.objects.rejected` | qualquer ocorrência | Objetos cujo SHA-256 não bateu num restore. O restore inteiro foi recusado — o alerta é porque o backup em que se confiava está corrompido, e o próximo restore precisa de outro. | `backup-restore.md` |
 
 ## Avisam, sem acordar
 

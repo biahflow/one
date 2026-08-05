@@ -66,7 +66,11 @@ def test_a_null_column_falls_back_column_by_column() -> None:
 
 @pytest.fixture
 def tenants(migrated_engine: Engine) -> Iterator[dict[str, uuid.UUID]]:
-    """Duas organizações, porque a afirmação que interessa é sobre a fronteira."""
+    """Duas organizações, porque a afirmação que interessa é sobre a fronteira.
+
+    Cada uma com uma pessoa, porque ``notification`` é a tabela cuja linha
+    pertence a alguém (ADR 0012) e ``user_id`` não é anulável.
+    """
     tag = uuid.uuid4().hex[:8]
     ids: dict[str, uuid.UUID] = {}
     with Session(migrated_engine) as session:
@@ -82,8 +86,16 @@ def tenants(migrated_engine: Engine) -> Iterator[dict[str, uuid.UUID]]:
             )
             session.add(project)
             session.flush()
+            user = User(
+                email=f"cliente-{label}-{tag}@example.com",
+                full_name=f"Cliente {label.title()}",
+                external_subject=f"sub-ret-{label}-{tag}",
+            )
+            session.add(user)
+            session.flush()
             ids[f"{label}_org"] = organization.id
             ids[f"{label}_project"] = project.id
+            ids[f"{label}_user"] = user.id
         session.commit()
     yield ids
 
@@ -93,10 +105,9 @@ def _notification(session: Session, ids: dict, label: str, *, age_days: int) -> 
     record = Notification(
         organization_id=ids[f"{label}_org"],
         project_id=ids[f"{label}_project"],
-        user_id=None,
-        kind=NotificationKind.milestone_completed,
+        user_id=ids[f"{label}_user"],
+        kind=NotificationKind.milestone_done,
         title="Marco concluído",
-        body="",
         dedupe_key=f"{label}-{uuid.uuid4().hex}",
         occurred_at=when,
     )
@@ -175,37 +186,45 @@ def test_the_organization_window_beats_the_default(
         assert session.get(Notification, record) is None
 
 
+def _conversation(
+    session: Session,
+    ids: dict,
+    *,
+    created_days_ago: int,
+    last_message_days_ago: int,
+    touched_days_ago: int | None = None,
+) -> uuid.UUID:
+    record = Conversation(
+        organization_id=ids["acme_org"],
+        project_id=ids["acme_project"],
+        user_id=ids["acme_user"],
+        title="Sobre o contrato",
+        last_message_at=datetime.now(timezone.utc)
+        - timedelta(days=last_message_days_ago),
+    )
+    session.add(record)
+    session.flush()
+    record.created_at = datetime.now(timezone.utc) - timedelta(days=created_days_ago)
+    if touched_days_ago is not None:
+        record.updated_at = datetime.now(timezone.utc) - timedelta(days=touched_days_ago)
+    session.flush()
+    return record.id
+
+
 @pytest.mark.integration
-def test_a_conversation_still_in_use_is_not_pruned_by_its_age(
+def test_a_conversation_still_in_use_is_not_pruned_by_its_birthday(
     migrated_engine: Engine, tenants: dict[str, uuid.UUID]
 ) -> None:
-    """Por `updated_at` e não por `created_at`, e a diferença é o ponto.
+    """Uma thread aberta há um ano e respondida ontem é a conversa de alguém.
 
-    Uma thread aberta há um ano e respondida ontem é a conversa corrente de
-    alguém. Podá-la pela data de nascimento apagaria o histórico debaixo de quem
-    está usando.
+    Podá-la por `created_at` apagaria o histórico debaixo de quem está usando.
     """
     settings = Settings(retention_conversation_days=180)
     with Session(migrated_engine) as session:
-        user = User(
-            email=f"cliente-{uuid.uuid4().hex[:8]}@acme.test",
-            full_name="Cliente",
-            external_subject=str(uuid.uuid4()),
+        conversation_id = _conversation(
+            session, tenants, created_days_ago=400, last_message_days_ago=1
         )
-        session.add(user)
-        session.flush()
-        record = Conversation(
-            organization_id=tenants["acme_org"],
-            project_id=tenants["acme_project"],
-            user_id=user.id,
-            title="Sobre o contrato",
-        )
-        session.add(record)
-        session.flush()
-        record.created_at = datetime.now(timezone.utc) - timedelta(days=400)
-        record.updated_at = datetime.now(timezone.utc) - timedelta(days=1)
         session.commit()
-        conversation_id = record.id
 
     with Session(migrated_engine) as session:
         outcome = retention.purge_expired(session, tenants["acme_org"], settings)
@@ -214,6 +233,38 @@ def test_a_conversation_still_in_use_is_not_pruned_by_its_age(
     assert outcome.removed["conversation"] == 0
     with Session(migrated_engine) as session:
         assert session.get(Conversation, conversation_id) is not None
+
+
+@pytest.mark.integration
+def test_a_thumb_on_a_dead_conversation_does_not_keep_it_alive(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """O erro oposto, e o mais fácil de cometer: podar por `updated_at`.
+
+    A ADR 0015 separou `last_message_at` de `updated_at` porque "marcar um
+    feedback não é conversar". Se a poda olhasse `updated_at`, um polegar dado
+    hoje numa conversa de dois anos atrás a preservaria para sempre — e a
+    retenção deixaria de significar alguma coisa exatamente nas threads mais
+    antigas.
+    """
+    settings = Settings(retention_conversation_days=180)
+    with Session(migrated_engine) as session:
+        conversation_id = _conversation(
+            session,
+            tenants,
+            created_days_ago=700,
+            last_message_days_ago=700,
+            touched_days_ago=0,  # avaliada hoje
+        )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.purge_expired(session, tenants["acme_org"], settings)
+        session.commit()
+
+    assert outcome.removed["conversation"] == 1
+    with Session(migrated_engine) as session:
+        assert session.get(Conversation, conversation_id) is None
 
 
 @pytest.mark.integration

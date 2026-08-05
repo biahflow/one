@@ -94,6 +94,15 @@ class Settings(BaseSettings):
     # responde 503 em vez de gravar metadado de um arquivo que não existe —
     # um `document` sem objeto seria uma linha que nunca vira evidência.
     storage_endpoint_url: str = "http://localhost:9000"
+    #: O mesmo storage, pelo endereço que o **navegador** alcança. Dois endereços
+    #: para um MinIO, e não é engano — é a mesma divisão de
+    #: `KEYCLOAK_ISSUER`/`KEYCLOAK_INTERNAL_URL` (ADR 0010), pelo mesmo motivo: a
+    #: API e o worker falam com o serviço pela rede interna do compose, e a URL
+    #: assinada é aberta pelo cliente, de fora dela. A assinatura SigV4 cobre o
+    #: host, então ela precisa ser gerada já contra o endereço público — trocar a
+    #: URL depois de assinada a invalidaria. Vazio = usa o de cima, que é o certo
+    #: quando os dois endereços coincidem (S3 gerenciado).
+    storage_public_endpoint_url: str = ""
     storage_bucket: str = "portal-documents"
     storage_access_key: str = ""
     storage_secret_key: str = ""

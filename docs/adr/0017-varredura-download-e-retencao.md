@@ -98,6 +98,12 @@ A URL **não carrega sessão** — quem a tiver, abre. O que a contém é o TTL 
 autenticação: ela é emitida depois da checagem de associação, e o que impede um vazamento de
 virar acesso permanente é ela vencer. Nada a guarda; cada clique gera outra.
 
+E ela é assinada contra o endereço **público** do storage, não o interno: são dois endereços para
+um MinIO, exatamente como `KEYCLOAK_ISSUER`/`KEYCLOAK_INTERNAL_URL` na ADR 0010. A API e o worker
+falam com o serviço pela rede do compose; quem abre o link está fora dela. A SigV4 cobre o host,
+então reescrever a URL depois de assinada a invalidaria — ela precisa nascer já apontando para
+fora. Em produção contra S3 os dois endereços coincidem e a variável fica vazia.
+
 Só há URL para documento com `scan_state` em `clean`/`skipped`. `pending`, `error` e `infected`
 respondem o mesmo 404 de sempre, sem distinguir "não existe" de "não passou" — o cliente não
 precisa saber que o portal recebeu um arquivo infectado.
@@ -118,8 +124,12 @@ ADRs pediram poda pelo nome. **Documento fica de fora**, e é decisão e não es
 evidência que sustenta uma citação já dada, e apagá-lo por aniversário tornaria uma resposta
 antiga impossível de conferir.
 
-A conversa é podada por `updated_at` e não por `created_at`. Uma thread aberta há um ano e
-respondida ontem é a conversa corrente de alguém.
+A conversa é podada por **`last_message_at`**, e a escolha tem dois erros vizinhos. `created_at`
+apagaria o histórico debaixo de quem está usando: uma thread aberta há um ano e respondida ontem é
+a conversa corrente de alguém. `updated_at` erra para o outro lado, e é o mais fácil de cometer —
+a ADR 0015 separou as duas colunas justamente porque "marcar um feedback não é conversar", então
+um polegar dado hoje numa conversa de dois anos atrás a manteria viva para sempre. Só a coluna do
+domínio significa o que a poda precisa saber.
 
 ### 7. O expurgo é um pedido gravado, e quem cumpre é o worker
 

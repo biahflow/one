@@ -146,14 +146,24 @@ def purge_expired(
         AgentEvent.occurred_at < reference - timedelta(days=limits.agent_event_days),
         limit=batch,
     )
-    # Por `updated_at`, e aqui a diferença importa: uma thread aberta há um ano e
-    # respondida ontem continua sendo a conversa corrente de alguém. As mensagens
-    # saem por CASCADE, que é como a ADR 0015 já as tinha amarrado.
+    # Por `last_message_at`, e **não** por `created_at` nem por `updated_at`.
+    #
+    # `created_at` apagaria o histórico debaixo de quem está usando: uma thread
+    # aberta há um ano e respondida ontem é a conversa corrente de alguém.
+    #
+    # `updated_at` erra para o outro lado, e é o erro mais fácil de cometer. A
+    # ADR 0015 separou as duas colunas justamente porque "marcar um feedback não
+    # é conversar" — um polegar numa conversa morta mexe em `updated_at` e a
+    # manteria viva para sempre. `last_message_at` é a coluna que significa o que
+    # a poda precisa saber, e é a que `append_turn` mantém.
+    #
+    # As mensagens saem por CASCADE, que é como a ADR 0015 já as tinha amarrado.
     outcome.removed["conversation"] = _delete_batch(
         session,
         Conversation,
         Conversation.organization_id == organization_id,
-        Conversation.updated_at < reference - timedelta(days=limits.conversation_days),
+        Conversation.last_message_at
+        < reference - timedelta(days=limits.conversation_days),
         limit=batch,
     )
     return outcome

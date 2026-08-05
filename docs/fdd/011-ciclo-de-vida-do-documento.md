@@ -67,7 +67,7 @@ nula = usa o padrão, **não** "guarda para sempre".
 |---|---|---|
 | `notification` | 180 dias | `created_at` |
 | `agent_event` | 730 dias | `occurred_at` (o dia do fato, que é o que o ROI usa) |
-| `conversation` | 365 dias | `updated_at` (uma thread em uso não é uma thread velha) |
+| `conversation` | 365 dias | `last_message_at` — **não** `updated_at`: um polegar não é uma conversa (ADR 0015) |
 | `document` | — | **nunca por idade**: é a evidência da citação |
 
 O `beat` acorda uma vez por dia. A poda é por lote (`retention_batch_size`) e por organização,
@@ -94,6 +94,7 @@ O pedido guarda a contagem do que removeu, por tabela. Nunca amostra do que remo
 - [x] Documento de outro projeto, não varrido ou infectado: 404 no download, sem distinção.
 - [x] A poda remove o que venceu, preserva o que não venceu e nunca cruza organização.
 - [x] A poda não toca em documento.
+- [x] Um feedback numa conversa antiga não a preserva da poda.
 - [x] O expurgo remove conteúdo e vínculos, preserva a organização, o usuário e o registro.
 - [x] `portal_app` lê zero linhas das duas tabelas novas e não escreve em nenhuma.
 - [x] `portal_admin` não reescreve o registro de um pedido de expurgo.

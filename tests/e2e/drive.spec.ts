@@ -55,12 +55,19 @@ async function connectAndSync(page: Page) {
     page.getByRole("heading", { name: /O que o assistente pode citar/ }),
   ).toBeVisible();
 
-  // Idempotente de propósito: dois testes deste arquivo chamam esta função, e o
-  // consentimento do primeiro **persiste** — desconectar revoga e carimba a
-  // linha, não a apaga (ADR 0016). Insistir em clicar "Conectar" faria o segundo
-  // teste falhar procurando um botão que a tela deixou de mostrar por já estar
-  // conectada, que é exatamente o estado que ele quer exercitar.
+  // Idempotente de propósito: os dois testes deste arquivo chamam esta função, e
+  // o que o primeiro faz **persiste** — desconectar revoga e carimba a linha, não
+  // a apaga (ADR 0016). O painel do conector tem três estados, e a função tem de
+  // saber chegar do que encontrar até "sincronizado".
   const connect = page.getByRole("button", { name: /Conectar Google Drive/ });
+  const choose = page.getByRole("button", { name: /Escolher a pasta|Trocar de pasta/ });
+  const sync = page.getByRole("button", { name: "Sincronizar agora" });
+
+  // Espera o painel assentar antes de perguntar em qual estado ele está. Um
+  // `isVisible()` seco responderia "não" para um botão que ainda vai renderizar,
+  // e o teste seguiria pulando justamente o passo que precisava dar.
+  await expect(connect.or(choose).or(sync).first()).toBeVisible({ timeout: 15_000 });
+
   if (await connect.isVisible()) {
     // O consentimento: o stub devolve o navegador na hora, com `code` e `state`.
     await connect.click();
@@ -68,15 +75,17 @@ async function connectAndSync(page: Page) {
     await expect(page.getByText(/Drive conectado/)).toBeVisible();
   }
 
-  // A pasta é escolhida num passo separado — só ela é a fronteira.
-  const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
-  const authorize = folderRow.getByRole("button", { name: "Autorizar" });
-  if (await authorize.isVisible().catch(() => false)) {
-    await authorize.click();
+  // A pasta é escolhida num passo separado — só ela é a fronteira. Conectar não
+  // autoriza nada, e é isso que o "Pasta não escolhida" da tela quer dizer.
+  if (!(await sync.isVisible())) {
+    if (await choose.isVisible()) await choose.click();
+    const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
+    await expect(folderRow).toBeVisible({ timeout: 15_000 });
+    await folderRow.getByRole("button", { name: "Autorizar" }).click();
     await expect(page.getByText(/autorizada/)).toBeVisible();
   }
 
-  await page.getByRole("button", { name: "Sincronizar agora" }).click();
+  await sync.click();
   await expect(page.getByText(/Sincronização na fila/)).toBeVisible();
 
   const contract = page.locator(".member-row", { hasText: "Contrato de suporte" });

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from portal_api.ai import quota
 from portal_api.ai.prompt import PROMPT_VERSION
 from portal_api.ai.responder import GAP_MESSAGE, get_responder
 from portal_api.ai.retrieval import Evidence, collect_document_evidence, collect_evidence
@@ -126,10 +127,32 @@ def answer_question(
     # Only citations that point at real evidence count — no fabricated sources.
     cited = [by_id[sid] for sid in result.source_ids if sid in by_id]
 
+    # O consumo entra no razão **antes** do desfecho do turno, e de propósito: a
+    # chamada custou tanto tendo respondido quanto tendo virado lacuna, e cobrar
+    # só a resposta útil ensinaria que perguntas ruins são de graça (ADR 0022). A
+    # linha é escrita nesta transação, então um turno revertido não cobra.
+    quota.record(
+        session,
+        ctx,
+        responder=responder_name,
+        model=responder_model,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+    )
+
     stamp = {
         "prompt_version": PROMPT_VERSION,
         "responder": responder_name,
         "model": responder_model,
+    }
+    # Os mesmos números no log, e não por redundância: o razão vive na transação
+    # do turno e some com a retenção; o log fica fora dos dois. É o par que torna
+    # "quanto de fato saiu" reconciliável com "quanto está contabilizado", e é de
+    # onde `docs/observability.md` passa a tirar o indicador de custo de IA que
+    # já listava sem que nada o medisse.
+    usage = {
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
     }
 
     # Cite-or-gap: a factual answer without a real citation is treated as a gap.
@@ -137,7 +160,7 @@ def answer_question(
         pending_id = _create_pendencia(session, ctx, question, actor_user_id)
         logger.info(
             "chat.answered",
-            extra={**stamp, "confidence": "insufficient_context", "citations": 0},
+            extra={**stamp, **usage, "confidence": "insufficient_context", "citations": 0},
         )
         return ChatResult(
             answer=result.answer if not result.sufficient else GAP_MESSAGE,
@@ -150,7 +173,7 @@ def answer_question(
 
     logger.info(
         "chat.answered",
-        extra={**stamp, "confidence": "grounded", "citations": len(cited)},
+        extra={**stamp, **usage, "confidence": "grounded", "citations": len(cited)},
     )
     return ChatResult(
         answer=result.answer,

@@ -20,6 +20,7 @@ from portal_api import (
     schemas,
     storage,
 )
+from portal_api.ai import quota
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
@@ -334,10 +335,12 @@ def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
         **CLIENT_ERRORS,
         status.HTTP_429_TOO_MANY_REQUESTS: {
             "description": (
-                "Perguntas demais na janela de um minuto. Não é opaco de propósito, "
-                "como o 429 da rota de eventos: quem pergunta precisa distinguir "
-                "'seu ritmo' de 'sua permissão' para saber se vale tentar de novo. "
-                "O `Retry-After` diz em quantos segundos."
+                "Perguntas demais na janela de um minuto (ADR 0021), ou teto mensal "
+                "de gasto de IA da organização atingido (ADR 0022). Não é opaco de "
+                "propósito, como o 429 da rota de eventos: quem pergunta precisa "
+                "distinguir 'seu ritmo' de 'sua permissão' para saber se vale tentar "
+                "de novo. O `Retry-After` diz em quantos segundos, e é o que separa "
+                "os dois casos — segundos para o ritmo, o resto do mês para o teto."
             )
         },
     },
@@ -359,6 +362,13 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
         ctx = TenantContext(organization_id=project.organization_id, project_id=project.id)
+        # **Depois** do 404, ao contrário do limite de taxa acima, e a diferença
+        # de ordem é deliberada (ADR 0022): sem projeto não há organização a que
+        # cobrar, e recusar antes contaria a quem não tem vínculo que a
+        # organização existe. Levanta 429 sem gravar nada — nem razão, nem
+        # pendência, nem mensagem —, que é o que dá sentido ao controle: a
+        # recusa não pode custar o que ela existe para evitar.
+        quota.check(session, ctx, settings)
         result = chat_service.answer_question(
             session, ctx, project, message.question, settings, actor_user_id=user.id
         )

@@ -5,6 +5,7 @@ Importing every model here ensures they are all registered on
 """
 
 from portal_api.models.agent_event import AgentEvent, AgentEventOutcome
+from portal_api.models.ai_usage import AiModelPrice, AiUsageEvent, OrganizationAiQuota
 from portal_api.models.agent_key import SCOPE_EVENTS_WRITE, AgentApiKey
 from portal_api.models.audit import AuditLog
 from portal_api.models.chat_rate_window import ChatRateWindow
@@ -66,6 +67,8 @@ __all__ = [
     "AgentApiKey",
     "AgentEvent",
     "AgentEventOutcome",
+    "AiModelPrice",
+    "AiUsageEvent",
     "AuditLog",
     "ChatRateWindow",
     "Conversation",
@@ -96,6 +99,7 @@ __all__ = [
     "Notification",
     "NotificationKind",
     "Organization",
+    "OrganizationAiQuota",
     "OrganizationRetentionPolicy",
     "PendingItem",
     "PendingOrigin",

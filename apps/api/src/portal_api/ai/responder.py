@@ -33,6 +33,15 @@ class ResponderResult:
     answer: str
     source_ids: list[str]
     sufficient: bool
+    #: O que a chamada consumiu (Fase 5, ADR 0022). Com default, para o
+    #: ``Protocol`` e o ``OfflineResponder`` não mudarem de assinatura: no caminho
+    #: offline não há provedor, e zero é a verdade e não uma ausência de dado.
+    #:
+    #: Até esta fatia o ``response.usage`` que a SDK devolve em toda resposta era
+    #: simplesmente descartado — e ``docs/observability.md`` listava "custo/latência
+    #: de IA" entre os indicadores.
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 def _norm(text: str) -> str:
@@ -186,7 +195,17 @@ class AnthropicResponder:
         valid_ids = {item.id for item in evidence}
         # Defensive: keep only citations that point at real evidence (no fabricated sources).
         source_ids = [sid for sid in data.get("source_ids", []) if sid in valid_ids]
-        return ResponderResult(str(data["answer"]), source_ids, bool(data["sufficient"]))
+        # `usage` é opcional na leitura de propósito: um número de custo ausente
+        # não pode derrubar uma resposta que já foi produzida e paga. Zero aqui
+        # subconta o mês, e o razão prefere subcontar a perder o turno.
+        usage = getattr(response, "usage", None)
+        return ResponderResult(
+            str(data["answer"]),
+            source_ids,
+            bool(data["sufficient"]),
+            input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+            output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+        )
 
 
 def get_responder(settings: Settings) -> Responder:

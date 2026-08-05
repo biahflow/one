@@ -199,7 +199,25 @@ const CHAT_UNAVAILABLE: ChatMessage = {
     "Nada foi registrado — tente de novo em instantes.",
 };
 
+// A API dá dois 429 diferentes na mesma rota: o ritmo de uma pessoa, em janela de
+// um minuto (ADR 0021), e o teto mensal de gasto de IA da organização (ADR 0022).
+// A tela os separa pelo `Retry-After` e não pelo texto do erro — o cabeçalho é
+// numérico e estável, e o corpo de um 429 é deliberadamente opaco no resto da
+// API. Acima de uma hora só pode ser o teto: a janela nunca passa de sessenta
+// segundos.
+const RATE_WINDOW_CEILING_SECONDS = 3600;
+
 function chatRateLimited(retryAfter: number | null): ChatMessage {
+  if (retryAfter !== null && retryAfter > RATE_WINDOW_CEILING_SECONDS) {
+    const dias = Math.max(1, Math.ceil(retryAfter / 86_400));
+    return {
+      role: "assistant",
+      text:
+        "O limite de uso do assistente para a sua organização foi atingido neste mês, " +
+        `então não tenho resposta para dar. A cota é renovada em ${dias} dia(s), e a ` +
+        "equipe da Portal Labs pode ampliá-la antes disso. Nada foi registrado.",
+    };
+  }
   const espera = retryAfter && retryAfter > 0 ? ` Tente de novo em ${retryAfter}s.` : "";
   return {
     role: "assistant",

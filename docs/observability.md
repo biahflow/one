@@ -16,10 +16,26 @@ campo que não sai. A lista de eventos, com limiar e destino, está em `runbooks
 
 Indicadores: latência e erro de API, fila, sincronização Drive, indexação, falha de conectores, custo/latência de IA, cobertura de citações, taxa de lacuna, pendências abertas/resolvidas e anomalias de autorização.
 
-Os quatro indicadores de IA dessa lista saem de um evento só: `chat.answered` (ADR 0021), com
+Os indicadores de IA dessa lista saem de um evento só: `chat.answered` (ADR 0021), com
 `prompt_version`, `responder`, `model`, `confidence` e a contagem de citações por turno — de
 onde vêm cobertura de citações e taxa de lacuna por versão de prompt, que é o que torna uma
-regressão de prompt visível em vez de anedótica. E o mesmo trio está gravado em
+regressão de prompt visível em vez de anedótica.
+
+**Custo saiu junto, e até a ADR 0022 não existia.** Esta página listava "custo/latência de IA"
+entre os indicadores enquanto o `response.usage` que a SDK devolve em toda resposta era
+simplesmente descartado — nenhuma coluna, nenhum evento, nenhuma setting de token ou gasto. Hoje
+`chat.answered` carrega `input_tokens` e `output_tokens` (e os dois estão na allowlist do
+formatter, porque contêm "token" sem serem um), e a latência é o `duration_ms` de `http.request`.
+O par log/coluna é o de sempre: o evento responde "quanto está saindo agora", `ai_usage_event`
+responde "quanto esta organização gastou no mês" — e os dois se reconciliam, o que importa
+porque o razão vive na transação do turno e um turno revertido não cobra.
+
+O dinheiro **não** é um indicador gravado: ele nasce na leitura, pelo preço vigente no dia da
+chamada (`ai/quota.py`), pela razão de `results.py` — reajustar o preço do modelo hoje não pode
+reprecificar março. Chamada cujo modelo não tem preço vigente **declara lacuna**
+(`ai_quota.price_missing`) em vez de contar zero.
+
+E o mesmo trio está gravado em
 `conversation_message`, pela razão do `last_sync_error` da conexão do Drive e do `scan_state` do
 documento: o log responde "está acontecendo agora" e some com a retenção; a coluna responde
 "aconteceu na terça passada", que é quando alguém pergunta.

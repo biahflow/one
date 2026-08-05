@@ -115,6 +115,17 @@ class Settings(BaseSettings):
     #: pendência o time interno — que é a ameaça aqui, não a conta de token.
     chat_rate_limit: int = 20
 
+    # Teto mensal de gasto de IA por organização, em centavos (Fase 5, ADR 0022).
+    # É o **padrão**: `organization_ai_quota.monthly_limit_cents` sobrepõe por
+    # organização, e coluna nula ali significa "usa este número" — nunca "sem
+    # teto", que é a regra da retenção (ADR 0017).
+    #
+    # US$ 200/mês é folgado para um projeto conversando e apertado para um laço:
+    # aos preços da 0018, são ~13 mil perguntas médias. Zero **desliga** a
+    # cobrança, e é a única forma de desligar — uma decisão explícita, em vez de
+    # um esquecimento que se pareça com uma.
+    ai_quota_monthly_cents: int = 20_000
+
     # Storage dos documentos (Fase 4, ADR 0014). Local é o MinIO do compose; em
     # produção é o S3, e só estas variáveis mudam. Sem credencial o upload
     # responde 503 em vez de gravar metadado de um arquivo que não existe —

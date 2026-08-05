@@ -33,6 +33,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from portal_api import access, agent_auth, crypto, retention, schemas, storage
+from portal_api.ai import quota
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_admin_org, bind_invitee, get_session
@@ -55,6 +56,7 @@ from portal_api.models import (
     MemberRole,
     Membership,
     Organization,
+    OrganizationAiQuota,
     OrganizationRetentionPolicy,
     Project,
     ProjectDriveConnection,
@@ -1502,6 +1504,108 @@ def set_retention_policy(
             )
         )
         return _policy_out(organization.id, record)
+
+
+class AiQuotaIn(BaseModel):
+    """Nulo é "usa o padrão de ``config.py``", não "sem teto".
+
+    Mesma regra da retenção, e pelo mesmo motivo: um contrato que não fala de
+    limite não é um contrato de limite infinito. Zero desliga a cobrança, e é uma
+    decisão explícita — que é justamente o que a distingue de um esquecimento.
+    """
+
+    monthly_limit_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+
+
+class AiQuotaOut(BaseModel):
+    organization_id: uuid.UUID
+    #: Como foi definido — nulo onde a organização não disse nada.
+    monthly_limit_cents: int | None
+    #: E o que de fato vale, resolvido contra o padrão. Os dois, pela razão da
+    #: retenção: a tela precisa distinguir "escolhido" de "herdado", senão salvar
+    #: o formulário fixaria o padrão sem querer.
+    effective_limit_cents: int
+    #: O mês corrente, calculado agora pelo preço vigente no dia de cada chamada.
+    spent_cents: int
+    input_tokens: int
+    output_tokens: int
+    calls: int
+    #: O que impediu de saber o gasto por inteiro — chamadas cujo modelo não tinha
+    #: preço vigente. Na forma do `gaps` de `results.py`: base ausente devolve o
+    #: que dá para calcular **mais** a razão do que falta, nunca um zero silencioso.
+    gaps: list[str]
+
+
+def _quota_out(
+    session: Session,
+    organization_id: uuid.UUID,
+    *,
+    record: OrganizationAiQuota | None = None,
+) -> AiQuotaOut:
+    if record is None:
+        record = session.execute(
+            select(OrganizationAiQuota).where(
+                OrganizationAiQuota.organization_id == organization_id
+            )
+        ).scalar_one_or_none()
+    settings = get_settings()
+    current = quota.spend(session, organization_id)
+    return AiQuotaOut(
+        organization_id=organization_id,
+        monthly_limit_cents=record.monthly_limit_cents if record else None,
+        effective_limit_cents=quota.limit_cents(session, organization_id, settings),
+        spent_cents=current.cost_cents,
+        input_tokens=current.input_tokens,
+        output_tokens=current.output_tokens,
+        calls=current.calls,
+        gaps=list(current.gaps),
+    )
+
+
+@router.get("/organizations/{organization_id}/ai-quota", response_model=AiQuotaOut)
+def get_ai_quota(organization_id: uuid.UUID, principal: CurrentPrincipal) -> AiQuotaOut:
+    with get_session(principal, role=DbRole.admin) as session:
+        _, organization = _authorized_org(session, principal, organization_id)
+        return _quota_out(session, organization.id)
+
+
+@router.put("/organizations/{organization_id}/ai-quota", response_model=AiQuotaOut)
+def set_ai_quota(
+    organization_id: uuid.UUID, payload: AiQuotaIn, principal: CurrentPrincipal
+) -> AiQuotaOut:
+    """Define o teto mensal de gasto de IA da organização.
+
+    ``PUT`` pela razão da retenção: a política é uma linha só e o corpo a descreve
+    inteira. E editada no lugar, não versionada por vigência — ao contrário do
+    **preço** do modelo, que é versionado justamente porque reprecificaria o
+    passado. Um teto não reprecifica nada; ele decide o que ainda acontece amanhã.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, organization = _authorized_org(session, principal, organization_id)
+        record = session.execute(
+            select(OrganizationAiQuota).where(
+                OrganizationAiQuota.organization_id == organization.id
+            )
+        ).scalar_one_or_none()
+        if record is None:
+            record = OrganizationAiQuota(organization_id=organization.id)
+            session.add(record)
+
+        record.monthly_limit_cents = payload.monthly_limit_cents
+        record.updated_by_user_id = actor.id
+        session.flush()
+
+        session.add(
+            AuditLog(
+                organization_id=organization.id,
+                actor_user_id=actor.id,
+                action="ai_quota.updated",
+                entity_type="organization_ai_quota",
+                entity_id=record.id,
+                data=audit_data(monthly_limit_cents=payload.monthly_limit_cents),
+            )
+        )
+        return _quota_out(session, organization.id, record=record)
 
 
 @router.post(

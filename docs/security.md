@@ -54,6 +54,12 @@
 - **Ainda aberto:** revisão das dependências apontadas pelo `npm audit` antes de produção
   (Fase 5).
 
+## Credencial de terceiro em repouso (ADR 0016)
+
+O refresh token do Google Drive é o único segredo do portal que precisa **voltar em claro** — ele é reapresentado ao provedor a cada sincronização, e por isso o HMAC sob pepper da ADR 0013 não serve aqui. Ele é selado com AES-256-GCM sob `DRIVE_TOKEN_ENCRYPTION_KEY`, que vive só no ambiente e nunca no banco que protege; o dado associado carrega organização e projeto, de modo que um ciphertext copiado para outra linha falha a decifra em vez de sincronizar a pasta errada. Sem a chave configurada, nenhuma conexão do Drive funciona — falha fechada.
+
+O escopo é `drive.readonly` e só ele: se o Google conceder um conjunto diferente, a conexão é recusada sem nada ser gravado. O token não aparece em nenhuma resposta da API nem no `audit_log`. Girar a chave exige passar a anterior em `DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS` — sem essa janela, todo projeto precisa refazer o consentimento.
+
 ## Dados e IA
 
 Documentos são conteúdo não confiável. O recuperador trata texto de fonte como dados, nunca como instruções. O modelo recebe apenas chunks permitidos para o projeto corrente e não recebe segredos. Ações futuras via ferramenta exigem allowlist e confirmação humana.

@@ -23,6 +23,11 @@ from portal_api.models.document import (
     DocumentOrigin,
     DocumentSource,
 )
+from portal_api.models.drive import (
+    DRIVE_READONLY_SCOPE,
+    DriveSyncState,
+    ProjectDriveConnection,
+)
 from portal_api.models.financial import ProjectFinancialAssumption
 from portal_api.models.identity import MemberRole, Membership, User
 from portal_api.models.meeting import Meeting
@@ -48,6 +53,7 @@ from portal_api.models.project import (
 )
 
 __all__ = [
+    "DRIVE_READONLY_SCOPE",
     "EMBEDDING_DIMENSIONS",
     "SCOPE_EVENTS_WRITE",
     "AgentApiKey",
@@ -68,6 +74,7 @@ __all__ = [
     "DocumentIngestState",
     "DocumentOrigin",
     "DocumentSource",
+    "DriveSyncState",
     "Meeting",
     "MemberRole",
     "Membership",
@@ -85,6 +92,7 @@ __all__ = [
     "PhaseDeliverable",
     "PhaseState",
     "Project",
+    "ProjectDriveConnection",
     "ProjectFinancialAssumption",
     "ProjectPhase",
     "ProjectStatus",

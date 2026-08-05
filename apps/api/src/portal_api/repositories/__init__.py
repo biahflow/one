@@ -15,6 +15,10 @@ from portal_api.repositories.conversation import (
 from portal_api.repositories.decision import DecisionRepository
 from portal_api.repositories.delivery import DeliveryRepository
 from portal_api.repositories.document import DocumentChunkRepository, DocumentRepository
+from portal_api.repositories.drive import (
+    DriveConnectionRepository,
+    DriveDocumentRepository,
+)
 from portal_api.repositories.financial import FinancialAssumptionRepository
 from portal_api.repositories.meeting import MeetingRepository
 from portal_api.repositories.membership import MembershipRepository
@@ -33,6 +37,8 @@ __all__ = [
     "DeliveryRepository",
     "DocumentChunkRepository",
     "DocumentRepository",
+    "DriveConnectionRepository",
+    "DriveDocumentRepository",
     "FinancialAssumptionRepository",
     "MeetingRepository",
     "MembershipRepository",

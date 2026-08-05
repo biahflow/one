@@ -3,7 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { authorizationHeader } from "@/app/lib/session";
 
-import KnowledgeClient, { type ProjectDocument } from "./KnowledgeClient";
+import KnowledgeClient, {
+  type DriveConnection,
+  type ProjectDocument,
+} from "./KnowledgeClient";
 
 // Como o resto da administração: por usuário e por requisição.
 export const dynamic = "force-dynamic";
@@ -26,6 +29,19 @@ type ApiDocument = {
   created_at: string;
 };
 
+type ApiDrive = {
+  connected: boolean;
+  folder_id: string | null;
+  folder_name: string | null;
+  google_account_email: string | null;
+  enabled: boolean;
+  sync_state: "idle" | "running" | "failed" | null;
+  last_sync_at: string | null;
+  last_sync_error: string | null;
+  last_sync_stats: Record<string, number | boolean> | null;
+  document_count: number;
+};
+
 /**
  * O que o assistente pode citar (ADR 0014).
  *
@@ -40,7 +56,7 @@ type ApiDocument = {
 export default async function KnowledgeAdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string }>;
+  searchParams: Promise<{ project?: string; drive?: string }>;
 }) {
   const base = process.env.API_BASE_URL;
   const session = await auth();
@@ -57,14 +73,20 @@ export default async function KnowledgeAdminPage({
   const me: ApiMe = await meResponse.json();
   if (!me.is_internal || me.projects.length === 0) notFound();
 
-  const { project: requested } = await searchParams;
+  const { project: requested, drive: driveResult } = await searchParams;
   const project =
     me.projects.find((candidate) => candidate.id === requested) ?? me.projects[0];
 
-  const response = await fetch(`${base}/api/v1/admin/projects/${project.id}/documents`, {
-    headers: authorization,
-    cache: "no-store",
-  });
+  const [response, driveResponse] = await Promise.all([
+    fetch(`${base}/api/v1/admin/projects/${project.id}/documents`, {
+      headers: authorization,
+      cache: "no-store",
+    }),
+    fetch(`${base}/api/v1/admin/projects/${project.id}/drive`, {
+      headers: authorization,
+      cache: "no-store",
+    }),
+  ]);
   // 404 aqui é "você não é internal_admin neste projeto" — a mesma resposta que
   // um projeto inexistente daria, de propósito.
   if (response.status === 404) notFound();
@@ -84,6 +106,21 @@ export default async function KnowledgeAdminPage({
     }),
   );
 
+  // A conexão do Drive é opcional para a tela funcionar: sem ela a lista de
+  // documentos continua valendo, e o painel mostra "não conectado".
+  const api: ApiDrive | null = driveResponse.ok ? await driveResponse.json() : null;
+  const drive: DriveConnection = {
+    connected: api?.connected ?? false,
+    folderId: api?.folder_id ?? null,
+    folderName: api?.folder_name ?? null,
+    account: api?.google_account_email ?? null,
+    enabled: api?.enabled ?? false,
+    syncState: api?.sync_state ?? null,
+    lastSyncAt: api?.last_sync_at ?? null,
+    lastSyncError: api?.last_sync_error ?? null,
+    documentCount: api?.document_count ?? 0,
+  };
+
   return (
     <KnowledgeClient
       organization={me.organization ?? ""}
@@ -95,6 +132,8 @@ export default async function KnowledgeAdminPage({
       projectName={project.name}
       projectId={project.id}
       documents={documents}
+      drive={drive}
+      driveResult={driveResult ?? null}
     />
   );
 }

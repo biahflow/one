@@ -126,10 +126,20 @@ e o cliente vê o número ao lado da premissa que o produziu.*
 
 ## Fase 4 — Conhecimento e IA contextual
 
-- [ ] Implementar conector Google Drive OAuth somente leitura, uma pasta permitida por projeto e
+- [x] Implementar conector Google Drive OAuth somente leitura, uma pasta permitida por projeto e
       sincronização idempotente. *Deliberadamente depois do índice: o conector é uma forma de
       **encher** o índice, e fazê-lo primeiro faria a primeira prova de que o chat cita documento
       depender de credencial de um provedor externo que o ambiente local não tem (ADR 0014).*
+      *(Feito na ADR 0016. Três decisões carregam o resto: o refresh token é o **primeiro segredo
+      reversível** do repositório — HMAC não serve para o que precisa ser reapresentado ao Google
+      —, então é AES-256-GCM com o tenant no dado associado e uma chave anterior para a rotação
+      não obrigar todo projeto a reconsentir; o callback mora no BFF porque não existe endereço da
+      API que o navegador alcance, e **fora de `/api/`** porque o `proxy.ts` responde JSON ali; e
+      `document.origin` ganha `drive` para o sync do Biahflow e o do Drive não apagarem o que é do
+      outro. A fronteira da pasta é conferida duas vezes, atalho não é seguido, e remoção só
+      acontece sobre listagem completa — falha do Google não vira perda de índice. O `beat` é o
+      primeiro agendador do projeto, e o `drive-stub` do compose é o que permite provar tudo isso
+      no navegador sem credencial do Google. FDD 010.)*
 - [x] Armazenar arquivos no MinIO/S3, validar upload, extrair texto e manter metadados de fonte,
       página e data. *(`portal_api/storage.py` fala S3 — MinIO local, S3 em produção — e a chave do
       objeto carrega o tenant inteiro. A porta de entrada é `/admin/conhecimento`, sob
@@ -161,12 +171,13 @@ e o cliente vê o número ao lado da premissa que o produziu.*
       projeto e prompt injection dentro do trecho. Roda determinístico em CI, sem chave nenhuma.)*
 
 **Aceite:** perguntas sobre produção, decisões financeiras e pendências retornam fontes corretas;
-falta de evidência cria uma pendência, sem resposta inventada. *Atendido para o que foi indexado:
+falta de evidência cria uma pendência, sem resposta inventada. *Atendido, e a fase está fechada:
 `tests/e2e/documents.spec.ts` sobe um arquivo com um termo inédito pela tela de administração,
 espera a indexação e vê o cliente receber a citação daquele documento; `tests/e2e/chat.spec.ts`
 recarrega a página e encontra a mesma resposta com a mesma citação, que é como se prova que ela
-existe fora do navegador. O que ainda não entra no índice é o conteúdo do Drive, que depende do
-conector acima — o único item aberto da fase.*
+existe fora do navegador; e `tests/e2e/drive.spec.ts` conecta uma pasta pelo consentimento OAuth,
+sincroniza e vê a citação chegar ao cliente — provando junto que o arquivo de fora da pasta e o
+atalho **não** entraram no índice.*
 
 ## Fase 5 — Segurança e produção
 

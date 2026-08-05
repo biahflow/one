@@ -193,6 +193,71 @@ export async function deleteDocument(
   });
 }
 
+/**
+ * Conector do Google Drive (Fase 4, ADR 0016).
+ *
+ * Nenhuma destas ações vê o refresh token: o code exchange acontece na API, que
+ * é onde moram o `client_secret` do Google e a chave de cifra. O que atravessa o
+ * BFF é o `code` e o `state`, e só no sentido navegador → API.
+ */
+
+const DRIVE_MESSAGES: Record<number, string> = {
+  409: "A autorização do Drive não vale mais. Reconecte a pasta.",
+  502: "O Google não respondeu. Tente de novo.",
+  503: "O conector do Google Drive não está configurado neste ambiente.",
+};
+
+export type DriveAuthorization = { authorize_url: string };
+export type DriveFolder = { id: string; name: string };
+
+export async function startDriveAuthorization(
+  projectId: string,
+): Promise<DataResult<DriveAuthorization | null>> {
+  return request<DriveAuthorization>(
+    `/api/v1/admin/projects/${projectId}/drive/authorize-url`,
+    { method: "POST" },
+    DRIVE_MESSAGES,
+  );
+}
+
+export async function listDriveFolders(
+  projectId: string,
+): Promise<DataResult<DriveFolder[] | null>> {
+  return request<DriveFolder[]>(
+    `/api/v1/admin/projects/${projectId}/drive/folders`,
+    { method: "GET" },
+    DRIVE_MESSAGES,
+  );
+}
+
+export async function setDriveFolder(
+  projectId: string,
+  folderId: string,
+): Promise<ActionResult> {
+  if (!folderId) return { ok: false, error: "Escolha uma pasta." };
+  return callApi(
+    `/api/v1/admin/projects/${projectId}/drive/folder`,
+    { method: "PUT", body: JSON.stringify({ folder_id: folderId }) },
+    DRIVE_MESSAGES,
+  );
+}
+
+export async function syncDriveNow(projectId: string): Promise<ActionResult> {
+  return callApi(
+    `/api/v1/admin/projects/${projectId}/drive/sync`,
+    { method: "POST" },
+    { ...DRIVE_MESSAGES, 409: "Uma sincronização já está em andamento." },
+  );
+}
+
+export async function disconnectDrive(projectId: string): Promise<ActionResult> {
+  return callApi(
+    `/api/v1/admin/projects/${projectId}/drive`,
+    { method: "DELETE" },
+    DRIVE_MESSAGES,
+  );
+}
+
 export async function openAssumption(
   projectId: string,
   formData: FormData,

@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
+from drive_fake import FakeDrive, FakeFile
 from portal_api import admin as admin_module
 from portal_api.auth import bearer_principal
 from portal_api.keycloak_admin import KeycloakAdminError, RealmUser
@@ -57,6 +58,7 @@ class Tenant:
     client_actor: Actor
     client_membership_id: uuid.UUID
     admin_membership_id: uuid.UUID
+    second_admin: Actor
 
 
 @dataclass
@@ -125,7 +127,16 @@ def world(migrated_engine: Engine) -> Iterator[dict[str, Tenant]]:
             full_name=f"Cliente {name.title()}",
             external_subject=f"sub-cliente-{name}-{tag}",
         )
-        session.add_all([admin_user, client_user])
+        # Um segundo administrador da mesma organização. Existe para os casos em
+        # que "tem permissão" e "é a mesma pessoa" precisam ser distinguidos — o
+        # `state` do OAuth é o primeiro deles (ADR 0016).
+        second_admin_user = User(
+            email=f"admin2-{name}-{tag}@portallabs.test",
+            full_name=f"Admin {name.title()} II",
+            external_subject=f"sub-admin2-{name}-{tag}",
+            is_internal=True,
+        )
+        session.add_all([admin_user, client_user, second_admin_user])
         session.flush()
 
         # Org-wide, como o seed faz para a equipe interna.
@@ -141,7 +152,13 @@ def world(migrated_engine: Engine) -> Iterator[dict[str, Tenant]]:
             user_id=client_user.id,
             role=MemberRole.client_member,
         )
-        session.add_all([admin_membership, client_membership])
+        second_admin_membership = Membership(
+            organization_id=organization.id,
+            project_id=None,
+            user_id=second_admin_user.id,
+            role=MemberRole.internal_admin,
+        )
+        session.add_all([admin_membership, client_membership, second_admin_membership])
         session.flush()
 
         tenants[name] = Tenant(
@@ -158,6 +175,12 @@ def world(migrated_engine: Engine) -> Iterator[dict[str, Tenant]]:
             ),
             client_membership_id=client_membership.id,
             admin_membership_id=admin_membership.id,
+            second_admin=Actor(
+                second_admin_user.external_subject or "",
+                second_admin_user.email,
+                second_admin_user.full_name,
+                ("internal_admin",),
+            ),
         )
 
     session.commit()
@@ -265,7 +288,11 @@ def test_listing_shows_the_projects_members_and_who_is_still_pending(
     body = client.get(f"/api/v1/admin/projects/{acme.project_id}/members").json()
 
     by_email = {member["email"]: member for member in body}
-    assert set(by_email) == {acme.admin.email, acme.client_actor.email}
+    assert set(by_email) == {
+        acme.admin.email,
+        acme.second_admin.email,
+        acme.client_actor.email,
+    }
     assert by_email[acme.admin.email]["active"] is True
     assert by_email[acme.client_actor.email]["active"] is False
     assert world["globex"].client_actor.email not in by_email
@@ -915,3 +942,321 @@ def _cleanup_documents(engine: Engine, project_id: uuid.UUID) -> None:
     with Session(engine) as session:
         session.execute(delete(Document).where(Document.project_id == project_id))
         session.commit()
+
+
+# --- Conector do Google Drive (Fase 4, ADR 0016) -------------------------------
+
+
+@pytest.fixture
+def drive_ready(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeDrive]:
+    """Conector configurado e ligado a um Drive de mentira."""
+    from portal_api import crypto
+    from portal_api.config import get_settings
+    from portal_api.integrations import google_drive
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "google_drive_client_id", "client-id")
+    monkeypatch.setattr(settings, "google_drive_client_secret", "client-secret")
+    monkeypatch.setattr(settings, "google_drive_api_base_url", "http://drive/drive/v3")
+    monkeypatch.setattr(settings, "google_oauth_token_url", "http://drive/token")
+    monkeypatch.setattr(settings, "drive_token_encryption_key", crypto.generate_key())
+
+    fake = FakeDrive()
+    fake.folder("folder-autorizada", "Contratos")
+    transport = fake.client()
+    monkeypatch.setattr(google_drive, "session_client", lambda: transport)
+    yield fake
+    transport.close()
+
+
+def _connect_drive(project_id: uuid.UUID) -> None:
+    """Percorre o fluxo real: pede a URL, extrai o `state`, devolve o callback."""
+    import httpx
+
+    started = client.post(f"/api/v1/admin/projects/{project_id}/drive/authorize-url")
+    assert started.status_code == 201
+    state = httpx.URL(started.json()["authorize_url"]).params["state"]
+    finished = client.post(
+        "/api/v1/admin/drive/callback", json={"code": "código", "state": state}
+    )
+    assert finished.status_code == 200, finished.text
+
+
+def test_no_client_member_reaches_the_drive_connector(
+    world, authenticated, drive_ready
+) -> None:
+    """Negativo de permissão para cada rota nova (AGENTS.md #6)."""
+    acme = world["acme"]
+    authenticated(acme.client_actor)
+    base = f"/api/v1/admin/projects/{acme.project_id}/drive"
+
+    responses = [
+        client.get(base),
+        client.post(f"{base}/authorize-url"),
+        client.get(f"{base}/folders"),
+        client.put(f"{base}/folder", json={"folder_id": "folder-autorizada"}),
+        client.post(f"{base}/sync"),
+        client.delete(base),
+    ]
+
+    assert {response.status_code for response in responses} == {404}
+
+
+def test_an_administrator_cannot_connect_a_drive_in_another_tenant(
+    world, authenticated, drive_ready
+) -> None:
+    authenticated(world["acme"].admin)
+    globex = world["globex"]
+
+    response = client.post(
+        f"/api/v1/admin/projects/{globex.project_id}/drive/authorize-url"
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_project_without_a_drive_answers_disconnected_and_not_404(
+    world, authenticated, drive_ready
+) -> None:
+    """404 aqui faria a tela confundir "você não administra" com "ninguém conectou"."""
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    response = client.get(f"/api/v1/admin/projects/{acme.project_id}/drive")
+
+    assert response.status_code == 200
+    assert response.json()["connected"] is False
+
+
+def test_connecting_stores_the_account_and_never_returns_the_token(
+    world, authenticated, drive_ready, migrated_engine
+) -> None:
+    """O segredo não sai da API — diferente da chave de agente, que atravessa uma vez."""
+    acme = world["acme"]
+    authenticated(acme.admin)
+
+    _connect_drive(acme.project_id)
+    response = client.get(f"/api/v1/admin/projects/{acme.project_id}/drive")
+
+    body = response.json()
+    assert body["connected"] is True
+    assert body["google_account_email"] == "interno@portallabs.local"
+    assert "refresh" not in response.text.lower()
+    assert "refresh-token-do-google" not in response.text
+
+    from portal_api.models import ProjectDriveConnection
+
+    with Session(migrated_engine) as session:
+        record = session.execute(
+            select(ProjectDriveConnection).where(
+                ProjectDriveConnection.project_id == acme.project_id
+            )
+        ).scalar_one()
+        # Guardado, mas selado: o valor em claro não existe no banco.
+        assert record.refresh_token_sealed
+        assert "refresh-token-do-google" not in record.refresh_token_sealed
+
+
+def test_a_replayed_state_finds_nothing(world, authenticated, drive_ready) -> None:
+    """Uso único: quem chega em segundo não acha mais lastro nenhum."""
+    import httpx
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    started = client.post(f"/api/v1/admin/projects/{acme.project_id}/drive/authorize-url")
+    state = httpx.URL(started.json()["authorize_url"]).params["state"]
+
+    first = client.post("/api/v1/admin/drive/callback", json={"code": "c", "state": state})
+    second = client.post("/api/v1/admin/drive/callback", json={"code": "c", "state": state})
+
+    assert first.status_code == 200
+    assert second.status_code == 404
+
+
+def test_an_expired_state_is_refused(world, authenticated, drive_ready, monkeypatch) -> None:
+    import httpx
+
+    from portal_api.config import get_settings
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    monkeypatch.setattr(get_settings(), "drive_oauth_state_ttl_seconds", -1)
+    started = client.post(f"/api/v1/admin/projects/{acme.project_id}/drive/authorize-url")
+    state = httpx.URL(started.json()["authorize_url"]).params["state"]
+
+    response = client.post(
+        "/api/v1/admin/drive/callback", json={"code": "c", "state": state}
+    )
+
+    assert response.status_code == 404
+
+
+def test_an_unknown_state_opens_nothing(world, authenticated, drive_ready) -> None:
+    authenticated(world["acme"].admin)
+
+    response = client.post(
+        "/api/v1/admin/drive/callback", json={"code": "c", "state": "inventado"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_state_minted_for_someone_else_is_refused(
+    world, authenticated, drive_ready
+) -> None:
+    """O `state` prova que é o mesmo fluxo; o dono prova que é a mesma pessoa."""
+    import httpx
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    started = client.post(f"/api/v1/admin/projects/{acme.project_id}/drive/authorize-url")
+    state = httpx.URL(started.json()["authorize_url"]).params["state"]
+
+    authenticated(acme.second_admin)
+    response = client.post(
+        "/api/v1/admin/drive/callback", json={"code": "c", "state": state}
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_broader_granted_scope_is_refused_and_nothing_is_stored(
+    world, authenticated, drive_ready
+) -> None:
+    import httpx
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    drive_ready.granted_scope = "https://www.googleapis.com/auth/drive"
+    started = client.post(f"/api/v1/admin/projects/{acme.project_id}/drive/authorize-url")
+    state = httpx.URL(started.json()["authorize_url"]).params["state"]
+
+    response = client.post(
+        "/api/v1/admin/drive/callback", json={"code": "c", "state": state}
+    )
+
+    assert response.status_code == 400
+    assert client.get(f"/api/v1/admin/projects/{acme.project_id}/drive").json()["connected"] is False
+
+
+def test_a_consent_without_a_refresh_token_is_refused(
+    world, authenticated, drive_ready
+) -> None:
+    """Sem `prompt=consent` o Google devolve isto, e a conexão nasceria inutilizável."""
+    import httpx
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    drive_ready.refresh_token = None
+    started = client.post(f"/api/v1/admin/projects/{acme.project_id}/drive/authorize-url")
+    state = httpx.URL(started.json()["authorize_url"]).params["state"]
+
+    response = client.post(
+        "/api/v1/admin/drive/callback", json={"code": "c", "state": state}
+    )
+
+    assert response.status_code == 400
+
+
+def test_connecting_without_an_encryption_key_answers_503(
+    world, authenticated, drive_ready, monkeypatch
+) -> None:
+    """Falha antes de mandar a pessoa para a tela do Google."""
+    from portal_api.config import get_settings
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    monkeypatch.setattr(get_settings(), "drive_token_encryption_key", "")
+    monkeypatch.setattr(get_settings(), "drive_token_encryption_key_previous", "")
+
+    response = client.post(f"/api/v1/admin/projects/{acme.project_id}/drive/authorize-url")
+
+    assert response.status_code == 503
+
+
+def test_choosing_a_file_instead_of_a_folder_is_refused(
+    world, authenticated, drive_ready
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+    _connect_drive(acme.project_id)
+    drive_ready.add(
+        FakeFile(id="um-arquivo", name="a.txt", mime_type="text/plain", parents=["folder-autorizada"])
+    )
+
+    response = client.put(
+        f"/api/v1/admin/projects/{acme.project_id}/drive/folder",
+        json={"folder_id": "um-arquivo"},
+    )
+
+    assert response.status_code == 502
+
+
+def test_sync_now_queues_and_is_audited(
+    world, authenticated, drive_ready, migrated_engine, monkeypatch
+) -> None:
+    from portal_api import worker
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    _connect_drive(acme.project_id)
+    client.put(
+        f"/api/v1/admin/projects/{acme.project_id}/drive/folder",
+        json={"folder_id": "folder-autorizada"},
+    )
+    queued: list[str] = []
+    monkeypatch.setattr(worker, "queue_drive_sync", queued.append)
+
+    response = client.post(f"/api/v1/admin/projects/{acme.project_id}/drive/sync")
+
+    assert response.status_code == 202
+    assert len(queued) == 1
+    with Session(migrated_engine) as session:
+        actions = set(
+            session.execute(
+                select(AuditLog.action).where(AuditLog.project_id == acme.project_id)
+            ).scalars()
+        )
+    assert {"drive.authorize_started", "drive.connected", "drive.folder_changed", "drive.sync_requested"} <= actions
+
+
+def test_the_audit_trail_never_carries_the_token(
+    world, authenticated, drive_ready, migrated_engine
+) -> None:
+    acme = world["acme"]
+    authenticated(acme.admin)
+    _connect_drive(acme.project_id)
+
+    with Session(migrated_engine) as session:
+        entries = list(
+            session.execute(
+                select(AuditLog).where(AuditLog.project_id == acme.project_id)
+            ).scalars()
+        )
+    assert entries
+    assert all("refresh-token-do-google" not in str(entry.data) for entry in entries)
+
+
+def test_disconnecting_revokes_and_keeps_the_trail(
+    world, authenticated, drive_ready, migrated_engine
+) -> None:
+    """O segredo some; a linha fica — o rastro de que este projeto leu aquele Drive."""
+    from portal_api.models import ProjectDriveConnection
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    _connect_drive(acme.project_id)
+
+    response = client.delete(f"/api/v1/admin/projects/{acme.project_id}/drive")
+
+    assert response.status_code == 204
+    with Session(migrated_engine) as session:
+        record = session.execute(
+            select(ProjectDriveConnection).where(
+                ProjectDriveConnection.project_id == acme.project_id
+            )
+        ).scalar_one()
+        assert record.refresh_token_sealed is None
+        assert record.enabled is False
+        assert record.disconnected_at is not None
+        assert record.connected_at is not None

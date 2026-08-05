@@ -27,7 +27,7 @@
       "publicClient": false,
       "secret": "portal-web-local-only",
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://localhost:3000/api/auth/callback/keycloak",

@@ -49,3 +49,34 @@ Vale lembrar o que **não** é falha do provedor: sem `ANTHROPIC_API_KEY` ou `VO
 portal usa o respondedor e o embedder offline determinísticos (ADRs 0007 e 0014), sem erro
 nenhum no log. Uma stack que "não está citando" com as chaves vazias está funcionando como
 desenhado.
+
+**E até a ADR 0022 essa era a única possibilidade na pilha do compose**, porque as três variáveis
+de chat (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `CHAT_RATE_LIMIT`) existiam no `.env.example` e
+nunca chegavam ao contêiner. Quem preenchesse a chave e visse respostas sem citação estaria
+lendo um sintoma sem causa neste runbook.
+
+## Quando o provedor limita a taxa (ADR 0022)
+
+Um 429 da Anthropic **não** aparece como erro, e é a confusão mais provável sob carga: como toda
+exceção do provedor é engolida em favor do respondedor offline, ele chega como
+`chat.provider_unavailable` com `reason=RateLimitError` — e a única coisa que o cliente percebe é
+que as respostas pararam de citar documento.
+
+```bash
+docker compose logs api | grep '"event":"chat.provider_unavailable"' | grep RateLimitError
+```
+
+A confirmação está na linha, não só no log: turnos com `conversation_message.responder =
+'offline_fallback'` no mesmo intervalo. Num relatório de `scripts/loadtest.py` isso aparece como
+`offline_fallback` no `responder_mix`, e é o campo que invalida os percentis da execução — ver
+`load-test.md`.
+
+O portal **não** faz retry com recuo próprio, e é decisão: acrescentá-lo transformaria uma recusa
+de ritmo do provedor numa latência que ninguém explica, e a escolha de esperar (ou de pedir mais
+cota ao provedor) pertence a quem paga a conta. O que o portal faz é degradar com o evento na
+mão.
+
+Não confunda com `chat.rate_limited` nem com `ai_quota.exhausted`: aqueles são os limites **do
+portal** — ritmo de uma pessoa e teto mensal de uma organização — e devolvem 429 ao cliente com
+`Retry-After`. Este é o limite do provedor, é invisível para o cliente, e piora a resposta em vez
+de recusá-la.

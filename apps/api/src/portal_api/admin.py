@@ -766,12 +766,12 @@ def upload_document(
     data = file.file.read(settings.document_max_bytes + 1)
     if len(data) > settings.document_max_bytes:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"File exceeds {settings.document_max_bytes} bytes",
         )
     if not data:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Empty file"
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Empty file"
         )
 
     with get_session(principal, role=DbRole.admin) as session:
@@ -1634,7 +1634,7 @@ def request_erasure(
             # organização, e o que falhou foi a confirmação — esconder isso só
             # faria a pessoa tentar de novo às cegas.
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Confirmation does not match the organization slug",
             )
 

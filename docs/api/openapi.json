@@ -487,7 +487,7 @@
       "Body_upload_document_api_v1_admin_projects__project_id__documents_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           },

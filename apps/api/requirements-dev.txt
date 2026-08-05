@@ -1,4 +1,7 @@
 -r requirements.txt
-httpx==0.28.1
-pytest==8.3.5
-pytest-cov==6.0.0
+# `pip-audit` é a metade Python do portão de dependências (ADR 0023). Fica aqui e
+# não em `requirements.txt` porque auditar não é servir requisição — a imagem da
+# API instala só o runtime (`apps/api/Dockerfile`).
+pip-audit==2.10.1
+pytest==9.1.1
+pytest-cov==7.1.0

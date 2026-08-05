@@ -53,11 +53,37 @@
 - **Escrita em `membership` só pelo papel `portal_admin`**, que é `NOBYPASSRLS` e alcança uma
   organização por vez, via GUC publicada depois da verificação. O papel do caminho de
   requisição não tem o privilégio, e há teste que consulta o catálogo para garantir.
-- **Ainda aberto:** revisão das dependências apontadas pelo `npm audit` antes de produção
-  (Fase 5). O aviso a ler primeiro é o do `next` — GHSA-6gpp-xcg3-4w24, *middleware/proxy bypass
-  em App Router*, corrigido em 16.2.11 —, porque neste repositório o `proxy.ts` **é** o portão de
-  sessão. As pré-condições do aviso (Turbopack e locale único) não se aplicam aqui, então a
-  exploração é improvável; ainda assim o bump é barato e o alvo é o controle mais central.
+- **Dependências vulneráveis (ADR 0023).** `scripts/audit.mjs` audita os dois ecossistemas —
+  `npm audit` e `pip-audit` — no job `dependency-audit` do CI, a cada push e a cada pull
+  request, **sem limiar de severidade**: a única forma de um aviso não reprovar é uma linha
+  datada com motivo em `docs/security/advisories.json`, que vence sozinha. O `dependency-review`
+  continua ao lado dele e responde outra pergunta: ele olha o *diff* de um PR e pega a
+  biblioteca ruim entrando; este pergunta o que já está instalado. Confundir os dois foi o que
+  deixou nove avisos do `next`, sete do `starlette` e seis do `python-multipart` passarem verdes
+  a cada push. Hoje o registro está **vazio** — não há aviso aberto nos dois ecossistemas.
+
+  Duas correções ao que esta seção afirmava, e as duas importam para quem for reler o aviso do
+  `next` (GHSA-6gpp-xcg3-4w24, *middleware/proxy bypass em App Router*, e aqui o `proxy.ts`
+  **é** o portão de sessão):
+
+  1. dizia-se "corrigido em 16.2.11", e era verdade só para os avisos do próprio `next` — a
+     linha 16.2.x repinava `postcss` e `sharp` nas versões vulneráveis. O repositório está em
+     **16.3.0**, que é onde as três fecham;
+  2. dizia-se que "as pré-condições do aviso (Turbopack e locale único) não se aplicam aqui", e
+     a primeira metade estava invertida: **Turbopack é o bundler deste repositório** — é o
+     padrão do Next 16 e nenhum script passa `--webpack`; o próprio build imprime
+     `▲ Next.js 16.3.0 (Turbopack)`. O que não se aplica é a outra pré-condição: não existe
+     `config.i18n` nem segmento `[locale]` em lugar nenhum. A conclusão (exploração improvável)
+     seguia certa, mas por um motivo que não era o escrito.
+
+- **O 422 não devolve o corpo da requisição (ADR 0023).** O FastAPI passou a incluir `input` —
+  o corpo inteiro de quem chamou — em cada item de erro de validação. Um handler do `app`
+  inteiro deixa passar só `type`, `loc` e `msg`, e o esquema publicado poda os mesmos campos a
+  partir da mesma constante. O que torna isso necessário e não estético: `DriveCallbackIn`
+  carrega `code` e `state` no corpo, e o `code` é o authorization code do Google — trocável
+  pelo refresh token que a seção seguinte sela com AES-256-GCM. Nenhum dos dois nomes casa com
+  a redação por dica de `telemetry.py`, que é a razão de a filtragem aqui ser por lista do que
+  **sai**, e não do que se suspeita.
 
 ## Credencial de terceiro em repouso (ADR 0016)
 

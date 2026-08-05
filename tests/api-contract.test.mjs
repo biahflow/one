@@ -24,7 +24,7 @@ import test from "node:test";
 
 import Ajv2020 from "ajv/dist/2020.js";
 
-import { DASHBOARD, ME } from "./fixtures/dashboard.mjs";
+import { DASHBOARD, ME, SEARCH } from "./fixtures/dashboard.mjs";
 
 const SCHEMA_PATH = fileURLToPath(new URL("../docs/api/openapi.json", import.meta.url));
 const document = JSON.parse(readFileSync(SCHEMA_PATH, "utf8"));
@@ -58,7 +58,7 @@ function check(name, payload) {
 
 test("o esquema publicado descreve as rotas que o BFF consome", () => {
   const schemas = document.components.schemas;
-  for (const name of ["MeOut", "MyDashboardOut", "ResultsOut", "NotificationsOut"]) {
+  for (const name of ["MeOut", "MyDashboardOut", "ResultsOut", "NotificationsOut", "SearchOut"]) {
     assert.ok(schemas[name], `o contrato não define ${name}`);
   }
 });
@@ -69,6 +69,10 @@ test("a resposta de /api/v1/me na fixture é a que a API declara", () => {
 
 test("a resposta de /api/v1/me/dashboard na fixture é a que a API declara", () => {
   check("MyDashboardOut", DASHBOARD);
+});
+
+test("a resposta de /api/v1/me/search na fixture é a que a API declara", () => {
+  check("SearchOut", SEARCH);
 });
 
 test("um campo renomeado na fixture é recusado", () => {

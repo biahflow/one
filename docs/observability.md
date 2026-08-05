@@ -40,6 +40,12 @@ E o mesmo trio está gravado em
 documento: o log responde "está acontecendo agora" e some com a retenção; a coluna responde
 "aconteceu na terça passada", que é quando alguém pergunta.
 
+A busca emite `search.performed` com `hits`, `kinds`, `term_length` e `duration_ms` — e **nunca
+o termo** (ADR 0024). Ele é conteúdo do cliente, como o texto do documento, e o comprimento já
+explica uma lista vazia sem gravar o que a pessoa procurava. Pela mesma razão a busca não grava
+`audit_log`: o download é auditável porque tira o arquivo do portal, procurar é ler o que já
+está nas abas, e uma linha por tecla afogaria a trilha que o `incident-response.md` manda ler.
+
 O resultado de cada sincronização do Drive vive na própria linha da conexão (`last_sync_at`, `last_sync_error`, `last_sync_stats`), e não só no log: é o que faz "por que a IA não sabe disso?" ser respondível pela tela. `rejected > 0` é o contador da fronteira — atalhos e arquivos de fora da pasta autorizada — e deve ser lido como o controle funcionando, não como erro.
 
 O estado da varredura vive na linha do documento (`scan_state`, `scan_error`, `scanned_at`) pela

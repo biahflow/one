@@ -72,3 +72,24 @@ class TenantScopedRepository(Repository[ModelT]):
     def list(self) -> list[ModelT]:
         stmt = select(self.model).where(*self._tenant_filters())
         return list(self.session.execute(stmt).scalars())
+
+    def matching(
+        self,
+        *criteria,
+        order_by: tuple | None = None,
+        limit: int | None = None,
+    ) -> list[ModelT]:
+        """As linhas deste tenant que também satisfazem ``criteria``.
+
+        Existe para a busca (ADR 0024), que precisa de um predicado por espécie
+        sem levar o filtro de tenant para fora daqui: ``_tenant_filters()``
+        montado no chamador seria a primeira barreira reimplementada em outro
+        arquivo, e o dia em que as duas divergissem ninguém veria — a RLS
+        continuaria certa e o teste de isolamento, verde.
+        """
+        stmt = select(self.model).where(*self._tenant_filters(), *criteria)
+        if order_by is not None:
+            stmt = stmt.order_by(*order_by)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return list(self.session.execute(stmt).scalars())

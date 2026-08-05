@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import date, datetime, timedelta, timezone
+from time import perf_counter
 from uuid import UUID
 
 import redis
@@ -20,6 +21,7 @@ from portal_api import (
     conversations,
     results,
     schemas,
+    search,
     storage,
 )
 from portal_api.ai import quota
@@ -765,6 +767,50 @@ def my_notifications(
                 for item in items
             ],
         }
+
+
+@app.get(
+    "/api/v1/me/search",
+    response_model=schemas.SearchOut,
+    responses=CLIENT_ERRORS,
+)
+def my_search(principal: CurrentPrincipal, q: str = "") -> dict:
+    """A busca dentro do projeto do chamador (Fase 6, ADR 0024).
+
+    Sem identificador de projeto no caminho, como o dashboard, a caixa de avisos
+    e o download da citação: o projeto sai de ``access.default_project``, que já
+    fixa o contexto de tenant. O navegador não manda id de projeto — e o que ele
+    não manda é o que ninguém precisa validar (regra 1 do `AGENTS.md`).
+
+    A regra da fatia está em ``search.py`` e não aqui: esta função resolve o
+    projeto e serializa. O termo digitado **não** entra no log — é conteúdo do
+    cliente (`docs/data-classification.md`), e o evento leva só quantos
+    resultados saíram e de que espécies.
+    """
+    started = perf_counter()
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        hits = search.search_project(
+            session,
+            TenantContext(project.organization_id, project.id),
+            q,
+        )
+
+    logger.info(
+        "search.performed",
+        extra={
+            "hits": len(hits),
+            "kinds": sorted({hit.kind for hit in hits}),
+            # O comprimento, nunca o termo: saber que alguém digitou duas letras
+            # explica uma lista vazia sem gravar o que a pessoa procurava.
+            "term_length": len(q.strip()),
+            "duration_ms": round((perf_counter() - started) * 1000, 1),
+        },
+    )
+    return {"results": [hit.to_payload() for hit in hits]}
 
 
 @app.post(

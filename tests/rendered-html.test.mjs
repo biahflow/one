@@ -6,7 +6,7 @@ import test, { after } from "node:test";
 
 import { encode } from "next-auth/jwt";
 
-import { DASHBOARD, ME, NOTIFICATIONS } from "./fixtures/dashboard.mjs";
+import { DASHBOARD, ME, NOTIFICATIONS, SEARCH } from "./fixtures/dashboard.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 
@@ -31,9 +31,11 @@ function startApiStub() {
       ? DASHBOARD
       : request.url?.startsWith("/api/v1/me/notifications")
         ? NOTIFICATIONS
-        : request.url?.startsWith("/api/v1/me")
-          ? ME
-          : null;
+        : request.url?.startsWith("/api/v1/me/search")
+          ? SEARCH
+          : request.url?.startsWith("/api/v1/me")
+            ? ME
+            : null;
     if (!body) {
       response.writeHead(404).end("{}");
       return;
@@ -244,6 +246,42 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.doesNotMatch(html, /codex-preview/);
 });
 
+test("the search route forwards the session and answers from the API", async () => {
+  // O campo da lupa prometia "buscar no contexto do projeto" desde a primeira
+  // versão da tela, com um `<input>` sem handler nenhum (ADR 0024). O que este
+  // teste fixa é a metade do BFF: o termo sai daqui com o token e o `trace_id`
+  // — o stub responde 401/400 sem eles —, e a lista que volta é a da API.
+  const response = await render("/api/search?q=contrato", {
+    headers: { cookie: await sessionCookie(), accept: "application/json" },
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body, SEARCH);
+});
+
+test("the search route refuses an anonymous caller before reaching the API", async () => {
+  // Sem sessão não há o que repassar, e o 401 sai do BFF em vez de a API decidir
+  // por um anônimo — a mesma forma de `app/api/chat/route.ts`.
+  const response = await render("/api/search?q=contrato", {
+    headers: { accept: "application/json" },
+  });
+
+  assert.equal(response.status, 401);
+});
+
+test("the search route does not call the API for an empty term", async () => {
+  // Uma tecla apagada não vale uma ida ao servidor. A resposta é a mesma lista
+  // vazia que a API daria — e o mínimo de verdade continua sendo dela
+  // (`search.MIN_QUERY_LENGTH`), não daqui.
+  const response = await render("/api/search?q=%20%20", {
+    headers: { cookie: await sessionCookie(), accept: "application/json" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { results: [] });
+});
+
 /**
  * Renderiza e devolve os `X-Request-ID` que a API viu (ADR 0018).
  *
@@ -313,6 +351,21 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
     /sources:\s*\[\s*"/,
     "DashboardClient.tsx voltou a fabricar citação no cliente (ADR 0021)",
   );
+  // A busca entra na mesma guarda e pelo mesmo argumento (ADR 0024): todo
+  // resultado vem de `GET /api/v1/me/search`, que é onde o filtro de tenant e a
+  // RLS valem. Uma lista montada no navegador seria, por construção, uma lista
+  // que ninguém escopou — e a tela não teria como saber disso.
+  assert.doesNotMatch(
+    dashboard,
+    /(hits|results):\s*\[\s*\{/,
+    "DashboardClient.tsx voltou a fabricar resultado de busca no cliente (ADR 0024)",
+  );
+  // E o campo tem de continuar ligado: um `<input>` sem `onChange` foi
+  // exatamente o estado que esta fatia corrigiu, e ele passaria por qualquer
+  // asserção sobre o HTML renderizado.
+  assert.match(dashboard, /function ProjectSearch/);
+  assert.match(dashboard, /onChange=\{\(event\) => setTerm\(event\.target\.value\)\}/);
+  assert.match(dashboard, /fetch\(`\/api\/search\?q=/);
   // O 429 é a única recusa que a tela sabe explicar, e ela precisa explicá-la:
   // sem este ramo, um limite atingido cairia no `catch` e viraria erro genérico.
   assert.match(dashboard, /response\.status === 429/);

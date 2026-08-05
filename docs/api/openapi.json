@@ -2757,6 +2757,64 @@
         "title": "ScanState",
         "type": "string"
       },
+      "SearchHitOut": {
+        "additionalProperties": false,
+        "description": "Um resultado da busca, já no formato que a tela mostra.\n\n``tab`` é o rótulo da aba para onde o clique leva — a tela navega por rótulo\ndesde a Fase 2, e devolvê-lo pronto evita um segundo mapa no navegador que\nenvelheceria sozinho. ``document_id`` só vem preenchido quando há arquivo\npor trás e ele passou pela varredura: é o que permite abrir a fonte pela\nrota de download assinado (ADR 0017), e vazio quer dizer \"não há o que\nabrir\", nunca \"abra por sua conta\".",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "tab": {
+            "title": "Tab",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "detail",
+          "location",
+          "tab",
+          "document_id"
+        ],
+        "title": "SearchHitOut",
+        "type": "object"
+      },
+      "SearchOut": {
+        "additionalProperties": false,
+        "description": "A busca não erra, ela não acha: termo curto ou sem casamento devolve\n``results`` vazio e 200 — nunca 422, nunca o resultado mais próximo.",
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHitOut"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "SearchOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -5353,6 +5411,72 @@
           }
         ],
         "summary": "Update Preferences"
+      }
+    },
+    "/api/v1/me/search": {
+      "get": {
+        "description": "A busca dentro do projeto do chamador (Fase 6, ADR 0024).\n\nSem identificador de projeto no caminho, como o dashboard, a caixa de avisos\ne o download da citação: o projeto sai de ``access.default_project``, que já\nfixa o contexto de tenant. O navegador não manda id de projeto — e o que ele\nnão manda é o que ninguém precisa validar (regra 1 do `AGENTS.md`).\n\nA regra da fatia está em ``search.py`` e não aqui: esta função resolve o\nprojeto e serializa. O termo digitado **não** entra no log — é conteúdo do\ncliente (`docs/data-classification.md`), e o evento leva só quantos\nresultados saíram e de que espécies.",
+        "operationId": "my_search_api_v1_me_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "My Search"
       }
     },
     "/api/v1/projects/{project_id}/dashboard": {

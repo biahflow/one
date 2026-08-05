@@ -27,6 +27,17 @@ API resolve para ele — nenhuma delas recebe id de usuário:
   quantas foram marcadas.
 - `PATCH /api/v1/me/preferences` — hoje só o e-mail das notificações.
 
+`GET /api/v1/me/search?q=` é a busca dentro do projeto resolvido (ADR 0024), e obedece às mesmas
+duas regras: sem projeto, 404; nunca 403. Cada resultado traz `kind`
+(`document`/`meeting`/`pending`/`milestone`/`chunk`), `title`, `detail`, `location`, o **rótulo
+da aba** para onde o clique leva e `document_id`.
+
+Duas coisas que o contrato afirma e valem a leitura: `q` com menos de dois caracteres devolve
+**200 com `results` vazio**, nunca 422 — a busca não erra, ela não acha; e `document_id` vazio
+quer dizer "não há o que abrir", nunca "abra por sua conta" — um documento que não passou pela
+varredura aparece pelo título e não oferece fonte, pela regra de
+`GET /api/v1/me/documents/{id}/download` (ADR 0017).
+
 As rotas de administração de acesso (ADR 0011) exigem `internal_admin` **no projeto** e vivem
 sob `/api/v1/admin`:
 

@@ -246,6 +246,16 @@ jobs:
       # executava. O `--budget-usd` é dispensável justamente porque não há chave:
       # sem provedor, nada custa.
       - name: o harness de carga ainda roda ponta a ponta
+        # As duas URLs são explícitas porque este passo roda **no host do
+        # runner**, e não num contêiner: o `.env` copiado do `.env.example` no
+        # passo de subida aponta para `postgres:5432`, que é o nome de serviço do
+        # Compose e só resolve de dentro da rede dele. A porta está publicada,
+        # então do host o mesmo banco é `localhost:5432`. Variável de ambiente
+        # ganha do `.env` no pydantic-settings, que é o que faz isto funcionar
+        # sem tocar no arquivo que os contêineres leem.
+        env:
+          DATABASE_URL: postgresql+psycopg://portal_app:portal_app_local_only@localhost:5432/portal
+          DATABASE_SYSTEM_URL: postgresql+psycopg://portal_system:portal_system_local_only@localhost:5432/portal
         run: |
           pip install -r apps/api/requirements.txt
           PYTHONPATH=apps/api/src python scripts/loadtest.py \

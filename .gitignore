@@ -31,6 +31,18 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# O `.env*` acima engoliu este em silêncio quando a ADR 0022 o criou: `git add`
+# não reclama do que está ignorado, então três testes e um passo do CI passaram a
+# afirmar sobre um arquivo que existia só na máquina de quem o escreveu. Ficou
+# verde no laptop e vermelho no runner — e só ficou vermelho porque o `e2e`
+# deixou de ser `continue-on-error` na ADR 0020.
+#
+# Ele é um **template**, e é o próprio `preflight.py` que garante que continue
+# sendo um: todo valor é `CHANGEME`, e um `.env` com sentinela de exemplo é
+# recusado na subida do processo (`test_homolog_config.py` afirma isso sobre este
+# arquivo). Versioná-lo não é exceção à regra do `.env*` — é o que faz a regra
+# ter o que testar.
+!.env.homolog.example
 
 # vercel
 .vercel

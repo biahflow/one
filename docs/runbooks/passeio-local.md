@@ -108,7 +108,9 @@ a barra "Você está aqui" e o roster de Funcionários Digitais. O contador ao l
 ### 3.5 Notificação no sino e e-mail na caixa
 
 O portal **não origina status**: quem avisa é o sync do Biahflow. Como o Biahflow vive em outro
-repositório, dispare o mesmo `sync_snapshot` que o webhook chamaria:
+repositório, dispare o mesmo `sync_snapshot` que o webhook chamaria — ou, para ligar o Biahflow
+de verdade e ver a mudança chegar sozinha, siga
+[`integracao-biahflow.md`](integracao-biahflow.md):
 
 ```bash
 MARKER="passeio-$(date +%s)"
@@ -352,3 +354,4 @@ em diante, `docker compose up -d` sobe em segundos.
 | Pasta do Drive não sincroniza | `drive-sync-failure.md` |
 | Evento de agente recusado | `agent-events-failure.md` |
 | Assistente fora do ar | `ai-provider-failure.md` |
+| O Biahflow real não chega ao portal | `integracao-biahflow.md` |

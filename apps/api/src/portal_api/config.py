@@ -24,6 +24,19 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     web_origin: str = "http://localhost:3000"
 
+    # Qual ambiente é este (Fase 5, ADR 0022). O padrão é `local` porque é o
+    # único valor que uma máquina de desenvolvimento pode afirmar sem configurar
+    # nada — e porque um padrão que já se declarasse ambiente sério faria a
+    # recusa de `_refuse_unsafe` disparar no primeiro `pytest`.
+    #
+    # Não é decoração: fora de `local`, `preflight()` recusa subir com segredo de
+    # exemplo, `DEMO_MODE` ligado ou endereço em texto claro. A regra é a da ADR
+    # 0017 — *um ambiente que não pode provar que está seguro não afirma que
+    # está* —, e ela existe porque todo `${VAR}` do compose tem default local:
+    # sem esta checagem, um `.env` de homologação a que falte uma chave sobe
+    # verde com a senha do exemplo.
+    environment: str = "local"
+
     # Telemetria (Fase 5, ADR 0018). `json` é o padrão porque é o formato que um
     # coletor lê e o que o runbook de incidente pressupõe; `text` existe para o
     # `docker compose logs` de quem está desenvolvendo, e **também** imprime os
@@ -94,8 +107,24 @@ class Settings(BaseSettings):
 
     # Chat contextual (Fase 3, ADR 0007). Sem chave → respondedor offline determinístico.
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-opus-4-8"
-    chat_prompt_version: str = "chat-2026-08-03"
+    anthropic_model: str = "claude-opus-5"
+    #: Perguntas por pessoa por minuto (Fase 5, ADR 0021). A assimetria com os 120
+    #: de `agent_events_rate_limit` **é** o argumento: um agente é máquina e 120/min
+    #: é vazão normal de ingestão; 20/min fica muito acima de alguém formulando uma
+    #: pergunta pensada e muito abaixo do que um script precisa para inundar de
+    #: pendência o time interno — que é a ameaça aqui, não a conta de token.
+    chat_rate_limit: int = 20
+
+    # Teto mensal de gasto de IA por organização, em centavos (Fase 5, ADR 0022).
+    # É o **padrão**: `organization_ai_quota.monthly_limit_cents` sobrepõe por
+    # organização, e coluna nula ali significa "usa este número" — nunca "sem
+    # teto", que é a regra da retenção (ADR 0017).
+    #
+    # US$ 200/mês é folgado para um projeto conversando e apertado para um laço:
+    # aos preços da 0018, são ~13 mil perguntas médias. Zero **desliga** a
+    # cobrança, e é a única forma de desligar — uma decisão explícita, em vez de
+    # um esquecimento que se pareça com uma.
+    ai_quota_monthly_cents: int = 20_000
 
     # Storage dos documentos (Fase 4, ADR 0014). Local é o MinIO do compose; em
     # produção é o S3, e só estas variáveis mudam. Sem credencial o upload

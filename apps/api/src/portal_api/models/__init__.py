@@ -5,14 +5,17 @@ Importing every model here ensures they are all registered on
 """
 
 from portal_api.models.agent_event import AgentEvent, AgentEventOutcome
+from portal_api.models.ai_usage import AiModelPrice, AiUsageEvent, OrganizationAiQuota
 from portal_api.models.agent_key import SCOPE_EVENTS_WRITE, AgentApiKey
 from portal_api.models.audit import AuditLog
+from portal_api.models.chat_rate_window import ChatRateWindow
 from portal_api.models.conversation import (
     Conversation,
     ConversationMessage,
     ConversationRole,
     MessageConfidence,
     MessageFeedback,
+    MessageResponder,
 )
 from portal_api.models.decision import Decision
 from portal_api.models.document import (
@@ -64,7 +67,10 @@ __all__ = [
     "AgentApiKey",
     "AgentEvent",
     "AgentEventOutcome",
+    "AiModelPrice",
+    "AiUsageEvent",
     "AuditLog",
+    "ChatRateWindow",
     "Conversation",
     "ConversationMessage",
     "ConversationRole",
@@ -87,11 +93,13 @@ __all__ = [
     "Membership",
     "MessageConfidence",
     "MessageFeedback",
+    "MessageResponder",
     "Milestone",
     "MilestoneState",
     "Notification",
     "NotificationKind",
     "Organization",
+    "OrganizationAiQuota",
     "OrganizationRetentionPolicy",
     "PendingItem",
     "PendingOrigin",

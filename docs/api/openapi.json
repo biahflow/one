@@ -280,6 +280,85 @@
         "title": "AgentKeyOut",
         "type": "object"
       },
+      "AiQuotaIn": {
+        "description": "Nulo é \"usa o padrão de ``config.py``\", não \"sem teto\".\n\nMesma regra da retenção, e pelo mesmo motivo: um contrato que não fala de\nlimite não é um contrato de limite infinito. Zero desliga a cobrança, e é uma\ndecisão explícita — que é justamente o que a distingue de um esquecimento.",
+        "properties": {
+          "monthly_limit_cents": {
+            "anyOf": [
+              {
+                "maximum": 100000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Limit Cents"
+          }
+        },
+        "title": "AiQuotaIn",
+        "type": "object"
+      },
+      "AiQuotaOut": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "effective_limit_cents": {
+            "title": "Effective Limit Cents",
+            "type": "integer"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "monthly_limit_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Limit Cents"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "spent_cents": {
+            "title": "Spent Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "organization_id",
+          "monthly_limit_cents",
+          "effective_limit_cents",
+          "spent_cents",
+          "input_tokens",
+          "output_tokens",
+          "calls",
+          "gaps"
+        ],
+        "title": "AiQuotaOut",
+        "type": "object"
+      },
       "AssumptionBasisOut": {
         "additionalProperties": false,
         "description": "A conta em si, para o cliente poder refazê-la na mão.",
@@ -2824,6 +2903,151 @@
         ]
       }
     },
+    "/api/v1/admin/organizations/{organization_id}/ai-quota": {
+      "get": {
+        "operationId": "get_ai_quota_api_v1_admin_organizations__organization_id__ai_quota_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiQuotaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Get Ai Quota",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "description": "Define o teto mensal de gasto de IA da organização.\n\n``PUT`` pela razão da retenção: a política é uma linha só e o corpo a descreve\ninteira. E editada no lugar, não versionada por vigência — ao contrário do\n**preço** do modelo, que é versionado justamente porque reprecificaria o\npassado. Um teto não reprecifica nada; ele decide o que ainda acontece amanhã.",
+        "operationId": "set_ai_quota_api_v1_admin_organizations__organization_id__ai_quota_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiQuotaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiQuotaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Set Ai Quota",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/organizations/{organization_id}/erasure": {
       "get": {
         "description": "O histórico de pedidos — é o que faz o apagamento ser auditável.",
@@ -4568,6 +4792,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Perguntas demais na janela de um minuto (ADR 0021), ou teto mensal de gasto de IA da organização atingido (ADR 0022). Não é opaco de propósito, como o 429 da rota de eventos: quem pergunta precisa distinguir 'seu ritmo' de 'sua permissão' para saber se vale tentar de novo. O `Retry-After` diz em quantos segundos, e é o que separa os dois casos — segundos para o ritmo, o resto do mês para o teto."
           }
         },
         "security": [

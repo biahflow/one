@@ -252,15 +252,68 @@ atalho **não** entraram no índice.*
       próprio — que foi o que revelou as outras quatro senhas e o MinIO que ninguém sabia que
       faltavam — e o e2e pode reprovar. De quebra, a fixture do teste de SSR do web deixou de ser
       livre para mentir.)*
-- [ ] Cobrir carga e cenários adversariais de IA. *Carga espera o ambiente de homologação: sem
-      orçamento declarado, um número de carga contra o `docker compose` mede o laptop de quem
-      roda. Os adversariais de IA são fatia própria, e há defeito esperando por ela — o
-      `prompt-policy.md` diz que prompts são versionados e não existe `PROMPT_VERSION` nem carimbo
-      em `conversation_message`, de modo que uma resposta guardada não sabe qual prompt a
-      produziu; nenhum teste toca o `AnthropicResponder` nem o `SYSTEM_PROMPT`, então as catorze
-      evals rodam no respondedor offline, onde a injeção é tautológica por construção; e o
-      `/api/v1/chat` não tem limite de taxa embora cada lacuna grave uma pendência.*
-- [ ] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS, observabilidade e plano de incidentes.
+- [x] Cobrir cenários adversariais de IA. *(ADR 0021, FDD 015. Pela quinta vez na Fase 5 a fatia
+      implementou promessas que os documentos davam como cumpridas — quatro delas, e as duas
+      últimas só apareceram ao escrever os testes. O `prompt-policy.md` dizia "prompts são
+      versionados" e o que existia era um `chat_prompt_version` nas settings que **ninguém lia**;
+      agora a versão mora ao lado do texto, com registro append-only de digests como portão de
+      deriva — não uma constante, porque quem atualiza texto e constante juntos sem trocar a
+      versão continuaria verde, que é justamente o caso que a política quer pegar. As catorze
+      evals rodavam no respondedor offline, um casador que **não tem como** obedecer a uma
+      instrução: a eval de injeção provava que uma pedra não atende ao telefone. Abriu-se a costura
+      (`anthropic_client`, na forma do `session_client` do Drive) e entraram catorze casos com um
+      Claude hostil que cita fonte inventada, cita fonte de outro tenant, afirma sem citar e
+      obedece à injeção — metade das asserções olhando o **pedido enviado**, que é a única forma
+      de afirmar que segredo e texto de outro projeto não saem do processo. O chat ganhou limite
+      de taxa por pessoa, em tabela própria sob `portal_system` e em transação anterior à do chat:
+      colunas em `user` travariam o primeiro login, porque `resolve_user` escreve naquela linha
+      dentro de uma transação que abrange a chamada ao modelo. **E os dois defeitos que os testes
+      revelaram:** `max_tokens=1024` com `thinking` adaptativo truncava a resposta e virava
+      fallback offline silencioso; e o `answerFor()` da tela devolvia data, decisão e **rótulos de
+      citação inventados** ao cliente autenticado cuja chamada falhou — com um teste que exigia
+      sua existência, segurando o defeito no lugar como a ADR 0020 achou nas asserções de backup.
+      A afirmação do `CLAUDE.md` de que "não há mais fallback para dado inventado" só passou a ser
+      verdade agora. O limite estrutural ficou declarado, não escondido: o portal não impede um
+      modelo remoto de parafrasear a injeção dentro da resposta, e um filtro de saída foi recusado
+      com argumento — falharia na primeira paráfrase enquanto criava a impressão contrária.)*
+- [x] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS,
+      observabilidade e plano de incidentes. *(ADR 0022, FDD 016. Entregue como **código e portão
+      de CI**, não como infraestrutura provisionada: `docker-compose.homolog.yml`,
+      `infra/caddy/Caddyfile`, `.env.homolog.example` e `docs/runbooks/deploy.md`. A decisão que
+      carrega o resto é `${VAR:?}` no lugar de `${VAR:-default}` — todo `${VAR}` do compose base
+      tem default local, então um `.env` de homologação a que falte uma chave **subia verde com a
+      senha do exemplo**, que é a forma mais cara de um controle falhar. E são dois mecanismos, não
+      um: `preflight.py` recusa a subida do processo ao encontrar sentinela de exemplo, segredo
+      vazio, `DEMO_MODE` ligado ou endereço em texto claro, porque `${VAR:?}` só sabe perguntar se
+      a variável **tem** valor, nunca se o valor é seu. O template é ele próprio um arquivo que o
+      `preflight` recusa. TLS termina no Caddy, o único serviço que publica porta — a API não é
+      publicada porque o navegador nunca fala com ela (ADR 0010) —, fechando a seção que o
+      `docs/security.md` prometia com "ver a seção própria abaixo" e que não existia. De quebra, as
+      duas imagens deixaram de ser de desenvolvimento: a da API instalava `requirements-dev` e
+      copiava `tests/` para dentro, e as duas rodavam como root.)*
+- [x] Cobrir carga de IA. *(ADR 0022, FDD 016. Pela sexta vez na Fase 5 a fatia implementou uma
+      promessa que os documentos davam como cumprida — e desta vez ela era a **causa técnica** de a
+      carga não ser mensurável: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` e `CHAT_RATE_LIMIT` existiam
+      no `.env.example` desde a Fase 3, eram lidas pelo `config.py`, e **nenhum compose e nenhum
+      workflow as passava** ao contêiner. O `AnthropicResponder` que a ADR 0021 acabou de construir
+      e testar com um Claude hostil nunca rodou na pilha de pé, e a própria ADR 0021 chegou a
+      avisar para "não baixar `CHAT_RATE_LIMIT` no compose" — uma variável que o compose não lia.
+      Generalizado, o defeito pegou mais doze, inclusive o `DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS` de
+      que a rotação da ADR 0016 depende, e uma que não existe em canto nenhum: `MINIO_ENDPOINT`.
+      Junto vieram as **quotas** que o `threat-model.md` prometia desde a Fase 1: razão de tokens
+      por organização, teto mensal e custo que **nasce na leitura** pelo preço vigente no dia da
+      chamada — literalmente `results.py`, e pelo motivo dele. Não é um contador incrementado, e
+      quem disse isso foi o docstring do `chat_limit.py`: aquele contador "subconta sob
+      concorrência alta, o que seria inaceitável para um contador de faturamento". Sem preço
+      vigente o turno **passa** e a lacuna é declarada — a única falha aberta do repositório, por
+      assimetria de recuperação: os tokens gravados tornam o custo recalculável, uma pergunta
+      recusada não volta. O `docs/observability.md` listava "custo/latência de IA" entre os
+      indicadores enquanto o `response.usage` de toda resposta era descartado; agora não. E o
+      harness (`scripts/loadtest.py`) recusa rodar com chave e sem `--budget-usd`, tira o custo do
+      mesmo razão que a quota usa para cobrar, e **declara no próprio relatório o que mediu** — que
+      não é homologação, que o respondedor foi o offline, ou que o provedor degradou no meio. O
+      passo por conta não foi deduzido e sim medido: a primeira execução devolveu 12.839 recusas
+      para 62 respostas, medindo o limitador com precisão e o sistema com nenhuma.)*
 - [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *O primeiro
       a ler é o `next` — GHSA-6gpp-xcg3-4w24, middleware/proxy bypass em App Router, corrigido em
       16.2.11 —, porque aqui o `proxy.ts` **é** o portão de sessão. As pré-condições do aviso
@@ -275,8 +328,15 @@ o backup passou a ser restaurável com prova (`test_backup_restore.py` roda os d
 verdade contra um banco descartável e confere policies, GRANTs de coluna e isolamento) — e agora
 ele roda **a cada push**, no job `backup-restore`, com as três asserções que vinham pulando em
 silêncio. O contrato passou a existir como artefato (`docs/api/openapi.json`,
-`test_openapi_contract.py`, `tests/api-contract.test.mjs`) e o `e2e` passou a poder reprovar.
-Faltam carga e os adversariais de IA, e o ambiente de homologação.*
+`test_openapi_contract.py`, `tests/api-contract.test.mjs`) e o `e2e` passou a poder reprovar. E os
+adversariais de IA fecharam (`test_chat_ai.py` com o respondedor real e um modelo hostil,
+`test_prompt_version.py`, `test_chat_rate_limit.py`) — com eles saiu o último caminho do portal
+que devolvia dado fabricado ao cliente. E carga, quotas e o ambiente de que as duas dependiam
+fecharam por último (`test_homolog_config.py`, `test_ai_quota.py`, `test_loadtest_harness.py`, com
+o CI afirmando que o override de homologação recusa sem segredos e que o harness ainda roda ponta
+a ponta) — junto com a descoberta que explicava por que a carga não era mensurável: as três
+variáveis do chat nunca chegavam ao contêiner, e o respondedor real nunca havia rodado na pilha.
+**Falta só o `npm audit` antes do lançamento externo.***
 
 ## Fase 6 — Jornada da transformação e experiência (metodologia)
 

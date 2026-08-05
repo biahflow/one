@@ -36,7 +36,18 @@
    `invite.spec.ts` vai além e **lê a caixa do Mailpit pela API** (`:8025/api/v1/search`) para
    seguir o link do convite, definir a senha e entrar: é o único ponto onde "o e-mail chega"
    é verificado, e por isso os testes de API podem dublar o Keycloak sem perder nada.
-8. Avaliação de IA: dataset versionado, casos adversariais e rubric de correção/citação.
+8. **Avaliação de IA: dataset versionado, e o adversarial roda contra o respondedor real.**
+   Até a Fase 5 os catorze casos rodavam no `OfflineResponder`, um casador determinístico que não
+   tem como obedecer a uma instrução — a eval de prompt injection provava que uma pedra não atende
+   ao telefone. A ADR 0021 abriu a costura (`anthropic_client`, na forma do `session_client` do
+   Drive) e acrescentou um falso que **registra o pedido** e devolve o que um atacante escolheria:
+   fonte inventada, fonte de outro tenant, afirmação sem citação, prosa no lugar de JSON,
+   obediência à injeção. Continua determinístico e sem chave, porque o falso é local.
+   Duas propriedades do arquivo carregam o resto: o primeiro caso é a **guarda** dos outros treze
+   (uma chave configurada seleciona o respondedor real — sem ele, uma fixture quebrada faria o
+   conjunto re-testar o offline em verde), e metade das asserções olha o **pedido enviado** e não a
+   resposta, que é a única forma de afirmar que segredo e texto de outro projeto não saíram do
+   processo.
 
 Cobertura mínima inicial: 80% para código de domínio e componentes críticos. Não use cobertura como substituto de cenários de autorização, segurança ou IA.
 

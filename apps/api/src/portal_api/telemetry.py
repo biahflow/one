@@ -89,7 +89,15 @@ _SECRET_HINTS = ("token", "secret", "password", "passwd", "authorization", "cook
 #: A exceção da regra acima, e ela é obrigatória: o runbook da API de eventos
 #: manda ler o `key_prefix` para saber *qual* chave foi recusada. O prefixo é a
 #: parte pública da credencial — é justamente o que fica em claro no banco.
-_SECRET_ALLOWLIST = frozenset({"key_prefix", "public_key", "key_id"})
+#:
+#: `input_tokens`/`output_tokens` entraram na ADR 0022 e são a mesma família de
+#: engano, uma casa adiante: eles contêm "token" e **não são um token** — são a
+#: contagem que o provedor devolve em `usage`. Sem esta linha, o indicador de
+#: custo de IA que `docs/observability.md` promete sairia `[redacted]` em toda
+#: linha de log, e o defeito só apareceria a quem fosse ler o log meses depois.
+_SECRET_ALLOWLIST = frozenset(
+    {"key_prefix", "public_key", "key_id", "input_tokens", "output_tokens"}
+)
 
 _REDACTED = "[redacted]"
 

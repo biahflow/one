@@ -35,7 +35,19 @@ export async function POST(request: Request): Promise<Response> {
       cache: "no-store",
     });
     if (!response.ok) {
-      return Response.json({ error: "chat failed" }, { status: response.status });
+      // O `Response.json` descarta todo header da resposta original, e o
+      // `Retry-After` é a única parte do 429 que a tela consegue explicar ao
+      // cliente (ADR 0021) — sem ele o aviso vira "tente mais tarde", que não
+      // diz nada. Repassado explicitamente, e só ele: os demais headers da API
+      // não são do navegador.
+      const retryAfter = response.headers.get("Retry-After");
+      return Response.json(
+        { error: "chat failed" },
+        {
+          status: response.status,
+          headers: retryAfter ? { "Retry-After": retryAfter } : undefined,
+        },
+      );
     }
     return Response.json(await response.json());
   } catch {

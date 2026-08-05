@@ -10,7 +10,17 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from portal_api import access, admin, agent_auth, conversations, results, schemas, storage
+from portal_api import (
+    access,
+    admin,
+    agent_auth,
+    chat_limit,
+    conversations,
+    results,
+    schemas,
+    storage,
+)
+from portal_api.ai import quota
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
@@ -25,6 +35,7 @@ from portal_api.models import (
     Document,
     Organization,
 )
+from portal_api.preflight import preflight
 from portal_api.repositories import (
     AgentEventRepository,
     ConversationMessageRepository,
@@ -42,6 +53,11 @@ settings = get_settings()
 # não chegam ao stdout, que era o estado que o runbook de eventos descrevia como
 # se não fosse (ADR 0018).
 configure_logging()
+# E logo depois: fora de `ENVIRONMENT=local`, recusa continuar com segredo de
+# exemplo, `DEMO_MODE` ligado ou endereço em texto claro (ADR 0022). Na
+# importação e não numa rota de saúde — um processo que já respondeu uma
+# requisição com a senha do `.env.example` não tem como desfazer isso.
+preflight(settings)
 app = FastAPI(title="Portal Labs API", version="0.1.0", docs_url="/docs")
 app.add_middleware(
     CORSMiddleware,
@@ -312,9 +328,31 @@ def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
     }
 
 
-@app.post("/api/v1/chat", response_model=schemas.ChatOut, responses=CLIENT_ERRORS)
+@app.post(
+    "/api/v1/chat",
+    response_model=schemas.ChatOut,
+    responses={
+        **CLIENT_ERRORS,
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": (
+                "Perguntas demais na janela de um minuto (ADR 0021), ou teto mensal "
+                "de gasto de IA da organização atingido (ADR 0022). Não é opaco de "
+                "propósito, como o 429 da rota de eventos: quem pergunta precisa "
+                "distinguir 'seu ritmo' de 'sua permissão' para saber se vale tentar "
+                "de novo. O `Retry-After` diz em quantos segundos, e é o que separa "
+                "os dois casos — segundos para o ritmo, o resto do mês para o teto."
+            )
+        },
+    },
+)
 def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
     """Grounded, tenant-scoped chat: cite the read model or declare the gap + pendência (ADR 0007)."""
+    # Antes da transação abrir (ADR 0021): o contador vive em transação própria,
+    # para nenhum lock atravessar a chamada ao modelo. O preço é que um token
+    # válido sem projeto vê 429 antes de 404 — que não conta nada sobre projeto
+    # nenhum, só que a pessoa está autenticada, o que ela já sabe.
+    chat_limit.consume(principal.subject, settings)
+
     with get_session(principal) as session:
         user = resolve_user(session, principal)
         if message.project_id is not None:
@@ -324,6 +362,13 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
         ctx = TenantContext(organization_id=project.organization_id, project_id=project.id)
+        # **Depois** do 404, ao contrário do limite de taxa acima, e a diferença
+        # de ordem é deliberada (ADR 0022): sem projeto não há organização a que
+        # cobrar, e recusar antes contaria a quem não tem vínculo que a
+        # organização existe. Levanta 429 sem gravar nada — nem razão, nem
+        # pendência, nem mensagem —, que é o que dá sentido ao controle: a
+        # recusa não pode custar o que ela existe para evitar.
+        quota.check(session, ctx, settings)
         result = chat_service.answer_question(
             session, ctx, project, message.question, settings, actor_user_id=user.id
         )

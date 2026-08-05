@@ -182,38 +182,46 @@ function greeting(user: PortalUser): ChatMessage[] {
   ];
 }
 
-function answerFor(question: string): ChatMessage {
-  const normalized = question.toLocaleLowerCase("pt-BR");
+// Uma pergunta que a API não respondeu não vira resposta: vira o motivo (ADR 0021).
+//
+// Até a Fase 5 existia aqui um `answerFor()` que, no `catch` do `sendQuestion`,
+// devolvia data inventada, decisão inventada, contagem de pendência inventada e
+// **rótulos de citação inventados** — nomes de documento e de reunião que nunca
+// existiram — a um cliente autenticado de verdade cuja chamada falhou. E marcava
+// `pending: true`, de modo que a tela dizia "Pendência criada para Portal Labs"
+// para uma pendência que ninguém gravou. O `CLAUDE.md` afirmava que não havia
+// mais fallback para dado inventado; era falso justamente aqui, na única tela
+// onde a regra 3 do `AGENTS.md` vale por escrito.
+const CHAT_UNAVAILABLE: ChatMessage = {
+  role: "assistant",
+  text:
+    "Não consegui falar com o assistente agora, então não tenho resposta para dar. " +
+    "Nada foi registrado — tente de novo em instantes.",
+};
 
-  if (normalized.includes("produção") || normalized.includes("producao")) {
+// A API dá dois 429 diferentes na mesma rota: o ritmo de uma pessoa, em janela de
+// um minuto (ADR 0021), e o teto mensal de gasto de IA da organização (ADR 0022).
+// A tela os separa pelo `Retry-After` e não pelo texto do erro — o cabeçalho é
+// numérico e estável, e o corpo de um 429 é deliberadamente opaco no resto da
+// API. Acima de uma hora só pode ser o teto: a janela nunca passa de sessenta
+// segundos.
+const RATE_WINDOW_CEILING_SECONDS = 3600;
+
+function chatRateLimited(retryAfter: number | null): ChatMessage {
+  if (retryAfter !== null && retryAfter > RATE_WINDOW_CEILING_SECONDS) {
+    const dias = Math.max(1, Math.ceil(retryAfter / 86_400));
     return {
       role: "assistant",
-      text: "A entrada em produção está prevista para 30 de setembro, após a validação das integrações e o treinamento da operação. No momento, os dois marcos seguem no cronograma.",
-      sources: ["Plano de implantação v3", "Comitê de projeto — 28 ago"],
+      text:
+        "O limite de uso do assistente para a sua organização foi atingido neste mês, " +
+        `então não tenho resposta para dar. A cota é renovada em ${dias} dia(s), e a ` +
+        "equipe da Portal Labs pode ampliá-la antes disso. Nada foi registrado.",
     };
   }
-
-  if (normalized.includes("financeiro") || normalized.includes("decis")) {
-    return {
-      role: "assistant",
-      text: "Na última reunião, definimos que as exceções financeiras continuarão com aprovação humana na primeira fase. O critério de alçada será validado com o time da Acme antes do piloto.",
-      sources: ["Comitê de projeto — 28 ago"],
-    };
-  }
-
-  if (normalized.includes("pend") || normalized.includes("abert")) {
-    return {
-      role: "assistant",
-      text: "Existem 3 pendências abertas: aprovar o fluxo de exceções, enviar a lista de usuários piloto e validar o cálculo de economia. A mais próxima do prazo é a aprovação do fluxo.",
-      sources: ["Pendências do projeto"],
-    };
-  }
-
+  const espera = retryAfter && retryAfter > 0 ? ` Tente de novo em ${retryAfter}s.` : "";
   return {
     role: "assistant",
-    text: "Não encontrei evidências suficientes nos materiais deste projeto para responder com segurança. Registrei uma pendência para o time responsável retornar com a informação.",
-    sources: ["Busca no contexto do projeto"],
-    pending: true,
+    text: `Você fez muitas perguntas em pouco tempo.${espera}`,
   };
 }
 
@@ -386,6 +394,12 @@ export default function DashboardClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: value, conversation_id: conversationId }),
       });
+      if (response.status === 429) {
+        // Ritmo, não permissão: o único não-ok que a tela sabe explicar (ADR 0021).
+        const retryAfter = Number(response.headers.get("Retry-After"));
+        pushAnswer(chatRateLimited(Number.isFinite(retryAfter) ? retryAfter : null));
+        return;
+      }
       if (!response.ok) throw new Error("chat unavailable");
       const data = await response.json();
       setConversationId(data.conversation_id ?? null);
@@ -414,9 +428,9 @@ export default function DashboardClient({
         ]);
       }
     } catch {
-      // Offline/demo fallback keeps the assistant responsive without the backend. Nenhuma
-      // pendência é espelhada aqui: sem API, nada foi realmente registrado.
-      pushAnswer(answerFor(value));
+      // Sem API não há resposta — e dizer isso é a resposta. Inventar uma aqui era
+      // o último caminho do portal que devolvia dado fabricado ao cliente.
+      pushAnswer(CHAT_UNAVAILABLE);
     }
   }
 

@@ -40,6 +40,7 @@ from portal_api.models import (
     ProjectDriveConnection,
     User,
 )
+from portal_api.preflight import preflight
 from portal_api.repositories import DocumentChunkRepository, TenantContext
 from portal_api.scanner import ScanState
 from portal_api.telemetry import (
@@ -54,6 +55,11 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 configure_logging()
+# Pela mesma razão da API, e não por simetria (ADR 0022): o worker é quem alcança
+# o storage, o Drive e o SMTP, então subir com o segredo do exemplo aqui custa
+# tanto quanto lá. Um dos dois processos protegido seria pior que nenhum, porque
+# a metade verde faria o ambiente parecer conferido.
+preflight(settings)
 celery_app = Celery("portal_api", broker=settings.redis_url, backend=settings.redis_url)
 
 # O primeiro agendador do projeto (ADR 0016). A ADR 0005 já reivindicava o sync do

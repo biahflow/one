@@ -292,8 +292,31 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
 
   // The interactive dashboard (chat logic) lives in the client component; page.tsx is the
   // server component that fetches real data and renders it (ADR 0006, Fase 2).
-  assert.match(dashboard, /function answerFor/);
+  //
+  // A guarda trocou de lado na ADR 0021, e vale registrar por quê: até a Fase 5
+  // esta linha exigia que `function answerFor` **existisse**. Ela era o fallback
+  // do `catch` de `sendQuestion` e devolvia data, decisão, contagem de pendência
+  // e rótulo de citação inventados a um cliente autenticado cuja chamada falhou —
+  // de modo que o teste segurava no lugar exatamente o defeito que o resto da
+  // suíte existe para impedir, na forma que a ADR 0020 achou nas asserções de
+  // backup que pulavam em silêncio. Um chat que falhou agora diz que falhou.
+  assert.doesNotMatch(dashboard, /function answerFor/);
   assert.match(dashboard, /Pendência criada para Portal Labs/);
+  // E a fabricação não pode voltar por outro caminho. A guarda é sobre a *forma*,
+  // não sobre os rótulos: toda citação da tela vem de `data.sources`/`data.citations`
+  // da API, então um array de literais atribuído a `sources` no cliente do chat só
+  // pode ser rótulo inventado localmente. (Os mesmos nomes aparecem em
+  // `app/demo-overview.ts` como dado de dashboard, o que é legítimo e vive atrás
+  // do portão de `demoShellEnabled()` — por isso a guarda é do arquivo do chat.)
+  assert.doesNotMatch(
+    dashboard,
+    /sources:\s*\[\s*"/,
+    "DashboardClient.tsx voltou a fabricar citação no cliente (ADR 0021)",
+  );
+  // O 429 é a única recusa que a tela sabe explicar, e ela precisa explicá-la:
+  // sem este ramo, um limite atingido cairia no `catch` e viraria erro genérico.
+  assert.match(dashboard, /response\.status === 429/);
+  assert.match(dashboard, /muitas perguntas em pouco tempo/);
   assert.match(layout, /Portal Labs \| Portal do Cliente/);
   assert.match(layout, /lang="pt-BR"/);
 

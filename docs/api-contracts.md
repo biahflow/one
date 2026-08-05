@@ -69,6 +69,15 @@ exibidas**, a confiança e, quando faltou evidência, o aviso de que uma pendên
 nunca uma resposta inventada (regra 3 do `AGENTS.md`). `conversation_id` ausente abre uma nova
 thread, que é como "nova conversa" funciona sem endpoint próprio (ADR 0015).
 
+Desde a ADR 0021 esta rota também responde **429** com `Retry-After`, em janela de um minuto por
+pessoa (`CHAT_RATE_LIMIT`, padrão 20). É a segunda recusa não opaca do portal, ao lado da rota de
+eventos, e pelo mesmo motivo: quem pergunta precisa distinguir "seu ritmo" de "sua permissão". O
+que ela protege não é a conta de token — é a caixa do time interno, porque cada lacuna abre uma
+pendência. O limite é gasto **antes** da resolução do projeto, então um token válido sem projeto
+vê 429 antes de 404; isso não conta nada sobre projeto nenhum. O que a rota **não** devolve é a
+versão do prompt, o respondedor e o modelo: eles ficam gravados na linha do turno, e não no
+contrato, porque o cliente não é a audiência disso.
+
 ## Onde isto é verificado
 
 - `docs/api/openapi.json` — o esquema, versionado. Regerar com

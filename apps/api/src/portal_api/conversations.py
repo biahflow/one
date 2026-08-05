@@ -28,6 +28,7 @@ from portal_api.models import (
     ConversationRole,
     MessageConfidence,
     MessageFeedback,
+    MessageResponder,
 )
 from portal_api.repositories import (
     ConversationMessageRepository,
@@ -133,6 +134,11 @@ def append_turn(
             confidence=MessageConfidence(result.confidence),
             citations=_citations_of(result),
             pending_item_id=result.pending_id,
+            # Quem produziu a resposta, junto dela (ADR 0021). Só na mensagem do
+            # assistente: a pergunta é da pessoa e nenhum prompt a produziu.
+            prompt_version=result.prompt_version,
+            responder=MessageResponder(result.responder),
+            model=result.model,
         )
     )
     conversation.last_message_at = now

@@ -5,7 +5,7 @@
 - OIDC Authorization Code com PKCE, cookies `HttpOnly`, `Secure` e `SameSite`.
 - Papéis mínimos e acesso explícito a cada projeto.
 - RLS no PostgreSQL, checagem de autorização na API e testes negativos de BOLA/IDOR.
-- TLS em produção, URLs de arquivo temporárias, validação de upload e varredura antimalware antes de indexar. *(Implementado na ADR 0017, menos o TLS — ver a seção própria abaixo.)*
+- TLS em produção, URLs de arquivo temporárias, validação de upload e varredura antimalware antes de indexar. *(ADR 0017, menos o TLS, que chegou na ADR 0022 — ver "TLS e a fronteira do ambiente", abaixo.)*
 - Tokens de integração armazenados cifrados; chaves da API de agentes ficam apenas como hash, possuem escopo, expiração e rotação.
 - Limites de taxa em autenticação, chat, upload e API de eventos.
 - Segredos apenas no ambiente; `.env` é ignorado e `.env.example` não possui dados reais.
@@ -86,6 +86,37 @@ significa "usa o padrão", nunca "guarda para sempre". O apagamento por organiza
 gravado**, confirmado pelo `slug` digitado, cumprido pelo worker sob `portal_system`: nenhuma
 rota HTTP apaga dado. A linha do pedido sobrevive ao expurgo e guarda a contagem do que saiu,
 porque um apagamento sem registro é indistinguível de um acidente.
+
+## TLS e a fronteira do ambiente (ADR 0022)
+
+Esta seção estava prometida na lista de controles desde a Fase 1 — "ver a seção própria abaixo" —
+e não existia. Ela chega junto do ambiente que a torna verificável.
+
+**TLS termina no Caddy**, o único serviço que publica porta no
+`docker-compose.homolog.yml`; todos os outros levam `ports: !reset []`. O certificado é automático
+por ACME, e só dois nomes existem: o do portal e o do Keycloak. A API **não** é publicada, porque
+o navegador nunca fala com ela — quem fala é o BFF, por dentro da rede, que é o desenho da ADR
+0010 e a razão de o token de acesso não existir no cliente.
+
+**Https não é cosmético aqui.** `app/lib/session.ts` decide pelo esquema de `AUTH_URL` se o
+cookie de sessão leva o prefixo `__Secure-`. Em texto claro o portal sobe, autentica e guarda o
+access token num cookie sem proteção — falha silenciosa, e por isso `preflight` recusa a subida
+quando `WEB_ORIGIN`, `PORTAL_WEB_URL` ou `OIDC_ISSUER` não são https.
+
+**O segredo do exemplo não atravessa a fronteira**, e são dois mecanismos porque um só não
+bastava. O `docker-compose.homolog.yml` exige todo segredo na forma `${VAR:?}`: o compose recusa
+em vez de herdar o default local do arquivo base — a forma do `BACKUP_AGE_RECIPIENT`, que prefere
+não fazer backup a fazer um em claro. E `portal_api/preflight.py` recusa a **subida do processo**
+ao encontrar `local_only`, `changeme`, `localhost`, segredo vazio ou `DEMO_MODE` ligado. O
+compose só protege quem sobe por ele, e uma variável pode estar presente valendo o que está no
+exemplo: presença não é qualidade. A varredura do `preflight` é genérica sobre as settings, de
+modo que uma setting nova com default local já nasce coberta.
+
+**O realm de homologação não é o do repositório.** `infra/keycloak/portal-local-realm.json` traz
+`sslRequired: none`, os dois segredos de client em claro e três pessoas com a mesma senha; o
+override sobe o Keycloak com `start` — não `start-dev` — e **sem** `--import-realm`. O realm de
+homologação é criado uma vez, pelo runbook, e sai no backup pelo `kc.sh export` que o
+`backup-restore.md` já nomeia.
 
 ## Dados e IA
 

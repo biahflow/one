@@ -143,7 +143,16 @@ def collect_document_evidence(
     except Exception as exc:
         # Provedor fora do ar degrada para o read model estruturado, que já
         # responde parte das perguntas. Ficar sem chat inteiro seria pior.
-        logger.warning("Embeddings indisponíveis; recuperando só o read model: %s", exc)
+        #
+        # Nome **distinto** de `embedding.failed` (worker.py), de propósito: lá o
+        # documento fica fora do índice e o efeito é permanente até alguém
+        # reindexar; aqui o chat perdeu a metade documental de *uma* resposta e a
+        # seguinte pode dar certo. O mesmo nome faria o limiar do `alerts.md`
+        # significar duas coisas, que é como um alerta deixa de ser lido.
+        logger.warning(
+            "embedding.unavailable",
+            extra={"model": embedder.model_name, "reason": type(exc).__name__},
+        )
         return []
 
     matches = DocumentChunkRepository(session, ctx).search(

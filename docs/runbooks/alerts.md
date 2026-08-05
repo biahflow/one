@@ -30,6 +30,11 @@ Até lá o substrato é o log JSON no stdout de cada serviço, que qualquer cole
 | `digest.send_failed` | 10 em 1 h | O SMTP está recusando. As notificações continuam no sino; só o e-mail atrasa (`emailed_at IS NULL` faz a retentativa sozinha). | — |
 | `embedding.failed` | 5 em 1 h | O provedor de embeddings está fora. Documentos ficam `failed` e não entram no índice — o chat responde declarando a lacuna, que é o comportamento correto, mas por motivo errado. | `ai-provider-failure.md` |
 | `agent_key.rate_limited` | 100 em 5 min por `key_prefix` | Um agente está retentando em loop. Ler o `key_prefix` para saber qual. | `agent-events-failure.md` |
+| `chat.provider_unavailable` | 5 em 5 min | O provedor de resposta caiu e cada ocorrência é **um chat que perdeu o modelo em silêncio**: a pessoa recebeu resposta do respondedor offline sem nada na tela dizendo isso. Ler `reason` — `ProviderRefused` é o classificador recusando, e não indisponibilidade. | `ai-provider-failure.md` |
+| `embedding.unavailable` | 10 em 1 h | O embedder de consulta caiu: o chat responde só pelo read model, sem trecho de documento. As respostas param de citar antes de qualquer coisa ficar vermelha. | `ai-provider-failure.md` |
+| `chat.rate_limited` | 100 em 5 min por `subject_prefix` | Alguém (ou algum script com a sessão de alguém) está perguntando em loop. Uma ocorrência isolada é o controle funcionando — leia como o `agent_key.rate_limited`. | — |
+| `ai_quota.exhausted` | qualquer ocorrência, por `organization_id` | O teto mensal de gasto de IA daquela organização acabou, e **o chat parou de responder para ela**. Ao contrário do `rate_limited`, uma ocorrência isolada já é um cliente sem assistente: ou o teto está baixo demais, ou houve consumo anômalo. `extra` traz `spent_cents` e `limit_cents`, que é o bastante para decidir sem abrir a tela. | `deploy.md` (a rota admin de teto) |
+| `ai_quota.price_missing` | qualquer ocorrência | Chamadas cujo modelo não tem preço vigente em `ai_model_price` — o gasto delas **não entra na soma**, e o mês parece mais barato do que foi. Quase sempre significa que alguém trocou `ANTHROPIC_MODEL` sem abrir a vigência. O turno não é recusado de propósito (o razão guarda tokens, então o custo é recalculável depois), mas o teto está cego enquanto isto durar. | `load-test.md` |
 
 ## Não são alerta
 

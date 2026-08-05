@@ -1,0 +1,33 @@
+# Homologação (ADR 0022). Dois nomes, e nenhum terceiro.
+#
+# O Caddy é o único caminho de fora para dentro: nenhum outro serviço publica
+# porta no host (`docker-compose.homolog.yml` faz `ports: !reset []` em todos).
+# O certificado é automático por ACME, que é a razão de ser ele aqui — a
+# promessa de TLS do `docs/security.md` não tinha seção que a cumprisse.
+#
+# **A API não aparece.** Ela não é alcançada pelo navegador: quem fala com ela é
+# o BFF, por dentro da rede do compose (`API_BASE_URL=http://api:8000`), e essa
+# divisão é o desenho inteiro da ADR 0010 — a autorização é da API, e o
+# frontend é BFF justamente para não haver token de acesso no navegador. Publicar
+# `api.<domínio>` daria à internet um caminho que o portal não usa.
+#
+# O MinIO também não, e essa vale explicar: a URL assinada de download (ADR 0017)
+# é gerada com `STORAGE_PUBLIC_ENDPOINT_URL`, e a assinatura **cobre o host**.
+# Publicar o storage num terceiro nome é uma decisão de quem tiver de fazê-la —
+# junto de decidir se o storage continua sendo MinIO. Enquanto for este arquivo,
+# o download precisa que `STORAGE_PUBLIC_ENDPOINT_URL` aponte para algo que o
+# navegador alcance, e o `docs/runbooks/deploy.md` traz o bloco pronto para
+# quando essa hora chegar.
+
+{$PORTAL_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+{$KEYCLOAK_DOMAIN} {
+	encode zstd gzip
+	# `KC_PROXY_HEADERS: xforwarded` do outro lado: sem os dois combinando, o
+	# Keycloak monta as URLs do realm com o esquema errado e o code exchange
+	# falha por `redirect_uri` divergente.
+	reverse_proxy keycloak:8080
+}

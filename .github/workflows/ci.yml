@@ -155,6 +155,17 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r apps/api/requirements-dev.txt
+      # O MinIO recém-subido não tem bucket, e `backup.sh` **falha** ao listar
+      # um bucket inexistente — o que está certo: um backup que não consegue ler
+      # o storage não é um backup. Quem cria é a função que o `storage.py` já
+      # tem, e cujo docstring justamente recusou "um serviço `mc` a mais".
+      - name: Ensure the bucket
+        run: |
+          PYTHONPATH=apps/api/src python -c "
+          from portal_api import storage
+          from portal_api.config import get_settings
+          storage.ensure_bucket(get_settings())
+          "
       - run: PYTHONPATH=apps/api/src pytest apps/api/tests/test_backup_restore.py -v
 
   local-stack:

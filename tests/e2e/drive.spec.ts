@@ -76,19 +76,20 @@ async function connectAndSync(page: Page) {
   // A pasta é escolhida num passo separado — só ela é a fronteira. Conectar não
   // autoriza nada, e é isso que o "Pasta não escolhida" da tela quer dizer.
   if (!(await sync.isVisible())) {
-    if (await choose.isVisible()) {
-      // O botão nasce `disabled` enquanto a tela ainda tem requisição em voo —
-      // logo depois do callback do OAuth isso é o normal, não a exceção. Esperar
-      // ficar habilitado é o que evita um clique que o Playwright reenfileira
-      // até o timeout, sem nunca acontecer.
-      // 40s: a requisição em voo é a listagem de pastas no Drive, e ela sai da
-      // frente devagar quando o worker está ocupado com o que os outros specs
-      // enfileiraram. Metade do orçamento do teste, pela regra do config.
-      await expect(choose).toBeEnabled({ timeout: 40_000 });
-      await choose.click();
-    }
     const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
-    await expect(folderRow).toBeVisible({ timeout: 15_000 });
+    // Espera-se pelo **destino**, e não pelo botão. "Escolher a pasta" só
+    // existe enquanto `folders === null` (ver `KnowledgeClient`): quando a
+    // listagem chega, ele **desaparece**. Esperar que ele fique habilitado é
+    // portanto uma corrida que se pode perder para sempre — o `toBeEnabled`
+    // ficava o timeout inteiro atrás de um elemento que já não voltaria, e era
+    // isso que deixava este spec instável no CI, onde o painel assenta mais
+    // devagar. O botão é clicado só enquanto existir, e o laço tolera ele
+    // sumir entre a checagem e o clique.
+    await expect(async () => {
+      if (await folderRow.isVisible()) return;
+      if (await choose.isVisible()) await choose.click({ timeout: 5_000 });
+      await expect(folderRow).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 40_000 });
     await folderRow.getByRole("button", { name: "Autorizar" }).click();
     await expect(page.getByText(/autorizada/)).toBeVisible();
   }

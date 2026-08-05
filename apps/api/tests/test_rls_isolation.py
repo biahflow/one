@@ -866,3 +866,118 @@ def test_every_tenant_table_has_rls_enabled_and_a_policy(db_session: Session) ->
     ).scalars().all()
 
     assert unprotected == [], f"tables with organization_id but no RLS: {unprotected}"
+
+
+# 6 — retenção e expurgo (Fase 5, ADR 0017) --------------------------------------
+#
+# Mesmo desenho de `agent_api_key` e `project_drive_connection`: policies
+# `TO portal_admin` e nenhuma `TO portal_app`. Aqui isso guarda uma coisa
+# específica — a data em que os dados do cliente serão apagados não deve vazar
+# por uma tela que não foi feita para dizê-la.
+
+
+@pytest.fixture
+def retention_policies(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    from portal_api.models import OrganizationRetentionPolicy
+
+    tenant_a, tenant_b = tenants
+    ids: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in (tenant_a, tenant_b):
+            record = OrganizationRetentionPolicy(
+                organization_id=tenant.organization_id, notification_days=30
+            )
+            session.add(record)
+            session.flush()
+            ids[tenant.organization_id] = record.id
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        session.execute(
+            delete(OrganizationRetentionPolicy).where(
+                OrganizationRetentionPolicy.id.in_(ids.values())
+            )
+        )
+        session.commit()
+
+
+def test_the_app_role_cannot_read_a_retention_policy(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    retention_policies: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Nem a da própria organização.
+
+    "Suas conversas serão apagadas em 30 dias" é uma frase que precisa ser dita
+    por uma tela que a explique, não descoberta por quem alcançar a tabela.
+    """
+    from portal_api.models import OrganizationRetentionPolicy
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = rls_session.execute(select(OrganizationRetentionPolicy)).scalars().all()
+
+    assert visible == []
+
+
+def test_the_app_role_cannot_request_an_erasure(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Sem GRANT: o pedido nasce sob ``portal_admin``, pela tela de administração.
+
+    Um caminho de requisição capaz de gravar esta linha seria um caminho de
+    requisição capaz de apagar a organização inteira — em diferido, mas apagar.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text(
+                "INSERT INTO data_erasure_request (id, organization_id, state)"
+                " VALUES (gen_random_uuid(), :org, 'pending')"
+            ),
+            {"org": tenant_a.organization_id},
+        )
+
+
+def test_another_tenants_retention_policy_is_invisible_to_the_admin(
+    tenants: tuple[Tenant, Tenant],
+    retention_policies: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    from portal_api.models import OrganizationRetentionPolicy
+
+    tenant_a, tenant_b = tenants
+
+    with get_session(role=DbRole.admin) as session:
+        bind_admin_org(session, tenant_a.organization_id)
+        visible = {
+            row.id
+            for row in session.execute(select(OrganizationRetentionPolicy)).scalars().all()
+        }
+
+    assert retention_policies[tenant_a.organization_id] in visible
+    assert retention_policies[tenant_b.organization_id] not in visible
+
+
+def test_the_admin_cannot_rewrite_the_record_of_an_erasure(
+    tenants: tuple[Tenant, Tenant],
+) -> None:
+    """``portal_admin`` insere o pedido e não o edita — só SELECT e INSERT.
+
+    Mesma razão do GRANT de coluna da `notification` (ADR 0012): o registro do
+    que aconteceu não pertence a quem o provocou. Quem carimba o resultado é o
+    worker sob ``portal_system``, que foi quem fez o trabalho.
+    """
+    tenant_a, _ = tenants
+
+    with get_session(role=DbRole.admin) as session:
+        bind_admin_org(session, tenant_a.organization_id)
+        with pytest.raises(ProgrammingError, match="permission denied"):
+            session.execute(
+                text("UPDATE data_erasure_request SET state = 'completed'")
+            )

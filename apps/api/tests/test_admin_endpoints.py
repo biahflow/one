@@ -861,6 +861,7 @@ def test_deleting_removes_the_row_the_index_and_the_object(
     authenticated(acme.admin)
     base = f"/api/v1/admin/projects/{acme.project_id}/documents"
     document_id = client.post(base, files=_file(), data={"title": "Contrato"}).json()["document_id"]
+    worker.scan_document(document_id)
     worker.ingest_document(document_id)
 
     assert client.get(base).json()[0]["chunk_count"] > 0

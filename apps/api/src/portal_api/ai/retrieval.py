@@ -64,6 +64,11 @@ class Evidence:
     source: str
     location: str
     text: str
+    #: O documento por trás da citação, quando há um arquivo (Fase 5, ADR 0017).
+    #: Vazio para a evidência que vem do read model — um marco não é um arquivo
+    #: e não tem o que abrir. É o que permite à citação virar link em vez de
+    #: pedir que o cliente confie no rótulo.
+    document_id: str = ""
 
     @property
     def citation(self) -> str:
@@ -160,6 +165,7 @@ def collect_document_evidence(
                 source=f"Documento: {titles[key]}",
                 location=chunk.location,
                 text=chunk.text,
+                document_id=key,
             )
         )
     return evidence

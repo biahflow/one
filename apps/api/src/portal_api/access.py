@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from portal_api.db.session import bind_tenant
-from portal_api.models import MemberRole, Membership, Project, User
+from portal_api.models import MemberRole, Membership, Organization, Project, User
 from portal_api.repositories import MembershipRepository, TenantContext
 
 ANY_MEMBER = frozenset(MemberRole)
@@ -56,6 +56,42 @@ def scoped_project(
 ) -> Project | None:
     """The project by id, for any kind of membership."""
     return require_project(session, user, project_id, ANY_MEMBER)
+
+
+def require_organization(
+    session: Session,
+    user: User,
+    organization_id: uuid.UUID,
+    allowed: frozenset[MemberRole] = ADMIN_ONLY,
+) -> Organization | None:
+    """A organização, se o usuário tem um dos papéis de ``allowed`` **nela**.
+
+    Existe para a retenção (Fase 5, ADR 0017), que é a primeira coisa do portal
+    cujo escopo é a organização inteira e não um projeto: "por quanto tempo os
+    dados ficam" e "apague tudo" não são perguntas que se façam projeto a
+    projeto.
+
+    Vale qualquer vínculo de administração dentro da organização — o de escopo
+    organizacional (``project_id IS NULL``) ou o de um projeto qualquer dela. Um
+    ``internal_admin`` de um projeto já administra dados daquela organização; o
+    que a rota exige a mais, ela exige por conta própria.
+
+    Não chama ``bind_tenant``: não há projeto a fixar. Quem escreve chama
+    ``bind_admin_org``, como todo o resto de ``admin.py``.
+    """
+    organization = session.get(Organization, organization_id)
+    if organization is None:
+        return None
+
+    roles = set(
+        session.execute(
+            select(Membership.role).where(
+                Membership.user_id == user.id,
+                Membership.organization_id == organization_id,
+            )
+        ).scalars()
+    )
+    return organization if roles & allowed else None
 
 
 def default_project(session: Session, user: User) -> Project | None:

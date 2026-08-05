@@ -9,19 +9,30 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from celery import Celery
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 
-from portal_api import crypto, drive_sync, ingestion, mailer, notifications, storage
+from portal_api import (
+    crypto,
+    drive_sync,
+    ingestion,
+    mailer,
+    notifications,
+    retention,
+    scanner,
+    storage,
+)
 from portal_api.ai.embeddings import get_embedder
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, get_session
 from portal_api.integrations import biahflow
 from portal_api.integrations import google_drive as drive
 from portal_api.models import (
+    DataErasureRequest,
     Document,
     DocumentChunk,
     DocumentIngestState,
     DriveSyncState,
+    ErasureState,
     Notification,
     PendingItem,
     Project,
@@ -29,6 +40,7 @@ from portal_api.models import (
     User,
 )
 from portal_api.repositories import DocumentChunkRepository, TenantContext
+from portal_api.scanner import ScanState
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +54,94 @@ celery_app = Celery("portal_api", broker=settings.redis_url, backend=settings.re
 # significam dois syncs concorrentes por conexão. A guarda de sobreposição em
 # `_claim_drive_sync` faz o segundo virar no-op, mas contar com ela para o caso
 # normal seria desenhar para o acidente: o compose fixa uma réplica só.
+celery_app.conf.beat_schedule = {}
 if settings.drive_sync_enabled:
-    celery_app.conf.beat_schedule = {
-        "drive-sync-due": {
-            "task": "portal_api.sync_due_drive_connections",
-            "schedule": timedelta(seconds=settings.drive_sync_interval_seconds),
-        }
+    celery_app.conf.beat_schedule["drive-sync-due"] = {
+        "task": "portal_api.sync_due_drive_connections",
+        "schedule": timedelta(seconds=settings.drive_sync_interval_seconds),
     }
+# A poda (Fase 5, ADR 0017). Ligada por padrão, ao contrário do sync do Drive:
+# aquele precisa de credencial de terceiro para fazer sentido, e este só precisa
+# do próprio banco. Um portal que nunca poda é o estado que as ADRs 0012/0015
+# descreveram como dívida, e o padrão deve ser o comportamento correto.
+if settings.retention_enabled:
+    celery_app.conf.beat_schedule["retention-purge"] = {
+        "task": "portal_api.purge_expired_data",
+        "schedule": timedelta(seconds=settings.retention_interval_seconds),
+    }
+    celery_app.conf.beat_schedule["erasure-requests"] = {
+        "task": "portal_api.run_erasure_requests",
+        "schedule": timedelta(seconds=settings.retention_interval_seconds),
+    }
+
+
+#: Os dois vereditos que autorizam a indexação. ``skipped`` entra porque a stack
+#: local e o CI não têm ClamAV, e exigir ``clean`` ali faria a demo nunca indexar
+#: nada — mas ele continua sendo *outra coisa* que ``clean`` no banco e na tela,
+#: e é assim que "ninguém varreu" permanece dizível (ADR 0017).
+_SCAN_ALLOWS_INDEX = (ScanState.clean, ScanState.skipped)
+
+
+@celery_app.task(name="portal_api.scan_document")
+def scan_document(document_id: str) -> dict[str, object]:
+    """Varre o arquivo antes de ele virar texto (Fase 5, ADR 0017).
+
+    Entra **entre** o objeto e a extração, porque extrair texto já é abrir o
+    arquivo com um parser — e o parser é justamente a superfície que um arquivo
+    malicioso procura. Roda sob ``portal_system``, como a ingestão, e pelo mesmo
+    motivo: não há principal aqui, e o tenant vem da linha.
+
+    Limpo (ou sem scanner) encadeia a ingestão. Infectado carimba o estado e
+    **apaga o objeto do bucket**: ao contrário de ``delete_document``, que
+    preserva o arquivo do cliente, aqui o arquivo é a coisa de que se quer
+    distância. A linha fica — é ela que explica na tela e sustenta o `audit_log`.
+    """
+    current = get_settings()
+    with get_session(role=DbRole.system) as session:
+        document = session.get(Document, uuid.UUID(document_id))
+        if document is None or not document.storage_key:
+            return {"status": "skipped"}
+
+        try:
+            data = storage.get_object(current, document.storage_key)
+        except (storage.StorageDisabled, storage.StorageError) as exc:
+            # Storage fora do ar não é arquivo limpo. `error` mantém o documento
+            # fora do índice e a causa na tela.
+            document.scan_state = ScanState.error
+            document.scan_error = str(exc)[:500]
+            document.scanned_at = datetime.now(timezone.utc)
+            return {"status": ScanState.error.value}
+
+        verdict = scanner.get_scanner(current).scan(data)
+        note = verdict.signature or verdict.detail
+        document.scan_state = verdict.state
+        document.scan_error = note[:500] if note else None
+        document.scanned_at = datetime.now(timezone.utc)
+
+        if verdict.state is ScanState.infected:
+            document.ingest_state = DocumentIngestState.rejected
+            document.ingest_error = f"Barrado pela varredura: {verdict.signature}"
+            storage_key = document.storage_key
+            # A chave sai da linha antes do commit: o objeto vai embora logo
+            # abaixo, e um `storage_key` apontando para o que não existe faria a
+            # URL temporária prometer um arquivo ausente.
+            document.storage_key = None
+        else:
+            storage_key = None
+
+    if storage_key:
+        try:
+            storage.delete_object(current, storage_key)
+        except (storage.StorageDisabled, storage.StorageError):
+            # A linha já diz `rejected` e o arquivo já não é alcançável por
+            # nenhuma rota. Objeto órfão é trabalho da retenção, não motivo para
+            # repetir a varredura.
+            logger.warning("Objeto infectado %s não removido do storage", storage_key)
+        return {"status": ScanState.infected.value}
+
+    if verdict.state in _SCAN_ALLOWS_INDEX:
+        queue_document_ingestion(document_id)
+    return {"status": verdict.state.value}
 
 
 @celery_app.task(name="portal_api.ingest_document")
@@ -70,6 +163,13 @@ def ingest_document(document_id: str) -> dict[str, object]:
         document = session.get(Document, uuid.UUID(document_id))
         if document is None or not document.storage_key:
             return {"status": "skipped", "chunks": 0}
+
+        # A fronteira conferida duas vezes, como a pasta do Drive na ADR 0016.
+        # `scan_document` já encadeia só o que passou, mas uma task antiga na
+        # fila ou um reenfileiramento manual chegariam aqui direto — e indexar é
+        # exatamente o que não pode acontecer sem varredura.
+        if document.scan_state not in _SCAN_ALLOWS_INDEX:
+            return {"status": "unscanned", "chunks": 0}
 
         try:
             data = storage.get_object(current, document.storage_key)
@@ -143,6 +243,10 @@ def reindex_project(organization_id: str, project_id: str) -> dict[str, object]:
     Rede de segurança para o que ficou para trás quando o broker esteve fora do
     ar: o upload já respondeu, o documento está `pending`, e nada mais o
     empurraria sozinho.
+
+    Recomeça pela varredura e não pela ingestão. O documento parado pode ter
+    ficado para trás *antes* de ser varrido, e "reindexar" não é motivo para
+    pular a fronteira — ``scan_document`` reencadeia a ingestão quando é o caso.
     """
     with get_session(role=DbRole.system) as session:
         pending = list(
@@ -156,7 +260,7 @@ def reindex_project(organization_id: str, project_id: str) -> dict[str, object]:
             ).scalars()
         )
     for document_id in pending:
-        queue_document_ingestion(str(document_id))
+        queue_document_scan(str(document_id))
     return {"project_id": project_id, "queued": len(pending)}
 
 
@@ -239,7 +343,7 @@ def sync_drive_project(connection_id: str) -> dict[str, object]:
         return {"status": "failed"}
 
     for document_id in outcome.queued:
-        queue_document_ingestion(document_id)
+        queue_document_scan(document_id)
     return {"status": "synced", **outcome.as_stats(), "queued": len(outcome.queued)}
 
 
@@ -319,6 +423,125 @@ def _fail(document: Document, state: DocumentIngestState, reason: str) -> dict[s
     document.ingest_state = state
     document.ingest_error = reason[:500]
     return {"status": state.value, "chunks": 0}
+
+
+# --- Retenção e expurgo (Fase 5, ADR 0017) ------------------------------------
+
+
+@celery_app.task(name="portal_api.purge_expired_data")
+def purge_expired_data() -> dict[str, object]:
+    """O tick da poda: uma organização por transação (ADR 0017).
+
+    Não é fan-out como ``sync_due_drive_connections``, e a diferença tem motivo:
+    ali cada projeto fala com um Google que pode demorar, aqui é só ``DELETE`` no
+    próprio banco. Uma task por organização multiplicaria mensagens sem
+    encurtar nada. O que precisa ficar curto é a *transação*, e isso o lote de
+    ``retention.purge_expired`` já garante.
+    """
+    current = get_settings()
+    totals: dict[str, int] = {}
+    with get_session(role=DbRole.system) as session:
+        organizations = retention.organizations_with_data(session)
+
+    for organization_id in organizations:
+        # Uma transação por organização: um erro numa não deve desfazer a poda
+        # das outras, e segurar todas num `commit` só é o oposto de podar em
+        # lotes.
+        try:
+            with get_session(role=DbRole.system) as session:
+                outcome = retention.purge_expired(session, organization_id, current)
+        except Exception:
+            logger.exception("Falha ao podar a organização %s", organization_id)
+            continue
+        for table, count in outcome.removed.items():
+            totals[table] = totals.get(table, 0) + count
+    return {"organizations": len(organizations), **totals}
+
+
+@celery_app.task(name="portal_api.run_erasure_requests")
+def run_erasure_requests() -> dict[str, int]:
+    """Executa os pedidos de apagamento pendentes.
+
+    A administração grava a intenção sob ``portal_admin`` e o worker a cumpre sob
+    ``portal_system`` — a ADR 0015 já tinha decidido que "quando o expurgo
+    chegar, não será o caminho de requisição a fazê-lo".
+    """
+    with get_session(role=DbRole.system) as session:
+        pending = list(
+            session.execute(
+                select(DataErasureRequest.id).where(
+                    DataErasureRequest.state == ErasureState.pending
+                )
+            ).scalars()
+        )
+    done = 0
+    for request_id in pending:
+        if _run_erasure(request_id):
+            done += 1
+    return {"pending": len(pending), "completed": done}
+
+
+def _claim_erasure(session, request_id: uuid.UUID) -> DataErasureRequest | None:
+    """Reivindica o pedido com um ``UPDATE`` condicional, como o sync do Drive.
+
+    Dois workers pegando o mesmo pedido precisam que exatamente um ganhe, e quem
+    decide isso é o banco — não uma leitura seguida de escrita, que tem uma
+    janela entre as duas.
+    """
+    claimed = session.execute(
+        update(DataErasureRequest)
+        .where(
+            DataErasureRequest.id == request_id,
+            DataErasureRequest.state == ErasureState.pending,
+        )
+        .values(state=ErasureState.running, started_at=retention.now())
+        .returning(DataErasureRequest.id)
+    ).scalar_one_or_none()
+    if claimed is None:
+        return None
+    return session.get(DataErasureRequest, request_id)
+
+
+def _run_erasure(request_id: uuid.UUID) -> bool:
+    current = get_settings()
+    with get_session(role=DbRole.system) as session:
+        request = _claim_erasure(session, request_id)
+        if request is None:
+            return False
+        organization_id = request.organization_id
+
+    try:
+        # O storage **antes** do banco, e a ordem é o inverso da do upload. Lá a
+        # linha nasce primeiro porque o id dela compõe a chave do objeto; aqui a
+        # linha é o que sabe quais objetos existem, então perdê-la primeiro
+        # deixaria os arquivos sem quem os encontrasse. Um objeto que sobrevive a
+        # uma falha no meio é recolhido na próxima passagem pelo prefixo; uma
+        # linha apagada com o arquivo de pé não teria segunda chance.
+        objects = storage.delete_prefix(
+            current, retention.storage_prefix(organization_id)
+        )
+    except storage.StorageDisabled:
+        # Sem storage configurado não há objeto a remover — a stack local é
+        # assim. Não é motivo para o expurgo do banco não acontecer.
+        objects = 0
+    except storage.StorageError as exc:
+        with get_session(role=DbRole.system) as session:
+            failed = session.get(DataErasureRequest, request_id)
+            if failed is not None:
+                failed.state = ErasureState.failed
+                failed.error = str(exc)[:500]
+        logger.exception("Expurgo da organização %s falhou no storage", organization_id)
+        return False
+
+    with get_session(role=DbRole.system) as session:
+        outcome = retention.run_erasure(session, organization_id)
+        request = session.get(DataErasureRequest, request_id)
+        if request is not None:
+            request.state = ErasureState.completed
+            request.completed_at = retention.now()
+            request.removed = {**outcome.removed, "storage_objects": objects}
+            request.error = None
+    return True
 
 
 @celery_app.task(name="portal_api.sync_biahflow_project")
@@ -449,13 +672,45 @@ def queue_pending_notification(project_id: str, pending_id: str) -> None:
         logger.warning("Não foi possível enfileirar o aviso da pendência %s", pending_id)
 
 
-def queue_document_ingestion(document_id: str) -> None:
-    """Mesma tolerância, para a ingestão do documento (ADR 0014).
+def queue_erasure_requests() -> None:
+    """Acorda o expurgo assim que o pedido é gravado (ADR 0017).
 
-    O arquivo já está no storage e a linha já está comitada quando chegamos
-    aqui: com o broker fora do ar o upload continua valendo e o documento fica
-    `pending`, visível na tela e recuperável por ``reindex_project``. Derrubar o
-    upload por causa da fila trocaria uma degradação por uma indisponibilidade.
+    Mesma tolerância a broker morto das demais filas, e aqui ela custa ainda
+    menos: o pedido está comitado, e o tick do beat pega o que a fila perdeu. A
+    diferença entre enfileirar e não enfileirar é minutos, não o trabalho.
+    """
+    try:
+        run_erasure_requests.delay()
+    except Exception:
+        logger.warning("Não foi possível enfileirar os pedidos de expurgo")
+
+
+def queue_document_scan(document_id: str) -> None:
+    """A porta única do arquivo para o índice (ADR 0017).
+
+    Quem quer que um documento seja indexado chama **isto**, e não
+    ``queue_document_ingestion``: é a varredura que decide se a ingestão
+    acontece. Ter um ponto de entrada só é o que faz o arquivo vindo do Drive
+    passar pela mesma fronteira do que foi enviado na tela, sem código próprio
+    para cada origem.
+
+    Mesma tolerância a broker morto das demais filas: o arquivo já está no
+    storage e a linha já está comitada, então sem Redis o upload continua
+    valendo e o documento fica `pending`, visível na tela e recuperável por
+    ``reindex_project``.
+    """
+    try:
+        scan_document.delay(document_id)
+    except Exception:
+        logger.warning("Não foi possível enfileirar a varredura do documento %s", document_id)
+
+
+def queue_document_ingestion(document_id: str) -> None:
+    """Enfileira a ingestão de um documento **já varrido**.
+
+    Chamada por ``scan_document`` depois do veredito, e não de fora: quem tem um
+    documento novo em mãos quer ``queue_document_scan``. A guarda no começo de
+    ``ingest_document`` existe para o caso de alguém chamar mesmo assim.
     """
     try:
         ingest_document.delay(document_id)

@@ -225,14 +225,20 @@ def fake_storage(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
 
 @pytest.fixture
 def queued_ingestions(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Intercepta o enfileiramento da ingestão, para o teste rodá-la quando quiser.
+    """Intercepta o enfileiramento, para o teste rodar a task quando quiser.
 
     Sem isto o upload publicaria de verdade no Redis do compose, e o worker que
     estiver de pé pegaria a task no meio do teste.
+
+    Intercepta as **duas** portas. Desde a ADR 0017 quem enfileira o documento
+    novo é ``queue_document_scan``, e ``queue_document_ingestion`` passou a ser
+    chamada só pela varredura depois do veredito — deixar uma de fora faria a
+    task escapar para o broker de verdade em metade dos caminhos.
     """
     from portal_api import worker
 
     queued: list[str] = []
+    monkeypatch.setattr(worker, "queue_document_scan", queued.append)
     monkeypatch.setattr(worker, "queue_document_ingestion", queued.append)
     return queued
 

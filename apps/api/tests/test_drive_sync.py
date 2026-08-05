@@ -159,6 +159,8 @@ def test_the_authorized_folder_becomes_queued_documents(
     assert documents[0].external_id == "contrato"
     assert documents[0].ingest_state == DocumentIngestState.pending
     assert documents[0].storage_key in fake_storage
+    # Uma entrada só: o sync enfileira a **varredura**, e é ela que decide se
+    # a ingestão acontece (ADR 0017).
     assert queued_ingestions == [str(documents[0].id)]
 
 
@@ -179,7 +181,7 @@ def test_the_indexed_document_from_the_drive_is_citable(
     connection_id = _connect(migrated_engine, project)
     worker.sync_drive_project(str(connection_id))
 
-    worker.ingest_document(queued_ingestions[0])
+    _scan_and_ingest(queued_ingestions[0])
 
     with Session(migrated_engine) as session:
         chunks = list(
@@ -218,6 +220,18 @@ def test_a_google_doc_is_exported_and_stored_in_a_format_the_portal_reads(
     assert fake_storage[documents[0].storage_key] == b"conteudo exportado"
 
 
+
+def _scan_and_ingest(document_id: str) -> None:
+    """A corrente completa desde a ADR 0017: varre, e só então indexa.
+
+    O sync do Drive enfileira a varredura, não a ingestão — chamar
+    ``ingest_document`` direto aqui provaria menos do que parece, porque a guarda
+    no começo dela recusaria um documento que ninguém varreu.
+    """
+    worker.scan_document(document_id)
+    worker.ingest_document(document_id)
+
+
 # --- idempotência ----------------------------------------------------------------
 
 
@@ -233,7 +247,7 @@ def test_a_second_sync_over_the_same_drive_downloads_nothing(
     _text_file(fake_drive, "contrato", b"O contrato preve suporte por 12 meses.")
     connection_id = _connect(migrated_engine, project)
     worker.sync_drive_project(str(connection_id))
-    worker.ingest_document(queued_ingestions[0])
+    _scan_and_ingest(queued_ingestions[0])
     fake_drive.media_requests.clear()
     queued_ingestions.clear()
 
@@ -262,7 +276,7 @@ def test_a_touched_file_with_the_same_bytes_is_not_reindexed(
     found = _text_file(fake_drive, "contrato", b"O contrato preve suporte.")
     connection_id = _connect(migrated_engine, project)
     worker.sync_drive_project(str(connection_id))
-    worker.ingest_document(queued_ingestions[0])
+    _scan_and_ingest(queued_ingestions[0])
     queued_ingestions.clear()
 
     found.modified_time = "2026-08-02T11:00:00.000Z"
@@ -283,7 +297,7 @@ def test_a_changed_file_is_downloaded_again_and_queued_for_reindexing(
     found = _text_file(fake_drive, "contrato", b"Versao um.")
     connection_id = _connect(migrated_engine, project)
     worker.sync_drive_project(str(connection_id))
-    worker.ingest_document(queued_ingestions[0])
+    _scan_and_ingest(queued_ingestions[0])
     queued_ingestions.clear()
     first_key = _documents(migrated_engine, project)[0].storage_key
 
@@ -295,6 +309,8 @@ def test_a_changed_file_is_downloaded_again_and_queued_for_reindexing(
     assert result["updated"] == 1
     assert documents[0].ingest_state == DocumentIngestState.pending
     assert documents[0].storage_key != first_key
+    # Uma entrada só: o sync enfileira a **varredura**, e é ela que decide se
+    # a ingestão acontece (ADR 0017).
     assert queued_ingestions == [str(documents[0].id)]
     # A chave carrega o hash: sem a limpeza o bucket guardaria toda revisão.
     assert first_key not in fake_storage
@@ -313,7 +329,7 @@ def test_a_file_removed_from_the_drive_leaves_no_row_chunk_or_object(
     _text_file(fake_drive, "contrato", b"O contrato preve suporte.")
     connection_id = _connect(migrated_engine, project)
     worker.sync_drive_project(str(connection_id))
-    worker.ingest_document(queued_ingestions[0])
+    _scan_and_ingest(queued_ingestions[0])
     key = _documents(migrated_engine, project)[0].storage_key
 
     del fake_drive.files["contrato"]
@@ -350,7 +366,7 @@ def test_a_listing_that_fails_midway_never_deletes(
     fake_drive.folder("anexos", "Anexos", parents=[ROOT])
     connection_id = _connect(migrated_engine, project)
     worker.sync_drive_project(str(connection_id))
-    worker.ingest_document(queued_ingestions[0])
+    _scan_and_ingest(queued_ingestions[0])
 
     fake_drive.list_calls = 0
     fake_drive.fail_listing_after = 1
@@ -403,7 +419,7 @@ def test_a_revoked_consent_pauses_the_folder_and_keeps_the_index(
     _text_file(fake_drive, "contrato", b"O contrato preve suporte.")
     connection_id = _connect(migrated_engine, project)
     worker.sync_drive_project(str(connection_id))
-    worker.ingest_document(queued_ingestions[0])
+    _scan_and_ingest(queued_ingestions[0])
 
     fake_drive.consent_revoked = True
     result = worker.sync_drive_project(str(connection_id))

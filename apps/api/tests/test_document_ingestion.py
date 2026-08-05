@@ -33,6 +33,7 @@ from portal_api.models import (
     Project,
     ProjectStatus,
 )
+from portal_api.scanner import ScanState
 from portal_api.storage import digest, object_key
 
 # --- extração e chunking (sem banco) --------------------------------------
@@ -192,7 +193,13 @@ def _document(
     mime_type: str,
     objects: dict[str, bytes],
 ) -> uuid.UUID:
-    """Grava a linha e o objeto como o upload faria, sem passar pelo HTTP."""
+    """Grava a linha e o objeto como o upload faria, sem passar pelo HTTP.
+
+    Nasce com ``scan_state=skipped`` porque estes testes são sobre a **ingestão**:
+    a varredura é a etapa anterior e tem arquivo próprio. Deixar `pending` faria
+    todos eles baterem na guarda da ADR 0017 e provarem só que a guarda existe —
+    o que `test_document_scan.py` já prova, uma vez.
+    """
     with Session(engine) as session:
         record = Document(
             organization_id=project.organization_id,
@@ -203,6 +210,7 @@ def _document(
             mime_type=mime_type,
             byte_size=len(data),
             ingest_state=DocumentIngestState.pending,
+            scan_state=ScanState.skipped,
         )
         session.add(record)
         session.flush()

@@ -4,12 +4,13 @@ from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 import redis
-from fastapi import FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from portal_api import access, admin, agent_auth, conversations, results, storage
+from portal_api import access, admin, agent_auth, conversations, results, schemas, storage
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
@@ -61,6 +62,45 @@ app.add_middleware(TraceMiddleware)
 # papel `portal_admin`, por isso em módulo próprio.
 app.include_router(admin.router)
 
+#: A assinatura do webhook do Biahflow, declarada pelo mesmo motivo que as
+#: outras duas (ADR 0020): ela é conferida imperativamente em
+#: :func:`biahflow_webhook`, e o esquema não tinha como saber que a rota é
+#: autenticada.
+_WEBHOOK_SCHEME = APIKeyHeader(
+    name="X-Biahflow-Signature",
+    scheme_name="BiahflowSignature",
+    auto_error=False,
+    description="HMAC do corpo, com o segredo compartilhado (ADR 0006).",
+)
+
+#: As duas recusas que toda rota de cliente pode dar, escritas uma vez só.
+#:
+#: O texto é a parte que importa. A regra "404, nunca 403" está em `AGENTS.md`,
+#: no `docs/api-contracts.md` e em quase todo docstring deste arquivo, e mesmo
+#: assim não estava em lugar nenhum que uma ferramenta pudesse ler — quem
+#: gerasse um cliente a partir do esquema trataria o 404 como "recurso
+#: inexistente" e o 403 como possível. Aqui ele passa a ser uma propriedade do
+#: contrato, e `test_openapi_contract.py` recusa qualquer rota que declare 403.
+CLIENT_ERRORS: dict[int | str, dict[str, object]] = {
+    status.HTTP_401_UNAUTHORIZED: {
+        "model": schemas.ErrorOut,
+        "description": (
+            "Token ausente, inválido, expirado, de outro emissor ou com e-mail "
+            "não verificado. A resposta é sempre a mesma, e o motivo vive só no "
+            "log (`auth.rejected`): distinguir os casos aqui permitiria sondar "
+            "qual claim falhou."
+        ),
+    },
+    status.HTTP_404_NOT_FOUND: {
+        "model": schemas.ErrorOut,
+        "description": (
+            "O chamador não tem vínculo com o recurso — ou ele não existe. "
+            "**A API nunca responde 403**: um 403 confirmaria que o projeto "
+            "existe a quem não deveria saber disso."
+        ),
+    },
+}
+
 
 class AgentEventIn(BaseModel):
     event_id: UUID
@@ -101,13 +141,22 @@ class PreferencesIn(BaseModel):
     notify_by_email: bool | None = None
 
 
-@app.get("/health")
+@app.get("/health", response_model=schemas.HealthOut)
 def health() -> dict[str, str]:
     """Vivacidade: o processo respondeu. Não toca em dependência nenhuma."""
     return {"status": "ok", "service": "portal-api"}
 
 
-@app.get("/health/ready")
+@app.get(
+    "/health/ready",
+    response_model=schemas.ReadyOut,
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": schemas.ReadyOut,
+            "description": "Postgres ou Redis não responderam. Qual dos dois vai para o log.",
+        }
+    },
+)
 def health_ready(response: Response) -> dict[str, object]:
     """Prontidão: o Postgres e o Redis respondem (Fase 5, ADR 0018).
 
@@ -146,7 +195,16 @@ def health_ready(response: Response) -> dict[str, object]:
     return {"status": "ready" if ready else "down"}
 
 
-@app.get("/api/v1/dashboard/demo")
+@app.get(
+    "/api/v1/dashboard/demo",
+    response_model=schemas.DemoDashboardOut,
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "model": schemas.ErrorOut,
+            "description": "`DEMO_MODE` desligado, que é o padrão fora do local.",
+        }
+    },
+)
 def demo_dashboard() -> dict:
     if not settings.demo_mode:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -160,7 +218,39 @@ def demo_dashboard() -> dict:
     }
 
 
-@app.post("/api/v1/agent-events", status_code=status.HTTP_202_ACCEPTED)
+@app.post(
+    "/api/v1/agent-events",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=schemas.AgentEventAcceptedOut,
+    # Só a chave, e é o esquema dizendo o que a ADR 0013 decidiu: a rota não
+    # depende de `CurrentPrincipal`, então o Bearer não aparece aqui.
+    dependencies=[Depends(agent_auth.SCHEME)],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": schemas.ErrorOut,
+            "description": (
+                "Chave ausente, desconhecida, revogada, expirada ou sem escopo — "
+                "sempre a mesma resposta, com o motivo em `agent_key.rejected`."
+            ),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": schemas.ErrorOut,
+            "description": (
+                "O `project_id` do corpo não é o projeto da chave. O tenant é "
+                "propriedade da credencial, então o do corpo é conferido, nunca "
+                "acreditado."
+            ),
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "model": schemas.ErrorOut,
+            "description": (
+                "Ritmo acima do limite da chave, com `Retry-After`. É o único "
+                "caso que **não** é opaco: o produtor precisa distinguir ritmo "
+                "de credencial para saber se deve tentar de novo."
+            ),
+        },
+    },
+)
 def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
     """Recebe um evento de execução, autenticado por chave de projeto (ADR 0013).
 
@@ -222,7 +312,7 @@ def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
     }
 
 
-@app.post("/api/v1/chat")
+@app.post("/api/v1/chat", response_model=schemas.ChatOut, responses=CLIENT_ERRORS)
 def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
     """Grounded, tenant-scoped chat: cite the read model or declare the gap + pendência (ADR 0007)."""
     with get_session(principal) as session:
@@ -274,7 +364,21 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
     return response
 
 
-@app.post("/api/v1/integrations/biahflow/webhook")
+@app.post(
+    "/api/v1/integrations/biahflow/webhook",
+    response_model=schemas.WebhookSyncedOut,
+    dependencies=[Depends(_WEBHOOK_SCHEME)],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": schemas.ErrorOut,
+            "description": "Assinatura ausente ou que não confere com o corpo.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "model": schemas.ErrorOut,
+            "description": "Corpo sem `project_id`.",
+        },
+    },
+)
 async def biahflow_webhook(request: Request) -> dict:
     """Receive a signed Biahflow change notification and refresh the read model (ADR 0006)."""
     body = await request.body()
@@ -309,7 +413,17 @@ async def biahflow_webhook(request: Request) -> dict:
     return {"status": "synced", "project_id": project_id}
 
 
-@app.get("/api/v1/me")
+@app.get(
+    "/api/v1/me",
+    response_model=schemas.MeOut,
+    # Sem o 404 do bloco comum: esta é a única rota de cliente que **não** o
+    # responde. Quem autentica e não tem vínculo recebe 200 com `projects`
+    # vazio, e o esquema precisa dizer isso — é a diferença entre "não te
+    # conheço" e "você ainda não tem projeto".
+    responses={
+        status.HTTP_401_UNAUTHORIZED: CLIENT_ERRORS[status.HTTP_401_UNAUTHORIZED]
+    },
+)
 def me(principal: CurrentPrincipal) -> dict:
     """Who the caller is and what they can reach — the BFF renders the chrome from this.
 
@@ -345,7 +459,11 @@ def me(principal: CurrentPrincipal) -> dict:
         }
 
 
-@app.get("/api/v1/projects/{project_id}/dashboard")
+@app.get(
+    "/api/v1/projects/{project_id}/dashboard",
+    response_model=schemas.DashboardOut,
+    responses=CLIENT_ERRORS,
+)
 def project_dashboard(project_id: UUID, principal: CurrentPrincipal) -> dict:
     """Dashboard from the read model, scoped to the caller's membership (ADR 0002/0006)."""
     with get_session(principal) as session:
@@ -357,7 +475,17 @@ def project_dashboard(project_id: UUID, principal: CurrentPrincipal) -> dict:
         return biahflow.build_dashboard(session, project)
 
 
-@app.get("/api/v1/projects/{project_id}/results")
+@app.get(
+    "/api/v1/projects/{project_id}/results",
+    response_model=schemas.ResultsOut,
+    responses={
+        **CLIENT_ERRORS,
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "model": schemas.ErrorOut,
+            "description": "`to` anterior ou igual a `from`.",
+        },
+    },
+)
 def project_results(
     project_id: UUID,
     principal: CurrentPrincipal,
@@ -392,7 +520,21 @@ def project_results(
         return results.to_payload(results.compute_results(session, ctx, period))
 
 
-@app.get("/api/v1/me/documents/{document_id}/download")
+@app.get(
+    "/api/v1/me/documents/{document_id}/download",
+    response_model=schemas.DocumentDownloadOut,
+    responses={
+        **CLIENT_ERRORS,
+        status.HTTP_502_BAD_GATEWAY: {
+            "model": schemas.ErrorOut,
+            "description": "O storage recusou assinar a URL.",
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": schemas.ErrorOut,
+            "description": "Não há storage configurado.",
+        },
+    },
+)
 def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
     """A URL temporária do documento que a IA citou (Fase 5, ADR 0017).
 
@@ -470,7 +612,11 @@ def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
     return {"url": url, "expires_at": expires_at.isoformat()}
 
 
-@app.get("/api/v1/me/dashboard")
+@app.get(
+    "/api/v1/me/dashboard",
+    response_model=schemas.MyDashboardOut,
+    responses=CLIENT_ERRORS,
+)
 def my_dashboard(principal: CurrentPrincipal) -> dict:
     """Dashboard for the caller's own project (the BFF calls this)."""
     with get_session(principal) as session:
@@ -484,7 +630,11 @@ def my_dashboard(principal: CurrentPrincipal) -> dict:
         return data
 
 
-@app.get("/api/v1/me/notifications")
+@app.get(
+    "/api/v1/me/notifications",
+    response_model=schemas.NotificationsOut,
+    responses=CLIENT_ERRORS,
+)
 def my_notifications(
     principal: CurrentPrincipal, unread_only: bool = False, limit: int = 50
 ) -> dict:
@@ -524,7 +674,11 @@ def my_notifications(
         }
 
 
-@app.post("/api/v1/me/notifications/read")
+@app.post(
+    "/api/v1/me/notifications/read",
+    response_model=schemas.NotificationsReadOut,
+    responses=CLIENT_ERRORS,
+)
 def read_notifications(payload: NotificationsReadIn, principal: CurrentPrincipal) -> dict:
     """Marca avisos como lidos. Sem ``ids``, marca todos os do projeto atual."""
     with get_session(principal) as session:
@@ -573,7 +727,16 @@ def _message_payload(message: ConversationMessage) -> dict:
     }
 
 
-@app.get("/api/v1/me/conversations/latest")
+@app.get(
+    "/api/v1/me/conversations/latest",
+    response_model=schemas.ConversationOut,
+    # A única rota que serializa por `exclude_unset`, e por um motivo estreito:
+    # sem conversa nenhuma o corpo não traz `title`, e declará-lo com padrão
+    # `None` acrescentaria uma chave nula que hoje não existe. Esta fatia
+    # descreve o payload; não o reescreve.
+    response_model_exclude_unset=True,
+    responses=CLIENT_ERRORS,
+)
 def my_latest_conversation(principal: CurrentPrincipal) -> dict:
     """A thread corrente do projeto atual, para o chat voltar como estava.
 
@@ -603,7 +766,11 @@ def my_latest_conversation(principal: CurrentPrincipal) -> dict:
         }
 
 
-@app.post("/api/v1/me/conversations/messages/{message_id}/feedback")
+@app.post(
+    "/api/v1/me/conversations/messages/{message_id}/feedback",
+    response_model=schemas.FeedbackOut,
+    responses=CLIENT_ERRORS,
+)
 def rate_answer(message_id: UUID, payload: FeedbackIn, principal: CurrentPrincipal) -> dict:
     """Avalia uma resposta do assistente. Mensagem de outra pessoa é 404, como sempre.
 
@@ -629,7 +796,14 @@ def rate_answer(message_id: UUID, payload: FeedbackIn, principal: CurrentPrincip
         return {"id": str(message.id), "feedback": message.feedback.value}
 
 
-@app.patch("/api/v1/me/preferences")
+@app.patch(
+    "/api/v1/me/preferences",
+    response_model=schemas.PreferencesOut,
+    responses={
+        # Como `/api/v1/me`, escreve na própria linha e não depende de projeto.
+        status.HTTP_401_UNAUTHORIZED: CLIENT_ERRORS[status.HTTP_401_UNAUTHORIZED]
+    },
+)
 def update_preferences(payload: PreferencesIn, principal: CurrentPrincipal) -> dict:
     """Preferências da própria conta. Hoje só o e-mail das notificações.
 

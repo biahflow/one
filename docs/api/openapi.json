@@ -1,0 +1,5346 @@
+{
+  "components": {
+    "schemas": {
+      "AgentEventAcceptedOut": {
+        "additionalProperties": false,
+        "description": "202 em ambos os casos: ``accepted`` na primeira vez, ``duplicate`` no\nreenvio. O produtor precisa distinguir reenvio de recusa, e nenhum dos dois\né erro (ADR 0013).",
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "status"
+        ],
+        "title": "AgentEventAcceptedOut",
+        "type": "object"
+      },
+      "AgentEventIn": {
+        "properties": {
+          "agent_key": {
+            "maxLength": 80,
+            "minLength": 3,
+            "title": "Agent Key",
+            "type": "string"
+          },
+          "avoided_cost_cents": {
+            "minimum": 0.0,
+            "title": "Avoided Cost Cents",
+            "type": "integer"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "default": "agent_run",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Event Type",
+            "type": "string"
+          },
+          "human_intervention": {
+            "default": false,
+            "title": "Human Intervention",
+            "type": "boolean"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AgentEventOutcome",
+            "default": "success"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "run_reference": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Run Reference",
+            "type": "string"
+          },
+          "time_saved_seconds": {
+            "minimum": 0.0,
+            "title": "Time Saved Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "project_id",
+          "occurred_at",
+          "agent_key",
+          "time_saved_seconds",
+          "avoided_cost_cents",
+          "run_reference"
+        ],
+        "title": "AgentEventIn",
+        "type": "object"
+      },
+      "AgentEventOutcome": {
+        "description": "How the run ended — the ground under the accuracy and exception figures.\n\n``exception_handled`` is a success with a caveat: the flow met something it\nwas not designed for and dealt with it. Counting it as a failure would\nunderstate accuracy; counting it as a plain success would hide the\nexceptions the client is paying attention to.",
+        "enum": [
+          "success",
+          "exception_handled",
+          "failed"
+        ],
+        "title": "AgentEventOutcome",
+        "type": "string"
+      },
+      "AgentKeyCreatedOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "key_id": {
+            "format": "uuid",
+            "title": "Key Id",
+            "type": "string"
+          },
+          "key_prefix": {
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "rotated_from_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated From Id"
+          },
+          "usable": {
+            "title": "Usable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key_id",
+          "name",
+          "key_prefix",
+          "expires_at",
+          "revoked_at",
+          "last_used_at",
+          "rotated_from_id",
+          "usable",
+          "key"
+        ],
+        "title": "AgentKeyCreatedOut",
+        "type": "object"
+      },
+      "AgentKeyIn": {
+        "properties": {
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "maximum": 730.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgentKeyIn",
+        "type": "object"
+      },
+      "AgentKeyOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "key_id": {
+            "format": "uuid",
+            "title": "Key Id",
+            "type": "string"
+          },
+          "key_prefix": {
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "rotated_from_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated From Id"
+          },
+          "usable": {
+            "title": "Usable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key_id",
+          "name",
+          "key_prefix",
+          "expires_at",
+          "revoked_at",
+          "last_used_at",
+          "rotated_from_id",
+          "usable"
+        ],
+        "title": "AgentKeyOut",
+        "type": "object"
+      },
+      "AssumptionBasisOut": {
+        "additionalProperties": false,
+        "description": "A conta em si, para o cliente poder refazê-la na mão.",
+        "properties": {
+          "days_per_month": {
+            "title": "Days Per Month",
+            "type": "integer"
+          },
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          }
+        },
+        "required": [
+          "days_per_month",
+          "formula"
+        ],
+        "title": "AssumptionBasisOut",
+        "type": "object"
+      },
+      "AssumptionIn": {
+        "properties": {
+          "currency": {
+            "default": "BRL",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "hourly_rate_cents": {
+            "minimum": 0.0,
+            "title": "Hourly Rate Cents",
+            "type": "integer"
+          },
+          "monthly_investment_cents": {
+            "minimum": 0.0,
+            "title": "Monthly Investment Cents",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "effective_from",
+          "hourly_rate_cents",
+          "monthly_investment_cents"
+        ],
+        "title": "AssumptionIn",
+        "type": "object"
+      },
+      "AssumptionOut": {
+        "properties": {
+          "assumption_id": {
+            "format": "uuid",
+            "title": "Assumption Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "hourly_rate_cents": {
+            "title": "Hourly Rate Cents",
+            "type": "integer"
+          },
+          "monthly_investment_cents": {
+            "title": "Monthly Investment Cents",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "assumption_id",
+          "effective_from",
+          "effective_to",
+          "hourly_rate_cents",
+          "monthly_investment_cents",
+          "currency",
+          "note"
+        ],
+        "title": "AssumptionOut",
+        "type": "object"
+      },
+      "Body_upload_document_api_v1_admin_projects__project_id__documents_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_document_api_v1_admin_projects__project_id__documents_post",
+        "type": "object"
+      },
+      "ChatIn": {
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "ChatIn",
+        "type": "object"
+      },
+      "ChatOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationOut"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "pending_created": {
+            "title": "Pending Created",
+            "type": "boolean"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answer",
+          "sources",
+          "citations",
+          "confidence",
+          "pending_created",
+          "conversation_id",
+          "message_id"
+        ],
+        "title": "ChatOut",
+        "type": "object"
+      },
+      "CitationOut": {
+        "additionalProperties": false,
+        "description": "A citação como foi exibida, com o ponteiro para o arquivo quando há um.\n\n``document_id`` vazio é o caso normal: um marco não é um arquivo e não tem\no que abrir. Quando há, a citação vira link (ADR 0017).",
+        "properties": {
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "document_id"
+        ],
+        "title": "CitationOut",
+        "type": "object"
+      },
+      "ConversationMessageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationOut"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pending_created": {
+            "title": "Pending Created",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "text",
+          "confidence",
+          "sources",
+          "citations",
+          "pending_created",
+          "feedback"
+        ],
+        "title": "ConversationMessageOut",
+        "type": "object"
+      },
+      "ConversationOut": {
+        "additionalProperties": false,
+        "description": "A thread corrente, para o chat reabrir onde parou.\n\nSem conversa nenhuma devolve ``conversation_id: null`` e lista vazia — e\n**sem** a chave ``title``, que é por que a rota serializa com\n``response_model_exclude_unset``. \"Ainda não perguntei nada\" não é ausência\nde recurso, então também não é 404.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationMessageOut"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "messages"
+        ],
+        "title": "ConversationOut",
+        "type": "object"
+      },
+      "DashboardDocumentOut": {
+        "additionalProperties": false,
+        "description": "O documento como o dashboard o mostra.\n\nNome distinto do ``DocumentOut`` de ``admin.py`` porque são coisas\ndiferentes: lá é a linha da tela de conhecimento, com estado de varredura e\nde indexação; aqui é o que o cliente vê na aba Documentos.",
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "title",
+          "type",
+          "author",
+          "link",
+          "updated_at"
+        ],
+        "title": "DashboardDocumentOut",
+        "type": "object"
+      },
+      "DashboardOut": {
+        "additionalProperties": false,
+        "description": "A projeção do read model alimentado pelo Biahflow (ADR 0006).\n\nO portal não origina nada disto: a digitação continua no Biahflow e chega\naqui por snapshot.",
+        "properties": {
+          "completion": {
+            "title": "Completion",
+            "type": "integer"
+          },
+          "digital_employees": {
+            "items": {
+              "$ref": "#/components/schemas/DigitalEmployeeOut"
+            },
+            "title": "Digital Employees",
+            "type": "array"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardDocumentOut"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectHealthOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "journey": {
+            "$ref": "#/components/schemas/JourneyOut"
+          },
+          "measured": {
+            "$ref": "#/components/schemas/ResultsOut"
+          },
+          "meetings": {
+            "items": {
+              "$ref": "#/components/schemas/MeetingOut"
+            },
+            "title": "Meetings",
+            "type": "array"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/MilestoneOut"
+            },
+            "title": "Milestones",
+            "type": "array"
+          },
+          "next_meeting": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextMeetingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pendings": {
+            "items": {
+              "$ref": "#/components/schemas/PendingOut"
+            },
+            "title": "Pendings",
+            "type": "array"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "results": {
+            "$ref": "#/components/schemas/MilestoneCountsOut"
+          },
+          "roi": {
+            "$ref": "#/components/schemas/RoiOut"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "status",
+          "completion",
+          "health",
+          "journey",
+          "digital_employees",
+          "roi",
+          "next_meeting",
+          "milestones",
+          "documents",
+          "meetings",
+          "pendings",
+          "results",
+          "measured"
+        ],
+        "title": "DashboardOut",
+        "type": "object"
+      },
+      "DeliverableOut": {
+        "additionalProperties": false,
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "link"
+        ],
+        "title": "DeliverableOut",
+        "type": "object"
+      },
+      "DemoDashboardOut": {
+        "additionalProperties": false,
+        "properties": {
+          "completion": {
+            "title": "Completion",
+            "type": "integer"
+          },
+          "hours_saved": {
+            "title": "Hours Saved",
+            "type": "integer"
+          },
+          "next_delivery": {
+            "$ref": "#/components/schemas/DemoNextDeliveryOut"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "roi_percent": {
+            "title": "Roi Percent",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "status",
+          "completion",
+          "next_delivery",
+          "roi_percent",
+          "hours_saved"
+        ],
+        "title": "DemoDashboardOut",
+        "type": "object"
+      },
+      "DemoNextDeliveryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "date"
+        ],
+        "title": "DemoNextDeliveryOut",
+        "type": "object"
+      },
+      "DigitalEmployeeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "hours_saved_month": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours Saved Month"
+          },
+          "kpi_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kpi Label"
+          },
+          "kpi_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kpi Value"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "roi_month": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roi Month"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "area",
+          "description",
+          "status",
+          "kpi_label",
+          "kpi_value",
+          "hours_saved_month",
+          "roi_month"
+        ],
+        "title": "DigitalEmployeeOut",
+        "type": "object"
+      },
+      "DocumentDownloadOut": {
+        "additionalProperties": false,
+        "description": "Endereço, não bytes: URL assinada de vida curta (ADR 0017).",
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "title": "DocumentDownloadOut",
+        "type": "object"
+      },
+      "DocumentIngestState": {
+        "description": "Onde o documento está na fila de virar evidência citável.\n\n``unsupported`` é um estado e não uma falha: um `.zip` enviado por engano\nnão é erro de sistema, é um formato que o portal não lê — e dizer isso na\ntela é melhor do que deixar a linha parada em `pending` para sempre.\n\n``rejected`` (Fase 5, ADR 0017) existe pelo mesmo motivo: a varredura barrou\no arquivo, ele nunca vai virar índice, e sem um estado para isso a linha\nficaria parada em ``pending`` para sempre — que é exatamente o defeito que o\nparágrafo acima recusa.",
+        "enum": [
+          "pending",
+          "indexed",
+          "failed",
+          "unsupported",
+          "rejected"
+        ],
+        "title": "DocumentIngestState",
+        "type": "string"
+      },
+      "DocumentOut": {
+        "properties": {
+          "byte_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byte Size"
+          },
+          "chunk_count": {
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "indexed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexed At"
+          },
+          "ingest_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingest Error"
+          },
+          "ingest_state": {
+            "$ref": "#/components/schemas/DocumentIngestState"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "scan_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Error"
+          },
+          "scan_state": {
+            "$ref": "#/components/schemas/ScanState"
+          },
+          "scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "title",
+          "mime_type",
+          "byte_size",
+          "ingest_state",
+          "ingest_error",
+          "scan_state",
+          "scan_error",
+          "scanned_at",
+          "chunk_count",
+          "indexed_at",
+          "created_at"
+        ],
+        "title": "DocumentOut",
+        "type": "object"
+      },
+      "DriveAuthorizeOut": {
+        "properties": {
+          "authorize_url": {
+            "title": "Authorize Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorize_url"
+        ],
+        "title": "DriveAuthorizeOut",
+        "type": "object"
+      },
+      "DriveCallbackIn": {
+        "properties": {
+          "code": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "state"
+        ],
+        "title": "DriveCallbackIn",
+        "type": "object"
+      },
+      "DriveConnectionOut": {
+        "properties": {
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "document_count": {
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Id"
+          },
+          "folder_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Name"
+          },
+          "google_account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Account Email"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "last_sync_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync Error"
+          },
+          "last_sync_stats": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync Stats"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "sync_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriveSyncState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "project_id",
+          "connected",
+          "folder_id",
+          "folder_name",
+          "google_account_email",
+          "enabled",
+          "sync_state",
+          "last_sync_at",
+          "last_sync_error",
+          "last_sync_stats",
+          "document_count"
+        ],
+        "title": "DriveConnectionOut",
+        "type": "object"
+      },
+      "DriveFolderIn": {
+        "properties": {
+          "folder_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Folder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "folder_id"
+        ],
+        "title": "DriveFolderIn",
+        "type": "object"
+      },
+      "DriveFolderOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DriveFolderOut",
+        "type": "object"
+      },
+      "DriveSyncQueuedOut": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DriveSyncQueuedOut",
+        "type": "object"
+      },
+      "DriveSyncState": {
+        "description": "Onde a sincronização está — e é também a guarda de sobreposição.\n\n``running`` é reivindicado por um ``UPDATE`` condicional, não lido e depois\nescrito: dois ticks do beat chegando juntos precisam que exatamente um ganhe,\ne é o banco quem decide isso. Mesma escolha da janela de rate limit da\nADR 0013 — o estado mora na própria linha, sem trazer o Redis para o meio.",
+        "enum": [
+          "idle",
+          "running",
+          "failed"
+        ],
+        "title": "DriveSyncState",
+        "type": "string"
+      },
+      "ErasureRequestIn": {
+        "properties": {
+          "confirm_slug": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Confirm Slug",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "confirm_slug"
+        ],
+        "title": "ErasureRequestIn",
+        "type": "object"
+      },
+      "ErasureRequestOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "removed": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "requested_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Reason"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ErasureState"
+          }
+        },
+        "required": [
+          "request_id",
+          "organization_id",
+          "state",
+          "requested_reason",
+          "created_at",
+          "completed_at",
+          "removed",
+          "error"
+        ],
+        "title": "ErasureRequestOut",
+        "type": "object"
+      },
+      "ErasureState": {
+        "description": "Onde o pedido está.\n\n``running`` é reivindicado por ``UPDATE`` condicional, como o sync do Drive\n(ADR 0016): dois workers pegando o mesmo pedido precisam que exatamente um\nganhe, e quem decide isso é o banco.",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "ErasureState",
+        "type": "string"
+      },
+      "ErrorOut": {
+        "additionalProperties": false,
+        "description": "O corpo de erro do FastAPI. É o mesmo para 401, 404, 409, 422 e 503.\n\nQue ele seja **um só** é o contrato: a `auth.py` responde sempre\n``Not authenticated`` e o motivo vai para o log, e a negação de vínculo\nresponde sempre 404 — nunca 403 —, para não contar a quem pergunta que o\nrecurso existe.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorOut",
+        "type": "object"
+      },
+      "FeedbackIn": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "helpful": {
+            "title": "Helpful",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "helpful"
+        ],
+        "title": "FeedbackIn",
+        "type": "object"
+      },
+      "FeedbackOut": {
+        "additionalProperties": false,
+        "properties": {
+          "feedback": {
+            "title": "Feedback",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "feedback"
+        ],
+        "title": "FeedbackOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthOut": {
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "InvitationIn": {
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 5,
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Full Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          }
+        },
+        "required": [
+          "email",
+          "full_name",
+          "role"
+        ],
+        "title": "InvitationIn",
+        "type": "object"
+      },
+      "JourneyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "current_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseOut"
+            },
+            "title": "Phases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "current_phase",
+          "phases"
+        ],
+        "title": "JourneyOut",
+        "type": "object"
+      },
+      "MeOut": {
+        "additionalProperties": false,
+        "description": "Quem é o chamador e o que ele alcança.\n\n``projects`` vazio com 200 é resposta válida: autenticar não é autorizar, e\no portal precisa poder dizer \"você ainda não tem projeto\" sem fingir que\nnão conhece a pessoa.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "is_internal": {
+            "title": "Is Internal",
+            "type": "boolean"
+          },
+          "notify_by_email": {
+            "title": "Notify By Email",
+            "type": "boolean"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/MeProjectOut"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "email",
+          "full_name",
+          "is_internal",
+          "notify_by_email",
+          "organization",
+          "projects",
+          "roles"
+        ],
+        "title": "MeOut",
+        "type": "object"
+      },
+      "MeProjectOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "status"
+        ],
+        "title": "MeProjectOut",
+        "type": "object"
+      },
+      "MeasuredAssumptionOut": {
+        "additionalProperties": false,
+        "description": "A premissa ao lado do número que ela produziu.\n\nViaja junto do indicador de propósito: o aceite da Fase 3 é o cliente ver a\norigem de todo valor exibido, e uma resposta só com os valores obrigaria a\ntela a inventar a explicação.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "days_in_period": {
+            "title": "Days In Period",
+            "type": "integer"
+          },
+          "effective_from": {
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "hourly_rate_cents": {
+            "title": "Hourly Rate Cents",
+            "type": "integer"
+          },
+          "monthly_investment_cents": {
+            "title": "Monthly Investment Cents",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "effective_from",
+          "effective_to",
+          "hourly_rate_cents",
+          "monthly_investment_cents",
+          "currency",
+          "note",
+          "days_in_period"
+        ],
+        "title": "MeasuredAssumptionOut",
+        "type": "object"
+      },
+      "MeetingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "has_transcript": {
+            "title": "Has Transcript",
+            "type": "boolean"
+          },
+          "recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Url"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "date",
+          "recording_url",
+          "has_transcript",
+          "status"
+        ],
+        "title": "MeetingOut",
+        "type": "object"
+      },
+      "MemberOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          }
+        },
+        "required": [
+          "membership_id",
+          "email",
+          "full_name",
+          "role",
+          "active"
+        ],
+        "title": "MemberOut",
+        "type": "object"
+      },
+      "MemberRole": {
+        "enum": [
+          "internal_admin",
+          "internal_member",
+          "client_member"
+        ],
+        "title": "MemberRole",
+        "type": "string"
+      },
+      "MilestoneCountsOut": {
+        "additionalProperties": false,
+        "description": "Andamento derivado dos marcos. Recalculado na leitura, nunca\ndenormalizado, para não divergir do read model.",
+        "properties": {
+          "milestones_done": {
+            "title": "Milestones Done",
+            "type": "integer"
+          },
+          "milestones_total": {
+            "title": "Milestones Total",
+            "type": "integer"
+          },
+          "on_time_percent": {
+            "title": "On Time Percent",
+            "type": "integer"
+          },
+          "overdue": {
+            "title": "Overdue",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "milestones_total",
+          "milestones_done",
+          "overdue",
+          "on_time_percent"
+        ],
+        "title": "MilestoneCountsOut",
+        "type": "object"
+      },
+      "MilestoneOut": {
+        "additionalProperties": false,
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "owner_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Label"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "state",
+          "due_date",
+          "owner_label"
+        ],
+        "title": "MilestoneOut",
+        "type": "object"
+      },
+      "MyDashboardOut": {
+        "additionalProperties": false,
+        "description": "O mesmo dashboard, mais o nome da organização.\n\nA assimetria é real e é anterior a esta fatia: ``GET /me/dashboard``\nacrescenta a chave (`main.py`) e ``GET /projects/{id}/dashboard`` não. Está\ndeclarada em vez de corrigida porque corrigi-la muda um payload, e esta\nfatia descreve o que existe.",
+        "properties": {
+          "completion": {
+            "title": "Completion",
+            "type": "integer"
+          },
+          "digital_employees": {
+            "items": {
+              "$ref": "#/components/schemas/DigitalEmployeeOut"
+            },
+            "title": "Digital Employees",
+            "type": "array"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardDocumentOut"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectHealthOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "journey": {
+            "$ref": "#/components/schemas/JourneyOut"
+          },
+          "measured": {
+            "$ref": "#/components/schemas/ResultsOut"
+          },
+          "meetings": {
+            "items": {
+              "$ref": "#/components/schemas/MeetingOut"
+            },
+            "title": "Meetings",
+            "type": "array"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/MilestoneOut"
+            },
+            "title": "Milestones",
+            "type": "array"
+          },
+          "next_meeting": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextMeetingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "pendings": {
+            "items": {
+              "$ref": "#/components/schemas/PendingOut"
+            },
+            "title": "Pendings",
+            "type": "array"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "results": {
+            "$ref": "#/components/schemas/MilestoneCountsOut"
+          },
+          "roi": {
+            "$ref": "#/components/schemas/RoiOut"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "status",
+          "completion",
+          "health",
+          "journey",
+          "digital_employees",
+          "roi",
+          "next_meeting",
+          "milestones",
+          "documents",
+          "meetings",
+          "pendings",
+          "results",
+          "measured",
+          "organization"
+        ],
+        "title": "MyDashboardOut",
+        "type": "object"
+      },
+      "NextMeetingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "title",
+          "date"
+        ],
+        "title": "NextMeetingOut",
+        "type": "object"
+      },
+      "NotificationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "occurred_at": {
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "detail",
+          "link",
+          "occurred_at",
+          "read"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
+      "NotificationsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unread_count",
+          "items"
+        ],
+        "title": "NotificationsOut",
+        "type": "object"
+      },
+      "NotificationsReadIn": {
+        "properties": {
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ids"
+          }
+        },
+        "title": "NotificationsReadIn",
+        "type": "object"
+      },
+      "NotificationsReadOut": {
+        "additionalProperties": false,
+        "properties": {
+          "marked": {
+            "title": "Marked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "marked"
+        ],
+        "title": "NotificationsReadOut",
+        "type": "object"
+      },
+      "PendingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "owner_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Label"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "owner_label",
+          "state",
+          "priority",
+          "origin",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "PendingOut",
+        "type": "object"
+      },
+      "PeriodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "days"
+        ],
+        "title": "PeriodOut",
+        "type": "object"
+      },
+      "PhaseOut": {
+        "additionalProperties": false,
+        "properties": {
+          "deliverables": {
+            "items": {
+              "$ref": "#/components/schemas/DeliverableOut"
+            },
+            "title": "Deliverables",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "state",
+          "target_date",
+          "deliverables"
+        ],
+        "title": "PhaseOut",
+        "type": "object"
+      },
+      "PreferencesIn": {
+        "properties": {
+          "notify_by_email": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify By Email"
+          }
+        },
+        "title": "PreferencesIn",
+        "type": "object"
+      },
+      "PreferencesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "notify_by_email": {
+            "title": "Notify By Email",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "notify_by_email"
+        ],
+        "title": "PreferencesOut",
+        "type": "object"
+      },
+      "ProjectHealthOut": {
+        "additionalProperties": false,
+        "description": "Saúde amigável derivada do Health Score do Biahflow.\n\nRótulo e nível, e nunca o score nem os sinais internos que o produziram.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          }
+        },
+        "required": [
+          "label",
+          "level"
+        ],
+        "title": "ProjectHealthOut",
+        "type": "object"
+      },
+      "ReadyOut": {
+        "additionalProperties": false,
+        "description": "Prontidão. Sim ou não, e nada além disso — sem versão, hostname, DSN nem\no nome da dependência que caiu. Um ``down`` é indistinguível de outro.",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ReadyOut",
+        "type": "object"
+      },
+      "ResultsOut": {
+        "additionalProperties": false,
+        "description": "O que ``results.to_payload`` devolve.\n\nUm modelo só para dois lugares porque é **uma função só**: esta é a\nresposta de ``GET /projects/{id}/results`` e também o bloco ``measured``\nembutido no dashboard, que evita uma segunda ida à rede no SSR.\n\nOs ``None`` são a regra 3 do `AGENTS.md` aplicada a número: investimento\nzero não vira ROI infinito, vira ``None`` com a razão em ``gaps``.",
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "assumption_basis": {
+            "$ref": "#/components/schemas/AssumptionBasisOut"
+          },
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/MeasuredAssumptionOut"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "avoided_cost_cents": {
+            "title": "Avoided Cost Cents",
+            "type": "integer"
+          },
+          "benefit_cents": {
+            "title": "Benefit Cents",
+            "type": "integer"
+          },
+          "events_total": {
+            "title": "Events Total",
+            "type": "integer"
+          },
+          "events_without_assumption": {
+            "title": "Events Without Assumption",
+            "type": "integer"
+          },
+          "exceptions_handled": {
+            "title": "Exceptions Handled",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "hours_saved": {
+            "title": "Hours Saved",
+            "type": "number"
+          },
+          "investment_cents": {
+            "title": "Investment Cents",
+            "type": "integer"
+          },
+          "labor_savings_cents": {
+            "title": "Labor Savings Cents",
+            "type": "integer"
+          },
+          "net_cents": {
+            "title": "Net Cents",
+            "type": "integer"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodOut"
+          },
+          "roi_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roi Ratio"
+          },
+          "unattended_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unattended Share"
+          }
+        },
+        "required": [
+          "period",
+          "events_total",
+          "hours_saved",
+          "labor_savings_cents",
+          "avoided_cost_cents",
+          "benefit_cents",
+          "investment_cents",
+          "net_cents",
+          "roi_ratio",
+          "accuracy",
+          "exceptions_handled",
+          "unattended_share",
+          "failed",
+          "events_without_assumption",
+          "assumptions",
+          "assumption_basis",
+          "gaps"
+        ],
+        "title": "ResultsOut",
+        "type": "object"
+      },
+      "RetentionPolicyIn": {
+        "description": "Nulo é \"usa o padrão\", não \"guarda para sempre\" (ver `retention.py`).",
+        "properties": {
+          "agent_event_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Event Days"
+          },
+          "conversation_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Days"
+          },
+          "notification_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Days"
+          }
+        },
+        "title": "RetentionPolicyIn",
+        "type": "object"
+      },
+      "RetentionPolicyOut": {
+        "properties": {
+          "agent_event_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Event Days"
+          },
+          "conversation_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Days"
+          },
+          "effective": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Effective",
+            "type": "object"
+          },
+          "notification_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Days"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "title": "Organization Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_id",
+          "notification_days",
+          "agent_event_days",
+          "conversation_days",
+          "effective"
+        ],
+        "title": "RetentionPolicyOut",
+        "type": "object"
+      },
+      "RoiOut": {
+        "additionalProperties": false,
+        "description": "O ROI projetado que vem do Biahflow — outra coisa que o apurado dos\neventos, que vive em ``ResultsOut``. Os dois convivem rotulados na tela.",
+        "properties": {
+          "net": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          }
+        },
+        "required": [
+          "net",
+          "ratio"
+        ],
+        "title": "RoiOut",
+        "type": "object"
+      },
+      "ScanState": {
+        "description": "O que se sabe sobre o arquivo — não o que se torce para que ele seja.\n\nEspelha ``document.scan_state``. É enum próprio e não um valor a mais em\n``DocumentIngestState`` porque as perguntas são diferentes: \"este arquivo é\nseguro\" e \"este arquivo virou texto citável\" podem ter respostas opostas no\nmesmo documento, e juntá-las tornaria uma revarredura — assinatura nova sobre\narquivo antigo — inexprimível.",
+        "enum": [
+          "pending",
+          "clean",
+          "infected",
+          "skipped",
+          "error"
+        ],
+        "title": "ScanState",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WebhookSyncedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "project_id"
+        ],
+        "title": "WebhookSyncedOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "AgentKey": {
+        "description": "Chave do agente, emitida por projeto em /api/v1/admin.",
+        "in": "header",
+        "name": "X-Agent-Key",
+        "type": "apiKey"
+      },
+      "BiahflowSignature": {
+        "description": "HMAC do corpo, com o segredo compartilhado (ADR 0006).",
+        "in": "header",
+        "name": "X-Biahflow-Signature",
+        "type": "apiKey"
+      },
+      "OIDCBearer": {
+        "description": "Access token do OIDC, encaminhado pelo BFF (ADR 0010).",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Portal Labs API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/drive/callback": {
+      "post": {
+        "description": "Fecha o consentimento: troca o código, sela o refresh token e grava.\n\n**Sem `project_id` no caminho**, e isso não é economia de rota: o projeto sai\nda linha encontrada pelo `state`, do mesmo jeito que o tenant da ADR 0013 sai\nda chave em vez do corpo. Um `project_id` aqui seria um identificador de fora\npara desconfiar, e não há motivo para aceitá-lo.\n\nO `state` é consumido **antes** da troca — quem chega em segundo não acha mais\nnada. Se a troca falhar depois disso, a pessoa reconecta; o contrário deixaria\num `state` válido para reapresentar.",
+        "operationId": "finish_drive_authorization_api_v1_admin_drive_callback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveCallbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Finish Drive Authorization",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/organizations/{organization_id}/erasure": {
+      "get": {
+        "description": "O histórico de pedidos — é o que faz o apagamento ser auditável.",
+        "operationId": "list_erasure_requests_api_v1_admin_organizations__organization_id__erasure_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ErasureRequestOut"
+                  },
+                  "title": "Response List Erasure Requests Api V1 Admin Organizations  Organization Id  Erasure Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Erasure Requests",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Registra o pedido de apagamento. **Não apaga.**\n\n202 e não 200: o trabalho ainda não aconteceu quando esta resposta sai, e\ndizer 200 sugeriria o contrário. O worker cumpre o pedido e escreve na\nprópria linha o que removeu.\n\nA confirmação é o ``slug`` da organização, digitado. É a mesma ideia do\n\"digite o nome do repositório\" de qualquer serviço que apague de verdade:\nobriga quem clica a olhar **qual** tenant está na tela, que é justamente o\nerro que esta rota pode causar e nenhuma outra pode.",
+        "operationId": "request_erasure_api_v1_admin_organizations__organization_id__erasure_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErasureRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErasureRequestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Request Erasure",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/organizations/{organization_id}/retention": {
+      "get": {
+        "operationId": "get_retention_policy_api_v1_admin_organizations__organization_id__retention_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Get Retention Policy",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "description": "Define os prazos da organização.\n\n``PUT`` e não ``PATCH``: a política é uma linha só e o corpo a descreve\ninteira. Omitir um campo é dizer \"volte ao padrão\", que é uma decisão — e\nseria indistinguível de \"não mexa\" se o verbo fosse outro.\n\nAo contrário da premissa financeira (ADR 0013), aqui a linha é **editada** e\nnão versionada por vigência: um prazo não reprecifica o passado, ele só\ndecide o que ainda existe amanhã. O rastro de quem mudou fica no `audit_log`.",
+        "operationId": "set_retention_policy_api_v1_admin_organizations__organization_id__retention_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionPolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Set Retention Policy",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/assumptions": {
+      "get": {
+        "operationId": "list_assumptions_api_v1_admin_projects__project_id__assumptions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AssumptionOut"
+                  },
+                  "title": "Response List Assumptions Api V1 Admin Projects  Project Id  Assumptions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Assumptions",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Abre uma vigência, fechando a corrente na mesma data.\n\nPremissa não se edita no lugar: um indicador de três meses atrás precisa\ncontinuar explicável pelo valor que valia naquele dia. Por isso a operação é\n\"fecha uma, abre outra\" e nunca um UPDATE — e as duas coisas na mesma\ntransação, senão haveria um instante com o projeto sem premissa nenhuma.",
+        "operationId": "open_assumption_api_v1_admin_projects__project_id__assumptions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssumptionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssumptionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Open Assumption",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/documents": {
+      "get": {
+        "description": "Os documentos do projeto e o estado do índice de cada um.",
+        "operationId": "list_documents_api_v1_admin_projects__project_id__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentOut"
+                  },
+                  "title": "Response List Documents Api V1 Admin Projects  Project Id  Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Documents",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Recebe o arquivo, guarda o objeto e enfileira a indexação.\n\nA ordem importa: a linha nasce primeiro (é dela que sai o id que compõe a\nchave do objeto), o objeto vai em seguida e o commit fecha por último. Assim\num storage fora do ar derruba a transação inteira e não deixa um `document`\napontando para um arquivo que não existe. O contrário — objeto órfão depois\nde um commit que falhou — é o erro barato: ocupa espaço e não mente.",
+        "operationId": "upload_document_api_v1_admin_projects__project_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_api_v1_admin_projects__project_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Upload Document",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/documents/{document_id}": {
+      "delete": {
+        "description": "Remove documento, índice e arquivo.\n\nAqui se apaga de verdade — ao contrário da chave de agente, que é revogada\npara preservar o rastro. Um documento enviado por engano é conteúdo do\ncliente no lugar errado, e mantê-lo \"revogado\" seria manter o problema. Os\ntrechos vão junto por CASCADE; a retenção por organização é da Fase 5.",
+        "operationId": "delete_document_api_v1_admin_projects__project_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Delete Document",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/drive": {
+      "delete": {
+        "description": "Revoga a conexão — e revoga, não apaga.\n\nO segredo some da linha; a linha fica. É a mesma escolha da chave de agente:\nela é o rastro de que este projeto leu aquele Drive, e de quando deixou de ler.\nOs documentos já indexados permanecem, porque desconectar é parar de trazer\nnovidade, não apagar o que o cliente já tinha.",
+        "operationId": "disconnect_drive_api_v1_admin_projects__project_id__drive_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Disconnect Drive",
+        "tags": [
+          "admin"
+        ]
+      },
+      "get": {
+        "description": "O estado da conexão. Responde 200 com `connected: false` quando não há.\n\nProjeto sem Drive não é 404: a tela precisa desenhar o botão de conectar, e\n404 aqui a faria confundir \"você não administra este projeto\" com \"ninguém\nconectou ainda\".",
+        "operationId": "get_drive_connection_api_v1_admin_projects__project_id__drive_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Get Drive Connection",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/drive/authorize-url": {
+      "post": {
+        "description": "Monta a URL de consentimento e guarda o lastro do `state`.\n\nO `state` vai em claro para o navegador e **em hash** para o banco, pela mesma\nrazão da chave de agente: o valor em claro não precisa existir aqui para ser\nconferido depois. Junto dele ficam o prazo e quem pediu — o callback recusa se\nvoltar tarde ou em outra sessão.",
+        "operationId": "start_drive_authorization_api_v1_admin_projects__project_id__drive_authorize_url_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveAuthorizeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Start Drive Authorization",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/drive/folder": {
+      "put": {
+        "description": "Fixa a pasta autorizada, conferindo antes que o id é mesmo de uma pasta.\n\nTrocar de pasta é ação explícita e auditada: ela é a fronteira de tudo o que o\nconector faz, e mudá-la em silêncio mudaria o que o assistente enxerga sem\ndeixar rastro.",
+        "operationId": "set_drive_folder_api_v1_admin_projects__project_id__drive_folder_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveFolderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveConnectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Set Drive Folder",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/drive/folders": {
+      "get": {
+        "description": "As pastas da conta conectada, para a pessoa escolher qual autorizar.\n\nNo lugar do Google Picker: ele é script de terceiro na página, e o portal não\ncarrega script externo.",
+        "operationId": "list_drive_folders_api_v1_admin_projects__project_id__drive_folders_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DriveFolderOut"
+                  },
+                  "title": "Response List Drive Folders Api V1 Admin Projects  Project Id  Drive Folders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Drive Folders",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/drive/sync": {
+      "post": {
+        "description": "Enfileira uma sincronização. 202 porque quem responde é o worker.",
+        "operationId": "sync_drive_now_api_v1_admin_projects__project_id__drive_sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveSyncQueuedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Já existe uma sincronização em andamento nesta pasta."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Sync Drive Now",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/keys": {
+      "get": {
+        "description": "As chaves do projeto, sem o segredo — ele não existe mais em lugar nenhum.",
+        "operationId": "list_agent_keys_api_v1_admin_projects__project_id__keys_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentKeyOut"
+                  },
+                  "title": "Response List Agent Keys Api V1 Admin Projects  Project Id  Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Agent Keys",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_agent_key_api_v1_admin_projects__project_id__keys_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentKeyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentKeyCreatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Create Agent Key",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/keys/{key_id}": {
+      "delete": {
+        "description": "Revoga sem apagar: a linha é o rastro de que a chave existiu e foi usada.",
+        "operationId": "revoke_agent_key_api_v1_admin_projects__project_id__keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Revoke Agent Key",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/keys/{key_id}/rotate": {
+      "post": {
+        "description": "Emite a sucessora e revoga a anterior, apontando uma para a outra.\n\nA linha antiga não some: sem ela, \"de onde veio esta chave\" deixaria de ter\nresposta, e é essa cadeia que torna uma rotação reconstituível meses depois.",
+        "operationId": "rotate_agent_key_api_v1_admin_projects__project_id__keys__key_id__rotate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentKeyCreatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Rotate Agent Key",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/members": {
+      "get": {
+        "operationId": "list_members_api_v1_admin_projects__project_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberOut"
+                  },
+                  "title": "Response List Members Api V1 Admin Projects  Project Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Members",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Convida alguém para um projeto.\n\nA resposta é a mesma para e-mail conhecido e desconhecido — a diferença\nrevelaria quem já é cliente do portal.",
+        "operationId": "invite_member_api_v1_admin_projects__project_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Invite Member",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/members/{membership_id}": {
+      "delete": {
+        "description": "Revoga o vínculo. A conta continua existindo — some o acesso, não a pessoa.\n\nO projeto vem da URL de propósito: é ele que autoriza, e antes da autorização\no vínculo alheio sequer é visível para ser localizado.",
+        "operationId": "revoke_membership_api_v1_admin_projects__project_id__members__membership_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "membership_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Membership Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Revoke Membership",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/agent-events": {
+      "post": {
+        "description": "Recebe um evento de execução, autenticado por chave de projeto (ADR 0013).\n\nA rota é **só por chave**: um agente não tem sessão de usuário, e o Bearer\nhumano que valia até a Fase 2 deixou de valer aqui. Quem responde \"qual\nprojeto\" é a credencial, então o ``projectId`` do corpo é conferido contra\nela — discordar é 404, nunca 403, como no resto da API.\n\nA gravação roda em outra transação, sob ``portal_app`` com o tenant ligado,\npara o banco continuar sendo a segunda barreira na única rota que recebe\nidentificador de fora.",
+        "operationId": "ingest_agent_event_api_v1_agent_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentEventIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentEventAcceptedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Chave ausente, desconhecida, revogada, expirada ou sem escopo — sempre a mesma resposta, com o motivo em `agent_key.rejected`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O `project_id` do corpo não é o projeto da chave. O tenant é propriedade da credencial, então o do corpo é conferido, nunca acreditado."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Ritmo acima do limite da chave, com `Retry-After`. É o único caso que **não** é opaco: o produtor precisa distinguir ritmo de credencial para saber se deve tentar de novo."
+          }
+        },
+        "security": [
+          {
+            "AgentKey": []
+          }
+        ],
+        "summary": "Ingest Agent Event"
+      }
+    },
+    "/api/v1/chat": {
+      "post": {
+        "description": "Grounded, tenant-scoped chat: cite the read model or declare the gap + pendência (ADR 0007).",
+        "operationId": "chat_api_v1_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Chat"
+      }
+    },
+    "/api/v1/dashboard/demo": {
+      "get": {
+        "operationId": "demo_dashboard_api_v1_dashboard_demo_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoDashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "`DEMO_MODE` desligado, que é o padrão fora do local."
+          }
+        },
+        "summary": "Demo Dashboard"
+      }
+    },
+    "/api/v1/integrations/biahflow/webhook": {
+      "post": {
+        "description": "Receive a signed Biahflow change notification and refresh the read model (ADR 0006).",
+        "operationId": "biahflow_webhook_api_v1_integrations_biahflow_webhook_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSyncedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Assinatura ausente ou que não confere com o corpo."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Corpo sem `project_id`."
+          }
+        },
+        "security": [
+          {
+            "BiahflowSignature": []
+          }
+        ],
+        "summary": "Biahflow Webhook"
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "description": "Who the caller is and what they can reach — the BFF renders the chrome from this.\n\nReturns 200 with an empty ``projects`` for an authenticated user who holds no\nmembership: authentication is not authorization, and the portal has to be able\nto say \"you have no project yet\" instead of pretending the user is unknown.",
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Me"
+      }
+    },
+    "/api/v1/me/conversations/latest": {
+      "get": {
+        "description": "A thread corrente do projeto atual, para o chat voltar como estava.\n\nEscopada ao projeto pela mesma razão da caixa de avisos (:func:`my_notifications`):\nas policies leem as GUCs de organização/projeto, que só existem depois que\n``access.default_project`` resolveu *um* projeto.\n\nSem conversa nenhuma, devolve ``conversation_id: null`` e lista vazia — não é\n404, porque \"ainda não perguntei nada\" não é ausência de recurso.",
+        "operationId": "my_latest_conversation_api_v1_me_conversations_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "My Latest Conversation"
+      }
+    },
+    "/api/v1/me/conversations/messages/{message_id}/feedback": {
+      "post": {
+        "description": "Avalia uma resposta do assistente. Mensagem de outra pessoa é 404, como sempre.\n\nO id da mensagem basta: ele já pertence a uma conversa, que já pertence a uma\npessoa. Pedir o id da conversa junto seria pedir ao cliente um dado que o\nservidor não usaria para decidir nada.",
+        "operationId": "rate_answer_api_v1_me_conversations_messages__message_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Rate Answer"
+      }
+    },
+    "/api/v1/me/dashboard": {
+      "get": {
+        "description": "Dashboard for the caller's own project (the BFF calls this).",
+        "operationId": "my_dashboard_api_v1_me_dashboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyDashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "My Dashboard"
+      }
+    },
+    "/api/v1/me/documents/{document_id}/download": {
+      "get": {
+        "description": "A URL temporária do documento que a IA citou (Fase 5, ADR 0017).\n\nRota do **cliente**, e não da administração, porque quem precisa abrir o\narquivo é quem leu \"Documento: Contrato — página 3\" e quer conferir a página\n3. Até aqui a citação apontava para uma evidência que só a equipe interna\nconseguia ver, o que é uma forma discreta de pedir confiança em vez de\nmostrar a fonte.\n\nEscopada em ``/me/`` como a caixa de avisos e o histórico da conversa, e pelo\nmesmo motivo prático: a citação nasce no chat, que já roda sobre o projeto\nque ``access.default_project`` resolve. O navegador não manda identificador\nde projeto nenhum — e o que ele não manda é o que ninguém precisa validar\n(regra 1 do `AGENTS.md`).\n\nDevolve endereço, não bytes (ver ``storage.presigned_get_url``).\n\n**Só entrega o que passou pela varredura.** Documento em `pending`, `error`\nou `infected` não tem URL — e a resposta é o mesmo 404 de sempre, sem\ndistinguir \"não existe\" de \"não passou\": o cliente não precisa saber que o\nportal recebeu um arquivo infectado, e a tela de administração já explica\nisso a quem é da casa.",
+        "operationId": "document_download_api_v1_me_documents__document_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDownloadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O storage recusou assinar a URL."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Não há storage configurado."
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Document Download"
+      }
+    },
+    "/api/v1/me/notifications": {
+      "get": {
+        "description": "Avisos do projeto atual, do próprio destinatário (ADR 0012).\n\nEscopado ao projeto como o dashboard, e não à conta inteira: as policies de\nRLS leem as GUCs de organização/projeto, que só existem depois que\n``access.default_project`` resolveu *um* projeto. Uma listagem que\natravessasse projetos rodaria sem esse contexto — e sem contexto a policy\ndevolve zero linhas, que é o comportamento certo, mas não a tela certa.",
+        "operationId": "my_notifications_api_v1_me_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "unread_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Unread Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "My Notifications"
+      }
+    },
+    "/api/v1/me/notifications/read": {
+      "post": {
+        "description": "Marca avisos como lidos. Sem ``ids``, marca todos os do projeto atual.",
+        "operationId": "read_notifications_api_v1_me_notifications_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationsReadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsReadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Read Notifications"
+      }
+    },
+    "/api/v1/me/preferences": {
+      "patch": {
+        "description": "Preferências da própria conta. Hoje só o e-mail das notificações.\n\nEscreve na própria linha de ``user`` — a policy ``user_self_link`` da\nmigração 0007 já cobre isso, e é o único UPDATE que o caminho de requisição\nfazia antes das notificações existirem.",
+        "operationId": "update_preferences_api_v1_me_preferences_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Update Preferences"
+      }
+    },
+    "/api/v1/projects/{project_id}/dashboard": {
+      "get": {
+        "description": "Dashboard from the read model, scoped to the caller's membership (ADR 0002/0006).",
+        "operationId": "project_dashboard_api_v1_projects__project_id__dashboard_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Project Dashboard"
+      }
+    },
+    "/api/v1/projects/{project_id}/results": {
+      "get": {
+        "description": "O detalhamento por trás de cada número da aba Resultados (ADR 0013).\n\nDevolve o indicador **e** a premissa que o produziu, mais as lacunas quando\nfalta base — é aqui que \"o cliente vê a origem e a premissa de todo\nindicador\" deixa de ser promessa. Leitura pelo caminho normal: a premissa é\nclient-safe, o `portal_app` tem SELECT nela e a RLS escopa o resto.",
+        "operationId": "project_results_api_v1_projects__project_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "`to` anterior ou igual a `from`."
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Project Results"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Vivacidade: o processo respondeu. Não toca em dependência nenhuma.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Prontidão: o Postgres e o Redis respondem (Fase 5, ADR 0018).\n\nSeparado do ``/health`` porque as duas perguntas têm respostas diferentes e\nconsequências diferentes: um processo vivo com o banco fora **não** deve\nreceber tráfego, e um processo morto deve ser reiniciado. Só este é que serve\nde healthcheck no compose — o outro sempre diria \"ok\".\n\n**A rota é pública e o corpo é sim/não.** Sem versão, sem hostname, sem DSN,\nsem a mensagem do driver e sem dizer *qual* dependência caiu: quem não está\nautenticado não ganha um mapa da infraestrutura. Um `down` é indistinguível\nde outro, que é a mesma escolha do 401 opaco da `auth.py` — e, como lá, o\nmotivo vai inteiro para o log, agora com o ``trace_id`` para ser encontrado.",
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyOut"
+                }
+              }
+            },
+            "description": "Postgres ou Redis não responderam. Qual dos dois vai para o log."
+          }
+        },
+        "summary": "Health Ready"
+      }
+    }
+  }
+}

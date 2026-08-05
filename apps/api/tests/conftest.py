@@ -18,6 +18,7 @@ Three roles, three fixtures (ADR 0010):
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -34,6 +35,31 @@ from portal_api.db.session import DbRole, get_engine
 API_ROOT = Path(__file__).resolve().parent.parent
 ALEMBIC_INI = API_ROOT / "alembic.ini"
 MIGRATIONS_DIR = API_ROOT / "src" / "portal_api" / "db" / "migrations"
+
+
+def skip_unless_ci(reason: str) -> None:
+    """Pula na máquina de quem desenvolve; **falha** no CI (ADR 0020).
+
+    Um pulo é uma afirmação sobre o ambiente, não sobre o código: "aqui não dá
+    para provar isto". Numa máquina sem Postgres no ar, é verdade e é útil — o
+    `pytest` cru continua passando e ninguém precisa subir a pilha para rodar o
+    teste de unidade.
+
+    No CI a mesma frase é falsa, e cara: o job `api-quality` **tem** um Postgres
+    de serviço, então um pulo ali não diz "não dá para provar", diz "o ambiente
+    não está como se pensava" — e diz isso em verde. Foi assim que as três
+    asserções de restore da ADR 0019 (policies de volta, GRANT de coluna ainda
+    de coluna, uma organização sem ver a outra) deixaram de rodar sem que
+    ninguém percebesse: faltavam duas variáveis no `env:` do job.
+
+    É a regra da ADR 0017 outra vez — *`skipped` não é `clean`* —, agora
+    aplicada ao próprio arsenal de testes. Vale só para os pulos que o CI deve
+    cobrir; o que ele legitimamente não tem (ClamAV, chave da Voyage) continua
+    pulando em silêncio, porque ali o pulo continua verdadeiro.
+    """
+    if os.environ.get("CI"):
+        pytest.fail(f"{reason} — e no CI isto tinha de estar disponível")
+    pytest.skip(reason)
 
 
 def _alembic_config() -> Config:
@@ -59,7 +85,7 @@ def migrated_engine() -> Engine:
         with migration_engine.connect() as connection:
             connection.execute(text("SELECT 1"))
     except OperationalError:
-        pytest.skip("PostgreSQL is not reachable; skipping database tests")
+        skip_unless_ci("PostgreSQL is not reachable; skipping database tests")
 
     command.upgrade(_alembic_config(), "head")
     return get_engine(DbRole.system)

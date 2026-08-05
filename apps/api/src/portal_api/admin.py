@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from portal_api import access, agent_auth, crypto, retention, storage
+from portal_api import access, agent_auth, crypto, retention, schemas, storage
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_admin_org, bind_invitee, get_session
@@ -67,7 +67,28 @@ from portal_api.telemetry import audit_data
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+# As duas recusas valem para as vinte e três rotas daqui, e por isso ficam no
+# router em vez de repetidas em cada uma (ADR 0020). O 404 é mais forte neste
+# arquivo do que no resto da API: aqui ele também é a resposta a quem *tem*
+# vínculo mas não é `internal_admin` no projeto — a diferença entre "não é seu"
+# e "não é seu papel" nunca chega ao cliente.
+router = APIRouter(
+    prefix="/api/v1/admin",
+    tags=["admin"],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": schemas.ErrorOut,
+            "description": "Token ausente ou inválido, com o motivo só no log.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": schemas.ErrorOut,
+            "description": (
+                "Sem vínculo, sem o papel `internal_admin` no projeto, ou o "
+                "recurso não existe. **Nunca 403.**"
+            ),
+        },
+    },
+)
 
 NOT_FOUND = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
@@ -1215,8 +1236,20 @@ def set_drive_folder(
         return _as_drive_out(record, _drive_document_count(session, project))
 
 
+class DriveSyncQueuedOut(BaseModel):
+    status: str
+
+
 @router.post(
-    "/projects/{project_id}/drive/sync", status_code=status.HTTP_202_ACCEPTED
+    "/projects/{project_id}/drive/sync",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=DriveSyncQueuedOut,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": schemas.ErrorOut,
+            "description": "Já existe uma sincronização em andamento nesta pasta.",
+        }
+    },
 )
 def sync_drive_now(project_id: uuid.UUID, principal: CurrentPrincipal) -> dict[str, str]:
     """Enfileira uma sincronização. 202 porque quem responde é o worker."""

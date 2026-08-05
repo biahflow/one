@@ -68,7 +68,94 @@ jobs:
       - run: pip install -r apps/api/requirements-dev.txt
       # pytest's conftest migrates the database to head (creating the portal
       # schema) before the integration tests run.
-      - run: PYTHONPATH=apps/api/src pytest apps/api/tests
+      #
+      # `CI` já vem definida pelo runner, e desde a ADR 0020 ela muda o
+      # significado de um pulo: um teste que pularia por falta de banco aqui
+      # **falha**, porque este job tem um. `test_backup_restore.py` sai daqui
+      # porque exige storage e as senhas dos papéis — ele tem job próprio.
+      - run: >-
+          PYTHONPATH=apps/api/src pytest apps/api/tests
+          --ignore=apps/api/tests/test_backup_restore.py
+
+  # O job que a FDD 013 pediu e não existia: até aqui o par backup/restore só
+  # rodava quando alguém lembrava de rodar, e as três asserções que dão sentido
+  # a ele (policies de volta, GRANT de coluna ainda de coluna, uma organização
+  # sem ver a outra) **pulavam em silêncio** em toda execução do CI, por falta
+  # de duas variáveis. Job próprio porque o par precisa de coisas que o resto da
+  # suíte não precisa — storage, as senhas dos quatro papéis e um cliente do
+  # Postgres tão novo quanto o servidor — e porque um backup que quebrou deve
+  # ficar vermelho sozinho, sem se confundir com um teste de unidade qualquer.
+  backup-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: portal
+          POSTGRES_PASSWORD: portal_local_only
+          POSTGRES_DB: portal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U portal -d portal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql+psycopg://portal_app:portal_app_ci@localhost:5432/portal
+      DATABASE_SYSTEM_URL: postgresql+psycopg://portal_system:portal_system_ci@localhost:5432/portal
+      DATABASE_MIGRATION_URL: postgresql+psycopg://portal_migrator:portal_migrator_ci@localhost:5432/portal
+      DATABASE_ADMIN_URL: postgresql+psycopg://portal_admin:portal_admin_ci@localhost:5432/portal
+      # O `restore.sh` cria um banco descartável e roda o `roles.sql` nele, e
+      # para isso precisa do superusuário do cluster e da senha de cada papel —
+      # papel é objeto de cluster e não vem no `pg_dump -n portal` (ADR 0019).
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal_local_only
+      POSTGRES_APP_PASSWORD: portal_app_ci
+      POSTGRES_SYSTEM_PASSWORD: portal_system_ci
+      POSTGRES_MIGRATOR_PASSWORD: portal_migrator_ci
+      POSTGRES_ADMIN_PASSWORD: portal_admin_ci
+      STORAGE_ENDPOINT_URL: http://localhost:9000
+      STORAGE_ACCESS_KEY: portal-minio
+      STORAGE_SECRET_KEY: portal-minio-local-only
+    steps:
+      - uses: actions/checkout@v4
+      # MinIO não entra como `services:` porque a imagem precisa do comando
+      # `server /data`, e um service container não aceita comando.
+      - name: Boot MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=portal-minio \
+            -e MINIO_ROOT_PASSWORD=portal-minio-local-only \
+            minio/minio:latest server /data
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null http://localhost:9000/minio/health/live && break
+            sleep 2
+          done
+      - name: Create the Postgres roles
+        run: |
+          psql "postgresql://portal:portal_local_only@localhost:5432/portal" \
+            -v ON_ERROR_STOP=1 \
+            -v app_password=portal_app_ci \
+            -v system_password=portal_system_ci \
+            -v migrator_password=portal_migrator_ci \
+            -v admin_password=portal_admin_ci \
+            -f infra/postgres/bootstrap/roles.sql
+      # `pg_dump` recusa um servidor mais novo que ele, e o cliente do runner
+      # não é garantido. Sem este passo o teste pularia — e desde a ADR 0020 um
+      # pulo aqui é falha, que é o ponto: o job diz o que lhe falta em vez de
+      # ficar verde sem provar nada.
+      - name: Ensure a PostgreSQL 16 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+          pg_dump --version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r apps/api/requirements-dev.txt
+      - run: PYTHONPATH=apps/api/src pytest apps/api/tests/test_backup_restore.py -v
 
   local-stack:
     runs-on: ubuntu-latest
@@ -79,19 +166,22 @@ jobs:
       - run: docker compose build
 
   # The only job that boots Keycloak: it is the one thing the other levels
-  # cannot prove — browser → realm → BFF callback → dashboard. Non-blocking for
-  # now, while the stack's boot time settles in CI.
+  # cannot prove — browser → realm → BFF callback → dashboard.
   #
-  # O nome ficou de quando ele provava só o login. Hoje `npm run test:e2e` roda a
-  # suíte inteira, e por isso a pilha **completa** precisa subir: sem o `worker`
-  # nada é varrido nem indexado, e os specs de documentos, Drive e notificações
-  # esperavam um selo que nunca ia aparecer. `drive-stub` e `mailpit` são a mesma
-  # história — sem eles aqueles specs se auto-pulam e o job fica verde sem provar
-  # nada, que é pior do que vermelho.
-  e2e-login:
+  # A pilha **completa** precisa subir: sem o `worker` nada é varrido nem
+  # indexado, e os specs de documentos, Drive e notificações esperariam um selo
+  # que nunca ia aparecer. `drive-stub` e `mailpit` são a mesma história.
+  #
+  # **Deixou de ser `continue-on-error` na ADR 0020**, junto com a guarda
+  # `dockerAvailable()` dos specs, que agora falha em vez de pular quando `CI`
+  # está definida. Eram duas metades do mesmo defeito: um job que não podia
+  # reprovar, com specs que se auto-pulavam — o comentário que vivia aqui já
+  # dizia que isso "fica verde sem provar nada, que é pior do que vermelho", e
+  # mesmo assim era o estado. Se o e2e se mostrar instável, a saída é consertar
+  # ou apagar o spec; voltar a flag é desligar a única prova que resta.
+  e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

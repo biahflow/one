@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 
 import { expect, test, type Page } from "@playwright/test";
+
+import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
 
 /**
  * Conector do Google Drive ponta a ponta (Fase 4, ADR 0016).
@@ -26,15 +27,6 @@ const CLIENT = { username: "marina.farias", password: "portal_local_only" };
 /** O mesmo de `portal_api/devtools/drive_stub.py`. */
 const CANARY = "girassol-cravado-42";
 const AUTHORIZED_FOLDER = "Contratos do Projeto";
-
-function dockerAvailable(): boolean {
-  try {
-    execFileSync("docker", ["compose", "ps", "-q", "drive-stub"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function signIn(page: Page, user: { username: string; password: string }) {
   // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
@@ -89,7 +81,10 @@ async function connectAndSync(page: Page) {
       // logo depois do callback do OAuth isso é o normal, não a exceção. Esperar
       // ficar habilitado é o que evita um clique que o Playwright reenfileira
       // até o timeout, sem nunca acontecer.
-      await expect(choose).toBeEnabled({ timeout: 20_000 });
+      // 40s: a requisição em voo é a listagem de pastas no Drive, e ela sai da
+      // frente devagar quando o worker está ocupado com o que os outros specs
+      // enfileiraram. Metade do orçamento do teste, pela regra do config.
+      await expect(choose).toBeEnabled({ timeout: 40_000 });
       await choose.click();
     }
     const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
@@ -106,11 +101,15 @@ async function connectAndSync(page: Page) {
   await expect(async () => {
     await page.reload();
     await expect(badge).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 90_000 });
+    // Eram 90s **dentro de um teste de 60s**: a espera não tinha como chegar ao
+    // fim, e o que a interrompia era o orçamento do teste — de modo que a falha
+    // aparecia sempre noutro lugar. 60s é a metade do orçamento de hoje, e
+    // ainda são vinte vezes o que esta sincronização leva com a fila vazia.
+  }).toPass({ timeout: 60_000 });
 }
 
 test.beforeEach(() => {
-  test.skip(!dockerAvailable(), "Precisa da stack local no ar (docker compose up)");
+  test.skip(stackIsMissing(serviceIsUp("drive-stub")), STACK_REASON);
 });
 
 test("a pasta conectada vira citação no chat do cliente", async ({ page, context }) => {

@@ -29,6 +29,7 @@ import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
+from conftest import skip_unless_ci
 from portal_api import backup, storage
 from portal_api.config import Settings
 from portal_api.db.session import DbRole, get_engine
@@ -178,9 +179,9 @@ def pg_tools(migrated_engine: Engine) -> dict[str, str]:
     for name, binary in tools.items():
         client = _client_major(binary)
         if client is None:
-            pytest.skip(f"{binary} não encontrado; defina {name}")
+            skip_unless_ci(f"{binary} não encontrado; defina {name}")
         if client < server:
-            pytest.skip(f"{binary} é {client} e o servidor é {server}")
+            skip_unless_ci(f"{binary} é {client} e o servidor é {server}")
     return tools
 
 
@@ -324,7 +325,10 @@ def restored(
     resultado são muitas — o que se prova aqui é um restore, não seis.
     """
     if not script_env.get("POSTGRES_PASSWORD"):
-        pytest.skip("POSTGRES_USER/POSTGRES_PASSWORD não definidos (restore cria banco)")
+        # Este era o pulo mais caro do repositório: silencioso, em toda execução
+        # do CI, e justamente sobre as três afirmações que dão sentido ao
+        # backup (ADR 0019). Hoje ele falha no CI (ADR 0020).
+        skip_unless_ci("POSTGRES_USER/POSTGRES_PASSWORD não definidos (restore cria banco)")
 
     out = tmp_path_factory.mktemp("backup")
     env = {**script_env, "TMPDIR": str(out)}

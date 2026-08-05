@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
+
 /**
  * Resultados ponta a ponta (Fase 3, ADR 0013).
  *
@@ -55,15 +57,6 @@ with urllib.request.urlopen(request) as response:
   }
 }
 
-function dockerAvailable(): boolean {
-  try {
-    execFileSync("docker", ["compose", "ps", "-q", "api"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function signIn(page: Page, user: { username: string; password: string }) {
   // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
   // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
@@ -87,7 +80,7 @@ async function signIn(page: Page, user: { username: string; password: string }) 
 }
 
 test.beforeEach(() => {
-  test.skip(!dockerAvailable(), "Precisa da stack local no ar (docker compose up)");
+  test.skip(stackIsMissing(serviceIsUp("api")), STACK_REASON);
 });
 
 test("a premissa e a chave criadas na tela sustentam o número do cliente", async ({

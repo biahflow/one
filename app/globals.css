@@ -306,10 +306,24 @@
   .message--user { @apply ml-auto; }
   .message--user p { @apply rounded-tr-sm bg-brand-500 text-white; }
   .message-sources { @apply mt-1.5 flex flex-wrap gap-1.5; }
-  .message-sources span {
+  .message-sources span,
+  .message-source-link {
     @apply flex items-center gap-1 rounded-md bg-brand-50 px-1.5 py-1 text-[9px] text-brand-700;
   }
+  /* A citação que aponta para um arquivo abre o arquivo (ADR 0017). Herda a
+     mesma pastilha da citação sem link e só acrescenta o sublinhado no hover:
+     a diferença entre "fonte" e "fonte que você pode abrir" deve ser
+     perceptível sem virar outro componente. */
+  .message-source-link {
+    @apply cursor-pointer border-0 text-left transition-colors hover:bg-brand-100 hover:underline;
+  }
   .pending-created { @apply flex items-center gap-1 py-1.5 text-[10px] text-success-600; }
+  /* O resultado da varredura, dito por extenso na linha do documento (ADR 0017). */
+  .scan-note { @apply block text-[10px] text-danger-600; }
+  .scan-note--muted { @apply text-muted; }
+  /* Falha ao abrir o documento — fora da mensagem, porque o turno gravado é o
+     que a resposta mostrou e não o que a rede fez depois. */
+  .chat-notice { @apply border-t border-line px-3 py-2 text-[10px] text-danger-600; }
   /* Avaliação da resposta (ADR 0015). Discreta por desenho: é um sinal de
      qualidade para o time interno, não uma ação que o cliente precise notar. */
   .message-feedback { @apply mt-1 flex gap-1; }

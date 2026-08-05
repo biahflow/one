@@ -25,7 +25,13 @@ import {
   type DriveFolder,
 } from "../actions";
 
-export type IngestState = "pending" | "indexed" | "failed" | "unsupported";
+export type IngestState = "pending" | "indexed" | "failed" | "unsupported" | "rejected";
+
+// O outro eixo (Fase 5, ADR 0017). Fica separado de `IngestState` na tela pelo
+// mesmo motivo de estar separado no banco: `skipped` não é `clean`, e a
+// administração precisa poder ver a diferença entre "verificado" e "ninguém
+// verificou".
+export type ScanState = "pending" | "clean" | "infected" | "skipped" | "error";
 
 export type ProjectDocument = {
   documentId: string;
@@ -34,6 +40,8 @@ export type ProjectDocument = {
   byteSize: number | null;
   state: IngestState;
   error: string | null;
+  scanState: ScanState;
+  scanError: string | null;
   chunkCount: number;
   indexedAt: string | null;
   createdAt: string;
@@ -75,6 +83,7 @@ const STATE_LABEL: Record<IngestState, { label: string; tone: string }> = {
   indexed: { label: "Indexado", tone: "state--0" },
   failed: { label: "Falhou", tone: "state--2" },
   unsupported: { label: "Não suportado", tone: "state--2" },
+  rejected: { label: "Recusado", tone: "state--2" },
 };
 
 function day(value: string | null): string {
@@ -437,6 +446,21 @@ export default function KnowledgeClient({
                           } · indexado em ${day(document.indexedAt)}`
                         : document.error || `enviado em ${day(document.createdAt)}`}
                     </span>
+                    {/* Dito por extenso, e não só pelo selo: "barrado pela
+                        varredura" e "formato não suportado" levam a ações
+                        diferentes de quem administra. */}
+                    {document.scanState === "infected" && (
+                      <span className="scan-note">
+                        Barrado pela varredura
+                        {document.scanError ? `: ${document.scanError}` : ""} · arquivo
+                        removido do storage
+                      </span>
+                    )}
+                    {document.scanState === "skipped" && document.state === "indexed" && (
+                      <span className="scan-note scan-note--muted">
+                        Indexado sem antivírus configurado
+                      </span>
+                    )}
                   </div>
                   <span className={`state ${state.tone}`}>{state.label}</span>
                   <button

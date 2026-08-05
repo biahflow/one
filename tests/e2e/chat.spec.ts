@@ -27,6 +27,12 @@ function dockerAvailable(): boolean {
 }
 
 async function signIn(page: Page, user: { username: string; password: string }) {
+  // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
+  // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
+  // sessão logo depois, e aí `/login` redireciona para `/` (ele faz isso quando
+  // há sessão) e o botão nunca aparece. O sintoma é um timeout esperando um
+  // botão numa página que é o dashboard.
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("button", { name: /Entrar com SSO/ }).click();
   await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
@@ -56,16 +62,32 @@ test("a conversa volta depois do reload, com as citações e o feedback", async 
   const question = `Qual é o status do projeto? (${Date.now().toString(36)})`;
 
   await signIn(page, CLIENT);
-  await ask(page, question);
 
   // Sempre a **última** resposta. A conversa sobrevive ao reload — que é o que
   // este teste prova —, então ela também sobrevive entre execuções: turnos
   // antigos continuam na thread, e um seletor solto acabaria falando deles.
   //
+  // Mas "a última" só vale depois que a nova chegou: numa thread que já tem
+  // turnos, `.last()` resolve para a resposta **anterior** enquanto esta ainda
+  // está em voo, e as asserções passariam a falar do turno errado. Contar antes
+  // e esperar o incremento é o que amarra o teste ao turno que ele criou.
+  // A contagem precisa ser tirada **depois** de o histórico assentar: o painel
+  // abre com a saudação e só então troca tudo pelo que veio do Postgres. Contar
+  // antes disso mede um número que muda por outro motivo — foi o que fez esta
+  // asserção esperar `2` enquanto a tela chegava a `7`.
+  const answers = page.locator(".message--assistant");
+  await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
+  await page.waitForLoadState("networkidle");
+  const before = await answers.count();
+
+  await page.getByLabel("Pergunta para IA").fill(question);
+  await page.getByRole("button", { name: "Enviar pergunta" }).click();
+  await expect(answers).toHaveCount(before + 1, { timeout: 30_000 });
+
   // `.message-sources > *` e não `span`: desde a ADR 0017 a citação que aponta
   // para um arquivo é um `button` clicável, e a que vem do read model segue
   // `span`. O teste é sobre a citação voltar igual, não sobre a tag dela.
-  const answer = () => page.locator(".message--assistant").last();
+  const answer = () => answers.last();
   const firstSource = answer().locator(".message-sources > *").first();
   await expect(firstSource).toBeVisible({ timeout: 30_000 });
   const citation = (await firstSource.innerText()).trim();

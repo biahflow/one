@@ -67,6 +67,12 @@ function syncSomethingNew(): string | null {
 }
 
 async function signIn(page: Page, user: { username: string; password: string }) {
+  // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
+  // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
+  // sessão logo depois, e aí `/login` redireciona para `/` (ele faz isso quando
+  // há sessão) e o botão nunca aparece. O sintoma é um timeout esperando um
+  // botão numa página que é o dashboard.
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("button", { name: /Entrar com SSO/ }).click();
   await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);

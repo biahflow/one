@@ -10,6 +10,12 @@ const CLIENT = { username: "marina.farias", password: "portal_local_only", first
 const STAFF = { username: "helena.dias", password: "portal_local_only", firstName: "Helena" };
 
 async function signIn(page: Page, user: { username: string; password: string }) {
+  // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
+  // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
+  // sessão logo depois, e aí `/login` redireciona para `/` (ele faz isso quando
+  // há sessão) e o botão nunca aparece. O sintoma é um timeout esperando um
+  // botão numa página que é o dashboard.
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("button", { name: /Entrar com SSO/ }).click();
 

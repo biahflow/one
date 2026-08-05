@@ -37,6 +37,12 @@ function dockerAvailable(): boolean {
 }
 
 async function signIn(page: Page, user: { username: string; password: string }) {
+  // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
+  // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
+  // sessão logo depois, e aí `/login` redireciona para `/` (ele faz isso quando
+  // há sessão) e o botão nunca aparece. O sintoma é um timeout esperando um
+  // botão numa página que é o dashboard.
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("button", { name: /Entrar com SSO/ }).click();
   await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
@@ -78,7 +84,14 @@ async function connectAndSync(page: Page) {
   // A pasta é escolhida num passo separado — só ela é a fronteira. Conectar não
   // autoriza nada, e é isso que o "Pasta não escolhida" da tela quer dizer.
   if (!(await sync.isVisible())) {
-    if (await choose.isVisible()) await choose.click();
+    if (await choose.isVisible()) {
+      // O botão nasce `disabled` enquanto a tela ainda tem requisição em voo —
+      // logo depois do callback do OAuth isso é o normal, não a exceção. Esperar
+      // ficar habilitado é o que evita um clique que o Playwright reenfileira
+      // até o timeout, sem nunca acontecer.
+      await expect(choose).toBeEnabled({ timeout: 20_000 });
+      await choose.click();
+    }
     const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
     await expect(folderRow).toBeVisible({ timeout: 15_000 });
     await folderRow.getByRole("button", { name: "Autorizar" }).click();
@@ -107,11 +120,13 @@ test("a pasta conectada vira citação no chat do cliente", async ({ page, conte
   await context.clearCookies();
   await signIn(page, CLIENT);
   await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
-  await page.getByLabel("Pergunta para IA").fill(`Qual é o código interno ${CANARY}?`);
-  await page.getByRole("button", { name: "Enviar pergunta" }).click();
 
   // A **última** resposta, não `.message-sources` solto: a conversa sobrevive ao
   // reload (ADR 0015), então turnos de execuções anteriores continuam na thread.
+  // A asserção abaixo é web-first e reespera até a última resposta citar o
+  // documento da pasta — não é preciso identificar "a nova" por contagem.
+  await page.getByLabel("Pergunta para IA").fill(`Qual é o código interno ${CANARY}?`);
+  await page.getByRole("button", { name: "Enviar pergunta" }).click();
   const answer = page.locator(".message--assistant").last();
   await expect(answer.locator(".message-sources")).toContainText(/Contrato de suporte/, {
     timeout: 30_000,

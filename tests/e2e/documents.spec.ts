@@ -28,6 +28,12 @@ function dockerAvailable(): boolean {
 }
 
 async function signIn(page: Page, user: { username: string; password: string }) {
+  // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
+  // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
+  // sessão logo depois, e aí `/login` redireciona para `/` (ele faz isso quando
+  // há sessão) e o botão nunca aparece. O sintoma é um timeout esperando um
+  // botão numa página que é o dashboard.
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("button", { name: /Entrar com SSO/ }).click();
   await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
@@ -86,13 +92,16 @@ test("o documento enviado na administração vira citação no chat do cliente",
   await context.clearCookies();
   await signIn(page, CLIENT);
   await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
-  await page.getByLabel("Pergunta para IA").fill(`O que diz o procedimento ${codeword}?`);
-  await page.getByRole("button", { name: "Enviar pergunta" }).click();
 
   // Sempre a **última** resposta, nunca ".message-sources" solto: a conversa
   // sobrevive ao reload (ADR 0015), então uma execução anterior deste mesmo
   // teste deixa turnos antigos na thread — com citações de outro `codeword`.
-  // Ancorar na última é o que faz a asserção falar do que acabou de acontecer.
+  //
+  // Não é preciso identificar "a nova" por contagem: a asserção abaixo é
+  // web-first e reespera sozinha até a última resposta ser a que cita este
+  // `codeword` — que só existe no arquivo enviado nesta execução.
+  await page.getByLabel("Pergunta para IA").fill(`O que diz o procedimento ${codeword}?`);
+  await page.getByRole("button", { name: "Enviar pergunta" }).click();
   const answer = page.locator(".message--assistant").last();
   await expect(answer.locator(".message-sources")).toContainText(title, {
     timeout: 30_000,

@@ -19,6 +19,10 @@ function freshEmail(): string {
 }
 
 async function signIn(page: Page, username: string, password: string) {
+  // Ver a mesma nota nos demais specs: limpar coladinho no `goto` fecha a janela
+  // em que uma requisição em voo reescreve o cookie e `/login` redireciona para
+  // `/`, deixando o teste esperando um botão que não existe naquela tela.
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("button", { name: /Entrar com SSO/ }).click();
   await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);

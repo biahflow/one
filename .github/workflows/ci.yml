@@ -124,21 +124,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
 
-  # **Não-bloqueante, e isso não é uma escolha de qualidade.** O `analyze` falha
-  # com "Code scanning is not enabled for this repository": é uma configuração do
-  # repositório (Settings → Code security), não do workflow, e em repositório
-  # privado costuma depender do plano. Enquanto não for habilitada, o job não tem
-  # como passar — e um vermelho permanente treina quem lê o CI a ignorar o
-  # vermelho, que é o custo real.
+  # **Desligado, e não por escolha de qualidade.** O `analyze` falha com "Code
+  # scanning is not enabled for this repository": é configuração do repositório
+  # (Settings → Code security), não do workflow, e em repositório privado não é
+  # gratuita. Enquanto não for habilitada, o job não tem como passar.
   #
-  # Ao habilitar code scanning, **remova o `continue-on-error`**: as permissões
-  # abaixo já estão corretas e o job passa a valer como gate de verdade. Vale
-  # também para o `e2e-login` acima — os dois estão aqui em caráter temporário, e
-  # o `CLAUDE.md` já avisa para lê-los em vez de confiar no verde.
+  # Fica **desligado por variável** em vez de comentado: o bloco continua
+  # revisável, as permissões abaixo já estão corretas, e ligar é criar a variável
+  # de repositório `CODE_SCANNING_ENABLED=true` (Settings → Secrets and variables
+  # → Actions → Variables). Nenhuma outra mudança é necessária.
+  #
+  # Um job comentado apodrece — ninguém revisa o que o YAML não executa; e um job
+  # vermelho permanente é pior, porque treina quem lê o CI a ignorar vermelho.
+  # Pulado é o único dos três estados que diz a verdade.
   codeql:
+    if: vars.CODE_SCANNING_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     permissions:
       # As três, e nenhuma é dispensável: um bloco `permissions` de job
       # **substitui** o global em vez de somar a ele, então declarar só

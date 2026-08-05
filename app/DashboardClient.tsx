@@ -291,8 +291,7 @@ export default function DashboardClient({
         const data = await response.json();
         if (!current || !data.conversation_id || !data.messages?.length) return;
         setConversationId(data.conversation_id);
-        setMessages(
-          data.messages.map((message: {
+        const restored = data.messages.map((message: {
             id: string;
             role: "user" | "assistant";
             text: string;
@@ -308,7 +307,14 @@ export default function DashboardClient({
             citations: message.citations,
             pending: message.pending_created,
             feedback: message.feedback ?? null,
-          })),
+          }));
+        // Só substitui a tela se a pessoa ainda não escreveu nada. O histórico
+        // chega **depois** da saudação, e uma pergunta enviada nesse intervalo
+        // seria apagada da tela por esta linha — gravada no banco, invisível até
+        // o próximo F5. Quem já tem um turno seu na tela não precisa que o
+        // histórico o recomponha.
+        setMessages((shown) =>
+          shown.some((message) => message.role === "user") ? shown : restored,
         );
       } catch {
         // Sem histórico, o painel abre com a saudação — que é o estado inicial.

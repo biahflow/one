@@ -1,4 +1,4 @@
-alembic==1.16.1
+alembic==1.18.5
 anthropic==0.69.0
 # Cliente S3 do storage de documentos (Fase 4). É o mesmo cliente para o MinIO
 # local e para o S3 de produção — só muda o endpoint.

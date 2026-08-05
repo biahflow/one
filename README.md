@@ -18,6 +18,12 @@ docker compose up --build
 | Keycloak | http://localhost:8080 |
 | MinIO Console | http://localhost:9001 |
 | Mailpit | http://localhost:8025 |
+| Drive stub | http://localhost:19100 |
+
+**Com a pilha no ar, siga [`docs/runbooks/passeio-local.md`](docs/runbooks/passeio-local.md):**
+quem é quem no ambiente local (três contas semeadas, senha versionada), e o caminho para ver
+cada fatia funcionando — login, busca, notificação com e-mail, citação do assistente, documento
+indexado, pasta do Drive, ROI apurado e a negação que é 404 e nunca 403.
 
 ## Estrutura
 

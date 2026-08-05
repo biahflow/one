@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { demoShellEnabled } from "@/app/lib/demo";
+import { TracedError, logError } from "@/app/lib/log";
 import { authorizationHeader } from "@/app/lib/session";
+import { traceId } from "@/app/lib/trace";
 import DashboardClient, {
   type JourneyPhase,
   type MeetingView,
@@ -288,6 +290,20 @@ function NoProject({ user }: { user: PortalUser }) {
 // no build, que roda sem sessão e sem API.
 export const dynamic = "force-dynamic";
 
+/**
+ * Registra a falha e devolve o erro a lançar (ADR 0018).
+ *
+ * A linha sai daqui, de dentro da requisição, porque é aqui que o `trace_id`
+ * ainda existe — `instrumentation.ts` só vê o objeto lançado, e é por isso que
+ * ele viaja num `TracedError`. Antes desta fase o `throw` subia mudo e a
+ * fronteira de erro afirmava ao cliente que alguém tinha registrado.
+ */
+async function apiFailure(url: string, status: number): Promise<Error> {
+  const trace = await traceId();
+  logError("api.failed", { trace_id: trace, url, status });
+  return new TracedError(`${url} respondeu ${status}`, trace);
+}
+
 export default async function Page({
   searchParams,
 }: {
@@ -324,7 +340,9 @@ export default async function Page({
 
   // O token venceu entre o SSR e a chamada: volta para o login, não para o demo.
   if (meResponse.status === 401 || dashboardResponse.status === 401) redirect("/login");
-  if (!meResponse.ok) throw new Error(`GET /api/v1/me respondeu ${meResponse.status}`);
+  if (!meResponse.ok) {
+    throw await apiFailure("/api/v1/me", meResponse.status);
+  }
 
   const me: ApiMe = await meResponse.json();
   const user = toUser(me);
@@ -339,7 +357,7 @@ export default async function Page({
   // tela diz isso com todas as letras.
   if (dashboardResponse.status === 404) return <NoProject user={user} />;
   if (!dashboardResponse.ok) {
-    throw new Error(`${dashboardUrl} respondeu ${dashboardResponse.status}`);
+    throw await apiFailure(dashboardUrl, dashboardResponse.status);
   }
 
   const overview = toOverview(await dashboardResponse.json(), user.org);

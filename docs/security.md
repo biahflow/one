@@ -16,7 +16,9 @@
 - **Claims validadas** em todo endpoint de cliente: assinatura RS256 contra o JWKS do realm,
   `iss`, `aud`, `exp`/`iat` (com folga de relógio), `email_verified` e `azp` na allowlist. Toda
   falha vira o **mesmo 401 opaco**; o motivo só aparece no log estruturado (`auth.rejected`),
-  para não virar oráculo de sondagem.
+  para não virar oráculo de sondagem. *O `reason` desse log só passou a ser **impresso** na
+  ADR 0018 — antes dela o campo existia no código e o formato padrão do `logging` o
+  descartava, de modo que a garantia acima era verdadeira só na metade que nega.*
 - **Matriz de papéis.** A `membership` decide o acesso; o realm role é indício e serve apenas
   para marcar `is_internal`. `client_member` lê o próprio projeto; `internal_admin` é exigido
   para publicar eventos de agente. Negação é sempre **404, nunca 403**.

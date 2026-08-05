@@ -200,6 +200,17 @@ services:
       DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}
     ports:
       - "8000:8000"
+    # Prontidão, não vivacidade (ADR 0018): `/health` sempre diria "ok", porque
+    # não toca em nada. `/health/ready` fala com o Postgres e com o Redis, que é
+    # a diferença entre "o processo subiu" e "dá para mandar tráfego".
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/ready', timeout=4).status == 200 else 1)\""
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       api-seed:
         condition: service_completed_successfully
@@ -252,6 +263,17 @@ services:
       DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}
       DRIVE_SYNC_ENABLED: ${DRIVE_SYNC_ENABLED:-true}
       DRIVE_SYNC_INTERVAL_SECONDS: ${DRIVE_SYNC_INTERVAL_SECONDS:-900}
+    # `inspect ping` fala com **este** worker pela fila de controle e espera o
+    # pong: prova que ele está consumindo, não só que o processo existe. Um
+    # worker vivo que parou de consumir é a falha que mais custa a aparecer.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "celery -A portal_api.worker.celery_app inspect ping -d celery@$$HOSTNAME --timeout 8 > /dev/null"
+      interval: 30s
+      timeout: 12s
+      retries: 3
+      start_period: 30s
     depends_on:
       api-seed:
         condition: service_completed_successfully
@@ -282,6 +304,14 @@ services:
       # expurgo é o worker (ADR 0017).
       RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
       RETENTION_INTERVAL_SECONDS: ${RETENTION_INTERVAL_SECONDS:-86400}
+    # **Sem healthcheck, de propósito** (ADR 0018). O tick mais curto do beat é
+    # de 15 minutos e o mais longo é diário: qualquer sonda barata aqui — o
+    # processo existe, o arquivo de agenda existe — responderia "saudável" para
+    # um beat que parou de agendar, e um check que sempre passa é pior que
+    # nenhum. É a mesma regra da ADR 0017 sobre o antivírus ausente: não afirmar
+    # o que não se verificou. O sinal de verdade é o alerta por ausência —
+    # nenhum `task.started` com `root=beat` dentro de duas vezes o intervalo
+    # (`docs/runbooks/alerts.md`).
     depends_on:
       api-seed:
         condition: service_completed_successfully
@@ -322,6 +352,14 @@ services:
       KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080/realms/portal-local}
     ports:
       - "3000:3000"
+    # `/login` é a única rota que o `proxy.ts` deixa passar sem sessão, então é
+    # a única que serve de sonda sem forjar um cookie.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       api:
         condition: service_started

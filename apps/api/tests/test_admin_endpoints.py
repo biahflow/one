@@ -650,7 +650,14 @@ def test_the_key_audit_never_carries_the_secret(
                 AuditLog.entity_id == uuid.UUID(created["key_id"]),
             )
         ).scalars().one()
-    assert entry.data == {"key_prefix": created["key_prefix"]}
+    # `trace_id` entrou em toda linha de auditoria na ADR 0018; o resto do
+    # conteúdo é o que este teste guarda, e a asserção continua exaustiva —
+    # nenhum campo além destes dois, e o segredo em nenhum deles.
+    assert entry.data == {
+        "key_prefix": created["key_prefix"],
+        "trace_id": entry.data["trace_id"],
+    }
+    assert entry.data["trace_id"]
     assert created["key"] not in f"{entry.data}"
 
 
@@ -930,7 +937,15 @@ def test_the_upload_is_audited_without_the_content(
                 AuditLog.action == "document.uploaded",
             )
         ).scalar_one()
-        assert entry.data == {"mime_type": "text/plain", "byte_size": 29}
+        # Exaustivo de propósito (ver o comentário em `agent_key.created`): o
+        # `trace_id` da ADR 0018 é o único campo novo, e nada do conteúdo do
+        # arquivo entra aqui.
+        assert entry.data == {
+            "mime_type": "text/plain",
+            "byte_size": 29,
+            "trace_id": entry.data["trace_id"],
+        }
+        assert entry.data["trace_id"]
         assert "confidencial" not in repr(entry.data)
 
     _cleanup_documents(migrated_engine, acme.project_id)

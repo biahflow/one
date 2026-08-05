@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { signOut } from "@/auth";
+import { logWarn } from "@/app/lib/log";
 import { authorizationHeader } from "@/app/lib/session";
+import { traceId } from "@/app/lib/trace";
 
 /**
  * Sair de verdade: apaga o cookie de sessão e dispara o logout RP-initiated no
@@ -33,8 +35,23 @@ async function callApi(path: string, init: RequestInit): Promise<boolean> {
       headers: { "Content-Type": "application/json", ...authorization },
       cache: "no-store",
     });
+    if (!response.ok) {
+      logWarn("api.rejected", {
+        trace_id: await traceId(),
+        path,
+        status: response.status,
+      });
+    }
     return response.ok;
-  } catch {
+  } catch (error) {
+    // Este `catch` era mudo: o sino parava de marcar como lido e não sobrava
+    // linha nenhuma dizendo por quê (ADR 0018). O `false` continua igual — a
+    // ação degrada, não derruba a página —, mas agora deixa rastro.
+    logWarn("api.unreachable", {
+      trace_id: await traceId(),
+      path,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }

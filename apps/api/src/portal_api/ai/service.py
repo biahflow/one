@@ -21,6 +21,7 @@ from portal_api.repositories import (
     PendingItemRepository,
     TenantContext,
 )
+from portal_api.telemetry import audit_data
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def _create_pendencia(
             action="chat.pending_created",
             entity_type="pending_item",
             entity_id=pending.id,
-            data={"reason": "insufficient_context"},
+            data=audit_data(reason="insufficient_context"),
         )
     )
     return pending.id

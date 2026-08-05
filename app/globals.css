@@ -514,6 +514,10 @@
   .state-card { @apply max-w-125 text-center; }
   .state-card h1 { @apply mt-0 mb-2.5 text-xl font-semibold tracking-[-0.02em]; }
   .state-card p { @apply text-[13px] leading-relaxed text-slate-600; }
+  /* O código que a pessoa repete ao suporte: discreto, mas selecionável e
+     legível em voz alta — é a ponta visível do `trace_id` (ADR 0018). */
+  .state-code { @apply mt-3 text-xs text-muted; }
+  .state-code code { @apply rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-ink; }
   .state-card .ai-button { @apply mx-auto mt-5; }
 
   /* ---------- Administração de acesso ---------- */

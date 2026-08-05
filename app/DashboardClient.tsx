@@ -48,10 +48,17 @@ import {
   signOutAction,
 } from "./actions";
 
+// A citação como ela chega da API (ADR 0017): o rótulo que a pessoa vê e, quando a
+// evidência veio de um arquivo, o ponteiro que a torna clicável. `document_id` é
+// nulo para evidência do read model — um marco não é um arquivo e não tem o que
+// abrir.
+type Citation = { label: string; document_id?: string | null };
+
 type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   sources?: string[];
+  citations?: Citation[];
   pending?: boolean;
   // Só existe quando o turno foi gravado pela API (ADR 0015): sem id não há o que
   // avaliar, e é assim que a saudação e o fallback offline ficam sem polegares —
@@ -230,6 +237,10 @@ export default function DashboardClient({
   // A thread corrente. `null` faz o próximo turno abrir uma nova — é o que o
   // botão "Nova conversa" faz, sem precisar de rota própria (ADR 0015).
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // O link do documento falhou. Fica fora da mensagem de propósito: o turno
+  // gravado é o que a resposta mostrou (ADR 0015), e um erro de rede de agora não
+  // pertence ao registro daquele momento.
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const historyLoaded = useRef(false);
   // Pendências que a IA abriu nesta sessão: já existem no banco, mas a página é renderizada
   // no servidor, então são espelhadas aqui até o próximo carregamento.
@@ -286,6 +297,7 @@ export default function DashboardClient({
             role: "user" | "assistant";
             text: string;
             sources?: string[];
+            citations?: Citation[];
             pending_created?: boolean;
             feedback?: "helpful" | "not_helpful" | null;
           }) => ({
@@ -293,6 +305,7 @@ export default function DashboardClient({
             role: message.role,
             text: message.text,
             sources: message.sources,
+            citations: message.citations,
             pending: message.pending_created,
             feedback: message.feedback ?? null,
           })),
@@ -333,6 +346,26 @@ export default function DashboardClient({
     }
   }
 
+  // Abre o documento por trás da citação (ADR 0017). A URL é assinada e curta, e
+  // por isso é pedida no clique e não junto da resposta: uma URL emitida com a
+  // mensagem já teria vencido quando alguém rolasse a conversa até ela.
+  //
+  // `window.open` antes do `await` seria o jeito de escapar do bloqueador de
+  // pop-up, mas abriria uma aba em branco quando a API negasse. Navegamos na
+  // própria aba, e o que torna isso barato é a Fase 4: a conversa está gravada
+  // (ADR 0015), então voltar traz o turno e a citação de volta como estavam.
+  async function openDocument(documentId: string) {
+    setDownloadError(null);
+    try {
+      const response = await fetch(`/api/documents/${documentId}/download`);
+      if (!response.ok) throw new Error("download failed");
+      const data = await response.json();
+      window.location.assign(data.url);
+    } catch {
+      setDownloadError("Não foi possível abrir o documento agora.");
+    }
+  }
+
   async function sendQuestion(event?: FormEvent, preset?: string) {
     event?.preventDefault();
     const value = (preset ?? question).trim();
@@ -355,6 +388,7 @@ export default function DashboardClient({
         role: "assistant",
         text: data.answer,
         sources: data.sources,
+        citations: data.citations,
         pending: data.pending_created,
         feedback: null,
       });
@@ -550,7 +584,30 @@ export default function DashboardClient({
                 {/* `?.length` e não só `?`: o histórico devolve `[]` para a pergunta
                     do usuário, e um array vazio ainda é verdadeiro — renderizava uma
                     faixa de fontes vazia debaixo de cada pergunta. */}
-                {message.sources?.length ? <div className="message-sources">{message.sources.map((source) => <span key={source}><FileText size={12} /> {source}</span>)}</div> : null}
+                {/* `citations` traz o ponteiro do arquivo e é o caminho normal;
+                    `sources` continua atendendo quem só tem o rótulo — o
+                    fallback offline do chat e a casca de demonstração. */}
+                {message.citations?.length ? (
+                  <div className="message-sources">
+                    {message.citations.map((citation) =>
+                      citation.document_id ? (
+                        <button
+                          className="message-source-link"
+                          data-document-id={citation.document_id}
+                          key={citation.label}
+                          onClick={() => openDocument(citation.document_id!)}
+                          type="button"
+                        >
+                          <FileText size={12} /> {citation.label}
+                        </button>
+                      ) : (
+                        <span key={citation.label}><FileText size={12} /> {citation.label}</span>
+                      ),
+                    )}
+                  </div>
+                ) : message.sources?.length ? (
+                  <div className="message-sources">{message.sources.map((source) => <span key={source}><FileText size={12} /> {source}</span>)}</div>
+                ) : null}
                 {message.pending && <small className="pending-created"><Check size={13} /> Pendência criada para Portal Labs</small>}
                 {/* Só a resposta gravada aceita polegar: sem id não há o que avaliar. */}
                 {message.role === "assistant" && message.id && (
@@ -572,6 +629,7 @@ export default function DashboardClient({
               </div>
             ))}
           </div>
+          {downloadError && <p className="chat-notice" role="status">{downloadError}</p>}
           <div className="chat-suggestions">{suggestedQuestions.map((item) => <button key={item} onClick={() => sendQuestion(undefined, item)}>{item}</button>)}</div>
           <form className="chat-form" onSubmit={sendQuestion}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Pergunte sobre o projeto..." aria-label="Pergunta para IA" /><button type="submit" aria-label="Enviar pergunta"><Send size={17} /></button></form>
         </section>

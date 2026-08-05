@@ -61,7 +61,7 @@ com o histórico do projeto. A preferência de e-mail fica em Configurações e 
 ### Telemetria
 
 `send_project_digests` devolve `{sent, notifications}` e registra falha de SMTP por
-destinatário; `queue_project_digests` registra quando o broker está fora. Retenção da tabela:
+destinatário; `queue_project_digests` registra quando o broker está fora. Retenção da tabela (ADR 0017):
 12 meses declarados na ADR 0012, poda na Fase 5.
 
 ### Casos de avaliação de IA

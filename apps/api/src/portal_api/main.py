@@ -1,12 +1,13 @@
 import json
-from datetime import date, datetime, timezone
+import logging
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from portal_api import access, admin, agent_auth, conversations, results
+from portal_api import access, admin, agent_auth, conversations, results, storage
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
@@ -18,6 +19,7 @@ from portal_api.models import (
     AgentEventOutcome,
     AuditLog,
     ConversationMessage,
+    Document,
     Organization,
 )
 from portal_api.repositories import (
@@ -27,6 +29,9 @@ from portal_api.repositories import (
     NotificationRepository,
     TenantContext,
 )
+from portal_api.scanner import ScanState
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 app = FastAPI(title="Portal Labs API", version="0.1.0", docs_url="/docs")
@@ -190,6 +195,13 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
         response = {
             "answer": result.answer,
             "sources": result.sources,
+            # A citação com o ponteiro para o arquivo, quando ela veio de um
+            # (ADR 0017). Mesma forma do histórico, para a tela não ter dois
+            # caminhos de renderização para a mesma coisa.
+            "citations": [
+                {"label": item.citation, "document_id": item.document_id or None}
+                for item in result.cited
+            ],
             "confidence": result.confidence,
             "pending_created": result.pending_created,
             "conversation_id": str(conversation.id),
@@ -323,6 +335,84 @@ def project_results(
         return results.to_payload(results.compute_results(session, ctx, period))
 
 
+@app.get("/api/v1/me/documents/{document_id}/download")
+def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
+    """A URL temporária do documento que a IA citou (Fase 5, ADR 0017).
+
+    Rota do **cliente**, e não da administração, porque quem precisa abrir o
+    arquivo é quem leu "Documento: Contrato — página 3" e quer conferir a página
+    3. Até aqui a citação apontava para uma evidência que só a equipe interna
+    conseguia ver, o que é uma forma discreta de pedir confiança em vez de
+    mostrar a fonte.
+
+    Escopada em ``/me/`` como a caixa de avisos e o histórico da conversa, e pelo
+    mesmo motivo prático: a citação nasce no chat, que já roda sobre o projeto
+    que ``access.default_project`` resolve. O navegador não manda identificador
+    de projeto nenhum — e o que ele não manda é o que ninguém precisa validar
+    (regra 1 do `AGENTS.md`).
+
+    Devolve endereço, não bytes (ver ``storage.presigned_get_url``).
+
+    **Só entrega o que passou pela varredura.** Documento em `pending`, `error`
+    ou `infected` não tem URL — e a resposta é o mesmo 404 de sempre, sem
+    distinguir "não existe" de "não passou": o cliente não precisa saber que o
+    portal recebeu um arquivo infectado, e a tela de administração já explica
+    isso a quem é da casa.
+    """
+    settings = get_settings()
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+        # A RLS já escopa o `SELECT` ao projeto corrente, e a comparação abaixo é
+        # a segunda barreira — a mesma dupla checagem da pasta do Drive.
+        document = session.get(Document, document_id)
+        if (
+            document is None
+            or document.project_id != project.id
+            or not document.storage_key
+            or document.scan_state not in (ScanState.clean, ScanState.skipped)
+        ):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+        try:
+            url = storage.presigned_get_url(
+                settings, document.storage_key, settings.document_download_ttl_seconds
+            )
+        except storage.StorageDisabled as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Document storage is not configured",
+            ) from exc
+        except storage.StorageError as exc:
+            logger.exception("Falha ao assinar o download do documento %s", document_id)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail="Storage unavailable"
+            ) from exc
+
+        # `docs/security.md` já listava download entre os eventos auditáveis, e
+        # esta é a primeira rota que o torna possível. Sem o nome do arquivo: o
+        # título é conteúdo do cliente e o id já identifica a linha.
+        session.add(
+            AuditLog(
+                organization_id=project.organization_id,
+                project_id=project.id,
+                actor_user_id=user.id,
+                action="document.downloaded",
+                entity_type="document",
+                entity_id=document.id,
+                data={"ttl_seconds": settings.document_download_ttl_seconds},
+            )
+        )
+
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        seconds=settings.document_download_ttl_seconds
+    )
+    return {"url": url, "expires_at": expires_at.isoformat()}
+
+
 @app.get("/api/v1/me/dashboard")
 def my_dashboard(principal: CurrentPrincipal) -> dict:
     """Dashboard for the caller's own project (the BFF calls this)."""
@@ -394,18 +484,32 @@ def read_notifications(payload: NotificationsReadIn, principal: CurrentPrincipal
 # --- conversas do chat (Fase 4, ADR 0015) ----------------------------------
 
 
+def _citation_label(source: str, location: str) -> str:
+    """O rótulo exibido, na mesma forma de ``Evidence.citation``."""
+    return f"{source} — {location}" if location else source
+
+
 def _message_payload(message: ConversationMessage) -> dict:
+    stored = message.citations or []
     return {
         "id": str(message.id),
         "role": message.role.value,
         "text": message.text,
         "confidence": message.confidence.value if message.confidence else None,
-        # O rótulo exibido é remontado das partes gravadas, na mesma forma de
-        # `Evidence.citation`, para o histórico mostrar exatamente o que a
-        # resposta mostrou na hora.
+        # O rótulo exibido é remontado das partes gravadas para o histórico
+        # mostrar exatamente o que a resposta mostrou na hora.
         "sources": [
-            f"{item['source']} — {item['location']}" if item.get("location") else item["source"]
-            for item in (message.citations or [])
+            _citation_label(item["source"], item.get("location", "")) for item in stored
+        ],
+        # A mesma lista, com o ponteiro para o arquivo quando há um (ADR 0017).
+        # `sources` continua existindo como projeção de exibição: quem só quer
+        # imprimir o rótulo não precisa saber o que é clicável.
+        "citations": [
+            {
+                "label": _citation_label(item["source"], item.get("location", "")),
+                "document_id": item.get("document_id"),
+            }
+            for item in stored
         ],
         "pending_created": message.pending_item_id is not None,
         "feedback": message.feedback.value if message.feedback else None,

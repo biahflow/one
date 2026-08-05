@@ -172,6 +172,11 @@ services:
       # Storage dos documentos (ADR 0014). A API grava o objeto no upload; quem
       # lê de volta para indexar é o worker, com as mesmas variáveis.
       STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-http://minio:9000}
+      # O endereço pelo qual o NAVEGADOR abre a URL assinada (ADR 0017).
+      # Mesma divisão de KEYCLOAK_ISSUER/KEYCLOAK_INTERNAL_URL, e pela mesma
+      # razão: a assinatura cobre o host, então ela nasce já apontando para
+      # fora da rede do compose.
+      STORAGE_PUBLIC_ENDPOINT_URL: ${STORAGE_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-portal-documents}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-portal-minio}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-portal-minio-local-only}
@@ -218,6 +223,16 @@ services:
       SMTP_PORT: ${SMTP_PORT:-1025}
       NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
       PORTAL_WEB_URL: ${PORTAL_WEB_URL:-http://localhost:3000}
+      # Varredura antes de indexar (ADR 0017). Vazio = veredito `skipped`, e
+      # nunca `clean` — o caminho sem ClamAV ainda reconhece o EICAR, que é o
+      # que permite ao e2e provar a rejeição sem antivírus no compose.
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      # Retenção (ADR 0017): a poda e o expurgo rodam aqui, sob portal_system.
+      RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
+      RETENTION_NOTIFICATION_DAYS: ${RETENTION_NOTIFICATION_DAYS:-180}
+      RETENTION_AGENT_EVENT_DAYS: ${RETENTION_AGENT_EVENT_DAYS:-730}
+      RETENTION_CONVERSATION_DAYS: ${RETENTION_CONVERSATION_DAYS:-365}
       # Ingestão dos documentos (ADR 0014): é aqui que o arquivo vira texto,
       # chunk e embedding. Sem VOYAGE_API_KEY o embedder é o offline
       # determinístico, e a stack local indexa sem chave nenhuma.
@@ -263,6 +278,10 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DRIVE_SYNC_ENABLED: ${DRIVE_SYNC_ENABLED:-true}
       DRIVE_SYNC_INTERVAL_SECONDS: ${DRIVE_SYNC_INTERVAL_SECONDS:-900}
+      # O beat lê isto para montar o agendamento; quem executa a poda e o
+      # expurgo é o worker (ADR 0017).
+      RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
+      RETENTION_INTERVAL_SECONDS: ${RETENTION_INTERVAL_SECONDS:-86400}
     depends_on:
       api-seed:
         condition: service_completed_successfully

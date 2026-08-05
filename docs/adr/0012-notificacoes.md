@@ -121,7 +121,8 @@ devolve zero linhas. O comportamento estaria certo; a tela, não.
   era antes desta ADR.
 - **Retenção fica declarada e não implementada:** `notification` cresce por projeto e por
   membro, sem poda. O prazo adotado é **12 meses**, e a rotina que apaga o excedente é da Fase 5
-  (retenção e exclusão por organização), junto do resto da política de dados. Até lá o volume é
+  (retenção e exclusão por organização), junto do resto da política de dados. **Resolvido na
+ADR 0017:** `notification` é podada por `created_at` segundo a janela da organização. Até lá o volume é
   irrelevante — dezenas de avisos por projeto por mês.
 - A audiência é uma tabela em `notifications.py`. Mudar quem recebe o quê é editar um dicionário,
   não caçar condicionais.

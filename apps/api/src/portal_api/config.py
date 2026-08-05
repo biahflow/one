@@ -94,6 +94,15 @@ class Settings(BaseSettings):
     # responde 503 em vez de gravar metadado de um arquivo que não existe —
     # um `document` sem objeto seria uma linha que nunca vira evidência.
     storage_endpoint_url: str = "http://localhost:9000"
+    #: O mesmo storage, pelo endereço que o **navegador** alcança. Dois endereços
+    #: para um MinIO, e não é engano — é a mesma divisão de
+    #: `KEYCLOAK_ISSUER`/`KEYCLOAK_INTERNAL_URL` (ADR 0010), pelo mesmo motivo: a
+    #: API e o worker falam com o serviço pela rede interna do compose, e a URL
+    #: assinada é aberta pelo cliente, de fora dela. A assinatura SigV4 cobre o
+    #: host, então ela precisa ser gerada já contra o endereço público — trocar a
+    #: URL depois de assinada a invalidaria. Vazio = usa o de cima, que é o certo
+    #: quando os dois endereços coincidem (S3 gerenciado).
+    storage_public_endpoint_url: str = ""
     storage_bucket: str = "portal-documents"
     storage_access_key: str = ""
     storage_secret_key: str = ""
@@ -101,6 +110,19 @@ class Settings(BaseSettings):
     #: Teto do upload. Vale como primeira barreira; o tamanho real é conferido
     #: enquanto o arquivo é lido, porque `content-length` vem do cliente.
     document_max_bytes: int = 25 * 1024 * 1024
+    #: Validade da URL assinada de download (Fase 5, ADR 0017). Curta de
+    #: propósito: a URL não carrega sessão, então quem a tiver a usa — o que
+    #: limita o estrago é ela vencer, não quem a pediu.
+    document_download_ttl_seconds: int = 300
+
+    # Varredura antimalware (Fase 5, ADR 0017). Sem `CLAMAV_HOST` o veredito é
+    # `skipped`, e **não** `clean`: um scanner ausente não afirma que o arquivo
+    # está limpo. Ver o docstring de `portal_api/scanner.py`.
+    clamav_host: str = ""
+    clamav_port: int = 3310
+    #: Generoso porque a varredura roda no worker, não no caminho de requisição,
+    #: e um arquivo no teto de 25 MiB leva mais que os 5s habituais.
+    clamav_timeout_seconds: float = 60.0
 
     # Índice do projeto (Fase 4, ADR 0014). Sem VOYAGE_API_KEY o embedder é o
     # offline determinístico — mesma forma da ADR 0007 para o respondedor: CI e
@@ -171,6 +193,26 @@ class Settings(BaseSettings):
     drive_sync_stale_after_seconds: int = 1800
     #: Validade do `state` do OAuth entre pedir o consentimento e voltar dele.
     drive_oauth_state_ttl_seconds: int = 600
+
+    # Retenção e expurgo (Fase 5, ADR 0017). Ligado por padrão, ao contrário do
+    # sync do Drive: aquele precisa de credencial de terceiro, este só precisa do
+    # próprio banco — e "nunca poda" é justamente a dívida que as ADRs 0012 e
+    # 0015 declararam.
+    retention_enabled: bool = True
+    #: De quanto em quanto tempo o beat acorda para podar. Diário: a poda é por
+    #: janela de dias, então rodar de hora em hora só multiplicaria varreduras
+    #: que não encontram nada.
+    retention_interval_seconds: int = 24 * 60 * 60
+    #: Os padrões, usados quando a organização não tem linha em
+    #: `organization_retention_policy`. Nulo ali significa "usa isto", não
+    #: "guarda para sempre".
+    retention_notification_days: int = 180
+    retention_agent_event_days: int = 730
+    retention_conversation_days: int = 365
+    #: Teto de linhas removidas por tabela em cada passagem. A poda é feita em
+    #: lotes para um acervo antigo não virar uma transação de horas segurando
+    #: lock; o que sobra sai na passagem seguinte.
+    retention_batch_size: int = 5000
 
     # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
     # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.

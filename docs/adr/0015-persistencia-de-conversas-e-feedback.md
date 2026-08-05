@@ -108,7 +108,8 @@ Vale também para o id de outra pessoa: ele não abre porta nenhuma, apenas não
   tem lugar próprio, duplicá-la na auditoria só aumentaria a superfície.
 - **Retenção fica em aberto, e é dívida declarada.** Apagar conversas por organização é item da
   Fase 5; o que existe hoje é o CASCADE de projeto e de usuário, e `portal_app` não recebeu DELETE —
-  quando o expurgo chegar, não será o caminho de requisição a fazê-lo.
+  quando o expurgo chegar, não será o caminho de requisição a fazê-lo. **A ADR 0017 cumpriu
+exatamente isto:** a rota grava um pedido, e quem apaga é o worker sob `portal_system`.
 - **O histórico corta pelo fim** (50 turnos). Uma conversa longa perde o começo, não o que acabou de
   ser dito. Não há paginação para trás; se a conversa virar longa o bastante para isso importar, é
   sinal de que multi-turno chegou antes.

@@ -71,11 +71,18 @@ def _extension(filename: str) -> str:
     return f".{cleaned}" if cleaned else ""
 
 
-def _client(settings: Settings) -> Any:
+def _client(settings: Settings, *, endpoint_url: str | None = None) -> Any:
+    """O cliente S3. ``endpoint_url`` sobrepõe o endereço, e só a assinatura usa.
+
+    A chave do cache inclui o endereço justamente porque existem dois clientes
+    possíveis para o mesmo storage: o interno, que grava e lê, e o público, que
+    só assina URL (ver ``storage_public_endpoint_url``).
+    """
     if not settings.storage_access_key or not settings.storage_secret_key:
         raise StorageDisabled("Storage sem credencial configurada")
+    endpoint = endpoint_url or settings.storage_endpoint_url
     cache_key = (
-        settings.storage_endpoint_url,
+        endpoint,
         settings.storage_access_key,
         settings.storage_region,
     )
@@ -85,7 +92,7 @@ def _client(settings: Settings) -> Any:
 
         client = boto3.client(
             "s3",
-            endpoint_url=settings.storage_endpoint_url or None,
+            endpoint_url=endpoint or None,
             aws_access_key_id=settings.storage_access_key,
             aws_secret_access_key=settings.storage_secret_key,
             region_name=settings.storage_region,
@@ -138,6 +145,38 @@ def get_object(settings: Settings, key: str) -> bytes:
         raise StorageError(f"Falha ao ler {key}") from exc
 
 
+def presigned_get_url(settings: Settings, key: str, ttl_seconds: int) -> str:
+    """URL de leitura que expira sozinha (Fase 5, ADR 0017).
+
+    É o que `docs/security.md` chama de "URLs de arquivo temporárias", e a razão
+    de a API devolver um endereço em vez dos bytes: o arquivo trafega do storage
+    para o navegador sem atravessar o processo que valida o token, o que tira do
+    caminho de requisição o custo de um PDF de 25 MiB.
+
+    A URL **não carrega sessão** — quem a tiver, abre. Por isso o que a contém é
+    o TTL curto e não a autenticação: ela é gerada depois da checagem de
+    associação, e o que impede o vazamento de virar acesso permanente é ela
+    vencer. Não guardamos a URL em lugar nenhum; cada clique gera outra.
+
+    Assinada contra o endereço **público** do storage, não o interno. A SigV4
+    cobre o host, então reescrever a URL depois de assinada a invalidaria — é a
+    mesma razão pela qual `auth.ts` passa os dois endpoints do Keycloak
+    explicitamente em vez de corrigir a URL no meio do caminho.
+    """
+    client = _client(
+        settings,
+        endpoint_url=settings.storage_public_endpoint_url or settings.storage_endpoint_url,
+    )
+    try:
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.storage_bucket, "Key": key},
+            ExpiresIn=ttl_seconds,
+        )
+    except Exception as exc:
+        raise StorageError(f"Falha ao assinar {key}") from exc
+
+
 def delete_object(settings: Settings, key: str) -> None:
     """Remove o objeto. Ausência não é erro: apagar duas vezes é o mesmo que uma."""
     client = _client(settings)
@@ -145,3 +184,40 @@ def delete_object(settings: Settings, key: str) -> None:
         client.delete_object(Bucket=settings.storage_bucket, Key=key)
     except Exception as exc:
         raise StorageError(f"Falha ao remover {key}") from exc
+
+
+def delete_prefix(settings: Settings, prefix: str) -> int:
+    """Remove tudo sob um prefixo, e devolve quantos objetos saíram.
+
+    É o expurgo por organização (Fase 5, ADR 0017), e o que o torna possível é a
+    forma da chave: ``org/<id>/...`` desde a ADR 0014, escolhida ali justamente
+    para "permitir uma política de retenção por organização na Fase 5".
+
+    Recolhe junto o objeto órfão — aquele que ``delete_document`` admite deixar
+    para trás quando o storage está fora do ar no momento em que a linha some.
+    Como o prefixo é o tenant inteiro, não há como um órfão de outra organização
+    entrar no lote.
+
+    O ``prefix`` **precisa** terminar em ``/``. Sem a barra, ``org/<id>`` casaria
+    também com ``org/<id-de-outra-coisa>``: o S3 compara texto, não caminho.
+    """
+    if not prefix.endswith("/"):
+        raise ValueError("O prefixo do expurgo tem de terminar em '/'")
+
+    client = _client(settings)
+    removed = 0
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=settings.storage_bucket, Prefix=prefix):
+            keys = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+            if not keys:
+                continue
+            # `delete_objects` aceita 1000 por chamada, que é o mesmo teto da
+            # paginação — uma página nunca passa do limite do lote.
+            client.delete_objects(
+                Bucket=settings.storage_bucket, Delete={"Objects": keys}
+            )
+            removed += len(keys)
+    except Exception as exc:
+        raise StorageError(f"Falha ao remover o prefixo {prefix}") from exc
+    return removed

@@ -59,6 +59,11 @@ def _citations_of(result: ChatResult) -> list[dict] | None:
     corte de distância que a ADR 0014 deixou em aberto. ``source``/``location``
     são o rótulo que a pessoa viu, e continuam valendo mesmo que o documento
     mude de nome: o registro é do que foi mostrado.
+
+    ``document_id`` (Fase 5, ADR 0017) é o que permite reabrir o arquivo a partir
+    do histórico. Fica ausente quando a evidência veio do read model, e continua
+    sendo só um ponteiro: se o documento for apagado depois, o rótulo gravado
+    segue contando o que a resposta mostrou, e é o link que deixa de abrir.
     """
     if not result.cited:
         return None
@@ -67,6 +72,7 @@ def _citations_of(result: ChatResult) -> list[dict] | None:
             "evidence_id": evidence.id,
             "source": evidence.source,
             "location": evidence.location,
+            **({"document_id": evidence.document_id} if evidence.document_id else {}),
         }
         for evidence in result.cited
     ]

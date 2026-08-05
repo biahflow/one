@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from portal_api import access, agent_auth, crypto, storage
+from portal_api import access, agent_auth, crypto, retention, storage
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_admin_org, bind_invitee, get_session
@@ -44,20 +44,25 @@ from portal_api.models import (
     SCOPE_EVENTS_WRITE,
     AgentApiKey,
     AuditLog,
+    DataErasureRequest,
     Document,
     DocumentChunk,
     DocumentIngestState,
     DocumentOrigin,
     DocumentSource,
     DriveSyncState,
+    ErasureState,
     MemberRole,
     Membership,
+    Organization,
+    OrganizationRetentionPolicy,
     Project,
     ProjectDriveConnection,
     ProjectFinancialAssumption,
     User,
 )
 from portal_api.principal import Principal
+from portal_api.scanner import ScanState
 
 logger = logging.getLogger(__name__)
 
@@ -633,10 +638,16 @@ class DocumentOut(BaseModel):
     title: str
     mime_type: str | None
     byte_size: int | None
-    #: `pending` | `indexed` | `failed` | `unsupported`. É o que a tela mostra
-    #: para explicar por que um documento ainda não responde no chat.
+    #: `pending` | `indexed` | `failed` | `unsupported` | `rejected`. É o que a
+    #: tela mostra para explicar por que um documento ainda não responde no chat.
     ingest_state: DocumentIngestState
     ingest_error: str | None
+    #: O outro eixo (ADR 0017): `clean` é "alguém capaz olhou", `skipped` é
+    #: "ninguém olhou". A tela precisa dos dois separados justamente para não
+    #: dizer "verificado" onde não houve verificação.
+    scan_state: ScanState
+    scan_error: str | None
+    scanned_at: datetime | None
     chunk_count: int
     indexed_at: datetime | None
     created_at: datetime
@@ -650,6 +661,9 @@ def _as_document_out(record: Document, chunk_count: int) -> DocumentOut:
         byte_size=record.byte_size,
         ingest_state=record.ingest_state,
         ingest_error=record.ingest_error,
+        scan_state=record.scan_state,
+        scan_error=record.scan_error,
+        scanned_at=record.scanned_at,
         chunk_count=chunk_count,
         indexed_at=record.indexed_at,
         created_at=record.created_at,
@@ -781,10 +795,12 @@ def upload_document(
         response = _as_document_out(record, 0)
 
     # Fora da transação, como o webhook: o worker vai ler a linha do banco, então
-    # ela precisa estar comitada antes de a task rodar.
-    from portal_api.worker import queue_document_ingestion
+    # ela precisa estar comitada antes de a task rodar. A porta é a varredura, e
+    # não a ingestão — é ela que decide se o arquivo chega a virar texto
+    # (ADR 0017).
+    from portal_api.worker import queue_document_scan
 
-    queue_document_ingestion(str(response.document_id))
+    queue_document_scan(str(response.document_id))
     return response
 
 
@@ -1302,3 +1318,252 @@ def _claim_oauth_state(state: str) -> tuple[uuid.UUID, str, uuid.UUID | None] | 
         if expires_at <= now:
             return None
     return project_id, verifier, requested_by
+
+
+# --- Retenção e expurgo (Fase 5, ADR 0017) ------------------------------------
+# Mora aqui pela mesma razão das chaves, das premissas e do conector: é escrita e
+# roda sob `portal_admin`. O que muda é o escopo — estas são as primeiras rotas
+# do portal cuja unidade é a **organização** e não o projeto, porque "por quanto
+# tempo os dados ficam" e "apague tudo" não são perguntas que se façam projeto a
+# projeto.
+#
+# Nenhuma delas apaga nada. A rota grava a intenção; quem cumpre é o worker sob
+# `portal_system` — a ADR 0015 já tinha decidido isso quando adiou o expurgo.
+
+
+class RetentionPolicyIn(BaseModel):
+    """Nulo é "usa o padrão", não "guarda para sempre" (ver `retention.py`)."""
+
+    notification_days: int | None = Field(default=None, ge=1, le=3650)
+    agent_event_days: int | None = Field(default=None, ge=1, le=3650)
+    conversation_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class RetentionPolicyOut(BaseModel):
+    organization_id: uuid.UUID
+    #: Os prazos como foram definidos — nulo onde a organização não disse nada.
+    notification_days: int | None
+    agent_event_days: int | None
+    conversation_days: int | None
+    #: E os mesmos prazos já resolvidos contra o padrão. Os dois, de propósito: a
+    #: tela precisa mostrar o que vale **e** poder distinguir "escolhido" de
+    #: "herdado", senão editar o formulário fixaria o padrão sem querer.
+    effective: dict[str, int]
+
+
+class ErasureRequestIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    #: A confirmação por extenso. Não é teatro: é a única ação do portal cujo
+    #: efeito nenhuma tela desfaz, e um `DELETE` disparado por engano num cliente
+    #: certo é pior do que um clique a mais em todos os outros.
+    confirm_slug: str = Field(min_length=1, max_length=80)
+
+
+class ErasureRequestOut(BaseModel):
+    request_id: uuid.UUID
+    organization_id: uuid.UUID
+    state: ErasureState
+    requested_reason: str | None
+    created_at: datetime
+    completed_at: datetime | None
+    removed: dict | None
+    error: str | None
+
+
+def _authorized_org(
+    session: Session, principal: Principal, organization_id: uuid.UUID
+) -> tuple[User, Organization]:
+    """O chamador e a organização, se ele for `internal_admin` nela. 404 sempre.
+
+    Espelho de `_authorized`, e com a mesma ordem: a checagem acontece **antes**
+    de `bind_admin_org`, quando a transação ainda enxerga apenas os vínculos do
+    próprio chamador — é isso que impede a verificação de ser circular.
+    """
+    user = resolve_user(session, principal)
+    organization = access.require_organization(session, user, organization_id)
+    if organization is None:
+        raise NOT_FOUND
+    bind_admin_org(session, organization.id)
+    return user, organization
+
+
+def _policy_out(
+    organization_id: uuid.UUID, record: OrganizationRetentionPolicy | None
+) -> RetentionPolicyOut:
+    limits = retention.windows_for(record, get_settings())
+    return RetentionPolicyOut(
+        organization_id=organization_id,
+        notification_days=record.notification_days if record else None,
+        agent_event_days=record.agent_event_days if record else None,
+        conversation_days=record.conversation_days if record else None,
+        effective={
+            "notification_days": limits.notification_days,
+            "agent_event_days": limits.agent_event_days,
+            "conversation_days": limits.conversation_days,
+        },
+    )
+
+
+@router.get(
+    "/organizations/{organization_id}/retention", response_model=RetentionPolicyOut
+)
+def get_retention_policy(
+    organization_id: uuid.UUID, principal: CurrentPrincipal
+) -> RetentionPolicyOut:
+    with get_session(principal, role=DbRole.admin) as session:
+        _, organization = _authorized_org(session, principal, organization_id)
+        record = session.execute(
+            select(OrganizationRetentionPolicy).where(
+                OrganizationRetentionPolicy.organization_id == organization.id
+            )
+        ).scalar_one_or_none()
+        return _policy_out(organization.id, record)
+
+
+@router.put(
+    "/organizations/{organization_id}/retention", response_model=RetentionPolicyOut
+)
+def set_retention_policy(
+    organization_id: uuid.UUID, payload: RetentionPolicyIn, principal: CurrentPrincipal
+) -> RetentionPolicyOut:
+    """Define os prazos da organização.
+
+    ``PUT`` e não ``PATCH``: a política é uma linha só e o corpo a descreve
+    inteira. Omitir um campo é dizer "volte ao padrão", que é uma decisão — e
+    seria indistinguível de "não mexa" se o verbo fosse outro.
+
+    Ao contrário da premissa financeira (ADR 0013), aqui a linha é **editada** e
+    não versionada por vigência: um prazo não reprecifica o passado, ele só
+    decide o que ainda existe amanhã. O rastro de quem mudou fica no `audit_log`.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, organization = _authorized_org(session, principal, organization_id)
+        record = session.execute(
+            select(OrganizationRetentionPolicy).where(
+                OrganizationRetentionPolicy.organization_id == organization.id
+            )
+        ).scalar_one_or_none()
+        if record is None:
+            record = OrganizationRetentionPolicy(organization_id=organization.id)
+            session.add(record)
+
+        record.notification_days = payload.notification_days
+        record.agent_event_days = payload.agent_event_days
+        record.conversation_days = payload.conversation_days
+        record.updated_by_user_id = actor.id
+        session.flush()
+
+        session.add(
+            AuditLog(
+                organization_id=organization.id,
+                actor_user_id=actor.id,
+                action="retention.policy_updated",
+                entity_type="organization_retention_policy",
+                entity_id=record.id,
+                data={
+                    "notification_days": payload.notification_days,
+                    "agent_event_days": payload.agent_event_days,
+                    "conversation_days": payload.conversation_days,
+                },
+            )
+        )
+        return _policy_out(organization.id, record)
+
+
+@router.post(
+    "/organizations/{organization_id}/erasure",
+    response_model=ErasureRequestOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_erasure(
+    organization_id: uuid.UUID, payload: ErasureRequestIn, principal: CurrentPrincipal
+) -> ErasureRequestOut:
+    """Registra o pedido de apagamento. **Não apaga.**
+
+    202 e não 200: o trabalho ainda não aconteceu quando esta resposta sai, e
+    dizer 200 sugeriria o contrário. O worker cumpre o pedido e escreve na
+    própria linha o que removeu.
+
+    A confirmação é o ``slug`` da organização, digitado. É a mesma ideia do
+    "digite o nome do repositório" de qualquer serviço que apague de verdade:
+    obriga quem clica a olhar **qual** tenant está na tela, que é justamente o
+    erro que esta rota pode causar e nenhuma outra pode.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        actor, organization = _authorized_org(session, principal, organization_id)
+        if payload.confirm_slug.strip() != organization.slug:
+            # 422 e não 404: quem chegou aqui já provou que administra a
+            # organização, e o que falhou foi a confirmação — esconder isso só
+            # faria a pessoa tentar de novo às cegas.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Confirmation does not match the organization slug",
+            )
+
+        pending = session.execute(
+            select(DataErasureRequest).where(
+                DataErasureRequest.organization_id == organization.id,
+                DataErasureRequest.state.in_(
+                    (ErasureState.pending, ErasureState.running)
+                ),
+            )
+        ).scalar_one_or_none()
+        if pending is not None:
+            # Pedir duas vezes é o mesmo que pedir uma. Devolve o pedido que já
+            # existe em vez de enfileirar um segundo expurgo do mesmo tenant.
+            return _erasure_out(pending)
+
+        record = DataErasureRequest(
+            organization_id=organization.id,
+            requested_by_user_id=actor.id,
+            requested_reason=payload.reason.strip(),
+        )
+        session.add(record)
+        session.flush()
+        session.add(
+            AuditLog(
+                organization_id=organization.id,
+                actor_user_id=actor.id,
+                action="retention.erasure_requested",
+                entity_type="data_erasure_request",
+                entity_id=record.id,
+                data={"reason": payload.reason.strip()[:200]},
+            )
+        )
+        response = _erasure_out(record)
+
+    # Fora da transação, como o upload: o worker lê a linha do banco.
+    from portal_api.worker import queue_erasure_requests
+
+    queue_erasure_requests()
+    return response
+
+
+@router.get(
+    "/organizations/{organization_id}/erasure", response_model=list[ErasureRequestOut]
+)
+def list_erasure_requests(
+    organization_id: uuid.UUID, principal: CurrentPrincipal
+) -> list[ErasureRequestOut]:
+    """O histórico de pedidos — é o que faz o apagamento ser auditável."""
+    with get_session(principal, role=DbRole.admin) as session:
+        _, organization = _authorized_org(session, principal, organization_id)
+        records = session.execute(
+            select(DataErasureRequest)
+            .where(DataErasureRequest.organization_id == organization.id)
+            .order_by(DataErasureRequest.created_at.desc())
+        ).scalars()
+        return [_erasure_out(record) for record in records]
+
+
+def _erasure_out(record: DataErasureRequest) -> ErasureRequestOut:
+    return ErasureRequestOut(
+        request_id=record.id,
+        organization_id=record.organization_id,
+        state=record.state,
+        requested_reason=record.requested_reason,
+        created_at=record.created_at,
+        completed_at=record.completed_at,
+        removed=record.removed,
+        error=record.error,
+    )

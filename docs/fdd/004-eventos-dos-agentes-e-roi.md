@@ -95,7 +95,8 @@ nunca a chave. Em `audit_log`: `agent_event.ingested` (sem payload), `agent_key.
 segredo (`docs/data-classification.md`). `last_used_at` na linha da chave responde "esta chave
 ainda é usada?" sem consultar log.
 
-Retenção de `agent_event`: não definida ainda; a poda entra com a da `notification`, na Fase 5.
+Retenção de `agent_event`: poda por `occurred_at` — o dia do fato, que é o que o ROI usa —
+segundo a janela da organização (ADR 0017).
 
 ### Casos de avaliação de IA
 

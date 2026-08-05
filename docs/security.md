@@ -5,7 +5,7 @@
 - OIDC Authorization Code com PKCE, cookies `HttpOnly`, `Secure` e `SameSite`.
 - Papéis mínimos e acesso explícito a cada projeto.
 - RLS no PostgreSQL, checagem de autorização na API e testes negativos de BOLA/IDOR.
-- TLS em produção, URLs de arquivo temporárias, validação de upload e varredura antimalware antes de indexar.
+- TLS em produção, URLs de arquivo temporárias, validação de upload e varredura antimalware antes de indexar. *(Implementado na ADR 0017, menos o TLS — ver a seção própria abaixo.)*
 - Tokens de integração armazenados cifrados; chaves da API de agentes ficam apenas como hash, possuem escopo, expiração e rotação.
 - Limites de taxa em autenticação, chat, upload e API de eventos.
 - Segredos apenas no ambiente; `.env` é ignorado e `.env.example` não possui dados reais.
@@ -52,13 +52,38 @@
   organização por vez, via GUC publicada depois da verificação. O papel do caminho de
   requisição não tem o privilégio, e há teste que consulta o catálogo para garantir.
 - **Ainda aberto:** revisão das dependências apontadas pelo `npm audit` antes de produção
-  (Fase 5).
+  (Fase 5). O aviso a ler primeiro é o do `next` — GHSA-6gpp-xcg3-4w24, *middleware/proxy bypass
+  em App Router*, corrigido em 16.2.11 —, porque neste repositório o `proxy.ts` **é** o portão de
+  sessão. As pré-condições do aviso (Turbopack e locale único) não se aplicam aqui, então a
+  exploração é improvável; ainda assim o bump é barato e o alvo é o controle mais central.
 
 ## Credencial de terceiro em repouso (ADR 0016)
 
 O refresh token do Google Drive é o único segredo do portal que precisa **voltar em claro** — ele é reapresentado ao provedor a cada sincronização, e por isso o HMAC sob pepper da ADR 0013 não serve aqui. Ele é selado com AES-256-GCM sob `DRIVE_TOKEN_ENCRYPTION_KEY`, que vive só no ambiente e nunca no banco que protege; o dado associado carrega organização e projeto, de modo que um ciphertext copiado para outra linha falha a decifra em vez de sincronizar a pasta errada. Sem a chave configurada, nenhuma conexão do Drive funciona — falha fechada.
 
 O escopo é `drive.readonly` e só ele: se o Google conceder um conjunto diferente, a conexão é recusada sem nada ser gravado. O token não aparece em nenhuma resposta da API nem no `audit_log`. Girar a chave exige passar a anterior em `DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS` — sem essa janela, todo projeto precisa refazer o consentimento.
+
+## O ciclo de vida do documento (ADR 0017)
+
+**Varredura antes de indexar.** O arquivo é varrido entre o storage e o parser, porque extrair
+texto já é abrir os bytes com um analisador — e é ali que um upload malicioso procura superfície.
+ClamAV quando `CLAMAV_HOST` está configurado; sem ele, o veredito é `skipped` e **nunca**
+`clean`: um scanner ausente não afirma que o arquivo está limpo, do mesmo jeito que o assistente
+não responde sem evidência. Arquivo infectado tem o objeto destruído e a linha preservada, para
+a tela explicar e o `audit_log` guardar o rastro. A fronteira é conferida duas vezes: a
+indexação recusa por conta própria o que não passou.
+
+**URL temporária.** O download do documento citado é uma URL assinada de vida curta, emitida
+depois da checagem de associação — a URL não carrega sessão, então o que a contém é o vencimento.
+Documento não varrido, com erro de varredura ou infectado não tem endereço, e a negação é o mesmo
+404 de "não existe": o cliente não fica sabendo que o portal recebeu um arquivo infectado.
+Downloads entram no `audit_log`, como esta seção já exigia.
+
+**Retenção e apagamento.** O prazo é por organização, com padrão explícito — coluna nula
+significa "usa o padrão", nunca "guarda para sempre". O apagamento por organização é um **pedido
+gravado**, confirmado pelo `slug` digitado, cumprido pelo worker sob `portal_system`: nenhuma
+rota HTTP apaga dado. A linha do pedido sobrevive ao expurgo e guarda a contagem do que saiu,
+porque um apagamento sem registro é indistinguível de um acidente.
 
 ## Dados e IA
 

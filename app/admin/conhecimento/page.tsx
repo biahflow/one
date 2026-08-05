@@ -22,7 +22,9 @@ type ApiDocument = {
   title: string;
   mime_type: string | null;
   byte_size: number | null;
-  ingest_state: "pending" | "indexed" | "failed" | "unsupported";
+  ingest_state: "pending" | "indexed" | "failed" | "unsupported" | "rejected";
+  scan_state: "pending" | "clean" | "infected" | "skipped" | "error";
+  scan_error: string | null;
   ingest_error: string | null;
   chunk_count: number;
   indexed_at: string | null;
@@ -99,6 +101,8 @@ export default async function KnowledgeAdminPage({
       mimeType: item.mime_type,
       byteSize: item.byte_size,
       state: item.ingest_state,
+      scanState: item.scan_state,
+      scanError: item.scan_error,
       error: item.ingest_error,
       chunkCount: item.chunk_count,
       indexedAt: item.indexed_at,

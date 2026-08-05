@@ -55,18 +55,37 @@ async function connectAndSync(page: Page) {
     page.getByRole("heading", { name: /O que o assistente pode citar/ }),
   ).toBeVisible();
 
-  // O consentimento: o stub devolve o navegador na hora, com `code` e `state`.
-  await page.getByRole("button", { name: /Conectar Google Drive/ }).click();
-  await page.waitForURL(/\/admin\/conhecimento\?.*drive=connected/);
-  await expect(page.getByText(/Drive conectado/)).toBeVisible();
+  // Idempotente de propósito: os dois testes deste arquivo chamam esta função, e
+  // o que o primeiro faz **persiste** — desconectar revoga e carimba a linha, não
+  // a apaga (ADR 0016). O painel do conector tem três estados, e a função tem de
+  // saber chegar do que encontrar até "sincronizado".
+  const connect = page.getByRole("button", { name: /Conectar Google Drive/ });
+  const choose = page.getByRole("button", { name: /Escolher a pasta|Trocar de pasta/ });
+  const sync = page.getByRole("button", { name: "Sincronizar agora" });
 
-  // A pasta é escolhida num passo separado — só ela é a fronteira.
-  const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
-  await expect(folderRow).toBeVisible({ timeout: 15_000 });
-  await folderRow.getByRole("button", { name: "Autorizar" }).click();
-  await expect(page.getByText(/autorizada/)).toBeVisible();
+  // Espera o painel assentar antes de perguntar em qual estado ele está. Um
+  // `isVisible()` seco responderia "não" para um botão que ainda vai renderizar,
+  // e o teste seguiria pulando justamente o passo que precisava dar.
+  await expect(connect.or(choose).or(sync).first()).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: "Sincronizar agora" }).click();
+  if (await connect.isVisible()) {
+    // O consentimento: o stub devolve o navegador na hora, com `code` e `state`.
+    await connect.click();
+    await page.waitForURL(/\/admin\/conhecimento\?.*drive=connected/);
+    await expect(page.getByText(/Drive conectado/)).toBeVisible();
+  }
+
+  // A pasta é escolhida num passo separado — só ela é a fronteira. Conectar não
+  // autoriza nada, e é isso que o "Pasta não escolhida" da tela quer dizer.
+  if (!(await sync.isVisible())) {
+    if (await choose.isVisible()) await choose.click();
+    const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
+    await expect(folderRow).toBeVisible({ timeout: 15_000 });
+    await folderRow.getByRole("button", { name: "Autorizar" }).click();
+    await expect(page.getByText(/autorizada/)).toBeVisible();
+  }
+
+  await sync.click();
   await expect(page.getByText(/Sincronização na fila/)).toBeVisible();
 
   const contract = page.locator(".member-row", { hasText: "Contrato de suporte" });
@@ -91,10 +110,13 @@ test("a pasta conectada vira citação no chat do cliente", async ({ page, conte
   await page.getByLabel("Pergunta para IA").fill(`Qual é o código interno ${CANARY}?`);
   await page.getByRole("button", { name: "Enviar pergunta" }).click();
 
-  await expect(page.locator(".message-sources")).toContainText(/Contrato de suporte/, {
+  // A **última** resposta, não `.message-sources` solto: a conversa sobrevive ao
+  // reload (ADR 0015), então turnos de execuções anteriores continuam na thread.
+  const answer = page.locator(".message--assistant").last();
+  await expect(answer.locator(".message-sources")).toContainText(/Contrato de suporte/, {
     timeout: 30_000,
   });
-  await expect(page.locator(".chat-messages")).toContainText(CANARY);
+  await expect(answer).toContainText(CANARY);
 });
 
 test("arquivo fora da pasta autorizada nunca entra no índice", async ({ page }) => {

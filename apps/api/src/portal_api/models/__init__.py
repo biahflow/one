@@ -51,6 +51,11 @@ from portal_api.models.project import (
     ProjectPhase,
     ProjectStatus,
 )
+from portal_api.models.retention import (
+    DataErasureRequest,
+    ErasureState,
+    OrganizationRetentionPolicy,
+)
 
 __all__ = [
     "DRIVE_READONLY_SCOPE",
@@ -63,6 +68,7 @@ __all__ = [
     "Conversation",
     "ConversationMessage",
     "ConversationRole",
+    "DataErasureRequest",
     "Decision",
     "DeliverableState",
     "Delivery",
@@ -75,6 +81,7 @@ __all__ = [
     "DocumentOrigin",
     "DocumentSource",
     "DriveSyncState",
+    "ErasureState",
     "Meeting",
     "MemberRole",
     "Membership",
@@ -85,6 +92,7 @@ __all__ = [
     "Notification",
     "NotificationKind",
     "Organization",
+    "OrganizationRetentionPolicy",
     "PendingItem",
     "PendingOrigin",
     "PendingPriority",

@@ -502,3 +502,130 @@ def test_the_email_preference_belongs_to_the_caller(world: World, authenticated)
     assert client.patch(
         "/api/v1/me/preferences", json={"notify_by_email": True}
     ).json() == {"notify_by_email": True}
+
+
+# --- URL temporária do documento (Fase 5, ADR 0017) -------------------------
+
+
+def _document_of(engine: Engine, tenant: Tenant, *, scan_state) -> uuid.UUID:
+    from portal_api.models import Document, DocumentOrigin, DocumentSource
+
+    with Session(engine) as session:
+        record = Document(
+            organization_id=tenant.organization_id,
+            project_id=tenant.project_id,
+            title="Contrato",
+            source=DocumentSource.upload,
+            origin=DocumentOrigin.portal,
+            mime_type="text/plain",
+            scan_state=scan_state,
+        )
+        session.add(record)
+        session.flush()
+        record.storage_key = f"org/{tenant.organization_id}/document/{record.id}/x.txt"
+        session.commit()
+        return record.id
+
+
+def test_a_document_from_another_project_has_no_download_url(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """O caso de BOLA que esta rota introduz, e a razão de ela existir com teste.
+
+    O cliente da Acme conhece um id — de qualquer forma que o tenha conhecido — e
+    pede a URL. A negação é 404 porque a Globex não deve nem confirmar que aquele
+    documento existe.
+    """
+    from portal_api.scanner import ScanState
+
+    document_id = _document_of(migrated_engine, world.globex, scan_state=ScanState.clean)
+    authenticated(world.acme.client)
+
+    response = client.get(f"/api/v1/me/documents/{document_id}/download")
+
+    assert response.status_code == 404
+
+
+def test_an_unscanned_document_has_no_download_url(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """Mesmo dono, mesmo projeto — e ainda assim 404.
+
+    A URL assinada não é apenas um atalho de leitura: ela entrega o arquivo a
+    quem tiver o link, fora da sessão. Emiti-la para o que ninguém varreu seria
+    contornar a fronteira da ADR 0017 pela porta da frente.
+    """
+    from portal_api.scanner import ScanState
+
+    document_id = _document_of(migrated_engine, world.acme, scan_state=ScanState.pending)
+    authenticated(world.acme.client)
+
+    response = client.get(f"/api/v1/me/documents/{document_id}/download")
+
+    assert response.status_code == 404
+
+
+def test_an_infected_document_has_no_download_url(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    from portal_api.scanner import ScanState
+
+    document_id = _document_of(
+        migrated_engine, world.acme, scan_state=ScanState.infected
+    )
+    authenticated(world.acme.client)
+
+    response = client.get(f"/api/v1/me/documents/{document_id}/download")
+
+    # O mesmo 404 dos outros dois: a resposta não distingue "não existe" de "não
+    # passou", e o cliente não fica sabendo que o portal recebeu um arquivo
+    # infectado. Quem precisa saber disso é a administração, e a tela dela diz.
+    assert response.status_code == 404
+
+
+# --- retenção e expurgo (Fase 5, ADR 0017) ----------------------------------
+
+
+def test_a_client_cannot_read_or_set_the_retention_policy(
+    world: World, authenticated
+) -> None:
+    authenticated(world.acme.client)
+    organization_id = world.acme.organization_id
+
+    read = client.get(f"/api/v1/admin/organizations/{organization_id}/retention")
+    write = client.put(
+        f"/api/v1/admin/organizations/{organization_id}/retention",
+        json={"notification_days": 1},
+    )
+
+    assert read.status_code == 404
+    assert write.status_code == 404
+
+
+def test_a_client_cannot_request_an_erasure(world: World, authenticated) -> None:
+    """A ação mais destrutiva do portal, pedida por quem não a administra."""
+    authenticated(world.acme.client)
+
+    response = client.post(
+        f"/api/v1/admin/organizations/{world.acme.organization_id}/erasure",
+        json={"reason": "pedido do titular", "confirm_slug": "qualquer-coisa"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_staff_cannot_reach_another_organizations_retention(
+    world: World, authenticated
+) -> None:
+    """O `internal_admin` da Acme não administra a Globex.
+
+    É a mesma fronteira do resto de `admin.py`, e ela precisa valer também para a
+    primeira rota cujo escopo é a organização inteira.
+    """
+    authenticated(world.staff)
+
+    response = client.get(
+        f"/api/v1/admin/organizations/{world.globex.organization_id}/retention"
+    )
+
+    assert response.status_code == 404

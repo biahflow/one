@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
+from portal_api import admin as admin_module
 from portal_api.auth import bearer_principal
 from portal_api.grant_access import BOOTSTRAP_ROLES, GrantRefused, grant, main
 from portal_api.main import app
@@ -90,6 +91,23 @@ def orphan(migrated_engine: Engine) -> Iterator[Orphan]:
 
 
 @pytest.fixture
+def keycloak(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dubla o provedor de identidade, como `test_admin_endpoints.py`.
+
+    `GET /admin/projects/{id}/members` pergunta ao realm quem ainda não
+    confirmou o e-mail, para marcar "convite pendente". Sem dublar, este teste
+    passa na máquina de quem tem a pilha no ar e falha no CI com
+    `ConnectError` — que foi exatamente o que aconteceu quando ele foi escrito.
+    """
+
+    class Realm:
+        def unverified_emails(self) -> set[str]:
+            return set()
+
+    monkeypatch.setattr(admin_module, "KeycloakAdmin", lambda _settings: Realm())
+
+
+@pytest.fixture
 def authenticated() -> Iterator[Callable[[Orphan], None]]:
     def _as(who: Orphan) -> None:
         app.dependency_overrides[bearer_principal] = lambda: Principal(
@@ -138,7 +156,7 @@ def test_it_grants_the_first_administrator_of_an_orphan_organization(
 
 
 def test_after_the_bootstrap_the_admin_screen_answers(
-    orphan: Orphan, authenticated, migrated_engine: Engine
+    orphan: Orphan, authenticated, keycloak, migrated_engine: Engine
 ) -> None:
     """A asserção que prova que o bootstrap serviu para alguma coisa.
 

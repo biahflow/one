@@ -121,12 +121,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      # `contents: read` precisa estar aqui, e não só no topo do arquivo: um
-      # bloco `permissions` de job **substitui** o global em vez de somar a ele,
-      # então declarar apenas `security-events` zerava o resto — e o
-      # `actions/checkout` passava a falhar com "repository not found", que num
-      # repositório privado é o que o GitHub responde para quem não pode lê-lo.
+      # As três, e nenhuma é dispensável: um bloco `permissions` de job
+      # **substitui** o global em vez de somar a ele, então declarar só
+      # `security-events` zerava o resto. Cada uma some de um jeito diferente,
+      # e é por isso que vale nomeá-las:
+      #
+      # - sem `contents`, o `actions/checkout` responde "repository not found" —
+      #   que num repositório privado é o que o GitHub diz a quem não pode ler;
+      # - sem `actions`, o `analyze` falha com "Resource not accessible by
+      #   integration" ao consultar o próprio run, e é exigência documentada do
+      #   CodeQL em repositório privado;
+      # - `security-events` é o envio do SARIF.
       contents: read
+      actions: read
       security-events: write
     steps:
       - uses: actions/checkout@v4

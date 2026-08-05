@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 
 import { expect, test, type Page } from "@playwright/test";
+
+import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
 
 /**
  * A conversa que sobrevive ao navegador (Fase 4, ADR 0015).
@@ -16,15 +17,6 @@ const CLIENT = { username: "marina.farias", password: "portal_local_only" };
 // Membro interno do mesmo projeto — quem *mais* teria motivo para ver a conversa
 // do cliente, e justamente por isso o caso que vale testar.
 const INTERNAL = { username: "rafael.costa", password: "portal_local_only" };
-
-function dockerAvailable(): boolean {
-  try {
-    execFileSync("docker", ["compose", "ps", "-q", "api"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function signIn(page: Page, user: { username: string; password: string }) {
   // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
@@ -51,7 +43,7 @@ async function ask(page: Page, question: string) {
 }
 
 test.beforeEach(async ({ context }) => {
-  test.skip(!dockerAvailable(), "Precisa da stack local no ar (docker compose up)");
+  test.skip(stackIsMissing(serviceIsUp("api")), STACK_REASON);
   // O Keycloak mantém sessão SSO no navegador: sem limpar, `signIn` nem chega ao
   // formulário e o teste roda como quem entrou no spec anterior. Aqui isso seria
   // fatal — a conversa tem dono, e o dono errado invalida as duas asserções.

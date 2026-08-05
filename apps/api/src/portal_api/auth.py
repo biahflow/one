@@ -17,11 +17,28 @@ from typing import Annotated, Any
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPBearer
 
 from portal_api.config import Settings, get_settings
 from portal_api.principal import Principal
 
 logger = logging.getLogger(__name__)
+
+#: Existe **só para o esquema** (ADR 0020): é o que faz o OpenAPI publicar um
+#: ``securityScheme`` e o `/docs` mostrar o cadeado em toda rota que depende de
+#: ``CurrentPrincipal`` — as treze de `main.py` e as vinte e três de `admin.py`,
+#: sem tocar em nenhuma delas.
+#:
+#: ``auto_error=False`` é o que o mantém decorativo: ele nunca levanta, nunca
+#: decide nada e nunca vê o token. Quem recusa continua sendo ``_bearer_token``
+#: logo abaixo, com o 401 opaco de sempre. Trocar a validação por esta classe
+#: mudaria a resposta — o ``HTTPBearer`` de erro automático responde 403 num
+#: header ausente, e neste projeto 403 não existe.
+_bearer_scheme = HTTPBearer(
+    scheme_name="OIDCBearer",
+    auto_error=False,
+    description="Access token do OIDC, encaminhado pelo BFF (ADR 0010).",
+)
 
 # Claims without which the token is not evaluable at all. `aud` and `iss` are
 # also checked by value below; requiring them here means a token that simply
@@ -96,12 +113,19 @@ def _principal(claims: dict[str, Any], settings: Settings) -> Principal:
     )
 
 
-def bearer_principal(request: Request) -> Principal:
+def bearer_principal(
+    request: Request, _scheme: object = Depends(_bearer_scheme)
+) -> Principal:
     """The verified caller, or 401.
 
     ``get_settings()`` is called here rather than captured at import time so the
     tests can repoint the issuer/audience with a monkeypatch — ``main.py`` binds
     ``settings`` at import and that copy would be stale.
+
+    ``_scheme`` é ignorado de propósito: ele está na assinatura para o FastAPI
+    registrar o esquema de segurança no OpenAPI (ver ``_bearer_scheme``). O
+    token continua saindo do header por ``_bearer_token``, que é o único que
+    decide.
     """
     settings = get_settings()
     return _principal(_claims(_bearer_token(request), settings), settings)

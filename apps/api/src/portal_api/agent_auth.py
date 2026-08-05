@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request, status
+from fastapi.security import APIKeyHeader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -41,6 +42,21 @@ from portal_api.models import SCOPE_EVENTS_WRITE, AgentApiKey
 logger = logging.getLogger(__name__)
 
 HEADER = "X-Agent-Key"
+#: Como ``auth._bearer_scheme``, existe só para o esquema (ADR 0020) — mas aqui
+#: ele é o que faz o OpenAPI dizer o que `docs/api-contracts.md` já dizia em
+#: prosa: esta é a **única** rota autenticada por chave, e ela não aceita o
+#: `Authorization: Bearer` humano. Mora neste arquivo pelo mesmo motivo que o
+#: resto: "o que autentica um agente" cabe num lugar só.
+#: ``scheme_name`` explícito porque o padrão é o nome da classe, e duas
+#: ``APIKeyHeader`` diferentes colapsariam numa entrada só do esquema — a chave
+#: do agente e a assinatura do webhook viram a mesma coisa, que é exatamente a
+#: confusão que esta fatia existe para desfazer.
+SCHEME = APIKeyHeader(
+    name=HEADER,
+    scheme_name="AgentKey",
+    auto_error=False,
+    description="Chave do agente, emitida por projeto em /api/v1/admin.",
+)
 #: Prefixo do formato, para uma chave ser reconhecível num log ou num alerta de
 #: segredo vazado sem precisar de contexto.
 KEY_PREFIX = "plk"

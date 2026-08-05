@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { STACK_REASON, stackIsMissing } from "./stack";
+
 /**
  * A central de notificações ponta a ponta (Fase 2, ADR 0012).
  *
@@ -87,7 +89,7 @@ let lastChange: string | null = null;
 
 test.beforeEach(() => {
   lastChange = syncSomethingNew();
-  test.skip(lastChange === null, "Precisa da stack local no ar (docker compose up)");
+  test.skip(stackIsMissing(lastChange !== null), STACK_REASON);
 });
 
 test("uma mudança no Biahflow vira aviso no sino e e-mail na caixa", async ({ page }) => {

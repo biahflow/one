@@ -233,7 +233,33 @@ atalho **não** entraram no índice.*
       perde a RLS devolve um portal onde todo cliente vê todo projeto, e nada na
       tela denuncia. E, porque a linha do pedido de expurgo sobrevive ao próprio
       expurgo (ADR 0017), o restore consegue listar o que ele mesmo desfez.)*
-- [ ] Cobrir testes de integração com serviços reais, contratos OpenAPI, Playwright E2E, carga e cenários adversariais de IA.
+- [x] Cobrir contratos OpenAPI, testes de integração com serviços reais e Playwright E2E. *(ADR
+      0020, FDD 014. Pela quarta vez na Fase 5 a fatia implementou uma promessa que os documentos
+      davam como cumprida — e desta vez o documento não estava vazio, estava **errado**: o
+      `api-contracts.md` encerrava dizendo que "contratos completos serão publicados
+      automaticamente pelo OpenAPI do FastAPI" enquanto as dezesseis rotas de cliente devolviam
+      `dict` cru e publicavam esquema vazio, e a mesma página documentava camelCase para uma API
+      que responde snake_case. `responses=` não aparecia uma vez no repositório, então o "404,
+      nunca 403" — a regra mais repetida do projeto — não existia em lugar que uma ferramenta
+      pudesse ler. A decisão que carrega o resto é `extra="forbid"`: o padrão do `response_model`
+      **filtra em silêncio** o campo que o modelo não declara, e tipar as respostas *acrescentaria*
+      esse defeito ao repositório — um dado sumindo da tela com a rota respondendo 200. O esquema
+      virou artefato versionado com gate de deriva, como o `alembic check`, e o teste afirma as
+      regras sobre toda rota, inclusive a que ainda não existe. A outra metade foi o verde do CI:
+      as três asserções que dão sentido ao backup (ADR 0019) **pulavam em silêncio a cada push**
+      por falta de duas variáveis, e o `e2e` era `continue-on-error` com quatro specs que se
+      auto-pulavam. Hoje um pulo que o CI deveria cobrir **falha**, o par backup/restore tem job
+      próprio — que foi o que revelou as outras quatro senhas e o MinIO que ninguém sabia que
+      faltavam — e o e2e pode reprovar. De quebra, a fixture do teste de SSR do web deixou de ser
+      livre para mentir.)*
+- [ ] Cobrir carga e cenários adversariais de IA. *Carga espera o ambiente de homologação: sem
+      orçamento declarado, um número de carga contra o `docker compose` mede o laptop de quem
+      roda. Os adversariais de IA são fatia própria, e há defeito esperando por ela — o
+      `prompt-policy.md` diz que prompts são versionados e não existe `PROMPT_VERSION` nem carimbo
+      em `conversation_message`, de modo que uma resposta guardada não sabe qual prompt a
+      produziu; nenhum teste toca o `AnthropicResponder` nem o `SYSTEM_PROMPT`, então as catorze
+      evals rodam no respondedor offline, onde a injeção é tautológica por construção; e o
+      `/api/v1/chat` não tem limite de taxa embora cada lacuna grave uma pendência.*
 - [ ] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS, observabilidade e plano de incidentes.
 - [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *O primeiro
       a ler é o `next` — GHSA-6gpp-xcg3-4w24, middleware/proxy bypass em App Router, corrigido em
@@ -245,10 +271,12 @@ atalho **não** entraram no índice.*
 *Parcial: o ciclo de vida do documento fechou (`test_document_scan.py`, `test_retention.py` e o
 EICAR barrado no navegador em `tests/e2e/documents.spec.ts`), a telemetria também
 (`test_telemetry.py`, e o `X-Request-ID` exigido pelo stub em `tests/rendered-html.test.mjs`),
-e o backup passou a ser restaurável com prova (`test_backup_restore.py` roda os dois scripts de
-verdade contra um banco descartável e confere policies, GRANTs de coluna e isolamento). Faltam
-contratos OpenAPI e carga, o ambiente de homologação, e um job de CI que exercite o par
-backup/restore a cada push — hoje ele só roda quando alguém pede.*
+o backup passou a ser restaurável com prova (`test_backup_restore.py` roda os dois scripts de
+verdade contra um banco descartável e confere policies, GRANTs de coluna e isolamento) — e agora
+ele roda **a cada push**, no job `backup-restore`, com as três asserções que vinham pulando em
+silêncio. O contrato passou a existir como artefato (`docs/api/openapi.json`,
+`test_openapi_contract.py`, `tests/api-contract.test.mjs`) e o `e2e` passou a poder reprovar.
+Faltam carga e os adversariais de IA, e o ambiente de homologação.*
 
 ## Fase 6 — Jornada da transformação e experiência (metodologia)
 

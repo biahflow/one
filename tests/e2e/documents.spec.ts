@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 
 import { expect, test, type Page } from "@playwright/test";
+
+import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
 
 /**
  * Conhecimento do projeto ponta a ponta (Fase 4, ADR 0014).
@@ -17,15 +18,6 @@ import { expect, test, type Page } from "@playwright/test";
 
 const ADMIN = { username: "helena.dias", password: "portal_local_only" };
 const CLIENT = { username: "marina.farias", password: "portal_local_only" };
-
-function dockerAvailable(): boolean {
-  try {
-    execFileSync("docker", ["compose", "ps", "-q", "api"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function signIn(page: Page, user: { username: string; password: string }) {
   // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
@@ -46,7 +38,7 @@ async function signIn(page: Page, user: { username: string; password: string }) 
 }
 
 test.beforeEach(() => {
-  test.skip(!dockerAvailable(), "Precisa da stack local no ar (docker compose up)");
+  test.skip(stackIsMissing(serviceIsUp("api")), STACK_REASON);
 });
 
 test("o documento enviado na administração vira citação no chat do cliente", async ({
@@ -82,10 +74,13 @@ test("o documento enviado na administração vira citação no chat do cliente",
   const row = page.locator(".member-row", { hasText: title });
   // O selo de estado, e não a frase "indexado em …" da linha de baixo.
   const badge = row.locator(".state", { hasText: "Indexado" });
+  // 40s, e não os 60s de antes: com a suíte inteira rodando, o worker está
+  // ocupado com o que os outros specs enfileiraram, e esta espera passava a
+  // consumir o orçamento inteiro do teste (ver `playwright.config.ts`).
   await expect(async () => {
     await page.reload();
     await expect(badge).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 60_000 });
+  }).toPass({ timeout: 40_000 });
   await expect(row).toContainText(/trecho/);
 
   // O cliente pergunta e recebe a citação daquele documento.

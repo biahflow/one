@@ -8,7 +8,16 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 60_000,
+  // 120s, e o número tem uma razão precisa: três specs esperam um **pipeline
+  // assíncrono de verdade** (upload → varredura → índice, sync do Drive, evento
+  // do agente → apuração), com esperas internas de 40s. Com o orçamento do
+  // teste igual à sua própria espera mais longa — que era o caso em 60s — o
+  // teste morre *dentro* da espera e a falha aparece no passo seguinte, quase
+  // sempre um `signIn`. Foi o que fez a suíte inteira parecer ter sessão
+  // vazando entre specs: rodando sozinho, o mesmo arquivo levava 5s.
+  //
+  // A regra que fica: **espera interna nunca passa de metade do orçamento.**
+  timeout: 120_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   // Um worker, e não é conservadorismo: a suíte inteira dirige **uma** stack —

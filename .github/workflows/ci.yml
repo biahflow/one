@@ -11,6 +11,10 @@ permissions:
 jobs:
   web-quality:
     runs-on: ubuntu-latest
+    # Sem teto, um processo órfão segura o job até as 6h do runner — foi o que
+    # aconteceu nos merges da Fase 3 e da Fase 4. E o run só publica log quando
+    # termina, então o job travado esconde a causa da falha dos outros.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +27,7 @@ jobs:
 
   api-quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -67,6 +72,7 @@ jobs:
 
   local-stack:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
@@ -77,6 +83,7 @@ jobs:
   # now, while the stack's boot time settles in CI.
   e2e-login:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -105,13 +112,21 @@ jobs:
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
 
   codeql:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
+      # `contents: read` precisa estar aqui, e não só no topo do arquivo: um
+      # bloco `permissions` de job **substitui** o global em vez de somar a ele,
+      # então declarar apenas `security-events` zerava o resto — e o
+      # `actions/checkout` passava a falhar com "repository not found", que num
+      # repositório privado é o que o GitHub responde para quem não pode lê-lo.
+      contents: read
       security-events: write
     steps:
       - uses: actions/checkout@v4

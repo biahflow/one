@@ -75,6 +75,14 @@ async function startServer() {
   const child = spawn("npx", ["next", "start", "-p", String(port)], {
     cwd: projectRoot,
     stdio: ["ignore", "pipe", "pipe"],
+    // Grupo de processos próprio, para o teardown poder derrubar a árvore
+    // inteira. `npx` é só um invólucro: ele lança `next`, que por sua vez
+    // levanta o `next-server`. Matar o filho direto deixava o neto vivo, e o
+    // runner do GitHub espera por processos órfãos — foi assim que o job
+    // `web-quality` ficou 6 horas de pé nos merges das Fases 3 e 4, até o teto
+    // do runner cancelá-lo. Localmente passava despercebido porque a shell
+    // interativa limpa o resto ao sair.
+    detached: true,
     // AUTH_SECRET is what decrypts the session cookie; without it every request
     // to a gated route is a 500 instead of the redirect we are asserting.
     env: {
@@ -126,7 +134,18 @@ async function render(path = "/", init = {}) {
 }
 
 after(async () => {
-  (await serverPromise)?.child.kill("SIGTERM");
+  const started = await serverPromise;
+  const pid = started?.child.pid;
+  if (pid) {
+    try {
+      // O PID negativo é o **grupo**, não o processo — é o que alcança o
+      // `next-server` que o `npx` lançou por baixo. Sem isto o `npm test`
+      // termina e o servidor continua ouvindo a porta.
+      process.kill(-pid, "SIGTERM");
+    } catch {
+      // Já morreu, ou nunca chegou a subir: nos dois casos não há o que matar.
+    }
+  }
   apiStub?.server.close();
 });
 

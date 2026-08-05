@@ -17,6 +17,8 @@ const SESSION_COOKIE = "authjs.session-token";
 /** Boot `next start` once for the whole file and reuse it across tests. */
 let serverPromise;
 let apiStub;
+/** `X-Request-ID` de cada chamada que o BFF fez à API (ADR 0018). */
+const seenTraceIds = [];
 
 /**
  * Stands in for the FastAPI. Lets the SSR path be exercised for real — the same
@@ -24,6 +26,7 @@ let apiStub;
  */
 function startApiStub() {
   const server = createServer((request, response) => {
+    seenTraceIds.push(request.headers["x-request-id"]);
     const body = request.url?.startsWith("/api/v1/me/dashboard")
       ? DASHBOARD
       : request.url?.startsWith("/api/v1/me/notifications")
@@ -39,6 +42,13 @@ function startApiStub() {
     // makes the assertions below prove the token travelled.
     if (!(request.headers.authorization ?? "").startsWith("Bearer ")) {
       response.writeHead(401, { "content-type": "application/json" }).end("{}");
+      return;
+    }
+    // E o `trace_id` (ADR 0018), pela mesma razão e do mesmo jeito: recusar
+    // aqui é o que faz a asserção provar que o id **viajou**, em vez de provar
+    // que `authorizationHeader()` tem uma chave a mais no objeto.
+    if (!request.headers["x-request-id"]) {
+      response.writeHead(400, { "content-type": "application/json" }).end("{}");
       return;
     }
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body));
@@ -232,6 +242,45 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.match(html, /aria-label="Notificações \(2 não lidas\)"/);
   assert.doesNotMatch(html, /Your site is taking shape/);
   assert.doesNotMatch(html, /codex-preview/);
+});
+
+/**
+ * Renderiza e devolve os `X-Request-ID` que a API viu (ADR 0018).
+ *
+ * O `await response.text()` não é decoração: o SSR do Next é **streaming**, os
+ * headers da resposta chegam antes de `app/page.tsx` terminar suas `fetch()`, e
+ * medir nesse ponto conta zero chamadas. Ler o corpo até o fim é o que garante
+ * que o render acabou.
+ */
+async function traceIdsSeenWhileRendering(init) {
+  seenTraceIds.length = 0;
+  const response = await render("/", init);
+  assert.equal(response.status, 200);
+  await response.text();
+  return seenTraceIds.filter(Boolean);
+}
+
+test("carries one trace id from the SSR to every API call", async () => {
+  // O stub responde 400 sem `X-Request-ID`, então um 200 já prova que o header
+  // viajou. O que este teste acrescenta é a **unicidade**: `app/page.tsx` faz
+  // três `fetch()` em paralelo, e as três têm que sair com o mesmo id — é para
+  // isso que `traceId()` é memoizado com o `cache()` do React. Uma variável de
+  // módulo daria o mesmo id a pessoas diferentes; um `randomUUID()` por chamada
+  // daria três ids para uma tela só. As duas falham aqui.
+  const ids = await traceIdsSeenWhileRendering({ headers: { cookie: await sessionCookie() } });
+
+  assert.ok(ids.length >= 3, `esperava ao menos 3 chamadas, vi ${ids.length}`);
+  assert.equal(new Set(ids).size, 1, `esperava um id só, vi ${[...new Set(ids)].join(", ")}`);
+});
+
+test("honours a trace id supplied by whoever called the BFF", async () => {
+  // Para um gateway ou balanceador poder ser o dono do identificador no dia em
+  // que houver um, sem o portal cunhar um segundo para a mesma requisição.
+  const ids = await traceIdsSeenWhileRendering({
+    headers: { cookie: await sessionCookie(), "x-request-id": "vindo-de-fora" },
+  });
+
+  assert.deepEqual([...new Set(ids)], ["vindo-de-fora"]);
 });
 
 test("keeps product metadata and avoids disposable starter artifacts", async () => {

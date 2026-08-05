@@ -21,7 +21,13 @@ import portal_api.models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # `disable_existing_loggers=False` **não** é cosmético (ADR 0018). O padrão
+    # do `fileConfig` é `True`, e ele marca `disabled` em todo logger já criado
+    # que o `alembic.ini` não nomeia — ou seja, em todos os `portal_api.*`.
+    # Quem roda a migração no mesmo processo em que a aplicação vive (o
+    # `conftest.py` da suíte faz isso antes dos testes) ficava sem uma linha de
+    # log depois dela, e a telemetria desta fase seria a primeira vítima.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

@@ -1,8 +1,18 @@
 # Observabilidade
 
-Cada requisição recebe `trace_id`; jobs propagam o mesmo identificador. *(Pendente: o
-`trace_id` está desenhado e ainda não implementado — é item da Fase 5, junto de alertas e
-backup testado.)* Telemetria não inclui texto bruto de documentos ou segredos.
+Cada requisição recebe `trace_id`; jobs propagam o mesmo identificador (ADR 0018). Telemetria
+não inclui texto bruto de documentos ou segredos.
+
+O id nasce no BFF (`app/lib/trace.ts`), viaja em `X-Request-ID` — que a API ecoa em toda
+resposta — e atravessa a fila como **header da mensagem**, nunca como argumento de task. Uma
+task nascida do beat cunha o próprio e o marca `root=beat`. O mesmo id é carimbado em
+`audit_log.data`, e é isso que faz a primeira linha do `incident-response.md` ser executável:
+da ação registrada se chega ao log, e do log se volta à ação.
+
+O log é uma linha JSON por evento (`LOG_FORMAT=text` dá o formato legível do dia a dia, com os
+mesmos campos). O formatter promove os campos de `extra` e **redige** os que parecem segredo,
+com `key_prefix` numa allowlist — sem ela o runbook da API de eventos voltaria a mandar ler um
+campo que não sai. A lista de eventos, com limiar e destino, está em `runbooks/alerts.md`.
 
 Indicadores: latência e erro de API, fila, sincronização Drive, indexação, falha de conectores, custo/latência de IA, cobertura de citações, taxa de lacuna, pendências abertas/resolvidas e anomalias de autorização.
 

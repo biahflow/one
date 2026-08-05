@@ -63,6 +63,7 @@ from portal_api.models import (
 )
 from portal_api.principal import Principal
 from portal_api.scanner import ScanState
+from portal_api.telemetry import audit_data
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,7 @@ def _record(
             action=action,
             entity_type="membership",
             entity_id=membership_id,
-            data={"project_id": str(project.id)},
+            data=audit_data(project_id=str(project.id)),
         )
     )
 
@@ -377,7 +378,7 @@ def _audit(
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            data=data or {},
+            data=audit_data(**(data or {})),
         )
     )
 
@@ -1460,11 +1461,11 @@ def set_retention_policy(
                 action="retention.policy_updated",
                 entity_type="organization_retention_policy",
                 entity_id=record.id,
-                data={
-                    "notification_days": payload.notification_days,
-                    "agent_event_days": payload.agent_event_days,
-                    "conversation_days": payload.conversation_days,
-                },
+                data=audit_data(
+                    notification_days=payload.notification_days,
+                    agent_event_days=payload.agent_event_days,
+                    conversation_days=payload.conversation_days,
+                ),
             )
         )
         return _policy_out(organization.id, record)
@@ -1527,7 +1528,7 @@ def request_erasure(
                 action="retention.erasure_requested",
                 entity_type="data_erasure_request",
                 entity_id=record.id,
-                data={"reason": payload.reason.strip()[:200]},
+                data=audit_data(reason=payload.reason.strip()[:200]),
             )
         )
         response = _erasure_out(record)

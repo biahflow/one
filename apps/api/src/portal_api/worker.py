@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from celery import Celery
+from celery.signals import before_task_publish, setup_logging, task_postrun, task_prerun
 from sqlalchemy import select, text, update
 
 from portal_api import (
@@ -41,10 +42,18 @@ from portal_api.models import (
 )
 from portal_api.repositories import DocumentChunkRepository, TenantContext
 from portal_api.scanner import ScanState
+from portal_api.telemetry import (
+    TRACE_HEADER,
+    bind_trace_id,
+    configure_logging,
+    current_trace_id,
+    new_trace_id,
+)
 
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+configure_logging()
 celery_app = Celery("portal_api", broker=settings.redis_url, backend=settings.redis_url)
 
 # O primeiro agendador do projeto (ADR 0016). A ADR 0005 já reivindicava o sync do
@@ -73,6 +82,79 @@ if settings.retention_enabled:
         "task": "portal_api.run_erasure_requests",
         "schedule": timedelta(seconds=settings.retention_interval_seconds),
     }
+
+
+# --------------------------------------------------------------------------- #
+# O `trace_id` atravessa a fila (Fase 5, ADR 0018)
+#
+# Em **header da mensagem**, nunca em argumento da task: mudar assinatura
+# obrigaria a mexer em cada `.delay()` do repositório e, pior, uma mensagem
+# publicada antes de um deploy chegaria a um worker que espera um parâmetro a
+# mais. O header é ignorado por quem não o conhece.
+# --------------------------------------------------------------------------- #
+
+
+@setup_logging.connect
+def _keep_our_logging(**_kwargs) -> None:
+    """Impede o Celery de reconfigurar o `logging` por cima do nosso.
+
+    Não é preferência de formato: o `setup_logging_subsystem` do Celery aplica
+    um `dictConfig` com `disable_existing_loggers`, o que marca
+    ``logger.disabled = True`` em **todo** logger `portal_api.*` já criado. O
+    worker então rodaria sem uma linha de log nossa — exatamente a telemetria
+    que esta fase existe para ter. Ter um receptor conectado a este sinal faz o
+    Celery pular a configuração inteira, que é o contrato documentado dele; o
+    `configure_logging()` do topo do módulo continua sendo quem configura.
+    """
+    configure_logging()
+
+
+@before_task_publish.connect
+def _publish_trace_id(headers=None, **_kwargs) -> None:
+    """Carimba na mensagem o id da requisição que a originou.
+
+    Roda no processo de **quem publica** — a API, no meio de um request — e por
+    isso `current_trace_id()` ainda é o da requisição. Vazio significa que a
+    publicação não veio de uma (um comando de CLI, um teste): nesse caso não
+    inventa um aqui, porque quem consumir cunha o próprio e a alternativa seria
+    dois ids para a mesma execução.
+    """
+    trace_id = current_trace_id()
+    if trace_id and headers is not None:
+        headers[TRACE_HEADER] = trace_id
+
+
+@task_prerun.connect
+def _bind_task_trace_id(task=None, **_kwargs) -> None:
+    """Liga o id no contexto do worker antes do corpo da task rodar.
+
+    Sem pai — as três tasks do beat — cunha um e o marca como raiz: um tick
+    agendado não continua a história de ninguém, mas ainda precisa ser
+    encontrável por um identificador só.
+    """
+    request = getattr(task, "request", None)
+    inherited = None
+    if request is not None:
+        # `.get()` porque o Context do Celery devolve None para chave ausente em
+        # vez de levantar, e um header inexistente é o caso normal do beat.
+        inherited = (getattr(request, "headers", None) or {}).get(TRACE_HEADER)
+    trace_id = bind_trace_id(inherited or new_trace_id())
+    logger.info(
+        "task.started",
+        extra={
+            "task": getattr(task, "name", ""),
+            "root": "beat" if not inherited else "request",
+            "trace_id": trace_id,
+        },
+    )
+
+
+@task_postrun.connect
+def _log_task_finished(task=None, state=None, **_kwargs) -> None:
+    logger.info(
+        "task.finished",
+        extra={"task": getattr(task, "name", ""), "status": state or "UNKNOWN"},
+    )
 
 
 #: Os dois vereditos que autorizam a indexação. ``skipped`` entra porque a stack
@@ -121,6 +203,21 @@ def scan_document(document_id: str) -> dict[str, object]:
         if verdict.state is ScanState.infected:
             document.ingest_state = DocumentIngestState.rejected
             document.ingest_error = f"Barrado pela varredura: {verdict.signature}"
+            # O único evento do portal que acorda alguém por uma **ocorrência**,
+            # e não por uma taxa (`docs/runbooks/alerts.md`). A contenção já
+            # aconteceu logo abaixo; o alerta existe para avisar o tenant, que é
+            # a parte que nenhum código faz sozinho. Sem o nome do arquivo: o
+            # que interessa é qual organização, e `data-classification.md` não
+            # quer conteúdo de cliente no log.
+            logger.warning(
+                "document.infected",
+                extra={
+                    "document_id": document_id,
+                    "organization_id": str(document.organization_id),
+                    "project_id": str(document.project_id),
+                    "signature": verdict.signature,
+                },
+            )
             storage_key = document.storage_key
             # A chave sai da linha antes do commit: o objeto vai embora logo
             # abaixo, e um `storage_key` apontando para o que não existe faria a
@@ -136,7 +233,10 @@ def scan_document(document_id: str) -> dict[str, object]:
             # A linha já diz `rejected` e o arquivo já não é alcançável por
             # nenhuma rota. Objeto órfão é trabalho da retenção, não motivo para
             # repetir a varredura.
-            logger.warning("Objeto infectado %s não removido do storage", storage_key)
+            logger.warning(
+                "document.infected_object_kept",
+                extra={"document_id": document_id, "storage_key": storage_key},
+            )
         return {"status": ScanState.infected.value}
 
     if verdict.state in _SCAN_ALLOWS_INDEX:
@@ -208,7 +308,7 @@ def ingest_document(document_id: str) -> dict[str, object]:
         try:
             vectors = embedder.embed_documents([chunk.text for chunk in chunks])
         except Exception as exc:  # provedor fora do ar: o documento espera
-            logger.exception("Falha ao gerar embeddings do documento %s", document_id)
+            logger.exception("embedding.failed", extra={"document_id": document_id})
             return _fail(document, DocumentIngestState.failed, f"Embeddings: {exc}")
 
         ctx = TenantContext(
@@ -403,6 +503,19 @@ def _fail_drive_sync(connection_id: uuid.UUID, reason: str, *, disable: bool) ->
             # Pausa sem desconectar: o consentimento fica na linha, e reconectar é
             # uma ação da tela — não algo que o worker decide sozinho.
             connection.enabled = False
+        # A linha da conexão continua sendo a fonte para a tela
+        # (`observability.md`); o evento existe para o alerta, que não consulta
+        # o banco. `disable` é o campo que separa "reconsentir" de "tentar de
+        # novo" — os dois têm destinos diferentes em `alerts.md`.
+        logger.warning(
+            "drive.sync_failed",
+            extra={
+                "connection_id": str(connection_id),
+                "project_id": str(connection.project_id),
+                "disable": disable,
+                "reason": reason[:200],
+            },
+        )
 
 
 def queue_drive_sync(connection_id: str) -> None:
@@ -414,7 +527,10 @@ def queue_drive_sync(connection_id: str) -> None:
     try:
         sync_drive_project.delay(connection_id)
     except Exception:
-        logger.warning("Não foi possível enfileirar o sync do Drive %s", connection_id)
+        logger.warning(
+            "queue.unavailable",
+            extra={"task": "sync_drive_connection", "connection_id": connection_id},
+        )
 
 
 def _fail(document: Document, state: DocumentIngestState, reason: str) -> dict[str, object]:
@@ -451,7 +567,9 @@ def purge_expired_data() -> dict[str, object]:
             with get_session(role=DbRole.system) as session:
                 outcome = retention.purge_expired(session, organization_id, current)
         except Exception:
-            logger.exception("Falha ao podar a organização %s", organization_id)
+            logger.exception(
+                "retention.purge_failed", extra={"organization_id": str(organization_id)}
+            )
             continue
         for table, count in outcome.removed.items():
             totals[table] = totals.get(table, 0) + count
@@ -530,7 +648,9 @@ def _run_erasure(request_id: uuid.UUID) -> bool:
             if failed is not None:
                 failed.state = ErasureState.failed
                 failed.error = str(exc)[:500]
-        logger.exception("Expurgo da organização %s falhou no storage", organization_id)
+        logger.exception(
+            "erasure.storage_failed", extra={"organization_id": str(organization_id)}
+        )
         return False
 
     with get_session(role=DbRole.system) as session:
@@ -615,7 +735,7 @@ def send_project_digests(project_id: str) -> dict[str, int]:
                 logger.info("E-mail das notificações desligado; nada enviado")
                 return {"sent": sent, "notifications": len(pending)}
             except Exception:  # SMTP fora do ar: tenta de novo no próximo sync
-                logger.exception("Falha ao enviar o resumo para %s", user_id)
+                logger.exception("digest.send_failed", extra={"user_id": str(user_id)})
                 continue
             _stamp(items, now)
             sent += 1
@@ -661,7 +781,10 @@ def queue_project_digests(project_id: str) -> None:
     try:
         send_project_digests.delay(project_id)
     except Exception:  # broker fora do ar
-        logger.warning("Não foi possível enfileirar o resumo do projeto %s", project_id)
+        logger.warning(
+            "queue.unavailable",
+            extra={"task": "send_project_digests", "project_id": project_id},
+        )
 
 
 def queue_pending_notification(project_id: str, pending_id: str) -> None:
@@ -669,7 +792,10 @@ def queue_pending_notification(project_id: str, pending_id: str) -> None:
     try:
         notify_pending_created.delay(project_id, pending_id)
     except Exception:
-        logger.warning("Não foi possível enfileirar o aviso da pendência %s", pending_id)
+        logger.warning(
+            "queue.unavailable",
+            extra={"task": "notify_pending_created", "pending_id": pending_id},
+        )
 
 
 def queue_erasure_requests() -> None:
@@ -682,7 +808,7 @@ def queue_erasure_requests() -> None:
     try:
         run_erasure_requests.delay()
     except Exception:
-        logger.warning("Não foi possível enfileirar os pedidos de expurgo")
+        logger.warning("queue.unavailable", extra={"task": "run_erasure_requests"})
 
 
 def queue_document_scan(document_id: str) -> None:
@@ -702,7 +828,10 @@ def queue_document_scan(document_id: str) -> None:
     try:
         scan_document.delay(document_id)
     except Exception:
-        logger.warning("Não foi possível enfileirar a varredura do documento %s", document_id)
+        logger.warning(
+            "queue.unavailable",
+            extra={"task": "scan_document", "document_id": document_id},
+        )
 
 
 def queue_document_ingestion(document_id: str) -> None:
@@ -715,7 +844,10 @@ def queue_document_ingestion(document_id: str) -> None:
     try:
         ingest_document.delay(document_id)
     except Exception:
-        logger.warning("Não foi possível enfileirar a ingestão do documento %s", document_id)
+        logger.warning(
+            "queue.unavailable",
+            extra={"task": "ingest_document", "document_id": document_id},
+        )
 
 
 def _stamp(items: list[Notification], when: datetime) -> None:

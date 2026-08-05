@@ -32,6 +32,41 @@ def test_health_is_available() -> None:
     assert response.json() == {"status": "ok", "service": "portal-api"}
 
 
+def test_readiness_answers_ready_or_down_and_nothing_else() -> None:
+    """A prontidão é pública de propósito, então o corpo é sim/não (ADR 0018).
+
+    O caso negativo da regra 6 do `AGENTS.md` para esta rota não é "quem pode
+    chamá-la" — qualquer um pode, é uma sonda — e sim **o que ela conta**. Sem
+    versão, sem hostname, sem DSN, sem o nome da dependência que caiu e sem a
+    mensagem do driver: um `down` é indistinguível de outro, como o 401 opaco
+    da `auth.py`. Vale com banco no ar (200) e sem (503), por isso o teste
+    aceita os dois status e olha só o conteúdo.
+    """
+    response = client.get("/health/ready")
+
+    assert response.status_code in (200, 503)
+    body = response.json()
+    assert set(body) == {"status"}
+    assert body["status"] in ("ready", "down")
+
+    raw = response.text.lower()
+    for leak in ("postgres", "psycopg", "redis://", "password", "5432", "traceback"):
+        assert leak not in raw
+
+
+def test_every_response_carries_a_trace_id() -> None:
+    """O eco do header é o que permite a quem chamou citar o id ao suporte."""
+    response = client.get("/health")
+
+    assert response.headers["X-Request-ID"]
+
+
+def test_an_inbound_trace_id_is_preserved_end_to_end() -> None:
+    response = client.get("/health", headers={"X-Request-ID": "vindo-do-bff"})
+
+    assert response.headers["X-Request-ID"] == "vindo-do-bff"
+
+
 def test_demo_dashboard_has_expected_project_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
     # The gate is the point of the endpoint, so the test turns it on explicitly
     # instead of relying on DEMO_MODE being set in the environment.

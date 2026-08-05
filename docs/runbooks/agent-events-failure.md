@@ -10,11 +10,23 @@ As recusas de credencial são **indistinguíveis por desenho** — inexistente, 
 sem escopo devolvem o mesmo corpo. O motivo está no log estruturado da API:
 
 ```bash
-docker compose logs api | grep agent_key.rejected
+docker compose logs api | grep '"event":"agent_key.rejected"'
+```
+
+Cada linha é um JSON (ADR 0018):
+
+```json
+{"ts":"2026-08-05T14:02:11+0000","level":"WARNING","logger":"portal_api.agent_auth",
+ "event":"agent_key.rejected","trace_id":"9f2c…","reason":"revoked_agent_key","key_prefix":"plk_l8kBU6XX"}
 ```
 
 O campo `reason` diz qual foi (`missing_agent_key`, `unknown_agent_key`, `revoked_agent_key`,
-`expired_agent_key`, `missing_scope`) e `key_prefix` identifica a chave sem revelá-la.
+`expired_agent_key`, `missing_scope`) e `key_prefix` identifica a chave sem revelá-la — ele é a
+única exceção da redação de segredos do formatter, e é obrigatória justamente porque este
+runbook depende dele. Até a ADR 0018 os dois campos existiam no código e **não eram
+impressos**; se o `grep` acima devolver linhas sem eles, a imagem em execução é anterior a ela.
+
+O `trace_id` da linha leva à requisição inteira (`incident-response.md`).
 
 Causas na ordem em que costumam acontecer:
 

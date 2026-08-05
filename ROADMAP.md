@@ -195,7 +195,24 @@ atalho **não** entraram no índice.*
       existe para documento não varrido. E a poda nunca toca em documento: ele é a evidência que
       sustenta uma citação já dada. O EICAR é o que permite provar tudo isso sem antivírus, como
       o `drive-stub` provou o conector sem o Google.)*
-- [ ] Adicionar backup/restore testado para PostgreSQL e MinIO, alertas e telemetria com `trace_id`.
+- [x] Adicionar alertas e telemetria com `trace_id`. *(ADR 0018, FDD 012. Esta fatia não
+      implementou uma promessa adiada: implementou três que os documentos já davam como
+      cumpridas — o `incident-response.md` mandava "preservar `trace_id`" e não havia
+      `trace_id`; o `agent-events-failure.md` mandava ler `reason` e `key_prefix` de um log
+      que, sem formatter configurado, **descartava todo `extra`**; e o `app/error.tsx` dizia
+      ao cliente "A falha foi registrada" sem que houvesse um `console.error` sequer em
+      `app/`. O id nasce no BFF e **não** no `proxy.ts` — o portão de sessão não é lugar para
+      injetar header por dentro do wrapper do Auth.js —, entra na API por um ponto de costura
+      que já existia (`authorizationHeader()`, e nenhum dos treze call sites foi tocado),
+      atravessa a fila como **header da mensagem** para nenhuma assinatura de task mudar, e é
+      carimbado em `audit_log.data` sem migração. Alerta virou evento nomeado com limiar
+      escrito (`runbooks/alerts.md`) em vez de stack de métrica, que pertence ao ambiente de
+      homologação; `/health/ready` e healthchecks no compose são o que pode ficar vermelho, e
+      o `beat` fica **sem** healthcheck de propósito, porque um check que sempre passa é pior
+      que nenhum. De quebra, dois defeitos que silenciavam a aplicação inteira: o `fileConfig`
+      do Alembic e o `setup_logging` do Celery, os dois desabilitando todo logger
+      `portal_api.*` já criado.)*
+- [ ] Adicionar backup/restore testado para PostgreSQL e MinIO.
 - [ ] Cobrir testes de integração com serviços reais, contratos OpenAPI, Playwright E2E, carga e cenários adversariais de IA.
 - [ ] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS, observabilidade e plano de incidentes.
 - [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *O primeiro
@@ -206,8 +223,9 @@ atalho **não** entraram no índice.*
 
 **Aceite:** pipeline bloqueia regressões de qualidade e segurança; backups são restauráveis e incidentes seguem runbook testado.
 *Parcial: o ciclo de vida do documento fechou (`test_document_scan.py`, `test_retention.py` e o
-EICAR barrado no navegador em `tests/e2e/documents.spec.ts`). Faltam `trace_id` e alertas,
-backup/restore testado, contratos OpenAPI e carga, e o ambiente de homologação.*
+EICAR barrado no navegador em `tests/e2e/documents.spec.ts`), e a telemetria também
+(`test_telemetry.py`, e o `X-Request-ID` exigido pelo stub em `tests/rendered-html.test.mjs`).
+Faltam backup/restore testado, contratos OpenAPI e carga, e o ambiente de homologação.*
 
 ## Fase 6 — Jornada da transformação e experiência (metodologia)
 

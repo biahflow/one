@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     web_origin: str = "http://localhost:3000"
 
+    # Telemetria (Fase 5, ADR 0018). `json` é o padrão porque é o formato que um
+    # coletor lê e o que o runbook de incidente pressupõe; `text` existe para o
+    # `docker compose logs` de quem está desenvolvendo, e **também** imprime os
+    # campos de `extra` — descartá-los era o defeito do formato padrão do
+    # `logging`, não uma escolha de formato.
+    log_level: str = "INFO"
+    log_format: str = "json"
+
     # OIDC (ADR 0010). A API é *resource server*: só valida o token, nunca faz
     # code exchange. `oidc_issuer` e `oidc_jwks_url` são separadas de propósito —
     # o `iss` do token é o endereço que o navegador usa (localhost:8080), mas o

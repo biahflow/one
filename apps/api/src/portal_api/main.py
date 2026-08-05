@@ -3,9 +3,11 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query, Request, status
+import redis
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from portal_api import access, admin, agent_auth, conversations, results, storage
 from portal_api.ai import service as chat_service
@@ -30,18 +32,31 @@ from portal_api.repositories import (
     TenantContext,
 )
 from portal_api.scanner import ScanState
+from portal_api.telemetry import TRACE_HEADER, TraceMiddleware, audit_data, configure_logging
 
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+# Antes de qualquer coisa: sem isto os `extra={...}` deste módulo e dos outros
+# não chegam ao stdout, que era o estado que o runbook de eventos descrevia como
+# se não fosse (ADR 0018).
+configure_logging()
 app = FastAPI(title="Portal Labs API", version="0.1.0", docs_url="/docs")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_origin],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", TRACE_HEADER],
+    # Sem isto o `fetch` do navegador não enxerga o header de volta. Hoje quem
+    # chama a API é o BFF, que lê tudo; a exposição é para a resposta poder
+    # carregar o id até a tela no dia em que algo no navegador falar direto.
+    expose_headers=[TRACE_HEADER],
 )
+# Registrado **depois** do CORS e por isso executado **antes** dele: o Starlette
+# empilha na ordem inversa do registro. É o que faz uma requisição barrada no
+# CORS ainda aparecer no log com um `trace_id`.
+app.add_middleware(TraceMiddleware)
 # Administração de acesso (ADR 0011): conjunto coeso, e o único que roda sob o
 # papel `portal_admin`, por isso em módulo próprio.
 app.include_router(admin.router)
@@ -88,7 +103,47 @@ class PreferencesIn(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """Vivacidade: o processo respondeu. Não toca em dependência nenhuma."""
     return {"status": "ok", "service": "portal-api"}
+
+
+@app.get("/health/ready")
+def health_ready(response: Response) -> dict[str, object]:
+    """Prontidão: o Postgres e o Redis respondem (Fase 5, ADR 0018).
+
+    Separado do ``/health`` porque as duas perguntas têm respostas diferentes e
+    consequências diferentes: um processo vivo com o banco fora **não** deve
+    receber tráfego, e um processo morto deve ser reiniciado. Só este é que serve
+    de healthcheck no compose — o outro sempre diria "ok".
+
+    **A rota é pública e o corpo é sim/não.** Sem versão, sem hostname, sem DSN,
+    sem a mensagem do driver e sem dizer *qual* dependência caiu: quem não está
+    autenticado não ganha um mapa da infraestrutura. Um `down` é indistinguível
+    de outro, que é a mesma escolha do 401 opaco da `auth.py` — e, como lá, o
+    motivo vai inteiro para o log, agora com o ``trace_id`` para ser encontrado.
+    """
+    ready = True
+
+    try:
+        with get_session(role=DbRole.app) as session:
+            session.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("health.database_unavailable")
+        ready = False
+
+    try:
+        client = redis.Redis.from_url(settings.redis_url, socket_timeout=2)
+        try:
+            client.ping()
+        finally:
+            client.close()
+    except Exception:
+        logger.exception("health.broker_unavailable")
+        ready = False
+
+    if not ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {"status": "ready" if ready else "down"}
 
 
 @app.get("/api/v1/dashboard/demo")
@@ -156,7 +211,9 @@ def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
                     action="agent_event.ingested",
                     entity_type="agent_event",
                     entity_id=stored.id,
-                    data={"agent_key": event.agent_key, "outcome": event.outcome.value},
+                    data=audit_data(
+                        agent_key=event.agent_key, outcome=event.outcome.value
+                    ),
                 )
             )
     return {
@@ -403,7 +460,7 @@ def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
                 action="document.downloaded",
                 entity_type="document",
                 entity_id=document.id,
-                data={"ttl_seconds": settings.document_download_ttl_seconds},
+                data=audit_data(ttl_seconds=settings.document_download_ttl_seconds),
             )
         )
 

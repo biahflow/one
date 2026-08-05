@@ -4,8 +4,21 @@
  * Fronteira de erro do portal. Existe para que uma falha de rede ou da API
  * apareça como falha — antes desta fase qualquer erro caía no dashboard de
  * demonstração, o que transformava indisponibilidade em dado inventado.
+ *
+ * O `digest` é o código que o Next calcula para o erro do servidor e é a única
+ * parte dele que pode chegar ao navegador — a mensagem é saneada de propósito,
+ * para um erro não virar um oráculo. Mostrá-lo é o que faz "A falha foi
+ * registrada" ser verificável: a pessoa repete o código e quem atende encontra
+ * a linha `web.request_error`, que carrega o `trace_id` da requisição inteira
+ * (ADR 0018).
  */
-export default function Error({ reset }: { error: Error; reset: () => void }) {
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   return (
     <main className="state-shell">
       <div className="state-card">
@@ -15,6 +28,11 @@ export default function Error({ reset }: { error: Error; reset: () => void }) {
           A falha foi registrada. Tente novamente em instantes; se persistir, fale com o time
           da Portal Labs.
         </p>
+        {error.digest && (
+          <p className="state-code">
+            Código: <code>{error.digest}</code>
+          </p>
+        )}
         <button className="ai-button" onClick={reset}>Tentar de novo</button>
       </div>
     </main>

@@ -212,7 +212,27 @@ atalho **não** entraram no índice.*
       que nenhum. De quebra, dois defeitos que silenciavam a aplicação inteira: o `fileConfig`
       do Alembic e o `setup_logging` do Celery, os dois desabilitando todo logger
       `portal_api.*` já criado.)*
-- [ ] Adicionar backup/restore testado para PostgreSQL e MinIO.
+- [x] Adicionar backup/restore testado para PostgreSQL e MinIO. *(ADR 0019, FDD 013.
+      Pela terceira vez na Fase 5 a fatia não implementou uma promessa adiada e sim
+      uma que os documentos davam como cumprida: o `backup-restore.md` mandava
+      "testar backup criptografado em ambiente isolado" e as ADRs 0010 e 0011
+      **delegavam a ele** rodar o `roles.sql` antes do restore — sem que existisse
+      `scripts/`. O que carrega o resto foi medido, não deduzido: `pg_dump` com a
+      credencial de requisição **recusa** ("query would be affected by row-level
+      security policy"), e a correção óbvia — `--enable-row-security` para calar a
+      recusa — devolve um backup limpo, bem-sucedido, cifrável e **vazio**. Daí as
+      duas decisões: o dump sai sob o papel dono, e o **censo de linhas sai sob
+      credencial diferente da do dump**, senão os dois erram na mesma direção e o
+      manifesto confirma que zero virou zero. Restaurar de verdade revelou ainda
+      dois defeitos que só apareceriam no dia do desastre: o `btree_gist` veio da
+      migração 0010 e nunca entrou no bootstrap (e um restore não roda migrações),
+      e as duas extensões nasciam sem `WITH SCHEMA public` — o que punha o
+      `btree_gist` dentro de `portal` e fazia o `DROP SCHEMA` do restore falhar por
+      dependência. O restore afirma, com código de saída, que `portal_app` continua
+      sem `BYPASSRLS` e que as policies voltaram: um restore que traz as linhas e
+      perde a RLS devolve um portal onde todo cliente vê todo projeto, e nada na
+      tela denuncia. E, porque a linha do pedido de expurgo sobrevive ao próprio
+      expurgo (ADR 0017), o restore consegue listar o que ele mesmo desfez.)*
 - [ ] Cobrir testes de integração com serviços reais, contratos OpenAPI, Playwright E2E, carga e cenários adversariais de IA.
 - [ ] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS, observabilidade e plano de incidentes.
 - [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *O primeiro
@@ -223,9 +243,12 @@ atalho **não** entraram no índice.*
 
 **Aceite:** pipeline bloqueia regressões de qualidade e segurança; backups são restauráveis e incidentes seguem runbook testado.
 *Parcial: o ciclo de vida do documento fechou (`test_document_scan.py`, `test_retention.py` e o
-EICAR barrado no navegador em `tests/e2e/documents.spec.ts`), e a telemetria também
-(`test_telemetry.py`, e o `X-Request-ID` exigido pelo stub em `tests/rendered-html.test.mjs`).
-Faltam backup/restore testado, contratos OpenAPI e carga, e o ambiente de homologação.*
+EICAR barrado no navegador em `tests/e2e/documents.spec.ts`), a telemetria também
+(`test_telemetry.py`, e o `X-Request-ID` exigido pelo stub em `tests/rendered-html.test.mjs`),
+e o backup passou a ser restaurável com prova (`test_backup_restore.py` roda os dois scripts de
+verdade contra um banco descartável e confere policies, GRANTs de coluna e isolamento). Faltam
+contratos OpenAPI e carga, o ambiente de homologação, e um job de CI que exercite o par
+backup/restore a cada push — hoje ele só roda quando alguém pede.*
 
 ## Fase 6 — Jornada da transformação e experiência (metodologia)
 

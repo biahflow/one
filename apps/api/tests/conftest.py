@@ -205,9 +205,11 @@ def fake_storage(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
     from portal_api import storage
 
     objects: dict[str, bytes] = {}
+    content_types: dict[str, str | None] = {}
 
-    def _put(_settings, key: str, data: bytes, _content_type: str | None) -> None:
+    def _put(_settings, key: str, data: bytes, content_type: str | None) -> None:
         objects[key] = data
+        content_types[key] = content_type
 
     def _get(_settings, key: str) -> bytes:
         if key not in objects:
@@ -216,10 +218,23 @@ def fake_storage(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
 
     def _delete(_settings, key: str) -> None:
         objects.pop(key, None)
+        content_types.pop(key, None)
+
+    def _fetch(_settings, key: str) -> storage.StoredObject:
+        return storage.StoredObject(
+            key=key, data=_get(_settings, key), content_type=content_types.get(key)
+        )
+
+    def _iter_keys(_settings, prefix: str = ""):
+        return iter(sorted(k for k in objects if k.startswith(prefix)))
 
     monkeypatch.setattr(storage, "put_object", _put)
     monkeypatch.setattr(storage, "get_object", _get)
     monkeypatch.setattr(storage, "delete_object", _delete)
+    # O backup (ADR 0019) lê pelos dois abaixo; ficam no mesmo fake para não
+    # existirem dois storages de mentira que possam discordar um do outro.
+    monkeypatch.setattr(storage, "fetch_object", _fetch)
+    monkeypatch.setattr(storage, "iter_keys", _iter_keys)
     return objects
 
 

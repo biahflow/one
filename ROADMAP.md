@@ -181,13 +181,33 @@ atalho **não** entraram no índice.*
 
 ## Fase 5 — Segurança e produção
 
-- [ ] Implementar antivírus/validação assíncrona de documentos, URLs temporárias e política de retenção/exclusão por organização.
+- [x] Implementar antivírus/validação assíncrona de documentos, URLs temporárias e política de
+      retenção/exclusão por organização. *(ADR 0017, FDD 011. Três decisões carregam o resto: um
+      **scanner ausente devolve `skipped`, nunca `clean`** — o embedder offline é uma resposta
+      pior à mesma pergunta, um antivírus offline seria uma resposta inventada, e não há por que
+      o portal se permitir em segurança o que a regra 3 do `AGENTS.md` proíbe da IA; a varredura
+      é **eixo próprio** e não mais um valor de `ingest_state`, porque "é seguro" e "virou texto
+      citável" podem ter respostas opostas no mesmo documento; e o **expurgo é um pedido
+      gravado** que o worker cumpre, como a ADR 0015 já tinha determinado. `queue_document_scan`
+      virou a porta única, então o arquivo do Drive passa pela mesma fronteira do que foi enviado
+      na tela; a indexação recusa por conta própria o que não passou. A citação virou link — o
+      cliente abre a página 3 em vez de confiar nela — por URL assinada de vida curta, que não
+      existe para documento não varrido. E a poda nunca toca em documento: ele é a evidência que
+      sustenta uma citação já dada. O EICAR é o que permite provar tudo isso sem antivírus, como
+      o `drive-stub` provou o conector sem o Google.)*
 - [ ] Adicionar backup/restore testado para PostgreSQL e MinIO, alertas e telemetria com `trace_id`.
 - [ ] Cobrir testes de integração com serviços reais, contratos OpenAPI, Playwright E2E, carga e cenários adversariais de IA.
 - [ ] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS, observabilidade e plano de incidentes.
-- [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção.
+- [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *O primeiro
+      a ler é o `next` — GHSA-6gpp-xcg3-4w24, middleware/proxy bypass em App Router, corrigido em
+      16.2.11 —, porque aqui o `proxy.ts` **é** o portão de sessão. As pré-condições do aviso
+      (Turbopack e locale único) não se aplicam a este repositório, então a exploração é
+      improvável; o bump segue barato e o alvo é o controle mais central.*
 
 **Aceite:** pipeline bloqueia regressões de qualidade e segurança; backups são restauráveis e incidentes seguem runbook testado.
+*Parcial: o ciclo de vida do documento fechou (`test_document_scan.py`, `test_retention.py` e o
+EICAR barrado no navegador em `tests/e2e/documents.spec.ts`). Faltam `trace_id` e alertas,
+backup/restore testado, contratos OpenAPI e carga, e o ambiente de homologação.*
 
 ## Fase 6 — Jornada da transformação e experiência (metodologia)
 

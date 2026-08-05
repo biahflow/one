@@ -138,7 +138,8 @@ Ao contrário da chave de agente, que é **revogada** para preservar o rastro de
 usada. Um documento enviado por engano é conteúdo do cliente no lugar errado, e mantê-lo
 "revogado" seria manter o problema. Linha, trechos (por CASCADE) e objeto no storage saem juntos;
 a remoção do objeto é best-effort, porque a linha é o que a tela mostra e um objeto órfão é
-problema de retenção — item da Fase 5 —, não um erro na cara de quem apagou.
+problema de retenção — resolvido na ADR 0017, que recolhe o órfão junto com o expurgo pelo
+prefixo `org/<id>/` —, não um erro na cara de quem apagou.
 
 ## Consequências
 

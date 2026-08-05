@@ -196,7 +196,8 @@ depender de trânsito de outra biblioteca para um módulo de cifra é dívida.
 - **A planilha exporta só a primeira aba.** Limitação do Google, registrada na FDD 010 para o
   usuário ler na tela em vez de descobrir pela ausência da citação.
 - **Reindexação por troca de modelo de embedding continua em aberto**, como na 0014.
-- **Retenção continua da Fase 5**, e agora inclui apagar conexões junto com a organização.
+- **Retenção veio na ADR 0017.** A conexão sai junto com o projeto, por CASCADE, no expurgo
+  por organização.
 
 ## Alternativas consideradas
 

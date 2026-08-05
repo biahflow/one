@@ -97,7 +97,8 @@ completo nem conteúdo. O estado da ingestão vive na própria linha do document
 "por que a IA não sabe disso?" sem consultar log. Falha de extração e de embeddings vai para o log
 estruturado do worker, com o id do documento.
 
-Retenção de `document`/`document_chunk`: não definida ainda; entra com a política por organização
+Retenção de `document`/`document_chunk`: definida na ADR 0017 — **nunca por idade** (é a evidência
+da citação), só pela tela ou pelo expurgo por organização
 da Fase 5.
 
 ### Casos de avaliação de IA

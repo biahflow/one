@@ -17,7 +17,7 @@ citação, e uma alteração no Drive chega ao índice sem ninguém reenviar nad
 - **Agendamento — feito.** `celery beat` a cada `DRIVE_SYNC_INTERVAL_SECONDS`, mais o botão
   "Sincronizar agora" na tela.
 - **Fora de escopo:** push notifications do Drive, unidades compartilhadas (*shared drives*),
-  reindexação por troca de modelo de embedding e retenção por organização — Fase 5.
+  reindexação por troca de modelo de embedding — Fase 5. Retenção por organização veio na ADR 0017.
 
 ## Permissões
 

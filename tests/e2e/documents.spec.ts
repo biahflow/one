@@ -89,26 +89,32 @@ test("o documento enviado na administração vira citação no chat do cliente",
   await page.getByLabel("Pergunta para IA").fill(`O que diz o procedimento ${codeword}?`);
   await page.getByRole("button", { name: "Enviar pergunta" }).click();
 
-  // A citação nomeia o documento — e o termo só existe no arquivo enviado acima.
-  await expect(page.locator(".message-sources")).toContainText(title, { timeout: 30_000 });
-  await expect(page.locator(".chat-messages")).toContainText(codeword);
+  // Sempre a **última** resposta, nunca ".message-sources" solto: a conversa
+  // sobrevive ao reload (ADR 0015), então uma execução anterior deste mesmo
+  // teste deixa turnos antigos na thread — com citações de outro `codeword`.
+  // Ancorar na última é o que faz a asserção falar do que acabou de acontecer.
+  const answer = page.locator(".message--assistant").last();
+  await expect(answer.locator(".message-sources")).toContainText(title, {
+    timeout: 30_000,
+  });
+  await expect(answer).toContainText(codeword);
 
   // E agora ela **abre** o documento (Fase 5, ADR 0017). O que só este nível
-  // prova: a URL assinada é emitida pela API, aceita pelo MinIO de verdade e
-  // devolve os bytes do arquivo que a administração enviou lá em cima.
-  const citation = page.locator(".message-source-link", { hasText: title });
+  // prova: a URL assinada é emitida pela API contra o endereço público do
+  // storage, aceita pelo MinIO de verdade e devolve os bytes do arquivo que a
+  // administração enviou lá em cima.
+  const citation = answer.locator(".message-source-link", { hasText: title });
   await expect(citation).toBeVisible();
+  const documentId = await citation.getAttribute("data-document-id");
+  expect(documentId).toBeTruthy();
 
-  const downloaded = await page.evaluate(async () => {
-    const documentId = document
-      .querySelector<HTMLButtonElement>(".message-source-link")
-      ?.getAttribute("data-document-id");
-    const response = await fetch(`/api/documents/${documentId}/download`);
+  const downloaded = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/documents/${id}/download`);
     if (!response.ok) return { status: response.status, body: "" };
     const { url } = await response.json();
     const file = await fetch(url);
     return { status: file.status, body: await file.text() };
-  });
+  }, documentId);
 
   expect(downloaded.status).toBe(200);
   expect(downloaded.body).toContain(codeword);

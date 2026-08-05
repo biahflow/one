@@ -58,8 +58,15 @@ test("a conversa volta depois do reload, com as citações e o feedback", async 
   await signIn(page, CLIENT);
   await ask(page, question);
 
-  // A resposta é fundamentada e cita o read model — o mesmo contrato da Fase 3.
-  const firstSource = page.locator(".message-sources span").first();
+  // Sempre a **última** resposta. A conversa sobrevive ao reload — que é o que
+  // este teste prova —, então ela também sobrevive entre execuções: turnos
+  // antigos continuam na thread, e um seletor solto acabaria falando deles.
+  //
+  // `.message-sources > *` e não `span`: desde a ADR 0017 a citação que aponta
+  // para um arquivo é um `button` clicável, e a que vem do read model segue
+  // `span`. O teste é sobre a citação voltar igual, não sobre a tag dela.
+  const answer = () => page.locator(".message--assistant").last();
+  const firstSource = answer().locator(".message-sources > *").first();
   await expect(firstSource).toBeVisible({ timeout: 30_000 });
   const citation = (await firstSource.innerText()).trim();
   expect(citation.length).toBeGreaterThan(0);
@@ -68,19 +75,17 @@ test("a conversa volta depois do reload, com as citações e o feedback", async 
   await page.reload();
   await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
 
-  const messages = page.locator(".chat-messages");
-  await expect(messages).toContainText(question, { timeout: 30_000 });
+  await expect(page.locator(".chat-messages")).toContainText(question, { timeout: 30_000 });
   // A mesma citação, remontada das partes gravadas — não uma nova consulta.
-  await expect(page.locator(".message-sources span").first()).toHaveText(citation);
+  await expect(answer().locator(".message-sources > *").first()).toHaveText(citation);
 
   // E a avaliação também é registro: marcada aqui, ainda marcada depois de outro F5.
-  await page.getByRole("button", { name: "Esta resposta não ajudou" }).first().click();
-  const rated = page.locator(".message-feedback button.is-active").first();
-  await expect(rated).toBeVisible();
+  await answer().getByRole("button", { name: "Esta resposta não ajudou" }).click();
+  await expect(answer().locator(".message-feedback button.is-active")).toHaveCount(1);
 
   await page.reload();
   await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
-  await expect(page.locator(".message-feedback button.is-active")).toHaveCount(1, {
+  await expect(answer().locator(".message-feedback button.is-active")).toHaveCount(1, {
     timeout: 30_000,
   });
 });

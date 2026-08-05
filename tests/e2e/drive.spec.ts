@@ -55,16 +55,26 @@ async function connectAndSync(page: Page) {
     page.getByRole("heading", { name: /O que o assistente pode citar/ }),
   ).toBeVisible();
 
-  // O consentimento: o stub devolve o navegador na hora, com `code` e `state`.
-  await page.getByRole("button", { name: /Conectar Google Drive/ }).click();
-  await page.waitForURL(/\/admin\/conhecimento\?.*drive=connected/);
-  await expect(page.getByText(/Drive conectado/)).toBeVisible();
+  // Idempotente de propósito: dois testes deste arquivo chamam esta função, e o
+  // consentimento do primeiro **persiste** — desconectar revoga e carimba a
+  // linha, não a apaga (ADR 0016). Insistir em clicar "Conectar" faria o segundo
+  // teste falhar procurando um botão que a tela deixou de mostrar por já estar
+  // conectada, que é exatamente o estado que ele quer exercitar.
+  const connect = page.getByRole("button", { name: /Conectar Google Drive/ });
+  if (await connect.isVisible()) {
+    // O consentimento: o stub devolve o navegador na hora, com `code` e `state`.
+    await connect.click();
+    await page.waitForURL(/\/admin\/conhecimento\?.*drive=connected/);
+    await expect(page.getByText(/Drive conectado/)).toBeVisible();
+  }
 
   // A pasta é escolhida num passo separado — só ela é a fronteira.
   const folderRow = page.locator(".member-row", { hasText: AUTHORIZED_FOLDER });
-  await expect(folderRow).toBeVisible({ timeout: 15_000 });
-  await folderRow.getByRole("button", { name: "Autorizar" }).click();
-  await expect(page.getByText(/autorizada/)).toBeVisible();
+  const authorize = folderRow.getByRole("button", { name: "Autorizar" });
+  if (await authorize.isVisible().catch(() => false)) {
+    await authorize.click();
+    await expect(page.getByText(/autorizada/)).toBeVisible();
+  }
 
   await page.getByRole("button", { name: "Sincronizar agora" }).click();
   await expect(page.getByText(/Sincronização na fila/)).toBeVisible();
@@ -91,10 +101,13 @@ test("a pasta conectada vira citação no chat do cliente", async ({ page, conte
   await page.getByLabel("Pergunta para IA").fill(`Qual é o código interno ${CANARY}?`);
   await page.getByRole("button", { name: "Enviar pergunta" }).click();
 
-  await expect(page.locator(".message-sources")).toContainText(/Contrato de suporte/, {
+  // A **última** resposta, não `.message-sources` solto: a conversa sobrevive ao
+  // reload (ADR 0015), então turnos de execuções anteriores continuam na thread.
+  const answer = page.locator(".message--assistant").last();
+  await expect(answer.locator(".message-sources")).toContainText(/Contrato de suporte/, {
     timeout: 30_000,
   });
-  await expect(page.locator(".chat-messages")).toContainText(CANARY);
+  await expect(answer).toContainText(CANARY);
 });
 
 test("arquivo fora da pasta autorizada nunca entra no índice", async ({ page }) => {

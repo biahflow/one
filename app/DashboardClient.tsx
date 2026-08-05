@@ -109,6 +109,34 @@ const notificationIcon: Record<string, LucideIcon> = {
   project_status_changed: TrendingUp,
 };
 
+/** Um resultado da busca, como `GET /api/v1/me/search` o devolve (ADR 0024).
+ *
+ *  `tab` vem pronto da API porque a tela navega por rótulo desde a Fase 2 — um
+ *  segundo mapa aqui envelheceria sozinho. `document_id` vazio quer dizer "não
+ *  há o que abrir", nunca "abra por sua conta". */
+export type SearchHit = {
+  kind: string;
+  title: string;
+  detail: string;
+  location: string;
+  tab: string;
+  document_id: string;
+};
+
+/** Rótulo por espécie de resultado. O mesmo vocabulário de `search.py`. */
+const searchKindLabel: Record<string, string> = {
+  document: "Documento",
+  meeting: "Reunião",
+  pending: "Pendência",
+  milestone: "Marco",
+  chunk: "Trecho de documento",
+};
+
+/** Espelha `search.MIN_QUERY_LENGTH`: abaixo disso a API devolve lista vazia, e
+ *  chamar para ouvir isso seria uma ida ao servidor por tecla. */
+const SEARCH_MIN_LENGTH = 2;
+const SEARCH_DEBOUNCE_MS = 250;
+
 /** Quem está logado, projetado de `GET /api/v1/me` — a membership é a autoridade. */
 export type PortalUser = { name: string; initials: string; email: string; role: string; org: string; isInternal: boolean; notifyByEmail: boolean };
 export type NotificationView = { id: string; kind: string; title: string; detail: string | null; link: string | null; age: string; read: boolean };
@@ -368,16 +396,36 @@ export default function DashboardClient({
   // pop-up, mas abriria uma aba em branco quando a API negasse. Navegamos na
   // própria aba, e o que torna isso barato é a Fase 4: a conversa está gravada
   // (ADR 0015), então voltar traz o turno e a citação de volta como estavam.
-  async function openDocument(documentId: string) {
+  //
+  // Devolve se conseguiu: quem chama da citação mostra o erro no painel do chat
+  // (`downloadError`), e quem chama da busca precisa mostrá-lo em outro lugar —
+  // o popover fecharia antes de a falha existir, e o cliente ficaria com um
+  // clique que não fez nada.
+  async function openDocument(documentId: string): Promise<boolean> {
     setDownloadError(null);
     try {
       const response = await fetch(`/api/documents/${documentId}/download`);
       if (!response.ok) throw new Error("download failed");
       const data = await response.json();
       window.location.assign(data.url);
+      return true;
     } catch {
       setDownloadError("Não foi possível abrir o documento agora.");
+      return false;
     }
+  }
+
+  /** O clique num resultado: abrir a fonte, quando há uma, ou ir até a aba. */
+  async function openSearchHit(hit: SearchHit): Promise<boolean> {
+    if (hit.kind === "chunk" && hit.document_id) {
+      // O popover só fecha se a fonte abriu: o `ProjectSearch` é quem diz que
+      // não deu, porque ele ainda está na tela.
+      const opened = await openDocument(hit.document_id);
+      if (opened) setMenu(null);
+      return opened;
+    }
+    goTo(hit.tab);
+    return true;
   }
 
   async function sendQuestion(event?: FormEvent, preset?: string) {
@@ -538,18 +586,15 @@ export default function DashboardClient({
       {menu && <button className="menu-backdrop" onClick={() => setMenu(null)} aria-label="Fechar menu" />}
 
       <section className="content-area">
-        <header className="topbar">
+        <header
+          className={`topbar ${menu && menu !== "profile-side" ? "topbar--menu-open" : ""}`}
+        >
           <button className="icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Abrir menu"><Menu size={21} /></button>
           <div className="breadcrumb"><span>{user.org}</span><b>/</b><strong>{activeNav}</strong></div>
           <div className="topbar-actions">
             <div className="topbar-menu">
               <button className="icon-button" aria-label="Pesquisar" onClick={() => toggleMenu("search")}><Search size={20} /></button>
-              {menu === "search" && (
-                <div className="popover popover--search">
-                  <input autoFocus placeholder="Buscar documentos, reuniões, pendências..." aria-label="Buscar no projeto" />
-                  <p className="popover-hint">Comece a digitar para buscar no contexto do projeto.</p>
-                </div>
-              )}
+              {menu === "search" && <ProjectSearch onOpen={openSearchHit} />}
             </div>
             <div className="topbar-menu">
               <button
@@ -655,6 +700,107 @@ export default function DashboardClient({
         </section>
       )}
     </main>
+  );
+}
+
+/** A lupa do topbar, do campo ao resultado (Fase 6, ADR 0024).
+ *
+ *  Componente próprio, e o motivo não é organização: ele **monta com o popover
+ *  e desmonta com ele**, então fechar a lupa esquece o que foi digitado sem
+ *  nenhum efeito de limpeza. O termo é a pergunta de alguém — guardá-lo entre
+ *  aberturas seria retê-lo sem que ninguém tenha pedido, a mesma razão pela
+ *  qual ele não vai para o log.
+ *
+ *  O resultado é guardado **junto do termo que o produziu**: enquanto a resposta
+ *  do termo novo não chega, a lista antiga não é exibida como se fosse dele.
+ *  E nenhum caminho aqui fabrica resultado — a lista vem da API ou não existe,
+ *  pelo motivo pelo qual o `answerFor()` do chat foi apagado (ADR 0021). */
+function ProjectSearch({ onOpen }: { onOpen: (hit: SearchHit) => Promise<boolean> }) {
+  const [term, setTerm] = useState("");
+  const [found, setFound] = useState<{ query: string; hits: SearchHit[] } | null>(null);
+  const [failed, setFailed] = useState("");
+  const [openFailed, setOpenFailed] = useState(false);
+  const query = term.trim();
+  const short = query.length < SEARCH_MIN_LENGTH;
+
+  // Debounce mais `AbortController`: a tecla seguinte cancela a busca da
+  // anterior, então a resposta que sobra é sempre a do último termo.
+  useEffect(() => {
+    if (short) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("search failed");
+        const data = await response.json();
+        setFound({ query, hits: data.results ?? [] });
+        setFailed("");
+      } catch (error) {
+        if ((error as Error)?.name === "AbortError") return;
+        setFailed(query);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, short]);
+
+  const hits = found?.query === query ? found.hits : null;
+
+  return (
+    <div className="popover popover--search">
+      <input
+        autoFocus
+        value={term}
+        onChange={(event) => setTerm(event.target.value)}
+        placeholder="Buscar documentos, reuniões, pendências..."
+        aria-label="Buscar no projeto"
+      />
+      {/* Cada estado é uma frase diferente de propósito: "digite mais",
+          "buscando", "não consegui" e "nada encontrado" respondem a perguntas
+          distintas, e uma frase só faria a tela mentir sobre por que a lista
+          está vazia. */}
+      {short ? (
+        <p className="popover-hint">Comece a digitar para buscar no contexto do projeto.</p>
+      ) : failed === query ? (
+        <p className="popover-hint" role="status">Não consegui buscar agora.</p>
+      ) : hits === null ? (
+        <p className="popover-hint" role="status">Buscando...</p>
+      ) : hits.length === 0 ? (
+        <p className="popover-hint" role="status">Nada encontrado para “{query}”.</p>
+      ) : (
+        <ul className="search-results" aria-label="Resultados da busca">
+          {hits.map((hit, index) => (
+            <li key={`${hit.kind}-${hit.title}-${hit.location}-${index}`}>
+              <button
+                className="search-result"
+                onClick={async () => setOpenFailed(!(await onOpen(hit)))}
+              >
+                <span className="search-result-kind">{searchKindLabel[hit.kind] ?? hit.kind}</span>
+                <strong>{hit.title}</strong>
+                {(hit.detail || hit.location) && (
+                  <span className="search-result-detail">
+                    {[hit.location, hit.detail].filter(Boolean).join(" • ")}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* O clique que não abriu a fonte. Fica **aqui**, e não no painel do chat
+          onde o erro de download da citação aparece: o popover continua na tela,
+          e um clique sem efeito e sem explicação é indistinguível de um botão
+          quebrado. */}
+      {openFailed && (
+        <p className="popover-hint" role="status">Não foi possível abrir o documento agora.</p>
+      )}
+    </div>
   );
 }
 

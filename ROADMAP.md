@@ -59,10 +59,15 @@ Este documento acompanha o plano de entrega. Itens concluídos permanecem aqui p
       próprias e a GUC de terceiro estágio; ADR 0011.)*
 
 **Aceite:** um cliente autenticado só consegue consultar os projetos aos quais pertence;
-tentativas de acesso cruzado falham na API, no banco e na busca. *Atendido para API e banco
-(`test_authorization.py`, `test_rls_isolation.py`, e o e2e de login em `tests/e2e/`); a busca
-ainda não existe — chega com o RAG da Fase 4, e o filtro por organização/projeto é requisito
-dela.*
+tentativas de acesso cruzado falham na API, no banco e na busca. *Atendido nas três camadas.
+API e banco desde a própria Fase 1 (`test_authorization.py`, `test_rls_isolation.py`, e o e2e de
+login em `tests/e2e/`). **A busca só passou a existir na Fase 6** (ADR 0024): esta linha dizia
+"chega com o RAG da Fase 4, e o filtro por organização/projeto é requisito dela", a Fase 4 veio
+e passou, o RAG chegou — e alimentou o **chat**, que é outra coisa. O campo da lupa continuou
+sendo um `<input>` sem handler prometendo "buscar no contexto do projeto" por mais duas fases.
+Hoje `test_search.py::test_a_term_only_the_other_project_uses_finds_nothing` executa a tentativa
+cruzada, e o que a torna significativa é a segunda metade: o dono do outro projeto acha o mesmo
+termo pela mesma rota.*
 
 ## Fase 2 — Jornada do projeto
 
@@ -399,9 +404,30 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       {label, level}; colunas `health_label`/`health_level` no `Project` (migração `0004`);
       selo no `status-card` do `DashboardClient.tsx`.
 
+- [x] **A busca do projeto.** *(ADR 0024, FDD 018. A lupa do topbar abria um popover com um
+      `<input>` sem `onChange`, sem handler e sem resultado, embaixo da frase "Comece a digitar
+      para buscar no contexto do projeto" — o último controle de demonstração na tela do
+      cliente, e o único cuja promessa não estava num documento e sim onde quem paga pelo
+      produto a encontra sozinho. Fecha junto o critério de aceite da Fase 1 acima. Duas fontes:
+      as linhas do read model por título e os **trechos** de documento por full-text, porque sem
+      as segundas "buscar no contexto do projeto" entregaria uma lista de títulos — a versão do
+      controle que parece funcionar e não responde à pergunta que alguém faz. Sem extensão nova
+      de Postgres: `unaccent` é objeto de **banco** e teria de nascer no bootstrap, no init e na
+      migração, que é o defeito que a ADR 0019 encontrou no `btree_gist` no dia do restore, e
+      ainda é `STABLE`, o que exigiria uma função `IMMUTABLE` própria para o índice; a dobra sai
+      de `translate()`, e que o índice GIN é usado foi verificado no `EXPLAIN`, não deduzido. O
+      termo digitado **não** vai para o log nem para a auditoria. De quebra, um defeito de
+      empilhamento anterior a esta fatia: `.topbar` tem `backdrop-filter`, que cria contexto de
+      empilhamento sozinho, então o `z-60` de qualquer popover do topo valia só dentro da barra
+      e o `.menu-backdrop` ficava por cima — enquanto aqueles popovers eram só leitura ninguém
+      notou, e o primeiro conteúdo clicável dentro de um deles esbarrou nisso na hora. O "Ver
+      todas" da caixa de avisos e o menu de perfil do topo estavam igualmente mortos.)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
-não de dados de demonstração.
+não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`
+digita, clica e cai na aba, e sobe um documento com termo inédito para achá-lo **dentro** do
+texto.*
 
 ## Ordem recomendada
 

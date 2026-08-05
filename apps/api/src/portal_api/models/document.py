@@ -35,6 +35,11 @@ from portal_api.models.project import _ProjectChildMixin
 # aponta para o lado seguro: quem varre não precisa saber que existe banco.
 from portal_api.scanner import ScanState
 
+# Pela mesma razão do import acima: `textfold` é folha e define a expressão que
+# o índice de busca usa, então quem consulta e quem indexa leem do mesmo lugar
+# (ADR 0024).
+from portal_api.textfold import index_expression
+
 #: Dimensão do vetor. Fixa na coluna de propósito: vetores de dimensões
 #: diferentes não são comparáveis, então trocar de modelo de embedding é uma
 #: migração mais uma reindexação, nunca uma variável de ambiente.
@@ -189,6 +194,16 @@ class DocumentChunk(Base, _ProjectChildMixin, TimestampMixin):
             "embedding",
             postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        # Busca lexical dentro do texto do trecho (ADR 0024). A expressão vem de
+        # `textfold.index_expression` e **não** está digitada aqui de propósito:
+        # ela tem de ser idêntica à da consulta em `search.py`, senão o índice
+        # deixa de ser usado sem nada ficar vermelho — e à da migração 0018, pela
+        # regra que o índice parcial do Drive acima já escreveu.
+        Index(
+            "ix_document_chunk_text_fts",
+            text(index_expression("text")),
+            postgresql_using="gin",
         ),
     )
 

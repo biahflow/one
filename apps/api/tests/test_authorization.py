@@ -397,6 +397,23 @@ def test_notifications_require_a_project(world: World, authenticated) -> None:
     assert client.post("/api/v1/me/notifications/read", json={}).status_code == 404
 
 
+def test_search_requires_a_project(world: World, authenticated) -> None:
+    """Sem membership não há projeto, e sem projeto não há o que procurar (ADR 0024).
+
+    O caso negativo que a regra 6 do `AGENTS.md` pede de "qualquer endpoint **ou
+    busca** nova" — e a rota é escopada, então a negação é 404 como todas as
+    outras, nunca 403.
+    """
+    stranger = Actor(
+        subject=f"sub-curioso-{uuid.uuid4().hex[:8]}",
+        email=f"curioso-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="Sem Projeto",
+    )
+    authenticated(stranger)
+
+    assert client.get("/api/v1/me/search", params={"q": "contrato"}).status_code == 404
+
+
 def test_conversations_require_a_project(world: World, authenticated) -> None:
     """Sem membership não há projeto, e sem projeto não há conversa — 404 (ADR 0015).
 

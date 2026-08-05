@@ -153,6 +153,15 @@
   .topbar {
     @apply sticky top-0 z-20 flex h-17 items-center justify-between border-b border-line bg-white/85 px-11 backdrop-blur-xl;
   }
+  /* O `backdrop-filter` da barra cria contexto de empilhamento sozinho, então o
+     `z-60` do popover vale só **dentro** dela: quem disputa com o
+     `.menu-backdrop` (`fixed z-40`, fora da barra) é o z-index da própria barra,
+     que é 20. Enquanto os popovers do topo eram só leitura, ninguém notou; o
+     primeiro conteúdo clicável dentro de um deles — os resultados da busca
+     (ADR 0024) — esbarrou nisso na hora, e o clique ia para o backdrop.
+     Depois de `.topbar` e não antes, senão a cascata devolve o 20. É a
+     correção que `.sidebar--menu-open` já fazia, do outro lado da tela. */
+  .topbar--menu-open { @apply z-60; }
   .breadcrumb { @apply flex gap-2 text-xs text-muted; }
   .breadcrumb strong { @apply text-ink; }
   .breadcrumb b { @apply font-normal text-slate-300; }
@@ -357,6 +366,16 @@
     @apply w-full rounded-xl border border-line px-3 py-2.5 text-xs text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
   }
   .popover-hint { @apply mx-0.5 mt-2.5 mb-0.5 text-[11px] text-slate-400; }
+  /* Resultados da busca (ADR 0024). A lista rola dentro de si: um projeto com
+     muitos documentos não pode empurrar o popover para fora da tela. */
+  .popover--search { @apply w-[min(380px,calc(100vw-2rem))]; }
+  .search-results { @apply mt-2 max-h-[320px] list-none overflow-y-auto p-0; }
+  .search-result {
+    @apply grid w-full gap-0.5 rounded-lg border-0 bg-transparent px-2.5 py-2 text-left transition-colors hover:bg-brand-50;
+  }
+  .search-result strong { @apply text-xs leading-snug text-ink; }
+  .search-result-kind { @apply text-[10px] font-semibold tracking-wide text-brand-600 uppercase; }
+  .search-result-detail { @apply text-[11px] leading-snug text-slate-400; }
   .popover-head { @apply border-b border-line px-3.5 py-3 text-xs font-bold; }
   .popover-row { @apply grid gap-0.5 border-b border-line/70 px-3.5 py-3; }
   .popover-row:last-child { @apply border-b-0; }

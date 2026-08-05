@@ -412,6 +412,35 @@ class FeedbackOut(Out):
     feedback: str
 
 
+# --- busca (ADR 0024) -------------------------------------------------------
+
+
+class SearchHitOut(Out):
+    """Um resultado da busca, já no formato que a tela mostra.
+
+    ``tab`` é o rótulo da aba para onde o clique leva — a tela navega por rótulo
+    desde a Fase 2, e devolvê-lo pronto evita um segundo mapa no navegador que
+    envelheceria sozinho. ``document_id`` só vem preenchido quando há arquivo
+    por trás e ele passou pela varredura: é o que permite abrir a fonte pela
+    rota de download assinado (ADR 0017), e vazio quer dizer "não há o que
+    abrir", nunca "abra por sua conta".
+    """
+
+    kind: str
+    title: str
+    detail: str
+    location: str
+    tab: str
+    document_id: str
+
+
+class SearchOut(Out):
+    """A busca não erra, ela não acha: termo curto ou sem casamento devolve
+    ``results`` vazio e 200 — nunca 422, nunca o resultado mais próximo."""
+
+    results: list[SearchHitOut]
+
+
 # --- integrações ------------------------------------------------------------
 
 

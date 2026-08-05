@@ -36,6 +36,10 @@
    `invite.spec.ts` vai além e **lê a caixa do Mailpit pela API** (`:8025/api/v1/search`) para
    seguir o link do convite, definir a senha e entrar: é o único ponto onde "o e-mail chega"
    é verificado, e por isso os testes de API podem dublar o Keycloak sem perder nada.
+   O `search.spec.ts` (ADR 0024) está aqui pela razão que define este nível: um `<input>` sem
+   `onChange` passa por qualquer asserção sobre HTML renderizado — só um navegador de verdade
+   digitando descobre que o campo não faz nada. Foi ele também que encontrou o defeito de
+   empilhamento do topbar, que nenhum teste de unidade tem como ver.
 8. **Avaliação de IA: dataset versionado, e o adversarial roda contra o respondedor real.**
    Até a Fase 5 os catorze casos rodavam no `OfflineResponder`, um casador determinístico que não
    tem como obedecer a uma instrução — a eval de prompt injection provava que uma pedra não atende

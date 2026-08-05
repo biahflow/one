@@ -125,3 +125,29 @@ export const NOTIFICATIONS = {
     },
   ],
 };
+
+/** `GET /api/v1/me/search` — a busca do projeto (Fase 6, ADR 0024).
+ *
+ *  Duas espécies de propósito: a linha que leva a uma aba e o trecho que abre a
+ *  fonte. Elas percorrem caminhos diferentes no clique, e uma fixture com só uma
+ *  delas deixaria metade do componente sem exercício. */
+export const SEARCH = {
+  results: [
+    {
+      kind: "document",
+      title: "Contrato de manutenção",
+      detail: "Jurídico",
+      location: "",
+      tab: "Documentos",
+      document_id: "cccccccc-1111-4222-8333-444444444444",
+    },
+    {
+      kind: "chunk",
+      title: "Contrato de manutenção",
+      detail: "…a cláusula de rescisão antecipada exige aviso de trinta dias…",
+      location: "página 2",
+      tab: "Documentos",
+      document_id: "cccccccc-1111-4222-8333-444444444444",
+    },
+  ],
+};

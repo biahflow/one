@@ -1,0 +1,12 @@
+# O contexto desta imagem é `apps/api/`, que até a ADR 0022 não tinha
+# `.dockerignore` nenhum — de modo que `tests/` era enviado ao daemon e copiado
+# para dentro. O `COPY` do Dockerfile já não os leva; isto impede que sequer
+# entrem no contexto, e é o que faz uma edição em `tests/` não invalidar o cache
+# de camadas da imagem.
+tests
+requirements-dev.txt
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov

@@ -24,6 +24,19 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     web_origin: str = "http://localhost:3000"
 
+    # Qual ambiente é este (Fase 5, ADR 0022). O padrão é `local` porque é o
+    # único valor que uma máquina de desenvolvimento pode afirmar sem configurar
+    # nada — e porque um padrão que já se declarasse ambiente sério faria a
+    # recusa de `_refuse_unsafe` disparar no primeiro `pytest`.
+    #
+    # Não é decoração: fora de `local`, `preflight()` recusa subir com segredo de
+    # exemplo, `DEMO_MODE` ligado ou endereço em texto claro. A regra é a da ADR
+    # 0017 — *um ambiente que não pode provar que está seguro não afirma que
+    # está* —, e ela existe porque todo `${VAR}` do compose tem default local:
+    # sem esta checagem, um `.env` de homologação a que falte uma chave sobe
+    # verde com a senha do exemplo.
+    environment: str = "local"
+
     # Telemetria (Fase 5, ADR 0018). `json` é o padrão porque é o formato que um
     # coletor lê e o que o runbook de incidente pressupõe; `text` existe para o
     # `docker compose logs` de quem está desenvolvendo, e **também** imprime os

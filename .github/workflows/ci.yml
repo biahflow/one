@@ -176,6 +176,28 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose build
 
+      # O ambiente de homologação é definido em código, e um arquivo de compose
+      # que ninguém interpreta apodrece sem avisar (ADR 0022). Duas asserções,
+      # nesta ordem, porque a primeira é a que dá sentido à segunda.
+
+      # 1. Sem segredos, o override **recusa**. É a propriedade central da
+      #    fatia: todo `${VAR}` do compose base tem default local, então um
+      #    `.env` incompleto subiria verde com a senha do `.env.example`.
+      - name: o override de homologação recusa subir sem segredos
+        run: |
+          if docker compose --env-file /dev/null \
+               -f docker-compose.yml -f docker-compose.homolog.yml config >/dev/null 2>&1; then
+            echo "::error::o override de homologação aceitou uma configuração sem segredos"
+            exit 1
+          fi
+
+      # 2. Com o template completo, ele valida. Sem esta, a asserção acima
+      #    passaria também para um arquivo sintaticamente quebrado.
+      - name: o override de homologação valida com o template
+        run: |
+          docker compose --env-file .env.homolog.example \
+            -f docker-compose.yml -f docker-compose.homolog.yml config --quiet
+
   # The only job that boots Keycloak: it is the one thing the other levels
   # cannot prove — browser → realm → BFF callback → dashboard.
   #

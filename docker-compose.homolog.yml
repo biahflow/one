@@ -1,0 +1,282 @@
+# Homologação (Fase 5, ADR 0022) — sobreposição do `docker-compose.yml`.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.homolog.yml up -d
+#
+# Este arquivo **não provisiona nada**: ele é a definição do ambiente, versionada
+# e conferida pelo CI, para o dia em que houver uma máquina. O runbook de subida
+# é `docs/runbooks/deploy.md`.
+#
+# ## A regra que carrega o arquivo: `${VAR:?}`, nunca `${VAR:-default}`
+#
+# Todo `${VAR}` do compose base tem um default local — `AGENT_KEY_PEPPER` cai em
+# `agent-pepper-local-only`, `AUTH_SECRET` em `portal_auth_local_only`,
+# `DRIVE_TOKEN_ENCRYPTION_KEY` numa chave base64 que está no `.env.example`. Isso
+# é o certo para a stack de desenvolvimento, que precisa subir com um `cp`, e é
+# uma armadilha para qualquer outra: **um `.env` de homologação a que falte uma
+# chave sobe verde, com o segredo do exemplo**. Nada fica vermelho.
+#
+# Aqui todo segredo é `${VAR:?mensagem}`: o compose **recusa** em vez de herdar.
+# É a forma do `BACKUP_AGE_RECIPIENT` do `scripts/backup.sh`, que prefere não
+# fazer backup a fazer um em texto claro, e a do `AGENT_KEY_PEPPER` vazio, que
+# prefere não autenticar ninguém a autenticar com um segredo conhecido.
+#
+# O `portal_api/preflight.py` fecha a outra metade, e as duas são necessárias por
+# razões diferentes: este arquivo só protege quem sobe por ele, e uma variável
+# pode estar presente e ainda assim valer o que está no exemplo — presença não é
+# qualidade.
+
+services:
+  postgres:
+    # Nenhuma porta publicada no host. Em homologação o único caminho de fora é
+    # o Caddy, e um Postgres exposto na internet é o incidente mais barato de
+    # causar que existe. Vale para redis, minio e keycloak abaixo, pela mesma
+    # razão — `!reset` porque a lista do arquivo base seria concatenada, não
+    # substituída.
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB}
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  db-bootstrap:
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+    command: >
+      psql -h postgres -U ${POSTGRES_USER:?defina POSTGRES_USER} -d ${POSTGRES_DB:?defina POSTGRES_DB}
+           -v ON_ERROR_STOP=1
+           -v app_password=${POSTGRES_APP_PASSWORD:?defina POSTGRES_APP_PASSWORD}
+           -v system_password=${POSTGRES_SYSTEM_PASSWORD:?defina POSTGRES_SYSTEM_PASSWORD}
+           -v migrator_password=${POSTGRES_MIGRATOR_PASSWORD:?defina POSTGRES_MIGRATOR_PASSWORD}
+           -v admin_password=${POSTGRES_ADMIN_PASSWORD:?defina POSTGRES_ADMIN_PASSWORD}
+           -f /bootstrap/roles.sql
+
+  api-migrate:
+    environment:
+      DATABASE_MIGRATION_URL: ${DATABASE_MIGRATION_URL:?defina DATABASE_MIGRATION_URL}
+
+  # **O seed não roda em homologação.** Ele existe para o login local cair num
+  # dashboard real, e o que ele semeia são três pessoas com senha conhecida e um
+  # projeto de demonstração — dado fabricado, que é exatamente o que o portal
+  # inteiro foi construído para não mostrar ao cliente.
+  #
+  # Ele não é removido, é neutralizado: `api`, `worker` e `beat` dependem dele com
+  # `service_completed_successfully`, e um serviço ausente ou desligado por
+  # profile faria os três não subirem. Um `true` completa com sucesso sem tocar
+  # no banco, que é precisamente o que se quer dizer aqui.
+  api-seed:
+    command: ["true"]
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+
+  # Local é MinIO; em homologação continua sendo, porque o item do roadmap é
+  # "definir o ambiente", não "migrar para S3". O `backup-restore.md` já registra
+  # que em produção o storage deixa de ser o `scripts/backup.sh` e passa a ser
+  # versionamento mais replicação — trocar `STORAGE_ENDPOINT_URL` e as duas
+  # chaves é tudo o que a aplicação precisa saber sobre isso.
+  minio:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?defina MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?defina MINIO_ROOT_PASSWORD}
+
+  keycloak:
+    # `start`, não `start-dev`: o modo de desenvolvimento desliga a exigência de
+    # HTTPS, afrouxa o hostname e não é suportado para nada além de brincar.
+    #
+    # E **sem `--import-realm`**: o realm importado é o `portal-local`, que traz
+    # `sslRequired: none`, os dois segredos de client em claro no JSON versionado
+    # e três pessoas com a mesma senha. O realm de homologação é criado uma vez,
+    # pelo runbook, e sai no backup pelo `kc.sh export` que o
+    # `backup-restore.md` já nomeia.
+    command: start --optimized
+    ports: !reset []
+    restart: unless-stopped
+    volumes: !reset []
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?defina KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?defina KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB_USERNAME: ${POSTGRES_USER:?defina POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?defina KEYCLOAK_PUBLIC_URL}
+      # Atrás do Caddy o Keycloak recebe HTTP e precisa saber que o cliente veio
+      # por HTTPS; sem isto ele monta as URLs do realm com o esquema errado e o
+      # code exchange falha por `redirect_uri` divergente.
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+
+  # Mailpit é uma caixa de entrada de mentira que aceita qualquer coisa e não
+  # entrega nada. Em homologação o e-mail do convite precisa chegar de verdade a
+  # uma pessoa, então o SMTP é o do provedor — e este serviço fica de fora.
+  # Nada depende dele, então `profiles` basta.
+  mailpit:
+    profiles: ["never"]
+
+  # Google Drive de mentira. Mesma razão: em homologação o conector fala com o
+  # Google, e um stub no ar seria uma fonte de dado que ninguém pediu.
+  drive-stub:
+    profiles: ["never"]
+
+  api:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:?defina ENVIRONMENT (homolog ou production)}
+      DATABASE_URL: ${DATABASE_URL:?defina DATABASE_URL}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:?defina DATABASE_SYSTEM_URL}
+      DATABASE_ADMIN_URL: ${DATABASE_ADMIN_URL:?defina DATABASE_ADMIN_URL}
+      # Demonstração desligada e sem default: `DEMO_MODE=true` aqui abriria as
+      # rotas que respondem sem autenticação de verdade. O `preflight` recusa
+      # subir com ela ligada, e esta linha é a segunda barreira.
+      DEMO_MODE: "false"
+      WEB_ORIGIN: ${PORTAL_PUBLIC_URL:?defina PORTAL_PUBLIC_URL}
+      PORTAL_WEB_URL: ${PORTAL_PUBLIC_URL:?defina PORTAL_PUBLIC_URL}
+      OIDC_ISSUER: ${OIDC_ISSUER:?defina OIDC_ISSUER}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:?defina OIDC_JWKS_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:?defina KEYCLOAK_REALM}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?defina KEYCLOAK_ADMIN_CLIENT_SECRET}
+      # SMTP de verdade: em homologação o convite é um e-mail que precisa chegar.
+      SMTP_HOST: ${SMTP_HOST:?defina SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:?defina SMTP_PORT}
+      SMTP_USER: ${SMTP_USER:?defina SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?defina SMTP_PASSWORD}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:?defina NOTIFICATIONS_FROM_EMAIL}
+      AGENT_KEY_PEPPER: ${AGENT_KEY_PEPPER:?defina AGENT_KEY_PEPPER}
+      BIAHFLOW_BASE_URL: ${BIAHFLOW_BASE_URL:?defina BIAHFLOW_BASE_URL}
+      BIAHFLOW_READ_TOKEN: ${BIAHFLOW_READ_TOKEN:?defina BIAHFLOW_READ_TOKEN}
+      BIAHFLOW_WEBHOOK_SECRET: ${BIAHFLOW_WEBHOOK_SECRET:?defina BIAHFLOW_WEBHOOK_SECRET}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?defina STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?defina STORAGE_SECRET_KEY}
+      # A assinatura da URL de download cobre o host (ADR 0017), então ela nasce
+      # já apontando para o endereço público — e aqui isso é o domínio, não um
+      # `localhost:9000`.
+      STORAGE_PUBLIC_ENDPOINT_URL: ${STORAGE_PUBLIC_ENDPOINT_URL:?defina STORAGE_PUBLIC_ENDPOINT_URL}
+      GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID:?defina GOOGLE_DRIVE_CLIENT_ID}
+      GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET:?defina GOOGLE_DRIVE_CLIENT_SECRET}
+      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:?defina GOOGLE_DRIVE_REDIRECT_URI}
+      # De volta ao Google de verdade: o base compose aponta para o `drive-stub`.
+      GOOGLE_OAUTH_AUTHORIZE_URL: ${GOOGLE_OAUTH_AUTHORIZE_URL:-https://accounts.google.com/o/oauth2/v2/auth}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}
+      GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-https://www.googleapis.com/drive/v3}
+      DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:?defina DRIVE_TOKEN_ENCRYPTION_KEY}
+      # Sem chave o chat responde pelo casador offline, sem citar documento e sem
+      # erro nenhum no log (ADR 0007/0014). Em homologação isso seria um portal
+      # que parece funcionar e responde pior — e é o estado em que a pilha local
+      # esteve até a ADR 0022, porque estas variáveis não chegavam ao contêiner.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?defina ANTHROPIC_API_KEY}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:?defina VOYAGE_API_KEY}
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  worker:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:?defina ENVIRONMENT (homolog ou production)}
+      DATABASE_URL: ${DATABASE_URL:?defina DATABASE_URL}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:?defina DATABASE_SYSTEM_URL}
+      DEMO_MODE: "false"
+      PORTAL_WEB_URL: ${PORTAL_PUBLIC_URL:?defina PORTAL_PUBLIC_URL}
+      SMTP_HOST: ${SMTP_HOST:?defina SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:?defina SMTP_PORT}
+      SMTP_USER: ${SMTP_USER:?defina SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?defina SMTP_PASSWORD}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:?defina NOTIFICATIONS_FROM_EMAIL}
+      # `alerts.md` já diz que, em produção com `CLAMAV_HOST` configurado, um
+      # `skipped` sustentado é alerta. O que faltava era o daemon: aqui ele é
+      # exigido, porque `skipped` não é `clean` (ADR 0017) e um ambiente que
+      # recebe arquivo de fora precisa de um veredito de verdade.
+      CLAMAV_HOST: ${CLAMAV_HOST:?defina CLAMAV_HOST}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?defina STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?defina STORAGE_SECRET_KEY}
+      GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID:?defina GOOGLE_DRIVE_CLIENT_ID}
+      GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET:?defina GOOGLE_DRIVE_CLIENT_SECRET}
+      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:?defina GOOGLE_DRIVE_REDIRECT_URI}
+      GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}
+      GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-https://www.googleapis.com/drive/v3}
+      DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:?defina DRIVE_TOKEN_ENCRYPTION_KEY}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:?defina VOYAGE_API_KEY}
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # ClamAV de verdade (ADR 0017). Local ele não existe e a varredura devolve
+  # `skipped`, que o EICAR ainda pega; aqui ela precisa devolver `clean` ou
+  # `infected`, e para isso alguém tem de estar do outro lado do socket.
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  beat:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:?defina ENVIRONMENT (homolog ou production)}
+      DATABASE_URL: ${DATABASE_URL:?defina DATABASE_URL}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:?defina DATABASE_SYSTEM_URL}
+
+  web:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      # `AUTH_URL` em https não é cosmético: `app/lib/session.ts` decide pelo
+      # esquema dele se o cookie leva o prefixo `__Secure-`. Em http o portal
+      # sobe, loga e guarda o token de acesso num cookie sem proteção alguma.
+      AUTH_URL: ${PORTAL_PUBLIC_URL:?defina PORTAL_PUBLIC_URL}
+      AUTH_SECRET: ${AUTH_SECRET:?defina AUTH_SECRET}
+      AUTH_KEYCLOAK_ID: ${AUTH_KEYCLOAK_ID:?defina AUTH_KEYCLOAK_ID}
+      AUTH_KEYCLOAK_SECRET: ${AUTH_KEYCLOAK_SECRET:?defina AUTH_KEYCLOAK_SECRET}
+      KEYCLOAK_ISSUER: ${OIDC_ISSUER:?defina OIDC_ISSUER}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:?defina KEYCLOAK_INTERNAL_URL}
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  # O único caminho de fora para dentro, e o que fecha a promessa de TLS que o
+  # `docs/security.md` fazia sem seção que a cumprisse. Caddy porque o
+  # certificado é automático e a configuração de um proxy que só roteia dois
+  # nomes cabe em quatro linhas — um nginx aqui seria mais arquivo para a mesma
+  # coisa.
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PORTAL_DOMAIN: ${PORTAL_DOMAIN:?defina PORTAL_DOMAIN}
+      KEYCLOAK_DOMAIN: ${KEYCLOAK_DOMAIN:?defina KEYCLOAK_DOMAIN}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -34,6 +34,7 @@ from portal_api.models import (
     Document,
     Organization,
 )
+from portal_api.preflight import preflight
 from portal_api.repositories import (
     AgentEventRepository,
     ConversationMessageRepository,
@@ -51,6 +52,11 @@ settings = get_settings()
 # não chegam ao stdout, que era o estado que o runbook de eventos descrevia como
 # se não fosse (ADR 0018).
 configure_logging()
+# E logo depois: fora de `ENVIRONMENT=local`, recusa continuar com segredo de
+# exemplo, `DEMO_MODE` ligado ou endereço em texto claro (ADR 0022). Na
+# importação e não numa rota de saúde — um processo que já respondeu uma
+# requisição com a senha do `.env.example` não tem como desfazer isso.
+preflight(settings)
 app = FastAPI(title="Portal Labs API", version="0.1.0", docs_url="/docs")
 app.add_middleware(
     CORSMiddleware,

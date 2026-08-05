@@ -105,7 +105,7 @@ services:
       # O `iss` do token é o endereço que o NAVEGADOR usa. Com o backchannel
       # dinâmico, quem chama de dentro da rede do compose (BFF e API) continua
       # alcançando o Keycloak por `keycloak:8080` sem quebrar o issuer (ADR 0010).
-      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HEALTH_ENABLED: "true"
     ports:
@@ -147,6 +147,11 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      # Qual ambiente é este (ADR 0022). `local` é o único que tolera segredo de
+      # exemplo; os outros recusam subir com um deles — ver `_refuse_unsafe`.
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
       # O `iss` do token é o endereço que o navegador usou; o JWKS é buscado pela
       # rede interna, que é outro host (ADR 0010).
       OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:8080/realms/portal-local}
@@ -163,7 +168,20 @@ services:
       NOTIFICATIONS_EMAIL_ENABLED: ${NOTIFICATIONS_EMAIL_ENABLED:-true}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
+      # O Mailpit aceita qualquer coisa sem autenticar, então local estas três
+      # ficam vazias — mas ficam *presentes*, porque uma variável documentada que
+      # não chega ao contêiner é um botão que não está ligado a nada (ADR 0022).
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
       NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
+      NOTIFICATIONS_FROM_NAME: ${NOTIFICATIONS_FROM_NAME:-Portal Labs}
+      # Fonte da verdade do status (ADR 0006). O seed entra por `sync_snapshot`
+      # direto, então a stack local sobe sem estas — o que é justamente o motivo
+      # de elas terem passado despercebidas.
+      BIAHFLOW_BASE_URL: ${BIAHFLOW_BASE_URL:-http://localhost:19000/api/v1}
+      BIAHFLOW_READ_TOKEN: ${BIAHFLOW_READ_TOKEN:-}
+      BIAHFLOW_WEBHOOK_SECRET: ${BIAHFLOW_WEBHOOK_SECRET:-}
       # API de eventos dos agentes (ADR 0013). O pepper entra no HMAC que
       # substitui a chave no banco; vazio significa "nenhuma chave autentica",
       # então o local traz um valor óbvio e produção precisa do seu.
@@ -180,12 +198,27 @@ services:
       STORAGE_BUCKET: ${STORAGE_BUCKET:-portal-documents}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-portal-minio}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-portal-minio-local-only}
+      # Vida da URL assinada da citação (ADR 0017).
+      DOCUMENT_DOWNLOAD_TTL_SECONDS: ${DOCUMENT_DOWNLOAD_TTL_SECONDS:-300}
       # As mesmas do worker, e não por simetria: a API embute a *pergunta* para
       # buscar no índice que o worker embutiu. Dois embedders diferentes nos dois
       # lados seriam dois espaços vetoriais, e a recuperação devolveria ruído sem
       # nenhum erro aparecer.
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
       VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3}
+      # Chat contextual (ADR 0007/0021). **Estas três faltavam aqui**, e o preço
+      # foi alto: elas existem no `.env.example` desde a Fase 3 e são lidas pelo
+      # `config.py`, mas nenhum compose e nenhum workflow as passava — de modo que
+      # o `AnthropicResponder` nunca rodou na pilha de pé. O e2e, o navegador e
+      # qualquer medição local exercitavam o respondedor offline, e uma medição de
+      # carga contra isso mediria o Postgres (ADR 0022). Vazio segue significando
+      # respondedor offline determinístico, o que é o padrão local.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
+      # Perguntas por pessoa por minuto. A ADR 0021 avisou para **não** baixar
+      # este valor no compose (os specs de e2e compartilham a mesma pessoa) — o
+      # aviso falava de uma variável que o compose nem lia.
+      CHAT_RATE_LIMIT: ${CHAT_RATE_LIMIT:-20}
       # Conector do Google Drive (ADR 0016). Local aponta para o stub, e os dois
       # endereços diferentes não são engano: o *navegador* vai ao authorize
       # (localhost) e o *servidor* vai ao token e à API (rede interna) — a mesma
@@ -198,6 +231,8 @@ services:
       GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-http://drive-stub:19100/drive/v3}
       # Protege o refresh token no banco, então não pode viver no banco.
       DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}
+      # A chave anterior, para a rotação não obrigar todo projeto a reconsentir.
+      DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS: ${DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS:-}
     ports:
       - "8000:8000"
     # Prontidão, não vivacidade (ADR 0018): `/health` sempre diria "ok", porque
@@ -228,6 +263,9 @@ services:
       DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
       # É o worker que manda o e-mail; a API só enfileira (ADR 0012).
       NOTIFICATIONS_EMAIL_ENABLED: ${NOTIFICATIONS_EMAIL_ENABLED:-true}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
@@ -261,6 +299,8 @@ services:
       GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-http://drive-stub:19100/token}
       GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-http://drive-stub:19100/drive/v3}
       DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}
+      # A chave anterior, para a rotação não obrigar todo projeto a reconsentir.
+      DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS: ${DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS:-}
       DRIVE_SYNC_ENABLED: ${DRIVE_SYNC_ENABLED:-true}
       DRIVE_SYNC_INTERVAL_SECONDS: ${DRIVE_SYNC_INTERVAL_SECONDS:-900}
     # `inspect ping` fala com **este** worker pela fila de controle e espera o
@@ -298,6 +338,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
       DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
       DRIVE_SYNC_ENABLED: ${DRIVE_SYNC_ENABLED:-true}
       DRIVE_SYNC_INTERVAL_SECONDS: ${DRIVE_SYNC_INTERVAL_SECONDS:-900}
       # O beat lê isto para montar o agendamento; quem executa a poda e o
@@ -338,8 +381,10 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      # BFF → FastAPI, server-side (não expor como NEXT_PUBLIC_/VITE_).
-      API_BASE_URL: http://api:8000
+      # BFF → FastAPI, server-side (não expor como NEXT_PUBLIC_/VITE_). O padrão é
+      # o nome do serviço na rede do compose; a homologação sobrescreve quando a
+      # API não é vizinha de rede.
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
       # Auth.js: o cookie de sessão é cifrado com AUTH_SECRET e guarda o access
       # token, que nunca chega ao navegador (ADR 0010).
       AUTH_SECRET: ${AUTH_SECRET:-portal_auth_local_only}

@@ -10,7 +10,16 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from portal_api import access, admin, agent_auth, conversations, results, schemas, storage
+from portal_api import (
+    access,
+    admin,
+    agent_auth,
+    chat_limit,
+    conversations,
+    results,
+    schemas,
+    storage,
+)
 from portal_api.ai import service as chat_service
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
@@ -312,9 +321,29 @@ def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
     }
 
 
-@app.post("/api/v1/chat", response_model=schemas.ChatOut, responses=CLIENT_ERRORS)
+@app.post(
+    "/api/v1/chat",
+    response_model=schemas.ChatOut,
+    responses={
+        **CLIENT_ERRORS,
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": (
+                "Perguntas demais na janela de um minuto. Não é opaco de propósito, "
+                "como o 429 da rota de eventos: quem pergunta precisa distinguir "
+                "'seu ritmo' de 'sua permissão' para saber se vale tentar de novo. "
+                "O `Retry-After` diz em quantos segundos."
+            )
+        },
+    },
+)
 def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
     """Grounded, tenant-scoped chat: cite the read model or declare the gap + pendência (ADR 0007)."""
+    # Antes da transação abrir (ADR 0021): o contador vive em transação própria,
+    # para nenhum lock atravessar a chamada ao modelo. O preço é que um token
+    # válido sem projeto vê 429 antes de 404 — que não conta nada sobre projeto
+    # nenhum, só que a pessoa está autenticada, o que ela já sabe.
+    chat_limit.consume(principal.subject, settings)
+
     with get_session(principal) as session:
         user = resolve_user(session, principal)
         if message.project_id is not None:

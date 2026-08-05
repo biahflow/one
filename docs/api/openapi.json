@@ -4568,6 +4568,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Perguntas demais na janela de um minuto. Não é opaco de propósito, como o 429 da rota de eventos: quem pergunta precisa distinguir 'seu ritmo' de 'sua permissão' para saber se vale tentar de novo. O `Retry-After` diz em quantos segundos."
           }
         },
         "security": [

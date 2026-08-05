@@ -16,6 +16,14 @@ campo que não sai. A lista de eventos, com limiar e destino, está em `runbooks
 
 Indicadores: latência e erro de API, fila, sincronização Drive, indexação, falha de conectores, custo/latência de IA, cobertura de citações, taxa de lacuna, pendências abertas/resolvidas e anomalias de autorização.
 
+Os quatro indicadores de IA dessa lista saem de um evento só: `chat.answered` (ADR 0021), com
+`prompt_version`, `responder`, `model`, `confidence` e a contagem de citações por turno — de
+onde vêm cobertura de citações e taxa de lacuna por versão de prompt, que é o que torna uma
+regressão de prompt visível em vez de anedótica. E o mesmo trio está gravado em
+`conversation_message`, pela razão do `last_sync_error` da conexão do Drive e do `scan_state` do
+documento: o log responde "está acontecendo agora" e some com a retenção; a coluna responde
+"aconteceu na terça passada", que é quando alguém pergunta.
+
 O resultado de cada sincronização do Drive vive na própria linha da conexão (`last_sync_at`, `last_sync_error`, `last_sync_stats`), e não só no log: é o que faz "por que a IA não sabe disso?" ser respondível pela tela. `rejected > 0` é o contador da fronteira — atalhos e arquivos de fora da pasta autorizada — e deve ser lido como o controle funcionando, não como erro.
 
 O estado da varredura vive na linha do documento (`scan_state`, `scan_error`, `scanned_at`) pela

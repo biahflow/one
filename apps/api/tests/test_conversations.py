@@ -19,14 +19,17 @@ from dataclasses import dataclass
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
+from portal_api.ai.prompt import PROMPT_VERSION
 from portal_api.auth import bearer_principal
 from portal_api.main import app
 from portal_api.models import (
     Conversation,
+    ConversationMessage,
     MemberRole,
+    MessageResponder,
     Membership,
     Organization,
     PendingItem,
@@ -365,11 +368,93 @@ def test_rating_a_message_that_does_not_exist_is_the_same_404(
     assert response.status_code == 404
 
 
-def test_the_history_returns_the_end_of_a_long_conversation(
+# --- o carimbo de quem produziu a resposta (Fase 5, ADR 0021) ---------------
+
+
+def _stamped_messages(engine: Engine, project_id: uuid.UUID) -> list[ConversationMessage]:
+    """Lê a linha, e não a API: o carimbo **não** está no contrato de propósito.
+
+    Com ``extra="forbid"`` (ADR 0020) todo campo novo de resposta vira compromisso
+    que o esquema passa a ter de manter, e dizer ao cliente qual modelo respondeu
+    convida a discutir com a máquina em vez de com a evidência.
+    """
+    with Session(engine) as check:
+        return list(
+            check.execute(
+                select(ConversationMessage)
+                .where(ConversationMessage.project_id == project_id)
+                .order_by(ConversationMessage.ordinal)
+            ).scalars()
+        )
+
+
+def test_the_stored_turn_names_the_prompt_and_the_responder(
     talkers: Talkers, authenticated, migrated_engine: Engine
+) -> None:
+    """"Esta resposta veio de qual prompt?" passa a ter resposta na própria linha."""
+    authenticated(talkers.owner)
+    _ask(GROUNDED_QUESTION)
+
+    asked, answered = _stamped_messages(migrated_engine, talkers.project_id)
+
+    # A pergunta é da pessoa: nenhum prompt a produziu, e o carimbo é NULL.
+    assert (asked.prompt_version, asked.responder, asked.model) == (None, None, None)
+
+    assert answered.prompt_version == PROMPT_VERSION
+    # Sem `ANTHROPIC_API_KEY` no CI, o respondedor é o offline determinístico — e
+    # o "modelo" é este código, versionado pelo git e não por uma string.
+    assert answered.responder is MessageResponder.offline
+    assert answered.model is None
+
+
+def test_a_fallback_turn_is_stored_as_such(
+    talkers: Talkers, authenticated, migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Provedor morto não pode virar um turno indistinguível de um turno normal.
+
+    É a pergunta que o log sozinho não responde seis semanas depois: ele já rodou,
+    e a linha continua aqui.
+    """
+    from portal_api.ai import service as service_module
+
+    # É `service` quem chama, então é nele que a troca vale — e o respondedor
+    # trocado se apresenta como `anthropic`, para o carimbo ter de mudar sozinho.
+    monkeypatch.setattr(service_module, "get_responder", lambda _settings: _DeadResponder())
+
+    authenticated(talkers.owner)
+    _ask(GROUNDED_QUESTION)
+
+    _, answered = _stamped_messages(migrated_engine, talkers.project_id)
+    assert answered.responder is MessageResponder.offline_fallback
+    assert answered.model is None
+    assert answered.prompt_version == PROMPT_VERSION
+
+
+class _DeadResponder:
+    """Um provedor configurado que sempre falha — a queda, sem rede nenhuma."""
+
+    name = "anthropic"
+
+    @property
+    def model(self) -> str:
+        return "claude-opus-5"
+
+    def answer(self, evidence, question):  # type: ignore[no-untyped-def]
+        raise RuntimeError("provedor indisponível")
+
+
+def test_the_history_returns_the_end_of_a_long_conversation(
+    talkers: Talkers, authenticated, migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Uma conversa longa perde o começo, não o que acabou de ser dito."""
     from portal_api import conversations as conversations_module
+    from portal_api.config import get_settings
+
+    # Este é o único teste que passa do limite de perguntas por minuto (ADR 0021):
+    # ele precisa de 26 turnos para o histórico ter o que truncar. Levantar o teto
+    # aqui é honesto — o que está sob teste é o corte do histórico, não o limite,
+    # que tem arquivo próprio em `test_chat_rate_limit.py`.
+    monkeypatch.setattr(get_settings(), "chat_rate_limit", 1_000)
 
     authenticated(talkers.owner)
     first = _ask("Pergunta número 1: qual é o status?")

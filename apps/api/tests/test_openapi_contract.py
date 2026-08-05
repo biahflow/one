@@ -190,6 +190,11 @@ def test_the_events_route_is_the_only_one_authenticated_by_key(
     Um agente não tem sessão de usuário, então o Bearer humano não vale nesta
     rota — e ela é a única assim. Até aqui isso vivia em prosa no
     `docs/api-contracts.md`, onde nada o verificava.
+
+    Desde a ADR 0021 o 429 **não** é mais exclusivo desta rota: o `/api/v1/chat`
+    também declara um. A propriedade que este teste afirma continua verdadeira e
+    inalterada, porque ela é sobre *autenticação por chave*, e não sobre o 429 —
+    que aqui é só a evidência de que a rota distingue ritmo de credencial.
     """
     by_key = {
         path

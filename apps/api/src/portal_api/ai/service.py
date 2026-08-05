@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from portal_api.ai.prompt import PROMPT_VERSION
 from portal_api.ai.responder import GAP_MESSAGE, get_responder
 from portal_api.ai.retrieval import Evidence, collect_document_evidence, collect_evidence
 from portal_api.config import Settings
@@ -40,6 +41,18 @@ class ChatResult:
     #: exibição; quem grava a conversa (ADR 0015) precisa do ``id`` da evidência,
     #: e recuperá-lo a partir do rótulo seria adivinhar.
     cited: tuple[Evidence, ...] = ()
+    #: Quem produziu esta resposta, para a linha guardar (ADR 0021). Sem isto,
+    #: "esta resposta ruim veio de qual prompt?" e "quais turnos são comparáveis
+    #: nesta eval?" não têm resposta seis semanas depois — e o log, que teria a
+    #: outra metade, já rodou.
+    prompt_version: str = PROMPT_VERSION
+    #: ``offline`` | ``anthropic`` | ``offline_fallback``. São três fatos
+    #: distintos, não dois: o terceiro é o que faz "por que as respostas pioraram
+    #: na terça?" ser respondível pela **linha**.
+    responder: str = "offline"
+    #: ``None`` nos caminhos offline, onde o "modelo" é este código e quem o
+    #: versiona é o git.
+    model: str | None = None
 
 
 def _create_pendencia(
@@ -87,32 +100,63 @@ def answer_question(
     )
     by_id: dict[str, Evidence] = {item.id: item for item in evidence}
 
+    responder = get_responder(settings)
+    responder_name, responder_model = responder.name, responder.model
     try:
-        result = get_responder(settings).answer(evidence, question)
+        result = responder.answer(evidence, question)
     except Exception as exc:  # provider failure → deterministic offline fallback (runbook)
-        logger.warning("Provedor de IA indisponível, usando fallback offline: %s", exc)
+        # A mensagem **é** o nome do evento e o detalhe vai em `extra` (ADR 0018).
+        # Até a Fase 5 isto era um `logger.warning` com interpolação e sem nome, e
+        # como a exceção é engolida aqui o `http.failed` do `TraceMiddleware` nunca
+        # dispara — de modo que o `ai-provider-failure.md` mandava procurar um
+        # evento que não existia, e uma queda do provedor degradava em silêncio.
+        logger.warning(
+            "chat.provider_unavailable",
+            extra={
+                "responder": responder_name,
+                "model": responder_model,
+                "reason": type(exc).__name__,
+            },
+        )
         from portal_api.ai.responder import OfflineResponder
 
         result = OfflineResponder().answer(evidence, question)
+        responder_name, responder_model = "offline_fallback", None
 
     # Only citations that point at real evidence count — no fabricated sources.
     cited = [by_id[sid] for sid in result.source_ids if sid in by_id]
 
+    stamp = {
+        "prompt_version": PROMPT_VERSION,
+        "responder": responder_name,
+        "model": responder_model,
+    }
+
     # Cite-or-gap: a factual answer without a real citation is treated as a gap.
     if not result.sufficient or not cited:
         pending_id = _create_pendencia(session, ctx, question, actor_user_id)
+        logger.info(
+            "chat.answered",
+            extra={**stamp, "confidence": "insufficient_context", "citations": 0},
+        )
         return ChatResult(
             answer=result.answer if not result.sufficient else GAP_MESSAGE,
             sources=[],
             confidence="insufficient_context",
             pending_created=True,
             pending_id=pending_id,
+            **stamp,
         )
 
+    logger.info(
+        "chat.answered",
+        extra={**stamp, "confidence": "grounded", "citations": len(cited)},
+    )
     return ChatResult(
         answer=result.answer,
         sources=[item.citation for item in cited],
         confidence="grounded",
         pending_created=False,
         cited=tuple(cited),
+        **stamp,
     )

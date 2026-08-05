@@ -49,6 +49,20 @@ class MessageConfidence(str, enum.Enum):
     insufficient_context = "insufficient_context"
 
 
+class MessageResponder(str, enum.Enum):
+    """Quem produziu a resposta (ADR 0021).
+
+    São **três** valores e não dois porque ``offline_fallback`` é um fato próprio:
+    o portal tentou o provedor, ele falhou, e a resposta saiu do casador
+    determinístico. Sem esse valor, "por que as respostas pioraram na terça?" só
+    seria respondível pelo log — que a essa altura já rodou.
+    """
+
+    offline = "offline"
+    anthropic = "anthropic"
+    offline_fallback = "offline_fallback"
+
+
 class MessageFeedback(str, enum.Enum):
     helpful = "helpful"
     not_helpful = "not_helpful"
@@ -129,6 +143,17 @@ class ConversationMessage(Base, _ProjectChildMixin, TimestampMixin):
         ForeignKey("pending_item.id", ondelete="SET NULL"),
         nullable=True,
     )
+    #: Qual prompt produziu esta resposta (ADR 0021). O ``prompt-policy.md`` dizia
+    #: que prompts eram versionados e não havia versão; agora há, e sem o carimbo
+    #: aqui uma eval reexecutada não saberia quais turnos são comparáveis.
+    prompt_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    responder: Mapped[MessageResponder | None] = mapped_column(
+        Enum(MessageResponder, name="message_responder"), nullable=True
+    )
+    #: ``None`` nos dois caminhos offline. O ``evaluation-plan.md`` manda rodar o
+    #: dataset antes de trocar de modelo — resposta guardada que não sabe seu
+    #: modelo não pode ser reavaliada.
+    model: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     # --- avaliação da pessoa que perguntou -----------------------------------
     feedback: Mapped[MessageFeedback | None] = mapped_column(

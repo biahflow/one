@@ -252,14 +252,35 @@ atalho **não** entraram no índice.*
       próprio — que foi o que revelou as outras quatro senhas e o MinIO que ninguém sabia que
       faltavam — e o e2e pode reprovar. De quebra, a fixture do teste de SSR do web deixou de ser
       livre para mentir.)*
-- [ ] Cobrir carga e cenários adversariais de IA. *Carga espera o ambiente de homologação: sem
-      orçamento declarado, um número de carga contra o `docker compose` mede o laptop de quem
-      roda. Os adversariais de IA são fatia própria, e há defeito esperando por ela — o
-      `prompt-policy.md` diz que prompts são versionados e não existe `PROMPT_VERSION` nem carimbo
-      em `conversation_message`, de modo que uma resposta guardada não sabe qual prompt a
-      produziu; nenhum teste toca o `AnthropicResponder` nem o `SYSTEM_PROMPT`, então as catorze
-      evals rodam no respondedor offline, onde a injeção é tautológica por construção; e o
-      `/api/v1/chat` não tem limite de taxa embora cada lacuna grave uma pendência.*
+- [x] Cobrir cenários adversariais de IA. *(ADR 0021, FDD 015. Pela quinta vez na Fase 5 a fatia
+      implementou promessas que os documentos davam como cumpridas — quatro delas, e as duas
+      últimas só apareceram ao escrever os testes. O `prompt-policy.md` dizia "prompts são
+      versionados" e o que existia era um `chat_prompt_version` nas settings que **ninguém lia**;
+      agora a versão mora ao lado do texto, com registro append-only de digests como portão de
+      deriva — não uma constante, porque quem atualiza texto e constante juntos sem trocar a
+      versão continuaria verde, que é justamente o caso que a política quer pegar. As catorze
+      evals rodavam no respondedor offline, um casador que **não tem como** obedecer a uma
+      instrução: a eval de injeção provava que uma pedra não atende ao telefone. Abriu-se a costura
+      (`anthropic_client`, na forma do `session_client` do Drive) e entraram catorze casos com um
+      Claude hostil que cita fonte inventada, cita fonte de outro tenant, afirma sem citar e
+      obedece à injeção — metade das asserções olhando o **pedido enviado**, que é a única forma
+      de afirmar que segredo e texto de outro projeto não saem do processo. O chat ganhou limite
+      de taxa por pessoa, em tabela própria sob `portal_system` e em transação anterior à do chat:
+      colunas em `user` travariam o primeiro login, porque `resolve_user` escreve naquela linha
+      dentro de uma transação que abrange a chamada ao modelo. **E os dois defeitos que os testes
+      revelaram:** `max_tokens=1024` com `thinking` adaptativo truncava a resposta e virava
+      fallback offline silencioso; e o `answerFor()` da tela devolvia data, decisão e **rótulos de
+      citação inventados** ao cliente autenticado cuja chamada falhou — com um teste que exigia
+      sua existência, segurando o defeito no lugar como a ADR 0020 achou nas asserções de backup.
+      A afirmação do `CLAUDE.md` de que "não há mais fallback para dado inventado" só passou a ser
+      verdade agora. O limite estrutural ficou declarado, não escondido: o portal não impede um
+      modelo remoto de parafrasear a injeção dentro da resposta, e um filtro de saída foi recusado
+      com argumento — falharia na primeira paráfrase enquanto criava a impressão contrária.)*
+- [ ] Cobrir carga de IA. *Continua esperando o ambiente de homologação: sem orçamento declarado,
+      um número de carga contra o `docker compose` mede o laptop de quem roda. Junto dela ficam as
+      **quotas** — o `threat-model.md` prometia "rate limit, quotas e auditoria" para abuso de
+      chat; a ADR 0021 entregou as duas primeiras e **corrigiu o documento** para parar de
+      prometer a terceira, em vez de fechar três promessas falsas abrindo uma quarta.*
 - [ ] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS, observabilidade e plano de incidentes.
 - [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *O primeiro
       a ler é o `next` — GHSA-6gpp-xcg3-4w24, middleware/proxy bypass em App Router, corrigido em
@@ -275,8 +296,11 @@ o backup passou a ser restaurável com prova (`test_backup_restore.py` roda os d
 verdade contra um banco descartável e confere policies, GRANTs de coluna e isolamento) — e agora
 ele roda **a cada push**, no job `backup-restore`, com as três asserções que vinham pulando em
 silêncio. O contrato passou a existir como artefato (`docs/api/openapi.json`,
-`test_openapi_contract.py`, `tests/api-contract.test.mjs`) e o `e2e` passou a poder reprovar.
-Faltam carga e os adversariais de IA, e o ambiente de homologação.*
+`test_openapi_contract.py`, `tests/api-contract.test.mjs`) e o `e2e` passou a poder reprovar. E os
+adversariais de IA fecharam (`test_chat_ai.py` com o respondedor real e um modelo hostil,
+`test_prompt_version.py`, `test_chat_rate_limit.py`) — com eles saiu o último caminho do portal
+que devolvia dado fabricado ao cliente. Faltam carga e quotas, e o ambiente de homologação de que
+as duas dependem.*
 
 ## Fase 6 — Jornada da transformação e experiência (metodologia)
 

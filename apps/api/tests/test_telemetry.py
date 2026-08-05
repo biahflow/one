@@ -299,3 +299,72 @@ def test_audit_data_outside_a_request_omits_the_field() -> None:
     clear_trace_id()
 
     assert audit_data(reason="x") == {"reason": "x"}
+
+
+# --------------------------------------------------------------------------- #
+# Os campos do chat (Fase 5, ADR 0021)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_chat_stamp_fields_survive_the_formatter() -> None:
+    """Nenhum dos campos novos cai na heurística de segredo.
+
+    A lista de `_SECRET_HINTS` casa por substring — `key` derruba `agent_key`,
+    `monkey` e o que mais aparecer —, então acrescentar campo de log a este
+    repositório pede conferir que ele sai. Sem isto, o `ai-provider-failure.md`
+    voltaria a mandar ler um campo que não sai, que é a regressão que a ADR 0018
+    existe para não repetir.
+
+    *Que os eventos sejam de fato emitidos* é provado onde o cenário mora:
+    `test_chat_ai.py` derruba o provedor e lê o log no mesmo teste em que afirma
+    que a resposta virou lacuna.
+    """
+    payload = json.loads(
+        JsonFormatter().format(
+            _record(
+                "chat.provider_unavailable",
+                responder="anthropic",
+                model="claude-opus-5",
+                reason="ProviderRefused",
+            )
+        )
+    )
+
+    assert payload["event"] == "chat.provider_unavailable"
+    assert payload["responder"] == "anthropic"
+    assert payload["model"] == "claude-opus-5"
+    assert payload["reason"] == "ProviderRefused"
+
+
+def test_the_answered_event_carries_the_prompt_version() -> None:
+    payload = json.loads(
+        JsonFormatter().format(
+            _record(
+                "chat.answered",
+                prompt_version="chat-2026-08-06",
+                responder="offline",
+                confidence="grounded",
+                citations=2,
+            )
+        )
+    )
+
+    assert payload["prompt_version"] == "chat-2026-08-06"
+    assert payload["confidence"] == "grounded"
+    assert payload["citations"] == 2
+
+
+def test_the_rate_limit_event_shows_only_the_prefix_of_the_subject() -> None:
+    """O `sub` inteiro é identificador estável de pessoa; o log não precisa dele.
+
+    Mesmo tratamento que o `key_prefix` recebe no runbook da API de eventos: o
+    bastante para saber *quem* está em loop, sem virar um rastro por pessoa.
+    """
+    payload = json.loads(
+        JsonFormatter().format(
+            _record("chat.rate_limited", subject_prefix="a1b2c3d4", limit=20)
+        )
+    )
+
+    assert payload["subject_prefix"] == "a1b2c3d4"
+    assert payload["limit"] == 20

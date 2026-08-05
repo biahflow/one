@@ -11,7 +11,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from portal_api.ai.prompt import OUTPUT_SCHEMA, SYSTEM_PROMPT, build_user_prompt
 from portal_api.ai.retrieval import Evidence
@@ -47,11 +47,26 @@ def _query_tokens(q: str) -> set[str]:
 
 
 class Responder(Protocol):
+    #: O nome que vai para a coluna ``conversation_message.responder`` e para o
+    #: log (ADR 0021). Atributo em vez de escada de ``isinstance`` no serviço:
+    #: quem sabe qual respondedor é este é o próprio respondedor.
+    name: str
+
+    @property
+    def model(self) -> str | None: ...
+
     def answer(self, evidence: list[Evidence], question: str) -> ResponderResult: ...
 
 
 class OfflineResponder:
     """Deterministic, grounded matcher over the evidence. Never calls out; never invents."""
+
+    name = "offline"
+
+    @property
+    def model(self) -> str | None:
+        # Não há modelo: o "modelo" é este código, e quem o versiona é o git.
+        return None
 
     def answer(self, evidence: list[Evidence], question: str) -> ResponderResult:
         q = _norm(question)
@@ -104,25 +119,66 @@ class OfflineResponder:
         ]
 
 
+class ProviderRefused(RuntimeError):
+    """O modelo recusou a requisição pelos classificadores de segurança (ADR 0021).
+
+    Existe para o log do chat distinguir **recusa** de **parser quebrado**: sem
+    ela, uma recusa (que devolve `content` vazio) chegava ao `json.loads` e virava
+    um `JSONDecodeError`, e o runbook tinha de adivinhar qual dos dois incidentes
+    estava lendo. O fallback é o mesmo nos dois casos — o `except Exception` de
+    `ai/service.py` já pega esta —, mas o `reason` no log passa a ser verdade.
+    """
+
+
+def anthropic_client(api_key: str) -> Any:
+    """O ponto de costura, na forma de ``google_drive.session_client`` (ADR 0016).
+
+    Existe para o teste poder trocá-lo por um cliente que **registra o pedido** e
+    devolve o que um atacante escolheria. Sem ele, o `AnthropicResponder` e o
+    `SYSTEM_PROMPT` versionado seriam código que nenhum teste executa — que era
+    exatamente o estado até a Fase 5, e o motivo pelo qual as evals de prompt
+    injection rodavam num casador determinístico incapaz de obedecer a uma
+    instrução, provando que uma pedra não atende ao telefone.
+    """
+    import anthropic  # lazy: keeps the package optional for offline/tests
+
+    return anthropic.Anthropic(api_key=api_key)
+
+
 class AnthropicResponder:
     """Uses the Claude Messages API with strict grounding + structured output."""
+
+    name = "anthropic"
 
     def __init__(self, api_key: str, model: str) -> None:
         self._api_key = api_key
         self._model = model
 
-    def answer(self, evidence: list[Evidence], question: str) -> ResponderResult:
-        import anthropic  # lazy: keeps the package optional for offline/tests
+    @property
+    def model(self) -> str:
+        return self._model
 
-        client = anthropic.Anthropic(api_key=self._api_key)
+    def answer(self, evidence: list[Evidence], question: str) -> ResponderResult:
+        client = anthropic_client(self._api_key)
         response = client.messages.create(
             model=self._model,
-            max_tokens=1024,
+            # O teto vale para pensamento **mais** texto: com `thinking` adaptativo,
+            # um turno que pensa demais devolvia JSON truncado sob os 1024 originais,
+            # e o truncamento virava fallback offline silencioso (ADR 0021). `effort`
+            # baixo é o freio certo aqui — extrair citação de alguns KB de evidência
+            # não é tarefa sensível a inteligência —, e mora dentro de `output_config`.
+            max_tokens=4096,
             thinking={"type": "adaptive"},
             system=SYSTEM_PROMPT,
-            output_config={"format": {"type": "json_schema", "schema": OUTPUT_SCHEMA}},
+            output_config={
+                "format": {"type": "json_schema", "schema": OUTPUT_SCHEMA},
+                "effort": "low",
+            },
             messages=[{"role": "user", "content": build_user_prompt(evidence, question)}],
         )
+        if getattr(response, "stop_reason", None) == "refusal":
+            category = getattr(getattr(response, "stop_details", None), "category", None)
+            raise ProviderRefused(str(category))
         text = "".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         )

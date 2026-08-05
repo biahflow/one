@@ -94,8 +94,13 @@ class Settings(BaseSettings):
 
     # Chat contextual (Fase 3, ADR 0007). Sem chave → respondedor offline determinístico.
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-opus-4-8"
-    chat_prompt_version: str = "chat-2026-08-03"
+    anthropic_model: str = "claude-opus-5"
+    #: Perguntas por pessoa por minuto (Fase 5, ADR 0021). A assimetria com os 120
+    #: de `agent_events_rate_limit` **é** o argumento: um agente é máquina e 120/min
+    #: é vazão normal de ingestão; 20/min fica muito acima de alguém formulando uma
+    #: pergunta pensada e muito abaixo do que um script precisa para inundar de
+    #: pendência o time interno — que é a ameaça aqui, não a conta de token.
+    chat_rate_limit: int = 20
 
     # Storage dos documentos (Fase 4, ADR 0014). Local é o MinIO do compose; em
     # produção é o S3, e só estas variáveis mudam. Sem credencial o upload

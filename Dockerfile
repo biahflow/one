@@ -6,7 +6,7 @@
 # incluídos —, tudo rodando como root. Aqui o build acontece numa etapa que é
 # descartada, e a imagem final leva só as dependências de runtime.
 
-FROM node:24.12.0-alpine AS builder
+FROM node:26.5.1-alpine AS builder
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build
 
 
-FROM node:24.12.0-alpine AS runtime
+FROM node:26.5.1-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app

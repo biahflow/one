@@ -115,7 +115,7 @@ docker compose up --build
 ```
 Endpoints: web `:3000`, API/OpenAPI `:8000/docs`, Keycloak `:8080`, MinIO console `:9001`, Mailpit `:8025`, Drive stub `:19100`.
 
-CI (`.github/workflows/ci.yml`) runs four gates you should reproduce locally before a PR: `web-quality` (lint + test), `api-quality` (pytest), `local-stack` (`docker compose config --quiet` + `docker compose build`), plus dependency-review and CodeQL. A fifth job, `e2e-login`, boots the stack and runs Playwright; it is `continue-on-error` for now, so read it rather than trust the green.
+CI (`.github/workflows/ci.yml`) runs four gates you should reproduce locally before a PR: `web-quality` (lint + test), `api-quality` (pytest), `local-stack` (`docker compose config --quiet` + `docker compose build`), plus dependency-review. Two more jobs are `continue-on-error` and therefore **do not** gate anything — read them rather than trust the green: `codeql`, which cannot pass until code scanning is enabled in the repository settings (a private-repo account setting, not a workflow one), and `e2e-login`, which boots the whole compose stack and runs Playwright. Both carry a comment saying to drop the flag once the blocker is gone. Every job now has a `timeout-minutes`: a hang used to hold `web-quality` for the runner's full six hours, and a stuck job keeps the whole run from publishing logs — hiding why the *other* jobs failed.
 
 ## Conventions
 

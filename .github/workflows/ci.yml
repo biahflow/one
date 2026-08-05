@@ -81,9 +81,16 @@ jobs:
   # The only job that boots Keycloak: it is the one thing the other levels
   # cannot prove — browser → realm → BFF callback → dashboard. Non-blocking for
   # now, while the stack's boot time settles in CI.
+  #
+  # O nome ficou de quando ele provava só o login. Hoje `npm run test:e2e` roda a
+  # suíte inteira, e por isso a pilha **completa** precisa subir: sem o `worker`
+  # nada é varrido nem indexado, e os specs de documentos, Drive e notificações
+  # esperavam um selo que nunca ia aparecer. `drive-stub` e `mailpit` são a mesma
+  # história — sem eles aqueles specs se auto-pulam e o job fica verde sem provar
+  # nada, que é pior do que vermelho.
   e2e-login:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +103,7 @@ jobs:
       - name: Boot the local stack
         run: |
           cp .env.example .env
-          docker compose up -d --build web
+          docker compose up -d --build
       - name: Wait for the portal
         run: |
           for _ in $(seq 1 60); do
@@ -117,9 +124,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
 
+  # **Não-bloqueante, e isso não é uma escolha de qualidade.** O `analyze` falha
+  # com "Code scanning is not enabled for this repository": é uma configuração do
+  # repositório (Settings → Code security), não do workflow, e em repositório
+  # privado costuma depender do plano. Enquanto não for habilitada, o job não tem
+  # como passar — e um vermelho permanente treina quem lê o CI a ignorar o
+  # vermelho, que é o custo real.
+  #
+  # Ao habilitar code scanning, **remova o `continue-on-error`**: as permissões
+  # abaixo já estão corretas e o job passa a valer como gate de verdade. Vale
+  # também para o `e2e-login` acima — os dois estão aqui em caráter temporário, e
+  # o `CLAUDE.md` já avisa para lê-los em vez de confiar no verde.
   codeql:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    continue-on-error: true
     permissions:
       # As três, e nenhuma é dispensável: um bloco `permissions` de job
       # **substitui** o global em vez de somar a ele, então declarar só

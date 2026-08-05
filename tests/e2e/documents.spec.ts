@@ -92,6 +92,69 @@ test("o documento enviado na administração vira citação no chat do cliente",
   // A citação nomeia o documento — e o termo só existe no arquivo enviado acima.
   await expect(page.locator(".message-sources")).toContainText(title, { timeout: 30_000 });
   await expect(page.locator(".chat-messages")).toContainText(codeword);
+
+  // E agora ela **abre** o documento (Fase 5, ADR 0017). O que só este nível
+  // prova: a URL assinada é emitida pela API, aceita pelo MinIO de verdade e
+  // devolve os bytes do arquivo que a administração enviou lá em cima.
+  const citation = page.locator(".message-source-link", { hasText: title });
+  await expect(citation).toBeVisible();
+
+  const downloaded = await page.evaluate(async () => {
+    const documentId = document
+      .querySelector<HTMLButtonElement>(".message-source-link")
+      ?.getAttribute("data-document-id");
+    const response = await fetch(`/api/documents/${documentId}/download`);
+    if (!response.ok) return { status: response.status, body: "" };
+    const { url } = await response.json();
+    const file = await fetch(url);
+    return { status: file.status, body: await file.text() };
+  });
+
+  expect(downloaded.status).toBe(200);
+  expect(downloaded.body).toContain(codeword);
+});
+
+test("o arquivo com assinatura de malware é recusado e não vira índice", async ({ page }) => {
+  /**
+   * A fronteira da ADR 0017 no navegador. O EICAR é a cadeia de teste padrão da
+   * indústria — inofensiva por construção —, e é o que permite provar a rejeição
+   * sem antivírus configurado, como o `drive-stub` prova o Drive sem o Google.
+   *
+   * Montada em pedaços aqui pelo mesmo motivo do `scanner.py`: escrita inteira,
+   * faria um antivírus de verdade acusar o próprio arquivo de teste.
+   */
+  const eicar =
+    "X5O!P%@AP[4\\PZX54(P^)7CC)7}$" +
+    "EICAR-STANDARD-ANTIVIRUS-TEST-FILE" +
+    "!$H+H*";
+  const title = `Anexo suspeito ${Date.now().toString(36)}`;
+
+  await signIn(page, ADMIN);
+  await page.goto("/admin/conhecimento");
+
+  await page.locator('input[name="file"]').setInputFiles({
+    name: "anexo.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(eicar, "utf8"),
+  });
+  await page.locator('input[name="title"]').fill(title);
+  await page.getByRole("button", { name: /Enviar e indexar/ }).click();
+  await expect(page.getByText(/Documento recebido/)).toBeVisible();
+
+  // O upload é aceito — a varredura é assíncrona, como a indexação. O que a tela
+  // precisa mostrar é o desfecho, e ele não é "indexado".
+  const row = page.locator(".member-row", { hasText: title });
+  await expect(async () => {
+    await page.reload();
+    await expect(row.locator(".state", { hasText: "Recusado" })).toBeVisible({
+      timeout: 2_000,
+    });
+  }).toPass({ timeout: 60_000 });
+
+  await expect(row).toContainText(/Barrado pela varredura/);
+  await expect(row).toContainText(/Eicar-Test-Signature/);
+  // E nunca vira trecho: a linha não mostra contagem de trechos porque não há.
+  await expect(row).not.toContainText(/trecho/);
 });
 
 test("o cliente não alcança a administração de conhecimento", async ({ page }) => {

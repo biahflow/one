@@ -308,7 +308,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
 
   # **Desligado, e não por escolha de qualidade.** O `analyze` falha com "Code
   # scanning is not enabled for this repository": é configuração do repositório

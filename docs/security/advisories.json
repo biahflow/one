@@ -1,0 +1,21 @@
+{
+  "$comment": [
+    "Avisos de segurança aceitos conscientemente, com prazo (ADR 0023).",
+    "Lido por scripts/audit.mjs, que é o portão. Uma entrada aqui é a ÚNICA",
+    "forma de um aviso não reprovar o CI — não há limiar de severidade.",
+    "",
+    "Campos: id (GHSA/PYSEC/CVE, como o aviso é citado), package, reason (por",
+    "que o risco é aceitável AQUI, não em geral) e review_by (data ISO).",
+    "",
+    "Passado o review_by a entrada reprova, e uma entrada que não casa com",
+    "aviso nenhum também — quando o aviso for corrigido, remova a linha. Ao",
+    "contrário do docs/ai/prompt-registry.json, este arquivo NÃO é append-only,",
+    "e pela razão inversa: lá a história é o portão; aqui uma linha que já não",
+    "é verdade é justamente o que se quer fora.",
+    "",
+    "A lista está vazia porque não há aviso aberto: o next foi para 16.3.0, o",
+    "fastapi/starlette e o python-multipart foram bumpados. Vazia é o estado",
+    "correto — uma exceção é sempre a segunda escolha."
+  ],
+  "accepted": []
+}

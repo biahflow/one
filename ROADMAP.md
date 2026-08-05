@@ -8,7 +8,12 @@ Este documento acompanha o plano de entrega. Itens concluídos permanecem aqui p
 - [x] Docker Compose com web, API, worker, PostgreSQL + pgvector, Redis, MinIO, Keycloak e Mailpit.
 - [x] Documentação de produto, arquitetura, segurança, IA, ADRs, RFCs, FDDs e runbooks.
 - [x] Contratos iniciais de API para dashboard, chat e eventos de agentes.
-- [x] Pirâmide inicial: testes web renderizados, testes de API, lint e CI com build Docker, dependency review e CodeQL.
+- [x] Pirâmide inicial: testes web renderizados, testes de API, lint e CI com build Docker e
+      dependency review. *Corrigido em 05/08/2026 (ADR 0023): esta linha dizia "e CodeQL", e o
+      `codeql` está **desligado por variável** desde sempre — ele não passa até que code scanning
+      seja habilitado nas configurações do repositório, que é ajuste de conta privada e não de
+      workflow (`ci.yml` explica). A varredura de dependências que de fato reprova chegou só na
+      Fase 5, no job `dependency-audit`.*
 
 ## Concluído — Migração do runtime web (04/08/2026)
 
@@ -314,14 +319,39 @@ atalho **não** entraram no índice.*
       não é homologação, que o respondedor foi o offline, ou que o provedor degradou no meio. O
       passo por conta não foi deduzido e sim medido: a primeira execução devolveu 12.839 recusas
       para 62 respostas, medindo o limitador com precisão e o sistema com nenhuma.)*
-- [ ] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *O primeiro
-      a ler é o `next` — GHSA-6gpp-xcg3-4w24, middleware/proxy bypass em App Router, corrigido em
-      16.2.11 —, porque aqui o `proxy.ts` **é** o portão de sessão. As pré-condições do aviso
-      (Turbopack e locale único) não se aplicam a este repositório, então a exploração é
-      improvável; o bump segue barato e o alvo é o controle mais central.*
+- [x] Revisar dependências vulneráveis apontadas pelo `npm audit` antes de produção. *(ADR 0023,
+      FDD 017. Pela sétima vez na Fase 5 a fatia implementou promessas que os documentos davam
+      como cumpridas — cinco, e as três últimas só apareceram porque alguém finalmente executou a
+      ferramenta. **A instrução escrita levava ao lugar errado:** "corrigido em 16.2.11" valia
+      para os nove avisos do próprio `next`, e a linha 16.2.x repinava `postcss` (path traversal
+      lendo `.map` arbitrário) e `sharp` (CVEs de libvips) nas versões vulneráveis — parar ali
+      fecharia o item deixando três pacotes de severidade alta em pé, com um `[x]` afirmando o
+      contrário. Só a **16.3.0** zera. **A frase que tranquilizava estava invertida:** Turbopack
+      **é** o bundler deste repositório — padrão do Next 16, e o build imprime `(Turbopack)` —;
+      o que não se aplica é a outra pré-condição, e não existe `config.i18n` em canto nenhum. A
+      conclusão seguia certa pelo motivo errado, que é o tipo de frase que sobrevive à revisão
+      seguinte por soar resolvida, e sobreviveu a duas. **E o `dependency-review` parecia
+      varredura e não era:** ele olha o *diff* de um PR, então o que já estava no lockfile
+      passava verde a cada push — somado ao `codeql` desligado, `npm audit` não rodava em lugar
+      nenhum. **O lado Python era o ponto cego maior e nenhum documento o mencionava:** primeira
+      execução do `pip-audit`, dezesseis avisos em três pacotes — seis no `python-multipart`, que
+      sustenta a única rota multipart do produto, e sete no `starlette`, que é a camada HTTP da
+      API inteira. O roadmap dizia "falta só o `npm audit`". **De quebra, dois defeitos que só
+      apareceram por executar aquilo:** subir o FastAPI não conserta o Starlette em toda parte —
+      a faixa nova é `>=` sem teto, então uma instalação limpa resolve para o 1.4.1 e um ambiente
+      que já tinha o 0.46.2 continua nele, o mesmo commit produzindo versões diferentes em
+      lugares que se dizem iguais (daí o pin direto, com o precedente e o argumento que o
+      `cryptography` já tinha no arquivo); e o FastAPI 0.141 passou a **ecoar o corpo da
+      requisição** em todo 422, sendo que `DriveCallbackIn` carrega o authorization code do
+      Google — a fatia teria *introduzido* o vazamento do segredo que a ADR 0016 sela com
+      AES-256-GCM. Agora o portão é `scripts/audit.mjs`, sem limiar de severidade porque um corte
+      seria um segundo mecanismo de exceção e silencioso; aceitar um risco é escrever linha com
+      motivo e prazo em `docs/security/advisories.json`, que **vence** e cuja entrada obsoleta
+      também reprova — quarto gate de deriva do repositório, e o único que deliberadamente **não**
+      é append-only, ao contrário do `prompt-registry.json`.)*
 
 **Aceite:** pipeline bloqueia regressões de qualidade e segurança; backups são restauráveis e incidentes seguem runbook testado.
-*Parcial: o ciclo de vida do documento fechou (`test_document_scan.py`, `test_retention.py` e o
+*Atendido, e **a Fase 5 fecha**: o ciclo de vida do documento fechou (`test_document_scan.py`, `test_retention.py` e o
 EICAR barrado no navegador em `tests/e2e/documents.spec.ts`), a telemetria também
 (`test_telemetry.py`, e o `X-Request-ID` exigido pelo stub em `tests/rendered-html.test.mjs`),
 o backup passou a ser restaurável com prova (`test_backup_restore.py` roda os dois scripts de
@@ -336,7 +366,11 @@ fecharam por último (`test_homolog_config.py`, `test_ai_quota.py`, `test_loadte
 o CI afirmando que o override de homologação recusa sem segredos e que o harness ainda roda ponta
 a ponta) — junto com a descoberta que explicava por que a carga não era mensurável: as três
 variáveis do chat nunca chegavam ao contêiner, e o respondedor real nunca havia rodado na pilha.
-**Falta só o `npm audit` antes do lançamento externo.***
+E as dependências fecharam por último (`tests/audit-harness.test.mjs`,
+`test_main.py::test_a_422_says_what_is_wrong_without_echoing_what_was_sent`, com o job
+`dependency-audit` reprovando em `push` e em `pull_request`) — trazendo a mesma descoberta uma
+última vez: o lado que nenhum documento mandava olhar, o Python, tinha dezesseis avisos contra
+os catorze do lado que o roadmap nomeava. **Nada bloqueia o lançamento externo.***
 
 ## Fase 6 — Jornada da transformação e experiência (metodologia)
 

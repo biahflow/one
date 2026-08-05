@@ -31,9 +31,39 @@ def schema() -> dict[str, Any]:
     # Importado aqui, e não no topo, porque importar ``main`` sobe a aplicação
     # inteira (configura o logging, lê as settings) e este módulo é importado
     # pelo teste só para chegar ao caminho do artefato.
-    from portal_api.main import app
+    from portal_api.main import VALIDATION_DETAIL_FIELDS, app
 
-    return app.openapi()
+    document = app.openapi()
+    _prune_validation_error(document, VALIDATION_DETAIL_FIELDS)
+    return document
+
+
+def _prune_validation_error(document: dict[str, Any], fields: tuple[str, ...]) -> None:
+    """Tira do ``ValidationError`` os campos que o 422 não devolve (ADR 0023).
+
+    O FastAPI monta este componente a partir do erro do Pydantic, e a partir do
+    ``0.141`` ele inclui ``ctx`` e ``input`` — sendo ``input`` o corpo inteiro de
+    quem chamou. O handler de `main.py` os remove da resposta pelo motivo
+    documentado lá; aqui o esquema para de anunciá-los, porque um contrato que
+    promete campo que não vem é a mesma classe de defeito que a ADR 0020 recusou
+    acrescentar quando tipou as respostas — só que na direção oposta, e a única
+    das duas em que a ferramenta de quem consome é que fica errada.
+
+    Poda em vez de modelo próprio: substituir o componente exigiria declarar de
+    novo o ``loc`` polimórfico do Pydantic, que muda quando ele muda. Poda erra
+    para o lado seguro — um campo novo do Pydantic some do contrato até alguém
+    decidir sobre ele, em vez de aparecer na resposta sem ninguém ver.
+    """
+    component = document.get("components", {}).get("schemas", {}).get("ValidationError")
+    if not component:
+        return
+    properties = component.get("properties", {})
+    for name in [name for name in properties if name not in fields]:
+        del properties[name]
+    if "required" in component:
+        component["required"] = [
+            name for name in component["required"] if name in fields
+        ]
 
 
 def render(document: dict[str, Any] | None = None) -> str:

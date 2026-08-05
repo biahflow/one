@@ -4,10 +4,26 @@ anthropic==0.69.0
 # local e para o S3 de produção — só muda o endpoint.
 boto3==1.43.64
 celery==5.5.3
-fastapi==0.115.12
+# O pin do FastAPI é, na prática, o pin do **Starlette** (ADR 0023). O
+# `0.115.12` exigia `starlette<0.47.0`, e sete avisos do Starlette — inclusive o
+# CVE-2026-48710, da auditoria X41 — só fecham em 1.3.1. Nenhum `pip install -U
+# starlette` resolveria: quem segurava era a faixa do FastAPI. Daí a regra: um
+# aviso numa transitiva do FastAPI se conserta subindo o FastAPI, nunca fixando a
+# transitiva por baixo dele.
+fastapi==0.141.1
+# Declarado direto pelo motivo — e com o precedente — do `cryptography` abaixo, e
+# por um a mais, medido (ADR 0023): o `0.141.1` pede `starlette>=0.46.0` **sem
+# teto**, então um ambiente que já tenha o 0.46.2 instalado continua nele e passa
+# a satisfazer o FastAPI novo, enquanto uma instalação limpa resolve para o 1.4.1.
+# Sem lockfile de transitiva, subir o FastAPI conserta o Starlette na imagem e
+# **não** na máquina de quem já tinha — o mesmo pacote vulnerável em dois lugares
+# que se dizem iguais. Um pin direto tira a resolução do acaso.
+starlette==1.4.1
 httpx==0.28.1
-# Upload multipart: o FastAPI só aceita `UploadFile` com ele instalado.
-python-multipart==0.0.20
+# Upload multipart: o FastAPI só aceita `UploadFile` com ele instalado. Seis
+# avisos abertos no `0.0.20` (ADR 0023), o primeiro deles path traversal na
+# gravação do arquivo — e este repositório tem exatamente uma rota multipart.
+python-multipart==0.0.32
 # Tipo `Vector` do pgvector para o SQLAlchemy/Alembic. A extensão em si já é
 # criada pelo bootstrap do Postgres (infra/postgres/bootstrap/roles.sql).
 pgvector==0.4.1

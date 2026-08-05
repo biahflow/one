@@ -21,6 +21,10 @@
 - Rode lint, tipos, testes unitários e integração aplicáveis.
 - Adicione caso negativo de permissão para qualquer endpoint ou busca nova.
 - Adicione avaliações de IA para mudança de prompt, recuperador, modelo ou ferramenta.
+- Rode `npm run audit` ao mexer em dependência — dos dois lados, e o CI reprova
+  igual (ADR 0023). Aviso que não dá para consertar agora vira linha **com motivo
+  e prazo** em `docs/security/advisories.json`; ela vence, e é a única forma de
+  não reprovar. Ver `docs/runbooks/dependency-advisory.md`.
 
 ## Comandos locais
 

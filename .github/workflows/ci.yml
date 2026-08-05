@@ -266,6 +266,42 @@ jobs:
       - if: failure()
         run: docker compose logs --tail 100
 
+  # O portão que faltava (ADR 0023). O `dependency-review` abaixo **fica**, e os
+  # dois não se sobrepõem: ele olha o *diff* de dependências de um PR e pega a
+  # biblioteca ruim entrando; este pergunta o que já está instalado. Era a
+  # metade que ninguém fazia, e foi assim que nove avisos do `next`, sete do
+  # `starlette` e seis do `python-multipart` conviveram meses com um CI de seis
+  # portões — nenhum deles diff de PR nenhum.
+  #
+  # Job próprio pelo argumento do `backup-restore`: precisa dos dois toolchains
+  # ao mesmo tempo, e uma dependência vulnerável merece o próprio vermelho em vez
+  # de se confundir com um lint quebrado dentro do `web-quality`.
+  #
+  # Em `push` **e** `pull_request`, ao contrário do `dependency-review`: um aviso
+  # novo não chega por pull request, chega porque alguém o publicou. Restringir a
+  # PR deixaria `main` sem cobertura exatamente entre as entregas, que é quando o
+  # intervalo é maior.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: npm ci
+      # Só o `pip-audit`: ele resolve a árvore a partir do arquivo de
+      # requisitos e não precisa do ambiente instalado. Instalar tudo aqui
+      # duplicaria o `api-quality` e faria o resultado depender do que já
+      # estivesse no runner — que é justamente o modo de falha que o pin direto
+      # do `starlette` fecha (ver `apps/api/requirements.txt`).
+      - run: pip install "$(grep '^pip-audit==' apps/api/requirements-dev.txt)"
+      - run: npm run audit
+
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

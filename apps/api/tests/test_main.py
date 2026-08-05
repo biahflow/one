@@ -111,3 +111,37 @@ def test_agent_event_rejects_invalid_metrics() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+def test_a_422_says_what_is_wrong_without_echoing_what_was_sent() -> None:
+    """Nenhum 422 devolve o corpo da requisição (ADR 0023).
+
+    A propriedade é de toda a aplicação — o handler é registrado no ``app``, não
+    numa rota — e a de eventos é só o lugar mais barato de observá-la, porque um
+    `Principal` injetado já chega à validação do corpo. Quem torna a propriedade
+    necessária é outra rota: `DriveCallbackIn` carrega o authorization code do
+    Google no corpo, e o FastAPI 0.141 passou a ecoar o corpo inteiro em
+    ``input``.
+
+    O teste afirma os dois lados. Só "o segredo não sai" deixaria passar um
+    handler que devolvesse ``{"detail": []}`` — que não vaza nada e também não
+    diz a ninguém o que consertar.
+    """
+    app.dependency_overrides[bearer_principal] = lambda: Principal(
+        subject="sub-internal", email="ops@portal.test", full_name="Ops"
+    )
+    try:
+        response = client.post(
+            "/api/v1/agent-events",
+            json=_agent_event(run_reference="conteudo-que-nao-deveria-voltar", time_saved_seconds=-1),
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert "nao-deveria-voltar" not in response.text
+    detail = response.json()["detail"]
+    assert detail, "um 422 sem nenhum item não diz o que está errado"
+    for item in detail:
+        assert set(item) == {"type", "loc", "msg"}
+    assert any("time_saved_seconds" in item["loc"] for item in detail)

@@ -5,7 +5,9 @@ from uuid import UUID
 
 import redis
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -74,6 +76,52 @@ app.add_middleware(
 # empilha na ordem inversa do registro. É o que faz uma requisição barrada no
 # CORS ainda aparecer no log com um `trace_id`.
 app.add_middleware(TraceMiddleware)
+
+
+#: Os únicos campos que um item de ``detail`` de 422 carrega (ADR 0023).
+#:
+#: Mora numa constante porque `openapi.py` a lê para podar o componente
+#: ``ValidationError`` do esquema: o handler abaixo e o contrato publicado têm de
+#: concordar, e a regra do `schemas.py` — *o modelo declara o que a rota devolve*
+#: — não admite um esquema anunciando um campo que a resposta não traz. Foi
+#: exatamente esse o defeito que a ADR 0020 recusou acrescentar ao repositório,
+#: só que na direção oposta.
+VALIDATION_DETAIL_FIELDS = ("type", "loc", "msg")
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_without_echo(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """422 diz **o que** está errado, nunca devolve o que foi enviado (ADR 0023).
+
+    Achado ao subir o FastAPI para fechar os avisos do Starlette: a partir do
+    ``0.141`` cada item de ``detail`` inclui ``ctx`` e ``input``, e ``input`` é o
+    corpo inteiro da requisição. Numa API cujos corpos fossem todos inócuos isso
+    seria só verborragia. Aqui não são: ``DriveCallbackIn`` tem ``code`` e
+    ``state`` (`admin.py`), e o ``code`` é o authorization code do Google —
+    trocável pelo refresh token que a ADR 0016 sela com AES-256-GCM justamente
+    por ser o único segredo reversível do portal. Bastava o ``state`` estourar o
+    tamanho para o 422 devolver o ``code`` em claro, num corpo de erro que cai no
+    log de quem chamou e no access log de todo proxy no meio.
+
+    Fica o que o produtor precisa para consertar a requisição — ``type``, ``loc``
+    e ``msg`` — e sai o que ele já tem. Deliberadamente **não** é redação por
+    nome de campo como a de `telemetry.py`: ali procura-se o campo suspeito entre
+    muitos inócuos, e aqui *todo* ``input`` é o corpo de quem chamou. Uma
+    allowlist por nome só adiaria o dia em que um corpo novo passa a carregar
+    segredo — e nem pegaria estes dois, já que ``code`` e ``state`` não casam com
+    nenhuma das dicas de `_SECRET_HINTS`.
+    """
+    detail = [
+        {field: item.get(field) for field in VALIDATION_DETAIL_FIELDS}
+        for item in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": detail}
+    )
+
+
 # Administração de acesso (ADR 0011): conjunto coeso, e o único que roda sob o
 # papel `portal_admin`, por isso em módulo próprio.
 app.include_router(admin.router)
@@ -418,7 +466,7 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
             "model": schemas.ErrorOut,
             "description": "Assinatura ausente ou que não confere com o corpo.",
         },
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "model": schemas.ErrorOut,
             "description": "Corpo sem `project_id`.",
         },
@@ -434,7 +482,7 @@ async def biahflow_webhook(request: Request) -> dict:
     payload = json.loads(body or b"{}")
     biahflow_project_id = payload.get("project_id")
     if not biahflow_project_id:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="project_id required")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="project_id required")
 
     snapshot = biahflow.fetch_snapshot(
         settings.biahflow_base_url, settings.biahflow_read_token, int(biahflow_project_id)
@@ -525,7 +573,7 @@ def project_dashboard(project_id: UUID, principal: CurrentPrincipal) -> dict:
     response_model=schemas.ResultsOut,
     responses={
         **CLIENT_ERRORS,
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "model": schemas.ErrorOut,
             "description": "`to` anterior ou igual a `from`.",
         },
@@ -556,7 +604,7 @@ def project_results(
         )
         if period.days <= 0:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="`to` must be after `from`",
             )
         ctx = TenantContext(

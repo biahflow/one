@@ -74,9 +74,23 @@ def test_a_serious_environment_refuses_the_example_password() -> None:
     Todo `${VAR}` do compose base tem default local, então um `.env` de
     homologação a que falte uma chave sobe **verde** com a senha do exemplo. É a
     forma mais cara de um controle falhar: ele produz a evidência de que existe.
+
+    A URL vai **explícita** e não herdada do ambiente, e isso é correção de um
+    defeito e não estilo: o job `api-quality` do CI define `DATABASE_URL` com as
+    senhas `..._ci`, então `Settings(environment="homolog")` lia aquilo, nenhum
+    valor continha `local_only` e o teste falhava — afirmando sobre o ambiente de
+    quem o roda em vez de sobre o que ele nomeia. Passou meses sem aparecer
+    porque a fatia que o escreveu nunca rodou no CI.
     """
 
-    problems = check(Settings(environment="homolog"))
+    problems = check(
+        Settings(
+            environment="homolog",
+            database_url=(
+                "postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal"
+            ),
+        )
+    )
 
     assert any("DATABASE_URL" in problem for problem in problems)
     assert any("local_only" in problem for problem in problems)

@@ -689,3 +689,30 @@ def test_staff_cannot_reach_another_organizations_retention(
     )
 
     assert response.status_code == 404
+
+
+# --- o sinal do assistente (Fase 6, ADR 0030) -------------------------------
+
+
+def test_a_client_cannot_read_the_assistant_signal(world: World, authenticated) -> None:
+    """A rota lê a avaliação que **outras pessoas** deixaram. Um cliente vê a
+    própria conversa pelo histórico do chat e nada além disso."""
+    authenticated(world.acme.client)
+
+    response = client.get(
+        f"/api/v1/admin/projects/{world.acme.project_id}/assistant-signal"
+    )
+
+    assert response.status_code == 404
+
+
+def test_staff_cannot_read_the_assistant_signal_of_another_project(
+    world: World, authenticated
+) -> None:
+    authenticated(world.staff)
+
+    response = client.get(
+        f"/api/v1/admin/projects/{world.globex.project_id}/assistant-signal"
+    )
+
+    assert response.status_code == 404

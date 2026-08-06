@@ -384,6 +384,53 @@
         "title": "AiQuotaOut",
         "type": "object"
       },
+      "AssistantSignalOut": {
+        "properties": {
+          "answers_total": {
+            "title": "Answers Total",
+            "type": "integer"
+          },
+          "helpful": {
+            "title": "Helpful",
+            "type": "integer"
+          },
+          "insufficient_context": {
+            "title": "Insufficient Context",
+            "type": "integer"
+          },
+          "not_helpful": {
+            "title": "Not Helpful",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rated_total": {
+            "title": "Rated Total",
+            "type": "integer"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/RatedTurnOut"
+            },
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "answers_total",
+          "rated_total",
+          "helpful",
+          "not_helpful",
+          "insufficient_context",
+          "turns"
+        ],
+        "title": "AssistantSignalOut",
+        "type": "object"
+      },
       "AssumptionBasisOut": {
         "additionalProperties": false,
         "description": "A conta em si, para o cliente poder refazê-la na mão.",
@@ -2502,6 +2549,109 @@
         "title": "ProjectHealthOut",
         "type": "object"
       },
+      "RatedTurnOut": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "feedback": {
+            "title": "Feedback",
+            "type": "string"
+          },
+          "feedback_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback At"
+          },
+          "feedback_comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Comment"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "opened_pending": {
+            "title": "Opened Pending",
+            "type": "boolean"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "responder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responder"
+          }
+        },
+        "required": [
+          "message_id",
+          "created_at",
+          "confidence",
+          "feedback",
+          "feedback_comment",
+          "feedback_at",
+          "responder",
+          "model",
+          "prompt_version",
+          "opened_pending"
+        ],
+        "title": "RatedTurnOut",
+        "type": "object"
+      },
       "ReadyOut": {
         "additionalProperties": false,
         "description": "Prontidão. Sim ou não, e nada além disso — sem versão, hostname, DSN nem\no nome da dependência que caiu. Um ``down`` é indistinguível de outro.",
@@ -3477,6 +3627,85 @@
           }
         ],
         "summary": "Set Retention Policy",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/assistant-signal": {
+      "get": {
+        "description": "Como o assistente está indo, para quem o mantém.\n\nExiste porque o feedback era gravado desde a ADR 0015 e **ninguém nunca o\nleu**: aquela ADR adiou a tela dizendo que \"sem dado acumulado ela mostraria\nzero\", e o dado acumulou. O sinal só é útil em agregado, e é por isso que a\nresposta traz contagens antes da lista.",
+        "operationId": "get_assistant_signal_api_v1_admin_projects__project_id__assistant_signal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantSignalOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Get Assistant Signal",
         "tags": [
           "admin"
         ]

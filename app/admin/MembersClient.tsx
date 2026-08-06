@@ -85,6 +85,9 @@ export default function MembersClient({
         <Link className="text-button" href={`/admin/conhecimento?project=${projectId}`}>
           Documentos que o assistente pode citar <ArrowRight size={15} />
         </Link>
+        <Link className="text-button" href={`/admin/assistente?project=${projectId}`}>
+          Como o assistente está indo <ArrowRight size={15} />
+        </Link>
         {/* Sem `?project=`, e é a diferença que importa: o escopo desta é a
             organização inteira — prazo de retenção, teto de IA e apagamento não
             são perguntas que se façam projeto a projeto (ADR 0027). */}

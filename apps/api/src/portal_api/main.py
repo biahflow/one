@@ -262,29 +262,6 @@ def health_ready(response: Response) -> dict[str, object]:
     return {"status": "ready" if ready else "down"}
 
 
-@app.get(
-    "/api/v1/dashboard/demo",
-    response_model=schemas.DemoDashboardOut,
-    responses={
-        status.HTTP_404_NOT_FOUND: {
-            "model": schemas.ErrorOut,
-            "description": "`DEMO_MODE` desligado, que é o padrão fora do local.",
-        }
-    },
-)
-def demo_dashboard() -> dict:
-    if not settings.demo_mode:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    return {
-        "project": "Automação Financeira",
-        "status": "Em implementação",
-        "completion": 68,
-        "next_delivery": {"title": "Treinamento da operação", "date": "2026-09-18"},
-        "roi_percent": 142,
-        "hours_saved": 328,
-    }
-
-
 @app.post(
     "/api/v1/agent-events",
     status_code=status.HTTP_202_ACCEPTED,

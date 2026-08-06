@@ -25,6 +25,7 @@ type ApiDocument = {
   ingest_state: "pending" | "indexed" | "failed" | "unsupported" | "rejected";
   scan_state: "pending" | "clean" | "infected" | "skipped" | "error";
   scan_error: string | null;
+  scanned_at: string | null;
   ingest_error: string | null;
   chunk_count: number;
   indexed_at: string | null;
@@ -103,6 +104,7 @@ export default async function KnowledgeAdminPage({
       state: item.ingest_state,
       scanState: item.scan_state,
       scanError: item.scan_error,
+      scannedAt: item.scanned_at,
       error: item.ingest_error,
       chunkCount: item.chunk_count,
       indexedAt: item.indexed_at,
@@ -122,6 +124,11 @@ export default async function KnowledgeAdminPage({
     syncState: api?.sync_state ?? null,
     lastSyncAt: api?.last_sync_at ?? null,
     lastSyncError: api?.last_sync_error ?? null,
+    // O que a última sincronização de fato fez. Sem isto, uma varredura que
+    // bateu no teto (`truncated`) ou rejeitou arquivos na fronteira da pasta é
+    // indistinguível de uma completa — na tela cuja razão de existir é
+    // responder "por que a IA não sabe disso?" (ADR 0033).
+    lastSyncStats: api?.last_sync_stats ?? null,
     documentCount: api?.document_count ?? 0,
   };
 

@@ -99,6 +99,8 @@ type ApiMeasured = {
   events_total: number;
   hours_saved: number;
   benefit_cents: number;
+  labor_savings_cents: number;
+  avoided_cost_cents: number;
   investment_cents: number;
   net_cents: number;
   roi_ratio: number | null;
@@ -106,7 +108,9 @@ type ApiMeasured = {
   exceptions_handled: number;
   unattended_share: number | null;
   failed: number;
+  events_without_assumption: number;
   assumptions: ApiAssumption[];
+  assumption_basis: { days_per_month: number; formula: string };
   gaps: string[];
 };
 type ApiDeliverable = { name: string; state: string; link: string | null };
@@ -229,9 +233,16 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
     measured: measured
       ? {
           periodDays: measured.period.days,
+          // O período é dito por extremos, e não só por duração: "Últimos 30
+          // dias" não diz *quais* 30, e a apuração muda de valor conforme a
+          // janela (ADR 0033).
+          periodFrom: shortDate(measured.period.from),
+          periodTo: shortDate(measured.period.to),
           eventsTotal: measured.events_total,
           hoursSaved: measured.hours_saved,
           benefit: measured.benefit_cents / 100,
+          laborSavings: measured.labor_savings_cents / 100,
+          avoidedCost: measured.avoided_cost_cents / 100,
           investment: measured.investment_cents / 100,
           net: measured.net_cents / 100,
           roiRatio: measured.roi_ratio,
@@ -239,14 +250,23 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
           exceptionsHandled: measured.exceptions_handled,
           unattendedShare: measured.unattended_share,
           failed: measured.failed,
+          eventsWithoutAssumption: measured.events_without_assumption,
           assumption: currentAssumption
             ? {
                 hourlyRate: currentAssumption.hourly_rate_cents / 100,
                 monthlyInvestment: currentAssumption.monthly_investment_cents / 100,
                 effectiveFrom: shortDate(currentAssumption.effective_from),
                 note: currentAssumption.note,
+                currency: currentAssumption.currency,
+                daysInPeriod: currentAssumption.days_in_period,
               }
             : null,
+          // A conta em si, vinda de quem a fez. Até a ADR 0033 a tela imprimia
+          // uma fórmula literal que nem casava com a que a API devolve.
+          basis: {
+            daysPerMonth: measured.assumption_basis.days_per_month,
+            formula: measured.assumption_basis.formula,
+          },
           gaps: measured.gaps ?? [],
         }
       : null,

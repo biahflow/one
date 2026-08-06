@@ -29,6 +29,16 @@
    `tests/api-contract.test.mjs` valida a fixture do nível 5 contra o mesmo esquema — sem isso a
    API de mentira daquele teste é livre para mentir, e dois enganos combinam entre si.
    *Este nível esteve listado aqui e não existiu até a Fase 5 (ADR 0020).*
+
+   **E o contrato precisa ser consumido, não só casado** (ADR 0029, generalizada na 0033): todo
+   campo de todo esquema alcançável a partir de uma rota que o BFF chama tem de ser
+   desreferenciado por algum arquivo que consiga lê-lo, e toda rota tem de ter chamador. A
+   história desta asserção é o argumento dela: nasceu cobrindo **oito** esquemas de **56**, com
+   uma allowlist vazia que parecia prova de saúde e era ausência de leitor — a forma do
+   `dependency-review` da ADR 0023. E a versão generalizada errou primeiro pelo lado oposto: com
+   um corpus único sobre `app/` ela ficava verde, porque o mesmo nome existe no campo da *view*.
+   Só um corpus **por esquema**, ligado por `import` e por `fetch("/api/…")`, pega o defeito que
+   originou a guarda — e essa prova é executável, não argumentada.
 7. **E2E: Playwright em Docker Compose** (`tests/e2e/`), o único nível que sobe o Keycloak de
    verdade — porque é o único que prova o que os outros não alcançam: redirect do anônimo,
    code exchange no callback do BFF, dashboard com o nome vindo do token, e o "Sair" que o F5

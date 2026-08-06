@@ -73,21 +73,12 @@ class ReadyOut(Out):
     status: str
 
 
-# --- demonstração -----------------------------------------------------------
-
-
-class DemoNextDeliveryOut(Out):
-    title: str
-    date: str
-
-
-class DemoDashboardOut(Out):
-    project: str
-    status: str
-    completion: int
-    next_delivery: DemoNextDeliveryOut
-    roi_percent: int
-    hours_saved: int
+# A casca de demonstração **não** tem esquema aqui, e isso é deliberado
+# (ADR 0033): `GET /api/v1/dashboard/demo` existiu desde a Fase 1 e nunca teve
+# chamador — o caminho de demonstração do produto é `app/demo-overview.ts`, no
+# BFF, atrás do gate duplo de `demoShellEnabled()`. Uma rota publicada que só o
+# `docs/api/openapi.json` conhecia era superfície a mais sem leitor, e a regra
+# da ADR 0029 vale para a rota como vale para o campo.
 
 
 # --- identidade -------------------------------------------------------------

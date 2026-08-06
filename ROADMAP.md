@@ -529,6 +529,35 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       nenhum**, então metade da fronteira que a ADR 0016 confere duas vezes passava por "nada
       aconteceu".)*
 
+- [x] **A guarda que parecia cobrir o contrato.** *(ADR 0033, FDD 014. Quarta repetição do
+      padrão, e desta vez a promessa quebrada era **uma guarda de CI** — o mecanismo que existe
+      para as promessas não serem quebradas. A ADR 0029 criou a asserção de que "o contrato tem
+      de ser consumido, não só casado" e encerrou dizendo que a allowlist "está **vazia**, e a
+      meta é que continue"; ela era um `for` sobre **oito nomes escritos à mão** lendo **um
+      arquivo**, num contrato com **56 esquemas de resposta**. A allowlist seguia vazia porque
+      nada a consultava — a forma exata da ADR 0023, em que o `dependency-review` parecia
+      varredura e olhava só o diff de um PR. Generalizada, nasceu vermelha com catorze campos e
+      uma rota. **Os três que importam não eram campo faltando, eram a tela afirmando o que não
+      é:** a linha "Fórmula do ROI" imprimia um **literal** que nem casava com a fórmula que a
+      API devolve — no bloco "Como calculamos", aberto na Fase 3 justamente para o cliente
+      conferir a conta, de modo que a frase do `CLAUDE.md` sobre não haver dado fabricado valia
+      para a resposta e a citação, mas não para a **explicação** do número; `feedback_comment`
+      **não tinha escritor**, e `/admin/assistente` renderizava um painel intitulado "O que os
+      clientes disseram" sobre um campo sempre nulo, três dias depois de a ADR 0030 chamá-lo de
+      "o campo mais informativo do conjunto"; e `last_sync_stats`, cujo produtor nomeia a tela
+      para a qual foi feito, deixava uma sincronização truncada indistinguível de uma completa.
+      Mais `confidence` descartado no chat, `currency` ignorado com `BRL` fixo — uma premissa em
+      outra moeda saía **errada**, não incompleta —, `scanned_at`, `rotated_from_id` e os quatro
+      campos da apuração. **A decisão que carrega o resto foi medida e não deduzida:** a primeira
+      versão usava um corpus único sobre todo `app/`, ficou verde, e ao neutralizar o mapeamento
+      de `.priority` **não reprovou** — porque aquele nome também é o campo da *view*. A guarda
+      generalizada nasceria verde em cima do defeito exato que a ADR 0029 existe para pegar. O
+      corpus passou a ser por esquema, com dois elos explícitos (`import` relativo e
+      `fetch("/api/…")`), porque as rotas de `app/api/**` são **passagem** e o consumidor de
+      verdade é quem as chama. De quebra, uma segunda asserção um nível acima — toda rota do
+      contrato tem chamador — que achou o `GET /api/v1/projects/{id}/results` sem consumidor e o
+      `GET /api/v1/dashboard/demo`, que **saiu**.)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`

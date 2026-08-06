@@ -998,63 +998,6 @@
         "title": "DeliverableOut",
         "type": "object"
       },
-      "DemoDashboardOut": {
-        "additionalProperties": false,
-        "properties": {
-          "completion": {
-            "title": "Completion",
-            "type": "integer"
-          },
-          "hours_saved": {
-            "title": "Hours Saved",
-            "type": "integer"
-          },
-          "next_delivery": {
-            "$ref": "#/components/schemas/DemoNextDeliveryOut"
-          },
-          "project": {
-            "title": "Project",
-            "type": "string"
-          },
-          "roi_percent": {
-            "title": "Roi Percent",
-            "type": "integer"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "project",
-          "status",
-          "completion",
-          "next_delivery",
-          "roi_percent",
-          "hours_saved"
-        ],
-        "title": "DemoDashboardOut",
-        "type": "object"
-      },
-      "DemoNextDeliveryOut": {
-        "additionalProperties": false,
-        "properties": {
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "date"
-        ],
-        "title": "DemoNextDeliveryOut",
-        "type": "object"
-      },
       "DigitalEmployeeOut": {
         "additionalProperties": false,
         "properties": {
@@ -5277,34 +5220,6 @@
           }
         ],
         "summary": "Chat"
-      }
-    },
-    "/api/v1/dashboard/demo": {
-      "get": {
-        "operationId": "demo_dashboard_api_v1_dashboard_demo_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DemoDashboardOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOut"
-                }
-              }
-            },
-            "description": "`DEMO_MODE` desligado, que é o padrão fora do local."
-          }
-        },
-        "summary": "Demo Dashboard"
       }
     },
     "/api/v1/integrations/biahflow/webhook": {

@@ -67,18 +67,17 @@ def test_an_inbound_trace_id_is_preserved_end_to_end() -> None:
     assert response.headers["X-Request-ID"] == "vindo-do-bff"
 
 
-def test_demo_dashboard_has_expected_project_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The gate is the point of the endpoint, so the test turns it on explicitly
-    # instead of relying on DEMO_MODE being set in the environment.
+def test_the_demo_dashboard_route_no_longer_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A rota saiu na ADR 0033, e o teste afirma isso em vez de sumir junto.
+
+    Ela nunca teve chamador: a casca de demonstração do produto é
+    ``app/demo-overview.ts``, no BFF, atrás do gate duplo de
+    ``demoShellEnabled()``. Ligar ``DEMO_MODE`` não a traz de volta — sem esta
+    asserção, "removida" e "quebrada pelo gate" seriam indistinguíveis.
+    """
     monkeypatch.setattr(main.settings, "demo_mode", True)
 
-    response = client.get("/api/v1/dashboard/demo")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["completion"] == 68
-    assert body["roi_percent"] == 142
-    assert body["hours_saved"] == 328
+    assert client.get("/api/v1/dashboard/demo").status_code == 404
 
 
 def test_chat_requires_a_token() -> None:

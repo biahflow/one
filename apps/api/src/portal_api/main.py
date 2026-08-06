@@ -19,6 +19,7 @@ from portal_api import (
     agent_auth,
     chat_limit,
     conversations,
+    pending_comments,
     results,
     schemas,
     search,
@@ -864,6 +865,92 @@ def _message_payload(message: ConversationMessage) -> dict:
         "pending_created": message.pending_item_id is not None,
         "feedback": message.feedback.value if message.feedback else None,
     }
+
+
+class PendingCommentIn(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+def _comment_payload(comment) -> dict:
+    return {
+        "id": str(comment.id),
+        "author_label": comment.author_label,
+        "author_is_internal": comment.author_is_internal,
+        "body": comment.body,
+        "created_at": comment.created_at.isoformat(),
+    }
+
+
+@app.get(
+    "/api/v1/me/pendings/{pending_item_id}/comments",
+    response_model=schemas.PendingCommentsOut,
+    responses=CLIENT_ERRORS,
+)
+def list_pending_comments(
+    pending_item_id: UUID, principal: CurrentPrincipal
+) -> dict:
+    """O fio de uma pendência do projeto atual (ADR 0032).
+
+    Pendência de outro projeto é **404 e não lista vazia**: uma lista vazia diria
+    "existe e ninguém comentou", que é informação sobre um recurso que o chamador
+    não alcança.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        ctx = TenantContext(project.organization_id, project.id)
+        comments = pending_comments.list_for_pending(session, ctx, pending_item_id)
+        if comments is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+        return {
+            "pending_item_id": str(pending_item_id),
+            "items": [_comment_payload(comment) for comment in comments],
+        }
+
+
+@app.post(
+    "/api/v1/me/pendings/{pending_item_id}/comments",
+    response_model=schemas.PendingCommentOut,
+    status_code=status.HTTP_201_CREATED,
+    responses=CLIENT_ERRORS,
+)
+def add_pending_comment(
+    pending_item_id: UUID, payload: PendingCommentIn, principal: CurrentPrincipal
+) -> dict:
+    """Escreve um comentário. Cliente e equipe interna, os dois (ADR 0032).
+
+    É a **terceira** escrita que o caminho de requisição origina, depois da
+    conversa e do feedback — e a primeira cujo escopo é o projeto e não a pessoa,
+    porque ela existe para ser lida pelo outro lado.
+
+    O aviso sai por task, como a pendência que a IA abre: ``portal_app`` não tem
+    ``INSERT`` em ``notification``, e essa ausência é o desenho.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        ctx = TenantContext(project.organization_id, project.id)
+        comment = pending_comments.add_comment(
+            session,
+            ctx,
+            pending_item_id=pending_item_id,
+            author=user,
+            body=payload.body,
+        )
+        if comment is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+        response = _comment_payload(comment)
+        queued = (str(project.id), str(comment.id))
+
+    # Fora da transação, como o upload e o expurgo: o worker lê a linha do banco.
+    from portal_api.worker import queue_pending_comment_notification
+
+    queue_pending_comment_notification(*queued)
+    return response
 
 
 @app.get(

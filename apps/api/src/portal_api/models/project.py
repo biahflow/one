@@ -8,6 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -19,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -191,6 +193,54 @@ class PendingItem(Base, _ProjectChildMixin, TimestampMixin):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class PendingItemComment(Base, _ProjectChildMixin, TimestampMixin):
+    """O que alguém escreveu numa pendência (Fase 2, ADR 0032).
+
+    A **terceira** tabela que o caminho de requisição origina, depois de
+    ``conversation`` e ``conversation_message`` — e a primeira cujo escopo é o
+    **projeto** e não a pessoa.
+
+    A inversão é a decisão: as policies daquelas duas exigem
+    ``user_id = portal.current_user_id()`` porque a conversa é de quem
+    perguntou. Um comentário existe **para ser lido pelo outro lado**, então o
+    predicado é o de tenant simples, como ``pending_item``, e "quem escreveu"
+    fica na coluna em vez de no `WHERE`.
+
+    Não há coluna de edição nem de remoção, e não é omissão: ``portal_app``
+    recebe só ``INSERT`` (o ``SELECT`` vem do default privilege do
+    ``roles.sql``), pelo argumento da ADR 0015 — quem escreve não reescreve.
+    """
+
+    __tablename__ = "pending_item_comment"
+
+    pending_item_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("pending_item.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: Quem escreveu. ``SET NULL`` e não ``CASCADE``: revogar o acesso de alguém
+    #: — ou apagar a conta — não pode reescrever a história da pendência
+    #: apagando o que foi dito. A tela mostra "Participante removido" e o texto
+    #: continua lá, que é o mesmo argumento do registro do expurgo (ADR 0017).
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    #: Denormalizado no momento da escrita, pela razão acima: sem ele, um autor
+    #: removido deixaria o comentário sem procedência nenhuma.
+    author_label: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: ``True`` quando quem escreveu era da Portal Labs. Guardado e não derivado
+    #: do papel atual: alguém que deixa de ser interno não muda o lado de quem
+    #: falou naquele dia.
+    author_is_internal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    body: Mapped[str] = mapped_column(String(2000), nullable=False)
 
 
 class ProjectPhase(Base, _ProjectChildMixin, TimestampMixin):

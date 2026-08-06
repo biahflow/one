@@ -573,3 +573,52 @@ def test_the_tick_picks_up_a_stranded_request_and_not_a_running_one(
         done = session.get(DataErasureRequest, stale_id)
         assert done is not None
         assert done.state is ErasureState.completed
+
+
+@pytest.mark.integration
+def test_the_erasure_takes_the_pending_comments(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """O comentário é conteúdo do cliente e tem de sair no expurgo (ADR 0032).
+
+    Não é poda por idade — a pendência não sai por aniversário, e o comentário é
+    parte do registro dela. Mas "apague tudo desta organização" precisa alcançá-lo,
+    e este teste é quem responde se o `CASCADE` de `project` basta ou se a lista
+    explícita de `run_erasure` precisa nomeá-lo.
+    """
+    from portal_api.models import PendingItem, PendingItemComment, PendingOrigin
+
+    with Session(migrated_engine) as session:
+        pending = PendingItem(
+            organization_id=tenants["acme_org"],
+            project_id=tenants["acme_project"],
+            title="Enviar a planilha",
+            origin=PendingOrigin.biahflow,
+        )
+        session.add(pending)
+        session.flush()
+        session.add(
+            PendingItemComment(
+                organization_id=tenants["acme_org"],
+                project_id=tenants["acme_project"],
+                pending_item_id=pending.id,
+                author_user_id=tenants["acme_user"],
+                author_label="Cliente",
+                body="Já enviei ontem.",
+            )
+        )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        retention.run_erasure(session, tenants["acme_org"])
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        assert (
+            session.execute(
+                select(PendingItemComment).where(
+                    PendingItemComment.organization_id == tenants["acme_org"]
+                )
+            ).first()
+            is None
+        )

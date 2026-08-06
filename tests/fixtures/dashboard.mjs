@@ -70,9 +70,9 @@ export const DASHBOARD = {
   // A `priority` dizia `"normal"` até esta fatia — valor que `PendingPriority`
   // não tem. Passava porque o contrato declarava `str`; hoje declara os três.
   pendings: [
-    { title: "Renovar o certificado do integrador", description: null, owner_label: "Acme Brasil", state: "open", priority: "low", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, created_at: "2026-08-04T10:00:00+00:00", resolved_at: null },
-    { title: "Enviar lista de usuários piloto", description: null, owner_label: "Acme Brasil", state: "open", priority: "medium", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, created_at: "2026-08-03T10:00:00+00:00", resolved_at: null },
-    { title: "Aprovar fluxo de exceções", description: null, owner_label: "Acme Brasil", state: "open", priority: "high", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, created_at: "2026-08-02T10:00:00+00:00", resolved_at: null },
+    { id: "eeeeeeee-1111-4222-8333-000000000001", title: "Renovar o certificado do integrador", description: null, owner_label: "Acme Brasil", state: "open", priority: "low", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, comment_count: 0, created_at: "2026-08-04T10:00:00+00:00", resolved_at: null },
+    { id: "eeeeeeee-1111-4222-8333-000000000002", title: "Enviar lista de usuários piloto", description: null, owner_label: "Acme Brasil", state: "open", priority: "medium", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, comment_count: 0, created_at: "2026-08-03T10:00:00+00:00", resolved_at: null },
+    { id: "eeeeeeee-1111-4222-8333-000000000003", title: "Aprovar fluxo de exceções", description: null, owner_label: "Acme Brasil", state: "open", priority: "high", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, comment_count: 0, created_at: "2026-08-02T10:00:00+00:00", resolved_at: null },
   ],
   results: { milestones_total: 3, milestones_done: 0, overdue: 0, on_time_percent: 100 },
   // Apuração dos eventos dos agentes (Fase 3, ADR 0013). Os números batem com a

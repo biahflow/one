@@ -265,6 +265,25 @@
   .pending-avatar { @apply grid h-7 w-7 place-items-center rounded-full text-[10px]! font-bold; }
   .pending-avatar--amber { @apply bg-amber-100 text-amber-700!; }
   .pending-avatar--violet { @apply bg-brand-50 text-brand-600!; }
+  /* O fio da pendência (ADR 0032). Fora da `.pending-row`, que é flex de uma
+     linha — uma lista dentro dela desalinharia avatar e selo. */
+  .pending-entry { @apply grid gap-1.5; }
+  .pending-thread { @apply pl-9.5; }
+  .comment-list { @apply mt-1.5 grid gap-2 rounded-xl border border-line bg-slate-50/60 p-3; }
+  .comment-row { @apply grid gap-0.5 border-b border-line/70 pb-2 last:border-b-0 last:pb-0; }
+  .comment-row p { @apply m-0 text-xs leading-relaxed text-ink; }
+  .comment-row small { @apply text-[10px] text-slate-400; }
+  /* Quem falou de cada lado. O cliente lê "Portal Labs" em roxo e o próprio time
+     em cinza: a cor diz o lado, não a importância. */
+  .comment-side { @apply text-[10px] font-bold text-slate-500; }
+  .comment-side--internal { @apply text-brand-600; }
+  .comment-form { @apply mt-1 flex gap-2; }
+  .comment-form input {
+    @apply min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-brand-300;
+  }
+  .comment-form button {
+    @apply rounded-xl border-0 bg-brand-500 px-3.5 py-2 text-[11px] font-bold text-white transition-colors hover:bg-brand-600 disabled:opacity-50;
+  }
   .pending-avatar--blue { @apply bg-sky-50 text-sky-700!; }
   /* A prioridade que a API mandava e a tela descartava (ADR 0029). Só alta e
      baixa têm selo — "média" é o padrão da coluna, e marcar toda linha é não

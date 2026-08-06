@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import Engine, delete, select, text
+from sqlalchemy import Engine, delete, insert, select, text, update
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
@@ -981,3 +981,139 @@ def test_the_admin_cannot_rewrite_the_record_of_an_erasure(
             session.execute(
                 text("UPDATE data_erasure_request SET state = 'completed'")
             )
+
+
+# 7 — comentários na pendência (Fase 2, ADR 0032) --------------------------------
+#
+# A tabela inverte o escopo das outras duas que o caminho de requisição origina:
+# `conversation` e `conversation_message` são de **pessoa**, e a ADR 0030 chegou a
+# revogar privilégio para manter isso. O comentário é do **projeto**, porque
+# existe para ser lido pelo outro lado — então o que estes testes precisam provar
+# é o par oposto: o colega de projeto **vê**, e o vizinho de tenant **não**.
+
+
+@pytest.fixture
+def a_comment(migrated_engine: Engine, tenants: tuple[Tenant, Tenant]):
+    """Um comentário em cada tenant, escrito pelo papel de sistema e commitado."""
+    from portal_api.models import PendingItem, PendingItemComment, PendingOrigin
+
+    created: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in tenants:
+            pending = PendingItem(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                title="Enviar a planilha",
+                origin=PendingOrigin.biahflow,
+            )
+            session.add(pending)
+            session.flush()
+            comment = PendingItemComment(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                pending_item_id=pending.id,
+                author_user_id=tenant.user_id,
+                author_label="Cliente",
+                author_is_internal=False,
+                body="Já enviei ontem.",
+            )
+            session.add(comment)
+            session.flush()
+            created[tenant.organization_id] = comment.id
+        session.commit()
+
+    yield created
+
+    with Session(migrated_engine) as session:
+        from portal_api.models import PendingItemComment as _Comment
+
+        session.execute(delete(_Comment).where(_Comment.id.in_(list(created.values()))))
+        session.commit()
+
+
+def test_a_comment_from_another_tenant_is_invisible(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant], a_comment
+) -> None:
+    from portal_api.models import PendingItemComment
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = {
+        row for row in rls_session.execute(select(PendingItemComment.id)).scalars()
+    }
+
+    assert a_comment[tenant_a.organization_id] in visible
+    assert a_comment[tenant_b.organization_id] not in visible
+
+
+def test_a_colleague_in_the_same_project_does_see_the_comment(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant], a_comment
+) -> None:
+    """O oposto de `test_a_colleague_in_the_same_project_does_not_see_your_conversation`.
+
+    Mesma dupla de tabelas originadas no caminho de requisição, escopos opostos —
+    e é o teste que prova que a inversão da ADR 0032 é intencional e não um
+    predicado esquecido. Um comentário que só o autor lê não serviria para nada.
+    """
+    from portal_api.models import PendingItemComment
+
+    tenant_a, _ = tenants
+    bind_context(
+        subject=tenant_a.subject,
+        email=tenant_a.email,
+        user_id=uuid.uuid4(),  # colega do mesmo projeto, outra pessoa
+        organization_id=tenant_a.organization_id,
+        project_id=tenant_a.project_id,
+    )
+
+    visible = list(rls_session.execute(select(PendingItemComment.id)).scalars())
+
+    assert a_comment[tenant_a.organization_id] in visible
+
+
+def test_the_app_role_writes_a_comment_but_cannot_rewrite_it(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant], a_comment
+) -> None:
+    """Escrever sim, reescrever não — o argumento da ADR 0015 outra vez.
+
+    O `SELECT` vem do default privilege do `roles.sql` e o `INSERT` da migração
+    0021; `UPDATE` e `DELETE` **não foram concedidos**, e é o controle inteiro.
+    """
+    from portal_api.models import PendingItem, PendingItemComment
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+    pending_id = rls_session.execute(
+        select(PendingItem.id).where(PendingItem.project_id == tenant_a.project_id)
+    ).scalars().first()
+
+    rls_session.execute(
+        insert(PendingItemComment).values(
+            id=uuid.uuid4(),
+            organization_id=tenant_a.organization_id,
+            project_id=tenant_a.project_id,
+            pending_item_id=pending_id,
+            author_user_id=tenant_a.user_id,
+            author_label="Cliente",
+            author_is_internal=False,
+            body="Escrito pelo caminho de requisição.",
+        )
+    )
+
+    mine = a_comment[tenant_a.organization_id]
+    with pytest.raises(ProgrammingError) as no_update:
+        rls_session.execute(
+            update(PendingItemComment)
+            .where(PendingItemComment.id == mine)
+            .values(body="reescrito")
+        )
+    assert "permission denied" in str(no_update.value).lower()
+    rls_session.rollback()
+
+    _bind_full(bind_context, tenant_a)
+    with pytest.raises(ProgrammingError) as no_delete:
+        rls_session.execute(
+            delete(PendingItemComment).where(PendingItemComment.id == mine)
+        )
+    assert "permission denied" in str(no_delete.value).lower()

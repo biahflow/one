@@ -2334,9 +2334,85 @@
         "title": "NotificationsReadOut",
         "type": "object"
       },
+      "PendingCommentIn": {
+        "properties": {
+          "body": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "PendingCommentIn",
+        "type": "object"
+      },
+      "PendingCommentOut": {
+        "additionalProperties": false,
+        "description": "Um comentário como a tela o mostra.\n\n``author_label`` e ``author_is_internal`` vêm da **linha**, não do papel atual\nde quem escreveu: alguém que deixa de ser interno não muda o lado de quem\nfalou naquele dia, e um autor removido do projeto não apaga a procedência do\nque disse.",
+        "properties": {
+          "author_is_internal": {
+            "title": "Author Is Internal",
+            "type": "boolean"
+          },
+          "author_label": {
+            "title": "Author Label",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "author_label",
+          "author_is_internal",
+          "body",
+          "created_at"
+        ],
+        "title": "PendingCommentOut",
+        "type": "object"
+      },
+      "PendingCommentsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PendingCommentOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "pending_item_id": {
+            "title": "Pending Item Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pending_item_id",
+          "items"
+        ],
+        "title": "PendingCommentsOut",
+        "type": "object"
+      },
       "PendingOut": {
         "additionalProperties": false,
         "properties": {
+          "comment_count": {
+            "title": "Comment Count",
+            "type": "integer"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -2351,6 +2427,10 @@
               }
             ],
             "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
           },
           "opened_by_conversation_id": {
             "anyOf": [
@@ -2419,6 +2499,7 @@
           }
         },
         "required": [
+          "id",
           "title",
           "description",
           "owner_label",
@@ -2427,6 +2508,7 @@
           "origin",
           "opened_by_message_id",
           "opened_by_conversation_id",
+          "comment_count",
           "created_at",
           "resolved_at"
         ],
@@ -5757,6 +5839,146 @@
           }
         ],
         "summary": "Read Notifications"
+      }
+    },
+    "/api/v1/me/pendings/{pending_item_id}/comments": {
+      "get": {
+        "description": "O fio de uma pendência do projeto atual (ADR 0032).\n\nPendência de outro projeto é **404 e não lista vazia**: uma lista vazia diria\n\"existe e ninguém comentou\", que é informação sobre um recurso que o chamador\nnão alcança.",
+        "operationId": "list_pending_comments_api_v1_me_pendings__pending_item_id__comments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pending_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pending Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingCommentsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Pending Comments"
+      },
+      "post": {
+        "description": "Escreve um comentário. Cliente e equipe interna, os dois (ADR 0032).\n\nÉ a **terceira** escrita que o caminho de requisição origina, depois da\nconversa e do feedback — e a primeira cujo escopo é o projeto e não a pessoa,\nporque ela existe para ser lida pelo outro lado.\n\nO aviso sai por task, como a pendência que a IA abre: ``portal_app`` não tem\n``INSERT`` em ``notification``, e essa ausência é o desenho.",
+        "operationId": "add_pending_comment_api_v1_me_pendings__pending_item_id__comments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pending_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pending Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PendingCommentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingCommentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Add Pending Comment"
       }
     },
     "/api/v1/me/preferences": {

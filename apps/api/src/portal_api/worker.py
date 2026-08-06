@@ -826,6 +826,58 @@ def notify_pending_created(project_id: str, pending_id: str) -> dict[str, int]:
         return {"created": len(created)}
 
 
+@celery_app.task(name="portal_api.notify_pending_comment")
+def notify_pending_comment(project_id: str, comment_id: str) -> dict[str, int]:
+    """Avisa o **outro lado** de um comentário na pendência (ADR 0032).
+
+    Uma task, e pelo mesmo motivo de :func:`notify_pending_created`: a rota roda
+    sob ``portal_app``, que não tem ``INSERT`` em ``notification`` — e essa
+    ausência é o desenho. O caminho de requisição não origina aviso.
+
+    ``exclude_user_id`` é quem escreveu: receber notificação do próprio
+    comentário é o ruído que ensina a ignorar o sino.
+    """
+    from portal_api.models import PendingItemComment
+
+    with get_session(role=DbRole.system) as session:
+        comment = session.get(PendingItemComment, uuid.UUID(comment_id))
+        project = session.get(Project, uuid.UUID(project_id))
+        if comment is None or project is None:
+            return {"created": 0}
+        item = session.get(PendingItem, comment.pending_item_id)
+        created = notifications.fan_out(
+            session,
+            project,
+            [
+                notifications.Change(
+                    kind=notifications.NotificationKind.pending_commented,
+                    title=f"{comment.author_label} comentou numa pendência",
+                    detail=item.title if item is not None else None,
+                    # Único por comentário: um reenvio da mensagem não repete o
+                    # aviso, e dois comentários seguidos não se anulam.
+                    dedupe_key=f"comment:{comment.id}",
+                )
+            ],
+            exclude_user_id=comment.author_user_id,
+        )
+        return {"created": len(created)}
+
+
+def queue_pending_comment_notification(project_id: str, comment_id: str) -> None:
+    """Mesma tolerância a broker morto das demais filas.
+
+    O comentário já está commitado quando chegamos aqui: quem espera é o aviso, e
+    derrubar a resposta por causa dele faria a pessoa achar que não escreveu.
+    """
+    try:
+        notify_pending_comment.delay(project_id, comment_id)
+    except Exception:
+        logger.warning(
+            "queue.unavailable",
+            extra={"task": "notify_pending_comment", "comment_id": comment_id},
+        )
+
+
 def queue_project_digests(project_id: str) -> None:
     """Enfileira o resumo sem deixar a fila derrubar quem chamou.
 

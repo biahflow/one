@@ -66,6 +66,8 @@ AUDIENCE: dict[NotificationKind, frozenset[MemberRole]] = {
     NotificationKind.project_status_changed: _CLIENT_ONLY,
     # A pendência é o único fato que pede ação dos dois lados.
     NotificationKind.pending_opened: _EVERYONE,
+    # Comentário também, e por definição: ele é escrito **para** o outro lado.
+    NotificationKind.pending_commented: _EVERYONE,
 }
 
 _MAX_DEDUPE_KEY = 255
@@ -313,6 +315,7 @@ def fan_out(
     changes: list[Change],
     *,
     occurred_at: datetime | None = None,
+    exclude_user_id: uuid.UUID | None = None,
 ) -> list[uuid.UUID]:
     """Grava uma linha por destinatário e devolve os ids criados.
 
@@ -323,6 +326,12 @@ def fan_out(
 
     Roda sob ``portal_system`` (o caminho do sync) — ``portal_app`` não tem
     ``INSERT`` nesta tabela.
+
+    ``exclude_user_id`` existe para o comentário (ADR 0032): avisar alguém do que
+    ele mesmo acabou de escrever é o tipo de ruído que ensina a ignorar o sino.
+    Fica aqui, e não em ``recipients``, porque a audiência é do **tipo** de aviso
+    e a exclusão é deste **evento** — juntá-las faria o `AUDIENCE` deixar de ser
+    uma tabela legível.
     """
     if not changes:
         return []
@@ -343,6 +352,7 @@ def fan_out(
         }
         for change in changes
         for user_id in recipients(session, project, change.kind)
+        if user_id != exclude_user_id
     ]
     if not rows:
         return []

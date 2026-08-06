@@ -749,3 +749,57 @@ def test_a_named_conversation_of_someone_else_is_not_found(
 
     db_session.delete(conversation)
     db_session.commit()
+
+
+# --- comentários na pendência (Fase 2, ADR 0032) -----------------------------
+
+
+def _pending_of(engine: Engine, tenant: Tenant) -> uuid.UUID:
+    """Uma pendência **commitada** no tenant, porque a API responde por outra
+    conexão e não veria a transação aberta do `db_session` (ver o docstring do
+    módulo)."""
+    with Session(engine) as session:
+        pending = PendingItem(
+            organization_id=tenant.organization_id,
+            project_id=tenant.project_id,
+            title="Enviar a planilha",
+        )
+        session.add(pending)
+        session.commit()
+        return pending.id
+
+
+def test_a_client_cannot_read_or_write_comments_of_another_project(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """404 e **não lista vazia**: uma lista vazia diria "existe e ninguém
+    comentou", que é informação sobre um recurso que o chamador não alcança."""
+    other = _pending_of(migrated_engine, world.globex)
+    authenticated(world.acme.client)
+
+    read = client.get(f"/api/v1/me/pendings/{other}/comments")
+    write = client.post(f"/api/v1/me/pendings/{other}/comments", json={"body": "oi"})
+
+    assert read.status_code == 404
+    assert write.status_code == 404
+
+
+def test_a_comment_records_who_wrote_it_and_which_side(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """O lado é gravado, não derivado do papel atual (ADR 0032): quem deixa de ser
+    interno não muda o lado de quem falou naquele dia."""
+    mine = _pending_of(migrated_engine, world.acme)
+    authenticated(world.acme.client)
+
+    created = client.post(
+        f"/api/v1/me/pendings/{mine}/comments", json={"body": "Já enviei ontem."}
+    )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["author_label"] == world.acme.client.full_name
+    assert body["author_is_internal"] is False
+
+    listed = client.get(f"/api/v1/me/pendings/{mine}/comments").json()
+    assert [item["body"] for item in listed["items"]] == ["Já enviei ontem."]

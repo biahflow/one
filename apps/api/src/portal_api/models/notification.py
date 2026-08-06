@@ -39,6 +39,9 @@ class NotificationKind(str, enum.Enum):
     transcript_ready = "transcript_ready"
     pending_opened = "pending_opened"
     pending_resolved = "pending_resolved"
+    #: Alguém escreveu na pendência (ADR 0032). O único aviso que **não** nasce do
+    #: diff do snapshot nem de uma decisão da IA: nasce de alguém digitando.
+    pending_commented = "pending_commented"
     project_status_changed = "project_status_changed"
 
 

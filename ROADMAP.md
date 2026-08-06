@@ -78,7 +78,17 @@ termo pela mesma rota.*
 - [x] Implementar pendências com responsável, estados e histórico (abertas/resolvidas), com
       distinção de origem: espelhadas do Biahflow vs. abertas pela IA por lacuna de contexto,
       que sobrevivem ao sync (`PendingItem.origin`, migração `0006_portal_sync_fields`).
-      *Comentários seguem pendentes.* **Vínculo a conversas feito em 06/08/2026 (ADR 0031),
+      **Comentários feitos em 06/08/2026 (ADR 0032)** — a única das três fatias com schema novo,
+      porque aqui não havia nada meio-feito: comentário não existia em lugar nenhum. Cliente e
+      time escrevem no fio da pendência; ninguém reescreve (`portal_app` só recebeu `INSERT`, e o
+      `SELECT` já vinha do default privilege); e a decisão que carrega a fatia é o **escopo**: a
+      policy é de tenant simples, e não de pessoa como a da conversa — o mesmo critério que a
+      ADR 0030 usou para decidir o oposto, a quem o texto foi endereçado. Não volta para o
+      Biahflow (a integração é unidirecional), e o custo declarado é uma segunda caixa de entrada
+      para o time, contra a qual a notificação `pending_commented` é o remédio — e ela **não avisa
+      quem escreveu**, o que exigiu `exclude_user_id` no `fan_out`. De quebra, dois campos que
+      faltavam no payload: o `id` da pendência (a chave de render era o título) e o
+      `comment_count`, cobrado sozinho pela guarda da ADR 0029. **Vínculo a conversas feito em 06/08/2026 (ADR 0031),
       e ele também não estava "pendente":** o FK `conversation_message.pending_item_id` existia
       desde a ADR 0015 e era lido **como booleano** (`pending_created`), então o cliente via
       "aberta pela IA" e não tinha volta à pergunta. A implementação mudou de desenho ao medir:

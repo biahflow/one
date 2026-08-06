@@ -47,8 +47,24 @@ Cliente pode abrir e acompanhar pendências. Falta de contexto no chat cria uma 
   `GET /api/v1/me/conversations/{id}` abre a thread apontada — sem ela o botão abriria o chat na
   conversa corrente, que quase nunca é a que gerou a pendência. Nenhuma migração: o FK existia e
   ninguém o lia.
-- **Segue aberto:** comentários na pendência — dado originado no portal, o que pede decisão contra
-  a ADR 0006/0008.
+- **Comentários (ADR 0032) — feito:** cliente e equipe interna escrevem no fio da pendência, atrás
+  de um clique (a contagem no botão é o que diz se vale abrir). Quatro coisas que valem estar aqui:
+
+  1. **Escopo de projeto, não de pessoa.** Ao contrário de `conversation`, a policy é a de tenant
+     simples: o comentário existe para ser lido pelo outro lado. O critério é o mesmo da ADR 0030,
+     que decidiu o oposto para a conversa — a quem o texto foi endereçado.
+  2. **Ninguém reescreve.** `portal_app` recebeu só `INSERT`; `UPDATE`/`DELETE` não existem para
+     ele. Autor removido do projeto não apaga o que foi dito — `author_label` é denormalizado.
+  3. **Não volta para o Biahflow**, e o custo é uma segunda caixa de entrada para o time. O que
+     impede que ela seja ignorada é a notificação `pending_commented`, que **não avisa o autor**.
+  4. **Sem poda por idade**; o expurgo por organização o leva pelo `CASCADE` de `project`, com
+     teste que afirma isso.
+
+  Critérios de aceite: `test_rls_isolation.py` (o par espelhado — colega do projeto vê o
+  comentário e não vê a conversa; `INSERT` sim, `UPDATE`/`DELETE` não),
+  `test_notifications.py::test_a_comment_notifies_the_other_side_and_not_its_author`,
+  `test_retention.py::test_the_erasure_takes_the_pending_comments`, `test_authorization.py`
+  (pendência de outro projeto é 404, não lista vazia) e `tests/e2e/pendencias.spec.ts`.
 
 ## Notificações
 

@@ -749,3 +749,62 @@ def test_a_named_conversation_of_someone_else_is_not_found(
 
     db_session.delete(conversation)
     db_session.commit()
+
+
+# --- comentários na pendência (Fase 2, ADR 0032) -----------------------------
+
+
+def test_a_client_cannot_read_or_write_comments_of_another_project(
+    world: World, authenticated, db_session: Session
+) -> None:
+    """404 e **não lista vazia**: uma lista vazia diria "existe e ninguém
+    comentou", que é informação sobre um recurso que o chamador não alcança."""
+    other = PendingItem(
+        organization_id=world.globex.organization_id,
+        project_id=world.globex.project_id,
+        title="Pendência da Globex",
+    )
+    db_session.add(other)
+    db_session.commit()
+
+    authenticated(world.acme.client)
+    read = client.get(f"/api/v1/me/pendings/{other.id}/comments")
+    write = client.post(
+        f"/api/v1/me/pendings/{other.id}/comments", json={"body": "oi"}
+    )
+
+    assert read.status_code == 404
+    assert write.status_code == 404
+
+    db_session.delete(other)
+    db_session.commit()
+
+
+def test_a_comment_records_who_wrote_it_and_which_side(
+    world: World, authenticated, db_session: Session
+) -> None:
+    """O lado é gravado, não derivado do papel atual (ADR 0032): quem deixa de ser
+    interno não muda o lado de quem falou naquele dia."""
+    mine = PendingItem(
+        organization_id=world.acme.organization_id,
+        project_id=world.acme.project_id,
+        title="Enviar a planilha",
+    )
+    db_session.add(mine)
+    db_session.commit()
+
+    authenticated(world.acme.client)
+    created = client.post(
+        f"/api/v1/me/pendings/{mine.id}/comments", json={"body": "Já enviei ontem."}
+    )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["author_label"] == world.acme.client.full_name
+    assert body["author_is_internal"] is False
+
+    listed = client.get(f"/api/v1/me/pendings/{mine.id}/comments").json()
+    assert [item["body"] for item in listed["items"]] == ["Já enviei ontem."]
+
+    db_session.delete(mine)
+    db_session.commit()

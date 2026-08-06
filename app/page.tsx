@@ -81,7 +81,7 @@ function initialsOf(fullName: string): string {
 type ApiMilestone = { title: string; state: string; due_date: string | null; owner_label: string | null };
 type ApiDocument = { title: string; type: string | null; author: string | null; link: string | null; updated_at: string | null };
 type ApiMeeting = { title: string; date: string | null; recording_url: string | null; has_transcript: boolean; status: string | null };
-type ApiPending = { title: string; description: string | null; owner_label: string | null; state: string; priority: string; origin: string; opened_by_message_id: string | null; opened_by_conversation_id: string | null; created_at: string; resolved_at: string | null };
+type ApiPending = { id: string; title: string; description: string | null; owner_label: string | null; state: string; priority: string; origin: string; opened_by_message_id: string | null; opened_by_conversation_id: string | null; comment_count: number; created_at: string; resolved_at: string | null };
 type ApiResults = { milestones_total: number; milestones_done: number; overdue: number; on_time_percent: number };
 type ApiAssumption = {
   effective_from: string;
@@ -204,6 +204,7 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
       recordingUrl: meeting.recording_url,
     })),
     pendings: ((data.pendings as ApiPending[]) ?? []).map<PendingItemView>((pending) => ({
+      id: pending.id,
       title: pending.title,
       description: pending.description,
       owner: pending.owner_label,
@@ -214,6 +215,7 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
       origin: pending.origin,
       openedByMessageId: pending.opened_by_message_id,
       openedByConversationId: pending.opened_by_conversation_id,
+      commentCount: pending.comment_count,
       age: relativeAge(pending.state === "resolved" ? pending.resolved_at : pending.created_at),
     })),
     results: results

@@ -20,6 +20,7 @@ import {
   MapPin,
   Menu,
   MessageCircleMore,
+  MessageSquare,
   MessageSquarePlus,
   MoreHorizontal,
   PanelLeftClose,
@@ -43,7 +44,10 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
+  addPendingCommentAction,
+  listPendingCommentsAction,
   markNotificationsReadAction,
+  type PendingComment,
   setEmailPreferenceAction,
   signOutAction,
 } from "./actions";
@@ -128,6 +132,7 @@ const notificationIcon: Record<string, LucideIcon> = {
   transcript_ready: Video,
   pending_opened: Inbox,
   pending_resolved: Check,
+  pending_commented: MessageSquare,
   project_status_changed: TrendingUp,
 };
 
@@ -170,7 +175,7 @@ export type ProjectSummary = { id: string; name: string; status: string; current
 export type OverviewMilestone = { title: string; owner: string; state: string; date: string };
 export type ProjectDocument = { title: string; type: string | null; author: string | null; link: string | null; updated: string };
 export type MeetingView = { title: string; date: string; status: string; hasTranscript: boolean; recordingUrl: string | null };
-export type PendingItemView = { title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; openedByMessageId: string | null; openedByConversationId: string | null; age: string };
+export type PendingItemView = { id: string; title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; openedByMessageId: string | null; openedByConversationId: string | null; commentCount: number; age: string };
 export type ProjectResults = { milestonesTotal: number; milestonesDone: number; overdue: number; onTimePercent: number };
 export type MeasuredAssumption = { hourlyRate: number; monthlyInvestment: number; effectiveFrom: string; note: string | null };
 /** O que os agentes produziram no período, apurado pela API (ADR 0013). Não se
@@ -514,6 +519,11 @@ export default function DashboardClient({
       if (data.pending_created) {
         setAiPendings((current) => [
           {
+            // Espelho local: a API acabou de gravar a linha e o id real chega no
+            // recarregamento. Um id sintético seria endereço para uma rota que
+            // responderia 404 — daí a string vazia, que a tela trata como
+            // "ainda sem fio".
+            id: "",
             title: `Responder dúvida do cliente: ${value.slice(0, 160)}`,
             description: "Pergunta sem evidência suficiente no contexto do projeto (chat).",
             owner: "Portal Labs",
@@ -528,6 +538,7 @@ export default function DashboardClient({
             // O turno acabou de ser gravado; o id vem no recarregamento (ADR 0031).
             openedByMessageId: null,
             openedByConversationId: null,
+            commentCount: 0,
             age: "agora",
           },
           ...current,
@@ -1314,14 +1325,14 @@ function PendingView({ onAsk, overview, onOpenTurn }: { onAsk: () => void; overv
                   : "Nenhuma pendência aberta com esta prioridade."}
               </p>
             )}
-            {open.map((item) => <PendingItem key={item.title} item={item} onOpenTurn={onOpenTurn} />)}
+            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread />)}
           </div>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Resolvidas <span>{resolved.length}</span></h2></div></div>
           <div className="pending-list">
             {resolved.length === 0 && <p className="empty-state">Nenhuma pendência resolvida ainda.</p>}
-            {resolved.map((item) => <PendingItem key={item.title} item={item} />)}
+            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread />)}
           </div>
         </article>
       </section>
@@ -1716,18 +1727,127 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
   );
 }
 
+
+/**
+ * O fio de uma pendência (ADR 0032), atrás de um clique.
+ *
+ * Fechado por padrão de propósito: oito pendências com todos os fios abertos
+ * viram mural, e a contagem no botão é o que diz se vale abrir. Carrega ao abrir
+ * e não no render da aba — a maioria das visitas não comenta nada.
+ */
+function PendingThread({ item }: { item: PendingItemView }) {
+  const [open, setOpen] = useState(false);
+  const [comments, setComments] = useState<PendingComment[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [sending, startSending] = useTransition();
+  const router = useRouter();
+
+  async function load() {
+    const items = await listPendingCommentsAction(item.id);
+    if (items === null) setFailed(true);
+    else {
+      setComments(items);
+      setFailed(false);
+    }
+  }
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && comments === null) void load();
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text) return;
+    startSending(async () => {
+      const ok = await addPendingCommentAction(item.id, text);
+      if (!ok) {
+        setFailed(true);
+        return;
+      }
+      setDraft("");
+      await load();
+      // A contagem no botão vem do servidor; sem isto ela ficaria atrás do fio
+      // que a pessoa acabou de ver crescer.
+      router.refresh();
+    });
+  }
+
+  // Sem id não há fio: é o espelho local da pendência que a IA acabou de abrir,
+  // cujo id real chega no recarregamento.
+  if (!item.id) return null;
+
+  return (
+    <div className="pending-thread">
+      <button className="text-button" onClick={toggle} aria-expanded={open}>
+        <MessageSquare size={14} />
+        {item.commentCount === 0
+          ? "Comentar"
+          : `${item.commentCount} ${item.commentCount === 1 ? "comentário" : "comentários"}`}
+      </button>
+
+      {open && (
+        <div className="comment-list">
+          {failed && (
+            <p className="auth-error" role="status">
+              Não consegui carregar os comentários agora. Nada foi perdido — tente de novo.
+            </p>
+          )}
+          {comments?.length === 0 && !failed && (
+            <p className="empty-note">Ninguém comentou ainda. Escreva o primeiro.</p>
+          )}
+          {comments?.map((comment) => (
+            <div className="comment-row" key={comment.id}>
+              <span
+                className={`comment-side ${comment.author_is_internal ? "comment-side--internal" : ""}`}
+              >
+                {comment.author_label}
+              </span>
+              <p>{comment.body}</p>
+              <small>{new Date(comment.created_at).toLocaleString("pt-BR")}</small>
+            </div>
+          ))}
+          <form className="comment-form" onSubmit={submit}>
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Escreva um comentário…"
+              maxLength={2000}
+              aria-label="Novo comentário"
+            />
+            <button type="submit" disabled={sending || !draft.trim()}>
+              {sending ? "Enviando…" : "Enviar"}
+            </button>
+          </form>
+          <p className="field-hint">
+            Comentários ficam no portal e não são editáveis nem removíveis — quem escreve não
+            reescreve.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PendingItem({
   item,
   onOpenTurn,
+  withThread = false,
 }: {
   item: PendingItemView;
   onOpenTurn?: (messageId: string, conversationId: string | null) => void;
+  /** O resumo da Visão geral mostra quatro linhas; abrir fio ali é outra tela. */
+  withThread?: boolean;
 }) {
   const tone = pendingTone[item.state] ?? "amber";
   const owner = item.owner ?? "Sem responsável definido";
   const detail = [owner, item.age].filter(Boolean).join(" • ");
   return (
-    <div className="pending-row">
+    <div className="pending-entry">
+      <div className="pending-row">
       <span className={`pending-avatar pending-avatar--${tone}`}>{owner.slice(0, 1)}</span>
       <div>
         <strong>{item.title}</strong>
@@ -1751,6 +1871,10 @@ function PendingItem({
       {item.priority !== "medium" && (
         <span className={`priority-pill priority-pill--${item.priority}`}>{item.priorityLabel}</span>
       )}
+      </div>
+      {/* O fio fica **fora** da `.pending-row`, que é um flex de uma linha: pôr
+          uma lista dentro dela desalinharia o avatar e o selo (ADR 0032). */}
+      {withThread && <PendingThread item={item} />}
     </div>
   );
 }

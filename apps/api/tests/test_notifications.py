@@ -234,3 +234,39 @@ def test_dedupe_key_survives_a_title_longer_than_the_column() -> None:
     assert len(key) <= 255
     assert key.startswith("milestone:")
     assert key == notifications._key("milestone", "x" * 300, "done")  # determinística
+
+
+@pytest.mark.integration
+def test_a_comment_notifies_the_other_side_and_not_its_author(db_session: Session) -> None:
+    """Avisar alguém do que ele mesmo escreveu é o ruído que ensina a ignorar o sino.
+
+    `fan_out` derivava destinatários só de `AUDIENCE`, que é do **tipo** do aviso;
+    `exclude_user_id` é deste **evento** (ADR 0032), e é por isso que ele fica no
+    `fan_out` e não em `recipients` — juntá-los faria o `AUDIENCE` deixar de ser
+    uma tabela legível.
+    """
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=131, client_id=81)
+    )
+    client_id, internal_id = _with_members(db_session, project, "m131")
+
+    created = notifications.fan_out(
+        db_session,
+        project,
+        [
+            notifications.Change(
+                kind=notifications.NotificationKind.pending_commented,
+                title="Cliente comentou numa pendência",
+                detail="Enviar a planilha",
+                dedupe_key=f"comment:{uuid.uuid4()}",
+            )
+        ],
+        exclude_user_id=client_id,
+    )
+
+    recipients = set(
+        db_session.execute(
+            select(Notification.user_id).where(Notification.id.in_(created))
+        ).scalars()
+    )
+    assert recipients == {internal_id}

@@ -272,6 +272,7 @@ class MeetingOut(Out):
 
 
 class PendingOut(Out):
+    id: str
     title: str
     description: str | None
     owner_label: str | None
@@ -292,6 +293,8 @@ class PendingOut(Out):
     #: A thread daquele turno. Sem ela o cliente abriria o chat na conversa
     #: corrente, que quase nunca é a que gerou a pendência.
     opened_by_conversation_id: str | None
+    #: Quantos comentários o fio tem (ADR 0032). Zero é resposta, não ausência.
+    comment_count: int
     created_at: str
     resolved_at: str | None
 
@@ -357,6 +360,30 @@ class NotificationOut(Out):
 class NotificationsOut(Out):
     unread_count: int
     items: list[NotificationOut]
+
+
+# --- comentários na pendência (ADR 0032) ------------------------------------
+
+
+class PendingCommentOut(Out):
+    """Um comentário como a tela o mostra.
+
+    ``author_label`` e ``author_is_internal`` vêm da **linha**, não do papel atual
+    de quem escreveu: alguém que deixa de ser interno não muda o lado de quem
+    falou naquele dia, e um autor removido do projeto não apaga a procedência do
+    que disse.
+    """
+
+    id: str
+    author_label: str
+    author_is_internal: bool
+    body: str
+    created_at: str
+
+
+class PendingCommentsOut(Out):
+    pending_item_id: str
+    items: list[PendingCommentOut]
 
 
 class NotificationsReadOut(Out):

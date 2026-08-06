@@ -19,7 +19,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from portal_api import notifications, results
+from portal_api import notifications, pending_comments, results
 from portal_api.models import (
     ConversationMessage,
     DeliverableState,
@@ -481,6 +481,7 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         ).scalars()
     )
     opened_by = _turn_that_opened(session, project)
+    comment_counts = pending_comments.counts_for_project(session, project.id)
     documents = session.execute(
         select(Document)
         .where(Document.project_id == project.id)
@@ -574,6 +575,10 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         ],
         "pendings": [
             {
+                # O id só passou a sair na ADR 0032, quando a tela precisou
+                # endereçar a pendência para abrir o fio. Antes, a chave de
+                # render era o título — que ninguém garante ser único.
+                "id": str(pending.id),
                 "title": pending.title,
                 # O turno que abriu esta pendência, quando foi a IA (ADR 0031).
                 # `None` para o que veio do Biahflow, e para a pendência da IA
@@ -583,6 +588,9 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
                 ),
                 # A thread, e não só o turno: ele quase nunca está na conversa
                 # corrente, e o histórico do chat é de uma só (ADR 0015/0031).
+                # Zero quando ninguém comentou, e é o que a tela usa para decidir
+                # se vale abrir o fio (ADR 0032).
+                "comment_count": comment_counts.get(pending.id, 0),
                 "opened_by_conversation_id": (
                     str(opened_by[pending.id][1]) if pending.id in opened_by else None
                 ),

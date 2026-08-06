@@ -207,7 +207,7 @@
     background: linear-gradient(90deg, var(--color-brand-500), var(--color-brand-300));
   }
   .status-meta small { @apply text-[10px] text-slate-400; }
-  .details-link, .text-button {
+  .text-button {
     @apply flex items-center gap-1.5 border-0 bg-transparent text-xs font-bold whitespace-nowrap text-brand-600 transition-colors hover:text-brand-700;
   }
 
@@ -412,7 +412,10 @@
   /* Não lida: o mesmo roxo da marca, para o olho achar sem precisar de legenda. */
   .notification-row--unread .notification-icon { @apply bg-brand-50 text-brand-600; }
   .notification-row--unread strong { @apply font-bold; }
-  .empty-note { @apply px-0.5 py-4 text-xs leading-relaxed text-muted; }
+  /* `.panel-note` divide a declaração porque é a mesma coisa visualmente e
+     outra coisa semanticamente: a lista não está vazia, o painel é que explica
+     de onde vem o dado que ele mostra. Duas classes idênticas seriam pior. */
+  .empty-note, .panel-note { @apply px-0.5 py-4 text-xs leading-relaxed text-muted; }
 
   /* ---------- Perfil e configurações ---------- */
   .profile-head { @apply mb-4 flex items-center gap-3.5 border-b border-line pt-1 pb-4.5; }
@@ -436,7 +439,6 @@
   }
   .switch--on { @apply bg-brand-500; }
   .switch--on i { @apply left-4.5; }
-  .settings-save { @apply mt-4.5; }
 
   /* ---------- Cards ---------- */
   .card-grid { @apply grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-4; }
@@ -650,7 +652,6 @@
   .status-card { align-items: flex-start; flex-wrap: wrap; padding: 16px; }
   .status-main { min-width: 0; width: 100%; }
   .status-meta { flex: 1; min-width: 0; grid-template-columns: auto 1fr; }
-  .details-link { margin-left: auto; }
   .metrics-grid, .dashboard-grid, .bottom-grid { grid-template-columns: 1fr; }
   .metric-card { min-height: 118px; }
   .pending-panel { order: 2; }

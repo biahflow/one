@@ -24,6 +24,7 @@ type ApiKey = {
   expires_at: string;
   revoked_at: string | null;
   last_used_at: string | null;
+  rotated_from_id: string | null;
   usable: boolean;
 };
 
@@ -99,6 +100,9 @@ export default async function ResultsAdminPage({
     // autentica, e é o relógio dela que vale.
     expired: !key.usable && key.revoked_at === null,
     lastUsedAt: key.last_used_at,
+    // A cadeia de rotação, que `runbooks/agent-events-failure.md` manda o
+    // operador ler para saber qual chave substituiu qual (ADR 0033).
+    rotatedFromId: key.rotated_from_id,
   }));
 
   const assumptions: Assumption[] = (

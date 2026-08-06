@@ -69,6 +69,11 @@ type ChatMessage = {
   // avaliar uma resposta que não foi registrada não levaria a lugar nenhum.
   id?: string;
   feedback?: "helpful" | "not_helpful" | null;
+  // Como a API classificou o próprio turno: `grounded` quando respondeu sobre
+  // evidência, `insufficient_context` quando declarou a lacuna (ADR 0033). Vinha
+  // em toda resposta e era descartado aqui — o cliente via "Pendência criada"
+  // sem que nada dissesse que a resposta acima dela não tinha lastro.
+  confidence?: string | null;
 };
 
 const navItems = [
@@ -177,14 +182,27 @@ export type ProjectDocument = { title: string; type: string | null; author: stri
 export type MeetingView = { title: string; date: string; status: string; hasTranscript: boolean; recordingUrl: string | null };
 export type PendingItemView = { id: string; title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; openedByMessageId: string | null; openedByConversationId: string | null; commentCount: number; age: string };
 export type ProjectResults = { milestonesTotal: number; milestonesDone: number; overdue: number; onTimePercent: number };
-export type MeasuredAssumption = { hourlyRate: number; monthlyInvestment: number; effectiveFrom: string; note: string | null };
+export type MeasuredAssumption = {
+  hourlyRate: number;
+  monthlyInvestment: number;
+  effectiveFrom: string;
+  note: string | null;
+  currency: string;
+  daysInPeriod: number;
+};
+/** A conta, como quem a fez a descreve — nunca reescrita aqui (ADR 0033). */
+export type MeasuredBasis = { daysPerMonth: number; formula: string };
 /** O que os agentes produziram no período, apurado pela API (ADR 0013). Não se
  *  confunde com `roi`, que é o ROI projetado vindo do snapshot do Biahflow. */
 export type MeasuredResults = {
   periodDays: number;
+  periodFrom: string;
+  periodTo: string;
   eventsTotal: number;
   hoursSaved: number;
   benefit: number;
+  laborSavings: number;
+  avoidedCost: number;
   investment: number;
   net: number;
   roiRatio: number | null;
@@ -192,7 +210,9 @@ export type MeasuredResults = {
   exceptionsHandled: number;
   unattendedShare: number | null;
   failed: number;
+  eventsWithoutAssumption: number;
   assumption: MeasuredAssumption | null;
+  basis: MeasuredBasis;
   gaps: string[];
 };
 export type JourneyDeliverable = { name: string; state: "pending" | "delivered"; link: string | null };
@@ -382,6 +402,7 @@ export default function DashboardClient({
             sources?: string[];
             citations?: Citation[];
             pending_created?: boolean;
+            confidence?: string | null;
             feedback?: "helpful" | "not_helpful" | null;
           }) => ({
             id: message.id,
@@ -390,6 +411,7 @@ export default function DashboardClient({
             sources: message.sources,
             citations: message.citations,
             pending: message.pending_created,
+            confidence: message.confidence,
             feedback: message.feedback ?? null,
           }));
         // Só substitui a tela se a pessoa ainda não escreveu nada. O histórico
@@ -422,7 +444,7 @@ export default function DashboardClient({
     setMessages(greeting(user));
   }
 
-  async function rateAnswer(messageId: string, helpful: boolean) {
+  async function rateAnswer(messageId: string, helpful: boolean, comment?: string) {
     // Otimista, e sem desfazer em caso de erro: o polegar é opinião, não estado
     // do projeto — insistir num rollback visível custaria mais do que vale.
     setMessages((current) =>
@@ -436,7 +458,16 @@ export default function DashboardClient({
       await fetch("/api/chat/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message_id: messageId, helpful }),
+        // O comentário é opcional e é **o campo mais informativo do conjunto**
+        // (ADR 0030): o polegar diz que errou, o comentário diz o quê. Ele
+        // existia na coluna, na API e na rota do BFF desde a ADR 0015 — e não
+        // tinha escritor, então a tela do time interno mostrava um painel
+        // intitulado "O que os clientes disseram" sobre um campo sempre nulo.
+        body: JSON.stringify({
+          message_id: messageId,
+          helpful,
+          comment: comment?.trim() ? comment.trim() : null,
+        }),
       });
     } catch {
       // Silencioso de propósito, pelo mesmo motivo.
@@ -513,6 +544,7 @@ export default function DashboardClient({
         sources: data.sources,
         citations: data.citations,
         pending: data.pending_created,
+        confidence: data.confidence,
         feedback: null,
       });
       // Espelha a pendência que a API acabou de criar (mesmo título de `ai/service.py`).
@@ -757,23 +789,25 @@ export default function DashboardClient({
                 ) : message.sources?.length ? (
                   <div className="message-sources">{message.sources.map((source) => <span key={source}><FileText size={12} /> {source}</span>)}</div>
                 ) : null}
+                {/* A classificação que a própria API deu ao turno. Só aparece
+                    quando ela declarou lacuna: dizer "com evidência" embaixo de
+                    toda resposta vira ruído e ensina a ignorar o selo — e é
+                    justamente quando **não** houve evidência que o cliente
+                    precisa saber, porque a regra 3 do `AGENTS.md` manda declarar
+                    a lacuna em vez de inventar (ADR 0033). */}
+                {message.confidence === "insufficient_context" && (
+                  <small className="answer-gap">
+                    Sem evidência suficiente no contexto do projeto
+                  </small>
+                )}
                 {message.pending && <small className="pending-created"><Check size={13} /> Pendência criada para Portal Labs</small>}
                 {/* Só a resposta gravada aceita polegar: sem id não há o que avaliar. */}
                 {message.role === "assistant" && message.id && (
-                  <div className="message-feedback">
-                    <button
-                      className={message.feedback === "helpful" ? "is-active" : undefined}
-                      onClick={() => rateAnswer(message.id!, true)}
-                      aria-pressed={message.feedback === "helpful"}
-                      aria-label="Esta resposta ajudou"
-                    ><ThumbsUp size={13} /></button>
-                    <button
-                      className={message.feedback === "not_helpful" ? "is-active" : undefined}
-                      onClick={() => rateAnswer(message.id!, false)}
-                      aria-pressed={message.feedback === "not_helpful"}
-                      aria-label="Esta resposta não ajudou"
-                    ><ThumbsDown size={13} /></button>
-                  </div>
+                  <AnswerFeedback
+                    messageId={message.id}
+                    feedback={message.feedback ?? null}
+                    onRate={rateAnswer}
+                  />
                 )}
               </div>
             ))}
@@ -898,6 +932,72 @@ function ViewHero({ eyebrow, title, subtitle, onAsk }: { eyebrow: string; title:
       </div>
       <button className="ai-button" onClick={onAsk}><Sparkles size={17} /> Perguntar à IA</button>
     </section>
+  );
+}
+
+/**
+ * O polegar e, depois dele, o comentário (ADR 0033).
+ *
+ * O campo aparece **depois** de avaliar, e não junto: pedir texto antes torna o
+ * polegar caro, e o polegar barato é o que faz existir algum sinal. Depois de
+ * dado, "quer contar o que faltou?" é uma pergunta que quem clicou já mostrou
+ * disposição de responder.
+ *
+ * Escrever de novo sobrescreve — é o mesmo `record_feedback`, que é um GRANT de
+ * coluna e não um `INSERT`: a pessoa avalia a resposta e nunca reescreve a
+ * resposta nem as citações que ela mostrou (ADR 0015).
+ */
+function AnswerFeedback({
+  messageId,
+  feedback,
+  onRate,
+}: {
+  messageId: string;
+  feedback: "helpful" | "not_helpful" | null;
+  onRate: (messageId: string, helpful: boolean, comment?: string) => void;
+}) {
+  const [comment, setComment] = useState("");
+  const [sent, setSent] = useState(false);
+
+  function submitComment(event: FormEvent) {
+    event.preventDefault();
+    if (!comment.trim() || !feedback) return;
+    onRate(messageId, feedback === "helpful", comment);
+    setSent(true);
+  }
+
+  return (
+    <div className="message-feedback">
+      <div className="message-feedback-thumbs">
+        <button
+          className={feedback === "helpful" ? "is-active" : undefined}
+          onClick={() => onRate(messageId, true)}
+          aria-pressed={feedback === "helpful"}
+          aria-label="Esta resposta ajudou"
+        ><ThumbsUp size={13} /></button>
+        <button
+          className={feedback === "not_helpful" ? "is-active" : undefined}
+          onClick={() => onRate(messageId, false)}
+          aria-pressed={feedback === "not_helpful"}
+          aria-label="Esta resposta não ajudou"
+        ><ThumbsDown size={13} /></button>
+      </div>
+      {feedback && !sent && (
+        <form className="message-feedback-comment" onSubmit={submitComment}>
+          <input
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            maxLength={500}
+            placeholder={
+              feedback === "helpful" ? "O que ajudou? (opcional)" : "O que faltou? (opcional)"
+            }
+            aria-label="Comentário sobre esta resposta"
+          />
+          <button type="submit" disabled={!comment.trim()}>Enviar</button>
+        </form>
+      )}
+      {sent && <small className="message-feedback-sent">Obrigado — o time vê isto.</small>}
+    </div>
   );
 }
 
@@ -1341,9 +1441,26 @@ function PendingView({ onAsk, overview, onOpenTurn }: { onAsk: () => void; overv
 }
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-/** Com centavos: uma premissa precisa poder ser conferida na mão, e R$ 150,50
- *  arredondado para R$ 151 deixaria a conta do cliente sem fechar. */
-const BRL_EXACT = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+/**
+ * Dinheiro na moeda que a **premissa** declara, e não numa constante daqui
+ * (ADR 0033).
+ *
+ * `AssumptionIn.currency` é gravável pela API desde a Fase 3 e a tela formatava
+ * tudo com `currency: "BRL"` fixo — uma premissa em outra moeda não aparecia
+ * incompleta, aparecia **errada**, com o símbolo de real na frente de um número
+ * que não é em reais. Sem premissa não há moeda declarada, e aí o padrão do
+ * produto (BRL) é o palpite honesto.
+ *
+ * Com centavos: uma premissa precisa poder ser conferida na mão, e R$ 150,50
+ * arredondado para R$ 151 deixaria a conta do cliente sem fechar.
+ */
+function money(value: number, currency: string | null | undefined) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: currency || "BRL",
+  }).format(value);
+}
 const EMPLOYEE_STATUS: Record<string, { label: string; cls: string }> = {
   active: { label: "Ativo", cls: "green" },
   paused: { label: "Pausado", cls: "" },
@@ -1492,24 +1609,40 @@ function MeasurementBasis({ measured }: { measured: MeasuredResults | null }) {
         <div className="field-list">
           <div className="field-row">
             <span className="field-label">Período</span>
-            <span className="field-value">Últimos {measured.periodDays} dias</span>
+            <span className="field-value">
+              {measured.periodFrom} a {measured.periodTo} · {measured.periodDays} dias
+            </span>
           </div>
           <div className="field-row">
             <span className="field-label">Eventos considerados</span>
-            <span className="field-value">{measured.eventsTotal.toLocaleString("pt-BR")}</span>
+            <span className="field-value">
+              {measured.eventsTotal.toLocaleString("pt-BR")}
+              {measured.eventsWithoutAssumption > 0 &&
+                ` · ${measured.eventsWithoutAssumption.toLocaleString("pt-BR")} sem premissa vigente`}
+            </span>
+          </div>
+          <div className="field-row">
+            <span className="field-label">Economia apurada</span>
+            <span className="field-value">
+              {money(measured.laborSavings, assumption?.currency)} em horas
+              {" + "}
+              {money(measured.avoidedCost, assumption?.currency)} em custos evitados
+            </span>
           </div>
           {assumption && (
             <>
               <div className="field-row">
                 <span className="field-label">Valor-hora vigente</span>
                 <span className="field-value">
-                  {BRL_EXACT.format(assumption.hourlyRate)} · desde {assumption.effectiveFrom}
+                  {money(assumption.hourlyRate, assumption.currency)} · desde {assumption.effectiveFrom}
                 </span>
               </div>
               <div className="field-row">
                 <span className="field-label">Investimento mensal</span>
                 <span className="field-value">
-                  {BRL_EXACT.format(assumption.monthlyInvestment)} · rateado por dia no período
+                  {money(assumption.monthlyInvestment, assumption.currency)} · rateado por{" "}
+                  {measured.basis.daysPerMonth} dias/mês, {assumption.daysInPeriod} dia
+                  {assumption.daysInPeriod === 1 ? "" : "s"} neste período
                 </span>
               </div>
               {assumption.note && (
@@ -1522,7 +1655,10 @@ function MeasurementBasis({ measured }: { measured: MeasuredResults | null }) {
           )}
           <div className="field-row">
             <span className="field-label">Fórmula do ROI</span>
-            <span className="field-value">(economia apurada − investimento) ÷ investimento</span>
+            {/* Vem da API. Até a ADR 0033 esta linha era um literal que nem
+                casava com a fórmula que o servidor devolve — a explicação do
+                número estava fabricada na única tela feita para conferi-lo. */}
+            <span className="field-value">{measured.basis.formula}</span>
           </div>
         </div>
         {gaps.length > 0 && (

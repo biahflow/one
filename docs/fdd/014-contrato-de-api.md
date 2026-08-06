@@ -86,16 +86,37 @@ Aceite:
 6. O par backup/restore roda a cada push, com as três asserções que vinham
    pulando.
 
+**Acrescentado em 06/08/2026 (ADR 0033), e os dois primeiros nasceram
+vermelhos:**
+
+7. Todo campo de todo esquema de resposta **alcançável a partir de uma rota que
+   o BFF chama** é desreferenciado num arquivo que consegue lê-lo — o que chama
+   a rota, quem o importa, ou quem chama a rota de passagem em `app/api/**`. A
+   exceção é linha de allowlist **com motivo escrito**, e uma linha que deixou
+   de ser necessária reprova, como no `advisories.json`.
+8. Toda rota do contrato tem chamador em `app/`, ou motivo declarado. As
+   legítimas são quatro, e são as superfícies sem navegador do outro lado:
+   as duas sondas de saúde, a rota de agente e o webhook do Biahflow.
+9. `GET /api/v1/dashboard/demo` responde 404 **mesmo com `DEMO_MODE` ligado** —
+   ela saiu, e a asserção existe para "removida" não se confundir com "quebrada
+   pelo gate".
+
 ## Testes e avaliações de IA
 
 - `apps/api/tests/test_openapi_contract.py`, treze casos: o gate de deriva, as
   cinco propriedades acima, a exceção nomeada do `agent_key`, e os dois de ida e
   volta (dashboard e apuração, construídos de verdade contra Postgres) que
   provam que nenhuma chave se perde.
-- `tests/api-contract.test.mjs`, cinco casos: a fixture do teste de SSR validada
-  contra o esquema versionado, mais a prova negativa de que um campo renomeado é
+- `tests/api-contract.test.mjs`: a fixture do teste de SSR validada contra o
+  esquema versionado, mais a prova negativa de que um campo renomeado é
   recusado — sem ela o arquivo poderia estar passando por acidente contra um
-  esquema permissivo.
+  esquema permissivo. Desde a ADR 0033 ele também carrega a guarda de consumo,
+  um caso por esquema derivado do contrato (hoje 52) em vez dos oito nomes
+  escritos à mão, mais a asserção de rota com chamador e a de allowlist
+  obsoleta. **A prova que dá sentido a ela é executável e não argumentada:**
+  neutralizadas as duas desreferências de `.priority` em `app/page.tsx`, a
+  guarda reprova nomeando o campo — foi assim que se descobriu que a primeira
+  versão, com corpus único sobre `app/`, passava.
 - `apps/api/tests/conftest.py` e `tests/e2e/stack.ts`: `skip_unless_ci` e
   `stackIsMissing`, os dois lados da mesma regra.
 - **Sem eval de IA.** Nada aqui toca prompt, recuperador, modelo ou ferramenta.

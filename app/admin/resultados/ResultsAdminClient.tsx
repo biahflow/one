@@ -20,6 +20,7 @@ export type AgentKey = {
   revoked: boolean;
   expired: boolean;
   lastUsedAt: string | null;
+  rotatedFromId: string | null;
 };
 
 export type Assumption = {
@@ -34,7 +35,19 @@ export type Assumption = {
 
 type ProjectOption = { id: string; name: string; current: boolean };
 
-const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+/**
+ * Dinheiro na moeda que a própria premissa declara (ADR 0033).
+ *
+ * `currency` chega da API desde a Fase 3, era mapeado aqui e ignorado: tudo
+ * saía com `R$` fixo. Uma premissa em outra moeda não ficava incompleta na
+ * tela, ficava **errada** — e é esta a tela onde alguém digita o número.
+ */
+function money(value: number, currency: string | null | undefined) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: currency || "BRL",
+  }).format(value);
+}
 
 function day(value: string | null): string {
   if (!value) return "—";
@@ -174,7 +187,7 @@ export default function ResultsAdminClient({
               <p className="eyebrow">PREMISSA VIGENTE</p>
               <h2>
                 {current
-                  ? `${BRL.format(current.hourlyRate)} por hora`
+                  ? `${money(current.hourlyRate, current.currency)} por hora`
                   : "Nenhuma premissa configurada"}
               </h2>
             </div>
@@ -183,7 +196,7 @@ export default function ResultsAdminClient({
             <div className="field-list">
               <div className="field-row">
                 <span className="field-label">Investimento mensal</span>
-                <span className="field-value">{BRL.format(current.monthlyInvestment)}</span>
+                <span className="field-value">{money(current.monthlyInvestment, current.currency)}</span>
               </div>
               <div className="field-row">
                 <span className="field-label">Vigente desde</span>
@@ -252,7 +265,7 @@ export default function ResultsAdminClient({
                       {day(item.effectiveFrom)} → {item.effectiveTo ? day(item.effectiveTo) : "hoje"}
                     </span>
                     <span className="field-value">
-                      {BRL.format(item.hourlyRate)}/h · {BRL.format(item.monthlyInvestment)}/mês
+                      {money(item.hourlyRate, item.currency)}/h · {money(item.monthlyInvestment, item.currency)}/mês
                     </span>
                   </div>
                 ))}
@@ -287,6 +300,15 @@ export default function ResultsAdminClient({
                     <strong>{key.name}</strong>
                     <span>
                       {key.keyPrefix}… · {key.lastUsedAt ? `usada em ${day(key.lastUsedAt)}` : "nunca usada"}
+                      {/* A cadeia de rotação, pelo prefixo da antecessora — o
+                          `runbooks/agent-events-failure.md` manda lê-la, e até
+                          a ADR 0033 ela não saía do banco. O id não serve à
+                          leitura; o prefixo é o que aparece no log. */}
+                      {key.rotatedFromId &&
+                        ` · rotacionada de ${
+                          keys.find((other) => other.keyId === key.rotatedFromId)?.keyPrefix ??
+                          "uma chave já removida"
+                        }…`}
                     </span>
                   </div>
                   <span className={`state ${state.tone}`}>{state.label}</span>

@@ -123,3 +123,35 @@ test("a conversa do cliente não aparece nem para o time interno do projeto", as
   // conversa de quem pergunta.
   await expect(page.locator(".chat-messages")).not.toContainText(secret);
 });
+
+test("o comentário do cliente chega à tela do time interno", async ({ page, context }) => {
+  // A prova de ponta a ponta da ADR 0033. `feedback_comment` existia na coluna,
+  // na API e na rota do BFF desde a ADR 0015, e **não tinha escritor** — de modo
+  // que o painel "O que os clientes disseram", criado pela ADR 0030, só podia
+  // mostrar carimbo de data. Este teste é o que impede a volta desse estado: ele
+  // falha tanto se o campo sumir do chat quanto se a tela do time parar de lê-lo.
+  const remark = `faltou-o-cronograma-${Date.now().toString(36)}`;
+
+  await signIn(page, CLIENT);
+  await ask(page, "Qual é o status do projeto?");
+  const answer = () => page.locator(".message--assistant").last();
+  await expect(answer()).toBeVisible({ timeout: 30_000 });
+
+  // O campo só aparece depois do polegar: pedir texto antes torna o polegar
+  // caro, e o polegar barato é o que faz existir algum sinal.
+  await answer().getByRole("button", { name: "Esta resposta não ajudou" }).click();
+  const comment = answer().getByRole("textbox", { name: "Comentário sobre esta resposta" });
+  await expect(comment).toBeVisible();
+  await comment.fill(remark);
+  await answer().getByRole("button", { name: "Enviar" }).click();
+
+  await context.clearCookies();
+  await signIn(page, INTERNAL);
+  await page.goto("/admin/assistente");
+
+  // O comentário aparece; a pergunta do cliente, não — o GRANT de coluna da
+  // ADR 0030 é quem garante a segunda metade, e ela é afirmada aqui de novo
+  // porque é o que torna a primeira aceitável.
+  await expect(page.locator(".field-list")).toContainText(remark, { timeout: 30_000 });
+  await expect(page.locator("body")).not.toContainText("Qual é o status do projeto?");
+});

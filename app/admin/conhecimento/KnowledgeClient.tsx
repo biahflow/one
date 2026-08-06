@@ -42,6 +42,7 @@ export type ProjectDocument = {
   error: string | null;
   scanState: ScanState;
   scanError: string | null;
+  scannedAt: string | null;
   chunkCount: number;
   indexedAt: string | null;
   createdAt: string;
@@ -56,8 +57,32 @@ export type DriveConnection = {
   syncState: "idle" | "running" | "failed" | null;
   lastSyncAt: string | null;
   lastSyncError: string | null;
+  lastSyncStats: Record<string, number | boolean> | null;
   documentCount: number;
 };
+
+/**
+ * O que cada contador da última sincronização quer dizer, em português
+ * (ADR 0033). `rejected` é a fronteira da pasta autorizada barrando o que deve
+ * barrar — leia como controle funcionando, não como erro (`observability.md`).
+ */
+const SYNC_STAT_LABELS: Record<string, string> = {
+  added: "adicionados",
+  updated: "atualizados",
+  removed: "removidos",
+  skipped: "sem mudança",
+  unsupported: "formato não suportado",
+  rejected: "barrados na fronteira da pasta",
+};
+
+/** Só os contadores que não são zero: uma linha de zeros esconde o que importa. */
+function syncSummary(stats: Record<string, number | boolean> | null) {
+  if (!stats) return "";
+  return Object.entries(SYNC_STAT_LABELS)
+    .filter(([key]) => typeof stats[key] === "number" && (stats[key] as number) > 0)
+    .map(([key, label]) => `${stats[key]} ${label}`)
+    .join(", ");
+}
 
 type ProjectOption = { id: string; name: string; current: boolean };
 
@@ -397,6 +422,18 @@ export default function KnowledgeClient({
               {drive.documentCount}{" "}
               {drive.documentCount === 1 ? "documento vindo" : "documentos vindos"} do Drive ·
               última sincronização em {day(drive.lastSyncAt)}
+              {syncSummary(drive.lastSyncStats) && ` · ${syncSummary(drive.lastSyncStats)}`}
+            </p>
+          )}
+
+          {/* `truncated` não é um contador e não entra na soma: é a listagem do
+              Google tendo batido no teto, o que significa que a pasta é maior do
+              que o que foi visto. Merece frase própria, porque um índice
+              incompleto responde ao chat exatamente como um completo. */}
+          {drive.lastSyncStats?.truncated === true && (
+            <p className="auth-error" role="status">
+              A última varredura não leu a pasta inteira — há mais arquivos do que o
+              limite por sincronização. O que ficou de fora entra nas próximas.
             </p>
           )}
         </article>
@@ -459,6 +496,22 @@ export default function KnowledgeClient({
                     {document.scanState === "skipped" && document.state === "indexed" && (
                       <span className="scan-note scan-note--muted">
                         Indexado sem antivírus configurado
+                      </span>
+                    )}
+                    {/* Quando a varredura passou é a **data** que responde
+                        "isto foi conferido com a assinatura de quando?" — a
+                        pergunta que uma revarredura por assinatura nova existe
+                        para reabrir (ADR 0017/0033). */}
+                    {document.scanState === "clean" && document.scannedAt && (
+                      <span className="scan-note scan-note--muted">
+                        Varrido em {day(document.scannedAt)}
+                      </span>
+                    )}
+                    {document.scanState === "error" && (
+                      <span className="scan-note">
+                        A varredura não respondeu
+                        {document.scanError ? `: ${document.scanError}` : ""} · o
+                        documento não entra no índice até passar
                       </span>
                     )}
                   </div>

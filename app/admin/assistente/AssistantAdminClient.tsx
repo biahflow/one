@@ -3,6 +3,16 @@
 import { ArrowLeft, MessageSquare, ThumbsDown, ThumbsUp } from "lucide-react";
 import Link from "next/link";
 
+/**
+ * Os dois desfechos que `ai/service.py` produz. Ditos em português porque esta
+ * linha é lida por quem atende o cliente, não por quem lê o log — e "declarou
+ * lacuna" é o comportamento correto da regra 3 do `AGENTS.md`, não uma falha.
+ */
+const CONFIDENCE_LABELS: Record<string, string> = {
+  grounded: "com evidência",
+  insufficient_context: "declarou lacuna",
+};
+
 export type RatedTurn = {
   messageId: string;
   createdAt: string;
@@ -146,6 +156,11 @@ export default function AssistantAdminClient({
                 <span className="field-label">
                   {moment(turn.ratedAt ?? turn.createdAt)}
                   {turn.comment ? ` — ${turn.comment}` : ""}
+                  {/* A calibragem que o cabeçalho promete. Ela vinha da API,
+                      era mapeada em `RatedTurn` e não era renderizada — o
+                      campo mais direto para responder "o assistente errou
+                      sabendo ou errou achando que sabia" (ADR 0033). */}
+                  {turn.confidence ? ` · ${CONFIDENCE_LABELS[turn.confidence] ?? turn.confidence}` : ""}
                   {turn.openedPending ? " · abriu pendência" : ""}
                   {turn.responder ? ` · ${turn.responder}` : ""}
                   {turn.model ? ` · ${turn.model}` : ""}

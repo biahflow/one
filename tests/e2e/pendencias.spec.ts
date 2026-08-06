@@ -59,3 +59,18 @@ test("o filtro de prioridade encolhe a lista e o caminho de volta existe", async
   await page.getByRole("button", { name: /^Todas/ }).click();
   await expect(rows).toHaveCount(total);
 });
+
+test("a pendência aberta pela IA leva de volta à pergunta que a gerou", async ({ page }) => {
+  await signIn(page, CLIENT);
+  await page.getByRole("button", { name: /^Pendências/ }).click();
+
+  // As do Biahflow não vieram de conversa nenhuma; a da IA veio, e o FK que diz
+  // qual turno era lido só como booleano até a ADR 0031.
+  const row = page.locator(".pending-row", { hasText: "aberta pela IA" }).first();
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Ver a pergunta" }).click();
+
+  // O chat abre e o turno apontado é o que fica em destaque — não o último.
+  await expect(page.locator(".chat-panel")).toBeVisible();
+  await expect(page.locator(".message--focused")).toHaveCount(1);
+});

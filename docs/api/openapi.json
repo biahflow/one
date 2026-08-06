@@ -2352,6 +2352,28 @@
             ],
             "title": "Description"
           },
+          "opened_by_conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened By Conversation Id"
+          },
+          "opened_by_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened By Message Id"
+          },
           "origin": {
             "title": "Origin",
             "type": "string"
@@ -2403,6 +2425,8 @@
           "state",
           "priority",
           "origin",
+          "opened_by_message_id",
+          "opened_by_conversation_id",
           "created_at",
           "resolved_at"
         ],
@@ -5397,6 +5421,72 @@
           }
         ],
         "summary": "Rate Answer"
+      }
+    },
+    "/api/v1/me/conversations/{conversation_id}": {
+      "get": {
+        "description": "Uma thread nomeada, para o cliente voltar à pergunta que abriu a pendência.\n\nExiste por causa da ADR 0031: a pendência aberta pela IA aponta um turno, e\nele quase nunca está na thread **corrente** — o histórico do chat é de uma\nconversa só (ADR 0015), então sem esta rota o caminho de volta abriria o\npainel e não mostraria nada.\n\nConversa de outra pessoa é 404 pelo caminho normal do portal, e a checagem\nnão é escrita aqui: ``ConversationRepository.get_for_user`` filtra por\n``user_id`` e a policy de `conversation` exige\n``user_id = portal.current_user_id()``. As duas barreiras, como sempre.",
+        "operationId": "my_conversation_api_v1_me_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "My Conversation"
       }
     },
     "/api/v1/me/dashboard": {

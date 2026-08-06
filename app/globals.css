@@ -437,6 +437,10 @@
   /* `.panel-note` divide a declaração porque é a mesma coisa visualmente e
      outra coisa semanticamente: a lista não está vazia, o painel é que explica
      de onde vem o dado que ele mostra. Duas classes idênticas seriam pior. */
+  /* O turno que a pendência aponta (ADR 0031). Realce e não navegação de URL:
+     o chat é um painel, não uma rota, e um hash no endereço prometeria um link
+     compartilhável que a conversa de outra pessoa não honraria. */
+  .message--focused { @apply rounded-xl ring-2 ring-brand-300; }
   .empty-note, .panel-note { @apply px-0.5 py-4 text-xs leading-relaxed text-muted; }
 
   /* ---------- Perfil e configurações ---------- */

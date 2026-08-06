@@ -170,7 +170,7 @@ export type ProjectSummary = { id: string; name: string; status: string; current
 export type OverviewMilestone = { title: string; owner: string; state: string; date: string };
 export type ProjectDocument = { title: string; type: string | null; author: string | null; link: string | null; updated: string };
 export type MeetingView = { title: string; date: string; status: string; hasTranscript: boolean; recordingUrl: string | null };
-export type PendingItemView = { title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; age: string };
+export type PendingItemView = { title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; openedByMessageId: string | null; openedByConversationId: string | null; age: string };
 export type ProjectResults = { milestonesTotal: number; milestonesDone: number; overdue: number; onTimePercent: number };
 export type MeasuredAssumption = { hourlyRate: number; monthlyInvestment: number; effectiveFrom: string; note: string | null };
 /** O que os agentes produziram no período, apurado pela API (ADR 0013). Não se
@@ -303,6 +303,21 @@ export default function DashboardClient({
   // Pendências que a IA abriu nesta sessão: já existem no banco, mas a página é renderizada
   // no servidor, então são espelhadas aqui até o próximo carregamento.
   const [aiPendings, setAiPendings] = useState<PendingItemView[]>([]);
+  /**
+   * O turno que a pendência aberta pela IA aponta (ADR 0031). Abre o chat e
+   * rola até ele — o histórico já vem da API, então não há nada a buscar.
+   */
+  const [focusedTurn, setFocusedTurn] = useState<string | null>(null);
+  const openTurn = (messageId: string, conversationId: string | null) => {
+    setChatOpen(true);
+    setFocusedTurn(messageId);
+    // Carrega **aquela** thread, não a corrente: o turno que abriu a pendência
+    // quase nunca está na conversa mais recente, e sem isto o painel abriria sem
+    // ter o que destacar (ADR 0031).
+    if (conversationId) setThreadToLoad(conversationId);
+  };
+  /** Thread pedida por um clique; `null` significa "a corrente". */
+  const [threadToLoad, setThreadToLoad] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [menu, setMenu] = useState<null | "search" | "notifications" | "profile" | "profile-side">(null);
   // Otimista só até o servidor responder: `markNotificationsReadAction` revalida
@@ -337,14 +352,20 @@ export default function DashboardClient({
   // chat, e não no carregamento da página, porque a maioria das visitas não abre
   // o assistente — e o histórico só existe para quem já perguntou algo.
   useEffect(() => {
-    if (!chatOpen || historyLoaded.current) return;
+    // `threadToLoad` sobrepõe a guarda de "já carregou": um clique numa segunda
+    // pendência precisa trocar de thread, e a guarda existia só para a abertura
+    // do painel não repetir a busca (ADR 0031).
+    if (!chatOpen || (historyLoaded.current && !threadToLoad)) return;
     // Ref e não estado: a guarda existe para a busca não repetir, e marcá-la não
     // é informação que a tela precise renderizar.
     historyLoaded.current = true;
     let current = true;
     (async () => {
       try {
-        const response = await fetch("/api/chat/history", { cache: "no-store" });
+        const response = await fetch(
+          threadToLoad ? `/api/chat/history?conversation=${threadToLoad}` : "/api/chat/history",
+          { cache: "no-store" },
+        );
         if (!response.ok) return;
         const data = await response.json();
         if (!current || !data.conversation_id || !data.messages?.length) return;
@@ -371,8 +392,15 @@ export default function DashboardClient({
         // seria apagada da tela por esta linha — gravada no banco, invisível até
         // o próximo F5. Quem já tem um turno seu na tela não precisa que o
         // histórico o recomponha.
+        //
+        // `threadToLoad` sobrepõe essa proteção, e é a diferença entre chegada
+        // e pedido: o histórico da abertura *chega* e não deve atropelar o que a
+        // pessoa digitou; a thread que ela clicou foi *pedida*, e não trocar
+        // seria ignorar o clique (ADR 0031).
         setMessages((shown) =>
-          shown.some((message) => message.role === "user") ? shown : restored,
+          !threadToLoad && shown.some((message) => message.role === "user")
+            ? shown
+            : restored,
         );
       } catch {
         // Sem histórico, o painel abre com a saudação — que é o estado inicial.
@@ -381,7 +409,7 @@ export default function DashboardClient({
     return () => {
       current = false;
     };
-  }, [chatOpen]);
+  }, [chatOpen, threadToLoad]);
 
   /** Começa do zero: sem id, a API abre outra thread no próximo turno. */
   function startNewConversation() {
@@ -497,6 +525,9 @@ export default function DashboardClient({
             priority: "medium",
             priorityLabel: "Média",
             origin: "portal",
+            // O turno acabou de ser gravado; o id vem no recarregamento (ADR 0031).
+            openedByMessageId: null,
+            openedByConversationId: null,
             age: "agora",
           },
           ...current,
@@ -528,6 +559,19 @@ export default function DashboardClient({
   );
   const openCount = openPendings(view).length;
 
+  useEffect(() => {
+    if (!focusedTurn || !chatOpen) return;
+    // `requestAnimationFrame` porque o painel do chat acabou de montar: sem
+    // esperar o layout, `scrollIntoView` roda sobre altura zero e não sai do
+    // lugar.
+    const frame = requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-message-id="${focusedTurn}"]`)
+        ?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusedTurn, chatOpen]);
+
   function renderActiveView() {
     switch (activeNav) {
       case "Cronograma":
@@ -537,7 +581,7 @@ export default function DashboardClient({
       case "Reuniões":
         return <MeetingsView onAsk={askAi} overview={view} />;
       case "Pendências":
-        return <PendingView onAsk={askAi} overview={view} />;
+        return <PendingView onAsk={askAi} overview={view} onOpenTurn={openTurn} />;
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
       case "Notificações":
@@ -554,6 +598,7 @@ export default function DashboardClient({
             user={user}
             onAsk={askAi}
             onNavigate={goTo}
+            onOpenTurn={openTurn}
             overview={view}
             onAnalyze={() => sendQuestion(undefined, "Mostre todas as pendências.")}
           />
@@ -672,7 +717,7 @@ export default function DashboardClient({
           <header className="chat-header"><div className="ai-avatar"><Sparkles size={16} /></div><div><strong>Assistente do projeto</strong><span><i /> Contexto atualizado</span></div><button className="icon-button" onClick={startNewConversation} aria-label="Iniciar nova conversa" title="Nova conversa"><MessageSquarePlus size={19} /></button><button className="icon-button" onClick={() => setChatOpen(false)} aria-label="Fechar chat"><X size={19} /></button></header>
           <div className="chat-messages">
             {messages.map((message, index) => (
-              <div className={`message message--${message.role}`} key={message.id ?? `${message.role}-${index}`}>
+              <div className={`message message--${message.role} ${message.id && message.id === focusedTurn ? "message--focused" : ""}`} data-message-id={message.id} key={message.id ?? `${message.role}-${index}`}>
                 <p>{message.text}</p>
                 {/* `?.length` e não só `?`: o histórico devolve `[]` para a pergunta
                     do usuário, e um array vazio ainda é verdadeiro — renderizava uma
@@ -942,7 +987,7 @@ function compact(value: number): string {
   return value.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 }
 
-function OverviewView({ onAsk, onAnalyze, onNavigate, overview, user }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string) => void; overview: Overview; user: PortalUser }) {
+function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string) => void; onOpenTurn: (messageId: string, conversationId: string | null) => void; overview: Overview; user: PortalUser }) {
   const timeline = overview.milestones;
   const open = openPendings(overview);
   const roi = roiValue(overview.roi);
@@ -1015,7 +1060,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, overview, user }: { onAsk:
           <div className="panel-heading"><div><p className="eyebrow">ACOMPANHAMENTO</p><h2>Pendências abertas <span>{open.length}</span></h2></div></div>
           <div className="pending-list">
             {open.length === 0 && <p className="empty-state">Nenhuma pendência aberta.</p>}
-            {open.slice(0, 4).map((item) => <PendingItem key={item.title} item={item} />)}
+            {open.slice(0, 4).map((item) => <PendingItem key={item.title} item={item} onOpenTurn={onOpenTurn} />)}
           </div>
           <button className="text-button full-width" onClick={() => onNavigate("Pendências")}>Ver todas as pendências <ArrowUpRight size={14} /></button>
         </article>
@@ -1238,7 +1283,7 @@ function countBy<T>(items: T[], of: (item: T) => string | null): Record<string, 
   return counts;
 }
 
-function PendingView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+function PendingView({ onAsk, overview, onOpenTurn }: { onAsk: () => void; overview: Overview; onOpenTurn: (messageId: string, conversationId: string | null) => void }) {
   const [priority, setPriority] = useState<string | null>(null);
   const all = openPendings(overview);
   const counts = countBy(all, (item) => item.priority);
@@ -1269,7 +1314,7 @@ function PendingView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
                   : "Nenhuma pendência aberta com esta prioridade."}
               </p>
             )}
-            {open.map((item) => <PendingItem key={item.title} item={item} />)}
+            {open.map((item) => <PendingItem key={item.title} item={item} onOpenTurn={onOpenTurn} />)}
           </div>
         </article>
         <article className="panel">
@@ -1671,7 +1716,13 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
   );
 }
 
-function PendingItem({ item }: { item: PendingItemView }) {
+function PendingItem({
+  item,
+  onOpenTurn,
+}: {
+  item: PendingItemView;
+  onOpenTurn?: (messageId: string, conversationId: string | null) => void;
+}) {
   const tone = pendingTone[item.state] ?? "amber";
   const owner = item.owner ?? "Sem responsável definido";
   const detail = [owner, item.age].filter(Boolean).join(" • ");
@@ -1682,6 +1733,19 @@ function PendingItem({ item }: { item: PendingItemView }) {
         <strong>{item.title}</strong>
         <span>{detail}{item.origin === "portal" && <> <b>•</b> aberta pela IA</>}</span>
       </div>
+      {/* O caminho de volta à pergunta que abriu esta pendência (ADR 0031). O FK
+          existe desde a ADR 0015 e era lido só como booleano: o cliente via
+          "aberta pela IA" sem ter como reler o que perguntou. */}
+      {item.openedByMessageId && onOpenTurn && (
+        <button
+          className="text-button"
+          onClick={() =>
+            onOpenTurn(item.openedByMessageId as string, item.openedByConversationId)
+          }
+        >
+          Ver a pergunta
+        </button>
+      )}
       {/* Só a alta e a baixa ganham selo. "Média" é o padrão da coluna, e um
           selo em toda linha deixa de distinguir qualquer coisa (ADR 0029). */}
       {item.priority !== "medium" && (

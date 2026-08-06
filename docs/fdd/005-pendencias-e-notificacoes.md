@@ -42,9 +42,13 @@ Cliente pode abrir e acompanhar pendências. Falta de contexto no chat cria uma 
 - **Fora de escopo:** resolução de pendência pelo cliente — o portal é read-only e a pendência é
   resolvida no Biahflow (ADR 0006). Preferência por tipo de notificação e push também não
   entram; a preferência que existe é uma só, ligar ou desligar o e-mail.
-- **Segue aberto:** comentários na pendência (dado originado no portal, o que pede decisão
-  contra a ADR 0006/0008) e vínculo a conversas (`pending_item` não tem coluna de conversa, e
-  ligá-la pede migração).
+- **Vínculo a conversas (ADR 0031) — feito:** a pendência aberta pela IA leva de volta ao turno
+  que a gerou. O payload traz `opened_by_message_id` **e** `opened_by_conversation_id`, e
+  `GET /api/v1/me/conversations/{id}` abre a thread apontada — sem ela o botão abriria o chat na
+  conversa corrente, que quase nunca é a que gerou a pendência. Nenhuma migração: o FK existia e
+  ninguém o lia.
+- **Segue aberto:** comentários na pendência — dado originado no portal, o que pede decisão contra
+  a ADR 0006/0008.
 
 ## Notificações
 

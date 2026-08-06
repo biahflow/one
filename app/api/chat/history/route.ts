@@ -8,7 +8,7 @@
 
 import { authorizationHeader } from "@/app/lib/session";
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   const base = process.env.API_BASE_URL;
   if (!base) {
     return Response.json({ error: "history unavailable" }, { status: 503 });
@@ -19,8 +19,17 @@ export async function GET(): Promise<Response> {
     return Response.json({ error: "not authenticated" }, { status: 401 });
   }
 
+  // `?conversation=<uuid>` abre uma thread nomeada em vez da corrente (ADR 0031):
+  // a pendência aberta pela IA aponta um turno que quase nunca está na conversa
+  // mais recente. Sem id, o comportamento é o de sempre.
+  const requested = new URL(request.url).searchParams.get("conversation");
+  const path =
+    requested && /^[0-9a-f-]{36}$/i.test(requested)
+      ? `/api/v1/me/conversations/${requested}`
+      : "/api/v1/me/conversations/latest";
+
   try {
-    const response = await fetch(`${base}/api/v1/me/conversations/latest`, {
+    const response = await fetch(`${base}${path}`, {
       headers: { ...authorization },
       cache: "no-store",
     });

@@ -185,6 +185,23 @@ async function sourceFiles() {
   return found;
 }
 
+/**
+ * O HTML sem o payload do RSC — obrigatório para qualquer asserção de **ordem**.
+ *
+ * Medido, não deduzido (ADR 0029): o Next serializa as props do componente
+ * cliente em `<script>self.__next_f.push(...)`, dentro do mesmo documento. Toda
+ * string da lista aparece **duas vezes**, e a cópia do payload vem na ordem em
+ * que a API a entregou, não na ordem em que a tela a desenhou. Um
+ * `html.indexOf(...)` cai na cópia errada, e a asserção passa a medir o
+ * `ORDER BY` do Postgres achando que mede a tela.
+ *
+ * Para asserção de *presença* isso não importa e as outras deste arquivo
+ * seguem usando o HTML inteiro.
+ */
+function renderedMarkup(html) {
+  return html.replace(/<script[\s\S]*?<\/script>/g, "");
+}
+
 async function readSources() {
   const paths = await sourceFiles();
   const contents = await Promise.all(
@@ -277,6 +294,21 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.match(html, /Perguntar à IA/);
   assert.match(html, /Pendências abertas/);
   assert.match(html, /Aprovar fluxo de exceções/);
+  // A prioridade chega à tela (ADR 0029). Até esta fatia a API a entregava, o
+  // `ApiPending` a tipava e o mapeamento a descartava — a aba onde o cliente
+  // decide o que fazer primeiro mostrava tudo igual.
+  assert.match(html, /priority-pill--high/);
+  // E ordena: a fixture tem a alta como a **mais antiga** das três, então
+  // encontrá-la antes das outras no HTML só é possível se a ordem não for por
+  // data. Sem esta asserção, o selo poderia estar certo e a ordem errada.
+  const dom = renderedMarkup(html);
+  const highIndex = dom.indexOf("Aprovar fluxo de exceções");
+  const lowIndex = dom.indexOf("Renovar o certificado do integrador");
+  assert.ok(highIndex > -1 && lowIndex > -1, "as três pendências da fixture têm de aparecer");
+  assert.ok(
+    highIndex < lowIndex,
+    "a pendência de prioridade alta tem de vir antes da baixa (ADR 0029)",
+  );
   assert.match(html, /Atualizações recentes/);
   assert.match(html, /Plano de implantação v3\.pdf/);
   assert.match(html, /Comitê de projeto/);

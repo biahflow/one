@@ -91,3 +91,62 @@ test("o contrato não deixa passar um campo que ninguém declarou", () => {
   const validate = validator("MeOut");
   assert.equal(validate({ ...ME, campo_que_ninguem_declarou: 1 }), false);
 });
+
+/**
+ * O contrato precisa ser **consumido**, não só casado (ADR 0029).
+ *
+ * As asserções acima provam que a fixture descreve a API de verdade. Nenhuma
+ * delas olha o outro lado: se `build_dashboard` entrega um campo e o
+ * mapeamento do BFF não o lê, o dado atravessa a rede, é tipado em
+ * `app/page.tsx` e é jogado fora — a tela fica sem ele, a rota responde 200, e
+ * nada fica vermelho.
+ *
+ * É exatamente o defeito que a ADR 0020 recusou acrescentar do lado Python
+ * quando escolheu `extra="forbid"`, um passo adiante no caminho. Foi assim que
+ * `priority` — coluna com enum desde a Fase 1, projetada pelo sync, declarada
+ * em `PendingOut` e **declarada até no tipo `ApiPending`** — nunca chegou à
+ * aba onde o cliente decide o que fazer primeiro.
+ *
+ * A asserção é sobre `.<chave>`, e não sobre a chave solta: `priority` aparecia
+ * na declaração de tipo, então uma guarda sobre o nome nasceria verde em cima
+ * do defeito que ela existe para pegar. O mapeamento é o único lugar onde estes
+ * nomes são desreferenciados.
+ */
+const PAGE = readFileSync(fileURLToPath(new URL("../app/page.tsx", import.meta.url)), "utf8");
+
+/**
+ * Campos que a tela deliberadamente não usa, na forma `Esquema.campo`, com o
+ * motivo escrito. **Está vazio, e a meta é que continue** — na primeira
+ * execução a guarda acusou um campo só, `PendingOut.priority`, e ele virou
+ * mapeamento em vez de exceção. Uma allowlist que cresce é o contrato dizendo
+ * que entrega o que ninguém pediu.
+ */
+const NOT_CONSUMED = {};
+
+for (const schema of [
+  "PendingOut",
+  "MilestoneOut",
+  "DashboardDocumentOut",
+  "MeetingOut",
+  "NextMeetingOut",
+  "RoiOut",
+  "ProjectHealthOut",
+  "DigitalEmployeeOut",
+]) {
+  test(`o BFF consome todo campo que ${schema} entrega`, () => {
+    const properties = document.components.schemas[schema]?.properties;
+    assert.ok(properties, `o contrato não define ${schema}`);
+
+    const dropped = Object.keys(properties).filter(
+      (key) => !NOT_CONSUMED[`${schema}.${key}`] && !PAGE.includes(`.${key}`),
+    );
+
+    assert.deepEqual(
+      dropped,
+      [],
+      `app/page.tsx recebe estes campos de ${schema} e não os lê: ${dropped.join(", ")}.` +
+        " Mapeie-os, ou tire-os do contrato — um campo que a tela não usa é uma" +
+        " pergunta para a API, não para o BFF (ADR 0029).",
+    );
+  });
+}

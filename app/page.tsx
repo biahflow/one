@@ -38,6 +38,12 @@ const MEETING_STATUS_LABELS: Record<string, string> = {
   scheduled: "Agendada",
   held: "Realizada",
 };
+/** A prioridade vem do Biahflow desde a Fase 1 e não chegava à tela (ADR 0029). */
+const PENDING_PRIORITY_LABELS: Record<string, string> = {
+  high: "Alta",
+  medium: "Média",
+  low: "Baixa",
+};
 // Papel exibido no perfil. Vem da `membership` (a autoridade), não do realm.
 const ROLE_LABELS: Record<string, string> = {
   internal_admin: "Administrador Portal Labs",
@@ -203,6 +209,8 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
       owner: pending.owner_label,
       state: pending.state,
       stateLabel: PENDING_STATE_LABELS[pending.state] ?? pending.state,
+      priority: pending.priority,
+      priorityLabel: PENDING_PRIORITY_LABELS[pending.priority] ?? pending.priority,
       origin: pending.origin,
       age: relativeAge(pending.state === "resolved" ? pending.resolved_at : pending.created_at),
     })),

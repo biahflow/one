@@ -81,6 +81,34 @@ os campos que já carregavam**.
 o `trace_id` da linha do `web` e encontrar o mesmo id no log do `api`, no do
 `worker` e em `audit_log.data->>'trace_id'`.
 
+**Acrescentado em 06/08/2026 (ADR 0034), e os três primeiros nasceram vermelhos.**
+A tabela acima descrevia o que a ADR 0018 entregou; o que faltava era a garantia de
+que ela continuasse verdadeira — e ela não continuou. A ADR 0028 já havia corrigido
+o `alerts.md` à mão (ele citava `drive.rejected`, que o código nunca emitiu), o
+conserto não deixou guarda, e em dois dias o arquivo divergiu de novo pelo outro
+lado: doze eventos emitidos que nenhum runbook conhecia.
+
+| Evento | Onde | Campos |
+|---|---|---|
+| `authz.denied` | API, `access.py` | `reason` (`not_a_member`/`role_insufficient`), `subject_prefix`, `project_id`/`organization_id` |
+| `document.scan_unavailable` | worker, varredura | `host`, `port`, `detail` |
+| `document.object_not_removed`, `document.storage_write_failed`, `document.signing_failed`, `document.page_unreadable` | API e worker | a chave ou o id do documento |
+| `drive.unavailable`, `storage.bucket_not_created`, `digest.email_disabled` | API e worker | o detalhe da falha |
+
+11. **Todo `logger.*` do pacote usa nome estável** (`familia.acontecimento`), com o
+    detalhe em `extra`. Não é estilo: o `JsonFormatter` põe a mensagem **já
+    interpolada** em `event`, então prosa com `%s` produz um valor por ocorrência e
+    o limiar do `alerts.md` deixa de ser aplicável. A exceção são os comandos de
+    operação, cujo leitor é uma pessoa no terminal.
+12. **Todo evento emitido tem linha no `alerts.md`**, ou linha em `NOT_AN_ALERT`
+    dizendo por que ninguém precisa ser avisado.
+13. **Todo evento que o `alerts.md` nomeia é emitido** — o defeito da ADR 0028,
+    agora verificado. A guarda ignora as notas históricas (`*Corrigido em …*`), senão
+    cobraria que o repositório apagasse o registro do próprio erro.
+14. **A negação de autorização deixa rastro contável por pessoa, e continua opaca
+    para quem chamou** — as duas metades, porque distinguir "não é seu" de "não
+    existe" na resposta criaria o oráculo que a ADR 0010 evita.
+
 ## Testes e avaliações de IA
 
 - `apps/api/tests/test_telemetry.py` (unitário, sem banco): os campos de `extra`
@@ -88,7 +116,18 @@ o `trace_id` da linha do `web` e encontrar o mesmo id no log do `api`, no do
   redigido e o `key_prefix` sobrevive, o header é honrado e ecoado, duas
   requisições não compartilham id, o log de acesso guarda a rota e não a URL, um
   path não casado nunca é ecoado, o id atravessa a fila como header de mensagem, e
-  uma publicação fora de requisição não carimba nada.
+  uma publicação fora de requisição não carimba nada. **Desde a ADR 0034 ele
+  carrega também as três guardas que impedem a volta**, todas por leitura do AST do
+  pacote e do `alerts.md`: nome de evento estável, evento emitido com linha no
+  runbook, e evento do runbook que é de fato emitido. Mais a quarta, que faz as duas
+  allowlists vencerem como a do `advisories.json`. Duas provas negativas dão sentido
+  a elas: um evento inventado numa linha de tabela **reprova**, e a menção histórica
+  a `drive.rejected` — dentro da nota de correção da ADR 0028 — **não** reprova.
+- `apps/api/tests/test_authorization.py` (integração): a tentativa de acesso cruzado
+  emite `authz.denied` com `reason=not_a_member` e só o prefixo do `sub`; o membro
+  sem o papel emite `role_insufficient`. E, no mesmo caso, a asserção que impede a
+  fatia de ter criado um oráculo: o projeto do vizinho responde **exatamente** como
+  um id que não existe, corpo e status.
 - `apps/api/tests/test_main.py`: `/health/ready` responde `ready`/`down` e **nada
   além disso** — é o caso negativo desta fatia (regra 6 do `AGENTS.md`), que aqui
   não é "quem pode chamar" e sim "o que a rota conta a quem não está autenticado".

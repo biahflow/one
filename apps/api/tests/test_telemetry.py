@@ -9,11 +9,15 @@ formatter configurado o campo nunca era impresso.
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
+import portal_api
 from celery import Celery
 from celery.signals import before_task_publish
 from fastapi import FastAPI
@@ -347,3 +351,209 @@ def test_the_rate_limit_event_shows_only_the_prefix_of_the_subject() -> None:
 
     assert payload["subject_prefix"] == "a1b2c3d4"
     assert payload["limit"] == 20
+
+
+# --------------------------------------------------------------------------- #
+# O evento é nomeado, e o runbook o conhece (ADR 0034)
+# --------------------------------------------------------------------------- #
+#
+# As duas guardas desta seção existem porque a correção manual não segurou. A
+# ADR 0028 já consertou o `alerts.md` à mão — ele citava `drive.rejected`, que o
+# código nunca emitiu — e o arquivo voltou a divergir em dois dias, agora no
+# sentido oposto: quatro eventos que o código emite e nenhum documento conhece,
+# dois deles controles de segurança disparando.
+
+
+#: Nome estável de evento: `familia.acontecimento`, minúsculo, sem interpolação.
+EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+
+SOURCE_ROOT = Path(portal_api.__file__).parent
+ALERTS = Path(__file__).resolve().parents[3] / "docs" / "runbooks" / "alerts.md"
+
+#: Módulos cujo `logger` fala com **uma pessoa no terminal**, não com um
+#: coletor: são comandos de operação (`python -m portal_api.seed`, o bootstrap
+#: da ADR 0025, o `preflight` que recusa a subida, o backup). Ali a prosa é o
+#: formato certo, e exigir `familia.acontecimento` tornaria a saída pior para
+#: quem a lê. Todo o resto roda dentro de um processo que alguém consulta por
+#: `grep '"event":"…"'`.
+PROSE_IS_FINE = {
+    "grant_access.py": "comando de bootstrap; a saída é lida por quem o executa (ADR 0025)",
+    "seed.py": "comando de seed local; idem",
+    "preflight.py": "recusa a subida do processo, e a mensagem é o motivo (ADR 0022)",
+    "backup.py": "operação, não aplicação — como o `scripts/backup.sh` (ADR 0019)",
+}
+
+#: Eventos emitidos que **não** pertencem ao `alerts.md`, com o motivo. Não são
+#: exceção à regra do nome: são eventos de curso normal, e o runbook é sobre o
+#: que merece limiar. Uma linha aqui é uma afirmação de que ninguém precisa ser
+#: avisado disso.
+NOT_AN_ALERT = {
+    "http.request": "uma linha por requisição; é o substrato, não um alerta",
+    "task.started": "curso normal da fila; a **ausência** dele é que alerta, e essa linha existe",
+    "task.finished": "idem",
+    "chat.answered": "curso normal, e a fonte dos indicadores de IA (`observability.md`)",
+    "search.performed": "curso normal da busca (ADR 0024)",
+    "auth.rejected": "tem seção própria em `alerts.md`, sob 'não são alerta'",
+    "identity.linked": "primeiro login de quem já tinha linha; curso normal",
+    "identity.provisioned": "primeiro login de quem não tinha; curso normal",
+    "preflight.ok": "diz que a subida passou; o que interessa é a recusa, e ela impede o boot",
+    "web.request_error": "emitido pelo BFF, não por este código; documentado no `incident-response.md`",
+}
+
+
+def _logger_calls() -> list[tuple[str, int, ast.expr]]:
+    """Todo `logger.<nível>(…)` do pacote, com onde ele está."""
+    calls: list[tuple[str, int, ast.expr]] = []
+    for path in sorted(SOURCE_ROOT.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute):
+                continue
+            if func.attr not in {"debug", "info", "warning", "error", "exception"}:
+                continue
+            if not (isinstance(func.value, ast.Name) and func.value.id == "logger"):
+                continue
+            if node.args:
+                calls.append((path.name, node.lineno, node.args[0]))
+    return calls
+
+
+def emitted_events() -> set[str]:
+    names = set()
+    for _, _, first in _logger_calls():
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            if EVENT_NAME.match(first.value):
+                names.add(first.value)
+    return names
+
+
+def test_every_log_line_is_a_named_event() -> None:
+    """A mensagem **é** o nome do evento; o detalhe vai em `extra`.
+
+    `JsonFormatter` põe `record.getMessage()` — a mensagem já **interpolada** —
+    no campo `event`, e o `alerts.md` abre dizendo que "cada linha é um evento
+    nomeado (…) a regra é sempre a mesma consulta: filtrar por `event` e contar
+    dentro de uma janela". Uma mensagem em prosa com `%s` produz um `event`
+    diferente a cada ocorrência: inconsultável, e o limiar do runbook não tem
+    como ser aplicado.
+
+    Nasceu vermelha com dez sítios. O mais caro era `scanner.py`, que é o
+    **único** sinal de que o antivírus caiu — e é justamente o que o
+    `alerts.md` mandava vigiar pelo caminho errado.
+    """
+    offenders = [
+        f"{name}:{line}"
+        for name, line, first in _logger_calls()
+        if name not in PROSE_IS_FINE
+        and not (
+            isinstance(first, ast.Constant)
+            and isinstance(first.value, str)
+            and EVENT_NAME.match(first.value)
+        )
+    ]
+
+    assert offenders == [], (
+        "estas chamadas de log não usam um nome de evento estável: "
+        + ", ".join(offenders)
+        + ". A mensagem é o nome (`familia.acontecimento`) e o detalhe vai em `extra` —"
+        " senão o `event` muda a cada ocorrência e o limiar do `alerts.md` não se"
+        " aplica (ADR 0018/0034)."
+    )
+
+
+#: Extensões que fazem um nome parecer evento sem ser: `observability.md` casa
+#: `familia.acontecimento` perfeitamente. Medido — foi o primeiro falso positivo
+#: desta guarda.
+_FILE_SUFFIXES = (".md", ".py", ".ts", ".tsx", ".mjs", ".json", ".sh", ".yml", ".sql", ".css")
+
+#: O outro jeito de um identificador pontuado não ser evento, também medido: o
+#: runbook cita o **escopo OAuth** que o conector exige, e `drive.readonly` casa
+#: o formato tão bem quanto `drive.sync_failed`. Uma linha aqui é a afirmação de
+#: que aquele nome não descreve algo que acontece.
+_NOT_EVENT_NAMES = {
+    "drive.readonly": "escopo do consentimento do Google, não um evento (ADR 0016)",
+}
+
+#: A nota histórica do repositório, que esta guarda **não** pode ler como
+#: instrução. Não é estilo e foi medido: o `alerts.md` cita `drive.rejected`
+#: dentro da própria nota que registra a correção da ADR 0028 ("esta linha dizia
+#: `drive.rejected`, que o código **nunca emitiu**"). Uma guarda ingênua sobre o
+#: arquivo cobraria que o repositório apagasse o registro do próprio erro —
+#: exatamente a memória que faz estas ADRs valerem alguma coisa.
+#:
+#: A marcação já existia como convenção de escrita; aqui ela vira executável.
+_HISTORICAL_NOTE = re.compile(r"\*(Corrigido|Acrescentado) em [\s\S]*?\*(?!\*)")
+
+
+def _events_named_in_the_runbook() -> set[str]:
+    """Os eventos que o `alerts.md` manda vigiar hoje.
+
+    Tabelas **e** a seção "não são alerta", que é lista — e cuja inclusão é o
+    ponto: é lá que moram `auth.rejected` e a fronteira do Drive, que são
+    instrução viva tanto quanto uma linha de tabela.
+    """
+    text = _HISTORICAL_NOTE.sub("", ALERTS.read_text(encoding="utf-8"))
+    return {
+        candidate
+        for candidate in re.findall(r"`([a-z][a-z0-9_.]+)`", text)
+        if EVENT_NAME.match(candidate)
+        and not candidate.endswith(_FILE_SUFFIXES)
+        and candidate not in _NOT_EVENT_NAMES
+    }
+
+
+def test_every_named_event_has_a_line_in_the_runbook() -> None:
+    """O código não emite evento que o runbook desconheça.
+
+    Esta é a direção que divergiu **depois** de a ADR 0028 consertar a outra à
+    mão, e os dois piores casos eram controles de segurança disparando:
+    `drive.scope_refused` (o Google concedeu escopo diferente de
+    `drive.readonly` e a conexão foi recusada) e `document.infected_object_kept`
+    (malware confirmado que **não saiu do bucket** — estritamente pior que o
+    `document.infected` que já acorda alguém, e anônimo).
+    """
+    documented = _events_named_in_the_runbook()
+    orphans = sorted(e for e in emitted_events() if e not in documented and e not in NOT_AN_ALERT)
+
+    assert orphans == [], (
+        "estes eventos são emitidos e não têm linha em `docs/runbooks/alerts.md`: "
+        + ", ".join(orphans)
+        + ". Dê limiar e destino a cada um, ou declare em NOT_AN_ALERT por que ninguém"
+        " precisa ser avisado (ADR 0034)."
+    )
+
+
+def test_every_event_the_runbook_names_is_emitted() -> None:
+    """E o runbook não manda vigiar evento que não existe.
+
+    É exatamente o defeito que a ADR 0028 encontrou e consertou à mão. Sem esta
+    asserção, o conserto vale até o próximo alguém — que foi o que aconteceu.
+    """
+    emitted = emitted_events()
+    # Emitidos fora deste pacote, mas legitimamente citados pelo runbook.
+    elsewhere = {"web.request_error"}
+    ghosts = sorted(
+        e for e in _events_named_in_the_runbook() if e not in emitted and e not in elsewhere
+    )
+
+    assert ghosts == [], (
+        "o `alerts.md` manda vigiar estes eventos e nenhum código os emite: "
+        + ", ".join(ghosts)
+        + ". Emita-os, ou tire a linha — um limiar sobre um contador pinado em zero"
+        " é pior que nenhum, porque parece cobertura (ADR 0028/0034)."
+    )
+
+
+def test_the_allowlists_do_not_keep_a_line_that_stopped_being_needed() -> None:
+    """As duas listas vencem, como a do `advisories.json` (ADR 0023)."""
+    emitted = emitted_events()
+    stale_modules = sorted(
+        name for name in PROSE_IS_FINE if not (SOURCE_ROOT / name).exists()
+    )
+    stale_events = sorted(e for e in NOT_AN_ALERT if e not in emitted and e != "web.request_error")
+
+    assert stale_modules == [], f"PROSE_IS_FINE cita módulos que não existem: {stale_modules}"
+    assert stale_events == [], f"NOT_AN_ALERT cita eventos que ninguém emite: {stale_events}"

@@ -14,6 +14,7 @@ endpoint has to remember it.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from sqlalchemy import select
@@ -23,8 +24,43 @@ from portal_api.db.session import bind_tenant
 from portal_api.models import MemberRole, Membership, Organization, Project, User
 from portal_api.repositories import MembershipRepository, TenantContext
 
+logger = logging.getLogger(__name__)
+
 ANY_MEMBER = frozenset(MemberRole)
 ADMIN_ONLY = frozenset({MemberRole.internal_admin})
+
+
+def _denied(reason: str, user: User, **context: object) -> None:
+    """Registra a negação, que até a ADR 0034 não deixava rastro nenhum.
+
+    `docs/observability.md` lista "anomalias de autorização" entre os
+    indicadores desde a Fase 1, e este arquivo — que é onde a decisão acontece —
+    não tinha uma linha de log. As duas primeiras ameaças do `threat-model.md`
+    ("cliente acessa outro projeto", "IDOR em arquivo/documento") descrevem um
+    chamador **autenticado** passeando por ids alheios, e isso produzia apenas
+    um `http.request` com `status: 404` e o *template* da rota — sem ator. Não
+    havia como responder "quantas negações o sujeito X disparou em cinco
+    minutos", que é a pergunta que separa um link velho de uma enumeração.
+
+    Fica aqui, e não nas rotas: elas só traduzem ``None`` em 404, e são vinte e
+    três. O `reason` distingue dois fatos operacionais diferentes, do mesmo jeito
+    que o `auth.rejected` da autenticação faz com o dele.
+
+    **O prefixo do `sub`, nunca o `sub` inteiro** — o precedente é literal, do
+    `chat_limit.py`: o bastante para saber *quem* está em laço, sem o log virar
+    um rastro estável por pessoa.
+
+    Nada disso muda o que o chamador recebe: a resposta continua sendo o mesmo
+    404 opaco, porque o sinal é para dentro (ADR 0010).
+    """
+    logger.warning(
+        "authz.denied",
+        extra={
+            "reason": reason,
+            "subject_prefix": (user.external_subject or "")[:8],
+            **context,
+        },
+    )
 
 
 def require_project(
@@ -41,10 +77,17 @@ def require_project(
     """
     project = session.get(Project, project_id)
     if project is None:
+        # Id inexistente e id de outro tenant são indistinguíveis daqui — a
+        # policy não devolve a linha nos dois casos —, e é justamente por isso
+        # que este é *o* sinal de acesso cruzado.
+        _denied("not_a_member", user, project_id=str(project_id))
         return None
 
     memberships = MembershipRepository(session, TenantContext(project.organization_id))
     if not memberships.roles_for_project(user.id, project.id) & allowed:
+        # Outro fato: é membro, e o papel não basta. Escalada **dentro** do
+        # próprio tenant, que leva a outra investigação.
+        _denied("role_insufficient", user, project_id=str(project_id))
         return None
 
     bind_tenant(session, TenantContext(project.organization_id, project.id))
@@ -81,6 +124,7 @@ def require_organization(
     """
     organization = session.get(Organization, organization_id)
     if organization is None:
+        _denied("not_a_member", user, organization_id=str(organization_id))
         return None
 
     roles = set(
@@ -91,7 +135,10 @@ def require_organization(
             )
         ).scalars()
     )
-    return organization if roles & allowed else None
+    if not roles & allowed:
+        _denied("role_insufficient", user, organization_id=str(organization_id))
+        return None
+    return organization
 
 
 def administered_organizations(

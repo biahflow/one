@@ -805,7 +805,7 @@ def upload_document(
                 detail="Document storage is not configured",
             ) from exc
         except storage.StorageError as exc:
-            logger.exception("Falha ao gravar o documento no storage")
+            logger.exception("document.storage_write_failed", extra={"project_id": str(project_id)})
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail="Storage unavailable"
             ) from exc
@@ -879,7 +879,7 @@ def delete_document(
         except (storage.StorageDisabled, storage.StorageError):
             # A linha já se foi e é ela que a tela mostra. Objeto órfão vira
             # limpeza de retenção, não um erro na cara de quem apagou.
-            logger.warning("Objeto %s não removido do storage", storage_key)
+            logger.warning("document.object_not_removed", extra={"storage_key": storage_key})
 
 
 # --- Conector do Google Drive (Fase 4, ADR 0016) -------------------------------
@@ -994,7 +994,7 @@ def _drive_unavailable(exc: Exception) -> HTTPException:
             status_code=status.HTTP_409_CONFLICT,
             detail="Google Drive authorization is no longer valid",
         )
-    logger.exception("Falha ao falar com o Google Drive")
+    logger.exception("drive.unavailable")
     return HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY, detail="Google Drive unavailable"
     )

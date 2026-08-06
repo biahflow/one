@@ -558,6 +558,35 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       contrato tem chamador — que achou o `GET /api/v1/projects/{id}/results` sem consumidor e o
       `GET /api/v1/dashboard/demo`, que **saiu**.)*
 
+- [x] **O evento nomeado, e o runbook que o conhece.** *(ADR 0034, FDD 012. Quinta repetição do
+      padrão, e desta vez o argumento não é que a promessa foi quebrada — é que **ela já tinha
+      sido consertada à mão e voltou a quebrar**. A ADR 0028 achou o `alerts.md` citando
+      `drive.rejected`, evento que o código nunca emitiu, e escreveu a linha certa; o conserto não
+      deixou guarda, e em dois dias o arquivo divergiu de novo pelo outro lado, com **doze**
+      eventos emitidos que nenhum runbook conhecia. **Quatro defeitos, todos medidos.** O
+      `alerts.md` mandava vigiar `scan_state=skipped` em produção para saber que o antivírus caiu —
+      e isso é impossível: `get_scanner` só devolve o scanner offline quando `CLAMAV_HOST` está
+      **vazio**, e o `ClamavScanner` responde `clean`, `infected` ou `error`, nunca `skipped`. Quem
+      seguisse a instrução vigiava um contador pinado em zero exatamente enquanto o antivírus caía,
+      e `error` não tinha linha em runbook nenhum. Pior, o único sinal de clamd fora era prosa
+      interpolada — que é o segundo defeito: **dez sítios punham a mensagem já interpolada no campo
+      `event`**, de modo que `"Objeto %s não removido do storage"` gerava um valor novo por
+      ocorrência, e o `document-ingestion-failure.md` mandava procurá-lo por substring, única
+      instrução do repositório que não se cumpria com `grep '"event":"…"'`. O docstring do
+      `JsonFormatter` **abençoava** a prosa, e era a frase que permitia os dez. Terceiro:
+      "anomalias de autorização" era indicador do `observability.md` **sem emissor** — `access.py`
+      tinha quatro caminhos de negação e zero logs, as 23 negações de rota só viravam 404, e um
+      cliente autenticado percorrendo ids alheios não deixava rastro com ator, de modo que as duas
+      primeiras linhas do `threat-model.md` não tinham como ser contadas por pessoa. E quarto, os
+      órfãos — entre eles `document.infected_object_kept`, que é malware confirmado **ainda no
+      bucket** e era anônimo enquanto o caso mais brando já acordava alguém. **A guarda achou mais
+      do que a investigação que a motivou:** `http.failed` (todo 500 da API) e
+      `health.broker_unavailable` (irmão exato do `health.database_unavailable`, mesmo endpoint,
+      mesmo 503, e só metade alertava) não estavam no levantamento manual — apareceram porque a
+      máquina perguntou por todos. A guarda é bidirecional porque as duas direções já falharam, e
+      **ignora as notas históricas** (`*Corrigido em …*`): sem isso ela cobraria que o repositório
+      apagasse o registro do próprio erro, que é a memória que impede a terceira repetição.)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`

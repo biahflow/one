@@ -35,6 +35,7 @@ from portal_api.models import (
     ProjectStatus,
     User,
 )
+from conftest import captured
 from portal_api.principal import Principal
 
 pytestmark = pytest.mark.integration
@@ -803,3 +804,53 @@ def test_a_comment_records_who_wrote_it_and_which_side(
 
     listed = client.get(f"/api/v1/me/pendings/{mine}/comments").json()
     assert [item["body"] for item in listed["items"]] == ["Já enviei ontem."]
+
+
+def test_a_cross_tenant_attempt_leaves_a_trace_the_runbook_can_count(
+    world: World, authenticated
+) -> None:
+    """A negação passa a ter sinal, e ele distingue dois fatos (ADR 0034).
+
+    `docs/observability.md` lista "anomalias de autorização" entre os indicadores
+    desde a Fase 1, e `access.py` não tinha uma linha de log: um cliente
+    autenticado percorrendo ids alheios produzia só `http.request` com
+    `status: 404` e o template da rota — sem ator, e portanto sem como contar
+    por pessoa, que é o que separa um link velho de uma enumeração.
+
+    As duas metades importam. O evento existe **e** a resposta continua opaca:
+    se a fatia tivesse mudado o corpo ou o código de status para distinguir "não
+    é seu" de "não existe", teria criado o oráculo que a ADR 0010 evita.
+    """
+    authenticated(world.acme.client)
+
+    with captured("portal_api.access") as records:
+        theirs = client.get(f"/api/v1/projects/{world.globex.project_id}/dashboard")
+
+    # Opaca: o projeto do vizinho responde exatamente como um id que não existe.
+    ghost = client.get(f"/api/v1/projects/{uuid.uuid4()}/dashboard")
+    assert theirs.status_code == ghost.status_code == 404
+    assert theirs.json() == ghost.json()
+
+    denied = [r for r in records if r.getMessage() == "authz.denied"]
+    assert len(denied) == 1
+    assert denied[0].reason == "not_a_member"
+    # O prefixo, nunca o `sub` inteiro — o precedente é do `chat_limit.py`.
+    assert denied[0].subject_prefix == world.acme.client.subject[:8]
+    assert len(denied[0].subject_prefix) <= 8
+
+
+def test_a_member_without_the_role_is_a_different_reason(world: World, authenticated) -> None:
+    """"Não é membro" e "é membro e o papel não basta" levam a investigações
+    diferentes: a primeira é acesso cruzado, a segunda é escalada dentro do
+    próprio tenant. Um `reason` só apagaria a distinção justamente onde ela
+    decide o que fazer."""
+    # O cliente **é** membro do próprio projeto; o que ele não é é
+    # `internal_admin`, e `_authorized` de `admin.py` exige exatamente isso.
+    authenticated(world.acme.client)
+
+    with captured("portal_api.access") as records:
+        refused = client.get(f"/api/v1/admin/projects/{world.acme.project_id}/members")
+
+    assert refused.status_code == 404
+    denied = [r for r in records if r.getMessage() == "authz.denied"]
+    assert [r.reason for r in denied] == ["role_insufficient"]

@@ -16,6 +16,28 @@ campo que não sai. A lista de eventos, com limiar e destino, está em `runbooks
 
 Indicadores: latência e erro de API, fila, sincronização Drive, indexação, falha de conectores, custo/latência de IA, cobertura de citações, taxa de lacuna, pendências abertas/resolvidas e anomalias de autorização.
 
+**"Anomalias de autorização" saiu por último, e até a ADR 0034 não existia.** Esta
+página listava o indicador desde a Fase 1 enquanto `access.py` — o arquivo onde a
+decisão acontece — não tinha uma linha de log, e as vinte e três negações de
+`main.py`/`admin.py` só traduziam `None` em 404. Um cliente autenticado percorrendo
+ids alheios produzia apenas `http.request` com `status: 404` e o *template* da rota,
+sem ator: não havia como responder "quantas negações o sujeito X disparou em cinco
+minutos", que é a diferença entre um link velho e uma enumeração — e é exatamente o
+que as duas primeiras linhas do `threat-model.md` descrevem. Hoje o indicador é
+`authz.denied`, com `subject_prefix` (o prefixo, nunca o `sub` inteiro, pela razão do
+`chat_limit.py`) e um `reason` que separa acesso cruzado (`not_a_member`) de escalada
+dentro do próprio tenant (`role_insufficient`). **A resposta ao chamador não mudou**:
+segue o mesmo 404 opaco, porque o sinal é para dentro (ADR 0010).
+
+**E o `event` é sempre um nome estável** — `familia.acontecimento`, com o detalhe em
+`extra`. Não é convenção de estilo: o `JsonFormatter` põe a mensagem **já
+interpolada** em `event`, então um `logger.warning("Objeto %s não removido", key)`
+produz um valor diferente por ocorrência, e o limiar que `runbooks/alerts.md` promete
+deixa de ser aplicável. Dez sítios faziam isso até a ADR 0034 — um deles era o único
+sinal de que o antivírus tinha caído. `test_telemetry.py` varre o AST e reprova a
+volta; a exceção é o punhado de comandos de operação (`seed`, `preflight`, `backup`,
+o bootstrap da ADR 0025), cujo leitor é uma pessoa no terminal e não um coletor.
+
 Os indicadores de IA dessa lista saem de um evento só: `chat.answered` (ADR 0021), com
 `prompt_version`, `responder`, `model`, `confidence` e a contagem de citações por turno — de
 onde vêm cobertura de citações e taxa de lacuna por versão de prompt, que é o que torna uma

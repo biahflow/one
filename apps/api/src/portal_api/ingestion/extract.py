@@ -80,7 +80,7 @@ def _extract_pdf(data: bytes) -> list[ExtractedPage]:
             try:
                 pages.append(ExtractedPage(number=index, text=page.extract_text() or ""))
             except Exception:
-                logger.warning("Página %s ilegível; seguindo com as demais", index)
+                logger.warning("document.page_unreadable", extra={"page": index})
         return pages
     except Exception as exc:  # PDF corrompido ou cifrado
         raise ExtractionFailed("PDF ilegível") from exc

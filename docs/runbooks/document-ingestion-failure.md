@@ -79,8 +79,19 @@ bug — verifique o filtro em `integrations/biahflow.py` antes de qualquer outra
 ## Documento enviado por engano
 
 Remover pela tela apaga linha, trechos (por CASCADE) e o objeto no storage. Se a remoção do objeto
-falhar, a linha sai mesmo assim e fica um órfão no bucket — registrado no log como
-`Objeto … não removido do storage`. Para conteúdo sensível, confirme no MinIO:
+falhar, a linha sai mesmo assim e fica um órfão no bucket — registrado como
+`document.object_not_removed`, com a chave em `storage_key`:
+
+```bash
+docker compose logs api | grep '"event":"document.object_not_removed"'
+```
+
+*Corrigido em 06/08/2026 (ADR 0034): esta instrução mandava procurar a prosa
+`Objeto … não removido do storage`, e era a única do repositório que só se cumpria por
+substring — porque a linha era interpolada e produzia um `event` diferente a cada
+ocorrência. Todo o resto destes runbooks manda filtrar por `event`, e agora esta também.*
+
+Para conteúdo sensível, confirme no MinIO:
 ```bash
 docker compose exec minio mc ls --recursive local/portal-documents/org/<organization_id>/
 ```

@@ -659,7 +659,7 @@ def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
                 detail="Document storage is not configured",
             ) from exc
         except storage.StorageError as exc:
-            logger.exception("Falha ao assinar o download do documento %s", document_id)
+            logger.exception("document.signing_failed", extra={"document_id": str(document_id)})
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, detail="Storage unavailable"
             ) from exc

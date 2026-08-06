@@ -287,20 +287,30 @@ function schemaCorpus() {
  * antes de chamar — não há o que a tela aprenda lendo-os.
  */
 const NOT_CONSUMED = {
-  "NotificationsReadOut.marked":
-    "eco da própria escrita — quantas linhas o PATCH marcou. A tela recarrega a lista e conta sozinha.",
-  "PendingCommentsOut.pending_item_id":
-    "eco do id que o BFF acabou de mandar no caminho da rota; o chamador já o tem em mãos.",
-  "PreferencesOut.notify_by_email":
-    "eco do valor que a tela acabou de mandar no corpo; ela já sabe o que gravou.",
-  "AssistantSignalOut.project_id":
-    "eco do projeto que a tela escolheu para montar a URL — é ela quem o pôs lá.",
-  "DocumentDownloadOut.expires_at":
-    "a tela navega para a URL assinada no mesmo clique e não a guarda; o vencimento importa " +
-    "a quem retém o link, que aqui é ninguém (ADR 0017).",
-  "MeProjectOut.slug":
-    "o slug identifica o projeto no Biahflow; aqui a chave é o `id` e o rótulo é o `name`. " +
-    "Fica no contrato porque `/admin` o usa para casar com a origem. Rever em 02/2027.",
+  "NotificationsReadOut.marked": {
+    reason:
+      "eco da própria escrita — quantas linhas o PATCH marcou. A tela recarrega a lista e conta sozinha.",
+  },
+  "PendingCommentsOut.pending_item_id": {
+    reason: "eco do id que o BFF acabou de mandar no caminho da rota; o chamador já o tem em mãos.",
+  },
+  "PreferencesOut.notify_by_email": {
+    reason: "eco do valor que a tela acabou de mandar no corpo; ela já sabe o que gravou.",
+  },
+  "AssistantSignalOut.project_id": {
+    reason: "eco do projeto que a tela escolheu para montar a URL — é ela quem o pôs lá.",
+  },
+  "DocumentDownloadOut.expires_at": {
+    reason:
+      "a tela navega para a URL assinada no mesmo clique e não a guarda; o vencimento importa " +
+      "a quem retém o link, que aqui é ninguém (ADR 0017).",
+  },
+  "MeProjectOut.slug": {
+    reason:
+      "o slug identifica o projeto no Biahflow; aqui a chave é o `id` e o rótulo é o `name`. " +
+      "Fica no contrato porque `/admin` o usa para casar com a origem.",
+    review_by: "2027-02-01",
+  },
 };
 
 /**
@@ -309,13 +319,21 @@ const NOT_CONSUMED = {
  * não têm navegador do outro lado.
  */
 const NOT_CALLED = {
-  "/health": "sonda de liveness; quem chama é o compose/orquestrador.",
-  "/health/ready": "sonda de readiness, idem.",
-  "/api/v1/agent-events": "rota de agente, autenticada por chave — a única exceção ao Bearer humano (ADR 0013).",
-  "/api/v1/integrations/biahflow/webhook": "quem chama é o Biahflow, não o navegador (ADR 0006).",
-  "/api/v1/projects/{project_id}/results":
-    "mesma projeção que o dashboard já embute em `MyDashboardOut.measured` (um `$ref` para `ResultsOut`), " +
-    "e é por lá que os campos chegam à tela. Existe para o detalhamento por período, que ainda não tem tela. Rever em 02/2027.",
+  "/health": { reason: "sonda de liveness; quem chama é o compose/orquestrador." },
+  "/health/ready": { reason: "sonda de readiness, idem." },
+  "/api/v1/agent-events": {
+    reason:
+      "rota de agente, autenticada por chave — a única exceção ao Bearer humano (ADR 0013).",
+  },
+  "/api/v1/integrations/biahflow/webhook": {
+    reason: "quem chama é o Biahflow, não o navegador (ADR 0006).",
+  },
+  "/api/v1/projects/{project_id}/results": {
+    reason:
+      "mesma projeção que o dashboard já embute em `MyDashboardOut.measured` (um `$ref` para `ResultsOut`), " +
+      "e é por lá que os campos chegam à tela. Existe para o detalhamento por período, que ainda não tem tela.",
+    review_by: "2027-02-01",
+  },
 };
 
 const CORPUS_BY_SCHEMA = schemaCorpus();
@@ -376,5 +394,48 @@ test("a allowlist não guarda entrada que deixou de ser necessária", () => {
     obsolete,
     [],
     `NOT_CONSUMED guarda estas linhas e elas não são mais necessárias: ${obsolete.join(", ")}.`,
+  );
+});
+
+/**
+ * A metade que faltava: a ADR 0033 deu guarda de obsolescência ao `NOT_CONSUMED`
+ * e não ao `NOT_CALLED`, de modo que uma rota que ganhasse chamador mantinha a
+ * isenção para sempre — a assimetria é o defeito, como no `web.request_error`.
+ */
+test("a allowlist de rotas não guarda entrada que deixou de ser necessária", () => {
+  const obsolete = Object.keys(NOT_CALLED).filter(
+    (path) => !document.paths[path] || isCalled(path),
+  );
+
+  assert.deepEqual(
+    obsolete,
+    [],
+    `NOT_CALLED guarda estas linhas e elas não são mais necessárias: ${obsolete.join(", ")}.`,
+  );
+});
+
+/**
+ * E o prazo vence de verdade.
+ *
+ * Até a ADR 0035 as duas entradas com prazo o traziam como **prosa dentro da
+ * string de motivo** ("Rever em 02/2027"), e nada lia aquela data — enquanto o
+ * `advisories.json`, citado como precedente na mesma decisão, reprova em
+ * `review_by < today` (`scripts/audit.mjs`). Uma exceção sem vencimento é
+ * permanente por omissão, que é o modo de falha que a ADR 0023 nomeou.
+ */
+test("uma exceção com prazo vencido reprova", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const expired = [
+    ...Object.entries(NOT_CONSUMED),
+    ...Object.entries(NOT_CALLED),
+  ]
+    .filter(([, entry]) => entry.review_by && entry.review_by < today)
+    .map(([name, entry]) => `${name} (venceu em ${entry.review_by})`);
+
+  assert.deepEqual(
+    expired,
+    [],
+    `estas exceções venceram e precisam ser reavaliadas ou removidas: ${expired.join(", ")}.` +
+      " Aceitar uma lacuna é decisão com prazo, não para sempre (ADR 0023/0035).",
   );
 });

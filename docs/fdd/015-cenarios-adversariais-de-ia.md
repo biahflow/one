@@ -130,3 +130,27 @@ nunca vai ao log — só o prefixo, como o `key_prefix` da API de eventos.
 - **`tests/rendered-html.test.mjs`** — a guarda de `answerFor` trocou de lado, e
   ao lado dela entrou uma sobre a forma: citação fabricada no cliente do chat
   reprova.
+
+## Acrescentado na ADR 0035 — a regra 2 deixa de ser um inventário
+
+*Acrescentado em 06/08/2026.* `test_eval_no_secret_ever_reaches_the_model` é a
+única asserção do repositório dedicada à regra 2 do `AGENTS.md`, e fixava **seis
+sentinelas escritas à mão**. `Settings` declara 85 campos, dos quais **dezesseis**
+carregam segredo — a proporção da ADR 0033 outra vez, no lugar mais caro possível.
+
+- **Dois casadores, porque o segredo se esconde de duas formas.** `_SECRET_HINTS`
+  entra por `import` de `telemetry.py` (o precedente é `test_openapi_contract.py`;
+  recopiar faria uma cópia envelhecer sozinha) e pega doze campos pelo nome. Os
+  outros quatro são as `database_*_url`, que escondem a senha **dentro do valor** e
+  não casam nome nenhum — o casador do log pergunta pelo nome porque no log é a
+  chave do `extra`, e ali está certo.
+- Ficavam de fora `drive_token_encryption_key_previous` — a chave anterior da
+  rotação, que abre todo ciphertext ainda não resselado (ADR 0016) — e a senha do
+  `portal_admin`, a credencial que escreve `membership`.
+- **Medido, não deduzido:** com um vazamento injetado em `ai/service.py`, a guarda
+  nova reprova nomeando `database_admin_url` e a antiga **passa verde**, com uma
+  asserção auxiliar confirmando que o DSN estava no corpo do pedido.
+- Falsos positivos viraram allowlist com motivo e guarda de obsolescência. Cinco
+  dos seis são o mesmo caso: **"keycloak" contém "key"**.
+- `voyage_api_key` com sentinela escolheria o `VoyageEmbedder` e abriria rede; o
+  embedder é fixado offline e a sentinela **continua atravessando** o serviço.

@@ -787,7 +787,7 @@ def send_project_digests(project_id: str) -> dict[str, int]:
                     ),
                 )
             except mailer.MailerDisabled:
-                logger.info("E-mail das notificações desligado; nada enviado")
+                logger.info("digest.email_disabled")
                 return {"sent": sent, "notifications": len(pending)}
             except Exception:  # SMTP fora do ar: tenta de novo no próximo sync
                 logger.exception("digest.send_failed", extra={"user_id": str(user_id)})

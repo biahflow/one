@@ -11,6 +11,9 @@ a different connection and would not see an open transaction's writes.
 
 from __future__ import annotations
 
+import ast
+import pathlib
+import re
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -21,6 +24,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
+from portal_api import openapi
 from portal_api.auth import bearer_principal
 from portal_api.main import app
 from portal_api.models import (
@@ -35,6 +39,7 @@ from portal_api.models import (
     ProjectStatus,
     User,
 )
+from conftest import captured
 from portal_api.principal import Principal
 
 pytestmark = pytest.mark.integration
@@ -691,6 +696,111 @@ def test_staff_cannot_reach_another_organizations_retention(
     assert response.status_code == 404
 
 
+def test_a_client_cannot_read_or_set_the_ai_spending_cap(
+    world: World, authenticated
+) -> None:
+    """As duas rotas do teto de gasto de IA, que não tinham teste de espécie alguma.
+
+    Elas existem desde a ADR 0022 e ganharam tela na ADR 0027; as catorze
+    asserções de `test_ai_quota.py` fixam o teto escrevendo a linha direto no
+    banco pela fixture, então o caminho que uma pessoa percorre — a rota — nunca
+    havia sido exercitado. Foi o que a guarda da regra 6 encontrou.
+    """
+    authenticated(world.acme.client)
+    organization_id = world.acme.organization_id
+
+    read = client.get(f"/api/v1/admin/organizations/{organization_id}/ai-quota")
+    write = client.put(
+        f"/api/v1/admin/organizations/{organization_id}/ai-quota",
+        json={"monthly_limit_cents": 1},
+    )
+
+    assert read.status_code == 404
+    assert write.status_code == 404
+
+
+def test_staff_cannot_reach_another_organizations_ai_spending_cap(
+    world: World, authenticated
+) -> None:
+    """A outra metade: administrar a Acme não é administrar a Globex.
+
+    Vale a pena separado porque o teto é dinheiro de **outro** tenant, e porque
+    `_authorized_org` é o único ponto que separa as duas organizações aqui.
+    """
+    authenticated(world.staff)
+    organization_id = world.globex.organization_id
+
+    read = client.get(f"/api/v1/admin/organizations/{organization_id}/ai-quota")
+    write = client.put(
+        f"/api/v1/admin/organizations/{organization_id}/ai-quota",
+        json={"monthly_limit_cents": 1},
+    )
+
+    assert read.status_code == 404
+    assert write.status_code == 404
+
+
+def test_a_client_cannot_read_the_erasure_history(world: World, authenticated) -> None:
+    """O `POST` tinha negativo desde a ADR 0017; o `GET` do histórico, não.
+
+    E é ele que lista o que já foi pedido — motivo, quem executou e o que saiu —,
+    de modo que ler sem poder pedir ainda seria ler a decisão alheia.
+    """
+    authenticated(world.acme.client)
+
+    response = client.get(
+        f"/api/v1/admin/organizations/{world.acme.organization_id}/erasure"
+    )
+
+    assert response.status_code == 404
+
+
+# --- a apuração por período (Fase 3, ADR 0013) ------------------------------
+
+
+def test_the_results_route_refuses_another_tenants_project(
+    world: World, authenticated
+) -> None:
+    """A **única** rota de cliente que recebe um id de projeto no caminho.
+
+    Ou seja, o caso literal da regra 1 do `AGENTS.md` — "nunca use um
+    identificador fornecido pelo cliente sem validar o vínculo no servidor" — e
+    não havia teste nenhum a exercitando: a guarda da regra 6 a encontrou junto
+    com o teto de IA. As demais rotas do cliente resolvem o projeto por
+    `access.default_project`, e o que o navegador não manda é o que ninguém
+    precisa validar.
+    """
+    authenticated(world.acme.client)
+
+    alheio = client.get(f"/api/v1/projects/{world.globex.project_id}/results")
+    inexistente = client.get(f"/api/v1/projects/{uuid.uuid4()}/results")
+
+    # Os dois são o mesmo 404: distinguir "não é seu" de "não existe" criaria o
+    # oráculo que a ADR 0010 evita.
+    assert alheio.status_code == 404
+    assert inexistente.status_code == 404
+
+
+def test_the_chat_requires_a_project(world: World, authenticated) -> None:
+    """Sem membership não há projeto, e sem projeto não há o que responder.
+
+    O irmão exato de `test_notifications_require_a_project` e
+    `test_search_requires_a_project`, que existiam — o chat era a rota `/me` sem
+    identificador que tinha ficado sem o seu, e a guarda da regra 6 mostrou que
+    a omissão não tinha razão de ser.
+    """
+    stranger = Actor(
+        subject=f"sub-sem-projeto-{uuid.uuid4().hex[:8]}",
+        email=f"sem-projeto-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="Sem Projeto",
+    )
+    authenticated(stranger)
+
+    response = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
+
+    assert response.status_code == 404
+
+
 # --- o sinal do assistente (Fase 6, ADR 0030) -------------------------------
 
 
@@ -803,3 +913,305 @@ def test_a_comment_records_who_wrote_it_and_which_side(
 
     listed = client.get(f"/api/v1/me/pendings/{mine}/comments").json()
     assert [item["body"] for item in listed["items"]] == ["Já enviei ontem."]
+
+
+def test_a_cross_tenant_attempt_leaves_a_trace_the_runbook_can_count(
+    world: World, authenticated
+) -> None:
+    """A negação passa a ter sinal, e ele distingue dois fatos (ADR 0034).
+
+    `docs/observability.md` lista "anomalias de autorização" entre os indicadores
+    desde a Fase 1, e `access.py` não tinha uma linha de log: um cliente
+    autenticado percorrendo ids alheios produzia só `http.request` com
+    `status: 404` e o template da rota — sem ator, e portanto sem como contar
+    por pessoa, que é o que separa um link velho de uma enumeração.
+
+    As duas metades importam. O evento existe **e** a resposta continua opaca:
+    se a fatia tivesse mudado o corpo ou o código de status para distinguir "não
+    é seu" de "não existe", teria criado o oráculo que a ADR 0010 evita.
+    """
+    authenticated(world.acme.client)
+
+    with captured("portal_api.access") as records:
+        theirs = client.get(f"/api/v1/projects/{world.globex.project_id}/dashboard")
+
+    # Opaca: o projeto do vizinho responde exatamente como um id que não existe.
+    ghost = client.get(f"/api/v1/projects/{uuid.uuid4()}/dashboard")
+    assert theirs.status_code == ghost.status_code == 404
+    assert theirs.json() == ghost.json()
+
+    denied = [r for r in records if r.getMessage() == "authz.denied"]
+    assert len(denied) == 1
+    assert denied[0].reason == "not_a_member"
+    # O prefixo, nunca o `sub` inteiro — o precedente é do `chat_limit.py`.
+    assert denied[0].subject_prefix == world.acme.client.subject[:8]
+    assert len(denied[0].subject_prefix) <= 8
+
+
+def test_a_member_without_the_role_is_a_different_reason(world: World, authenticated) -> None:
+    """"Não é membro" e "é membro e o papel não basta" levam a investigações
+    diferentes: a primeira é acesso cruzado, a segunda é escalada dentro do
+    próprio tenant. Um `reason` só apagaria a distinção justamente onde ela
+    decide o que fazer."""
+    # O cliente **é** membro do próprio projeto; o que ele não é é
+    # `internal_admin`, e `_authorized` de `admin.py` exige exatamente isso.
+    authenticated(world.acme.client)
+
+    with captured("portal_api.access") as records:
+        refused = client.get(f"/api/v1/admin/projects/{world.acme.project_id}/members")
+
+    assert refused.status_code == 404
+    denied = [r for r in records if r.getMessage() == "authz.denied"]
+    assert [r.reason for r in denied] == ["role_insufficient"]
+
+
+# --- a regra 6, derivada do contrato (ADR 0035) -----------------------------
+#
+# Até aqui este arquivo era a prova da regra 6 e também o seu inventário: 30
+# funções escritas à mão contra 46 pares rota+método publicados. Nada perguntava
+# se a lista estava inteira, que é a forma exata do defeito da ADR 0033 — lá a
+# guarda percorria oito nomes digitados num contrato de 56 esquemas.
+#
+# A pergunta agora sai do contrato, e não de quem lembrou: **toda rota que
+# promete 404 tem de provar o 404.** A promessa é o `responses` do próprio
+# artefato publicado, de modo que as superfícies que legitimamente não negam por
+# tenant — as duas sondas, o webhook e as duas rotas `/me` sem identificador —
+# se isentam sozinhas, sem allowlist para manter.
+
+#: Os dois mecanismos de credencial do produto: a sessão OIDC (ADR 0010) e a
+#: chave de agente (ADR 0013). Um teste que não troca de ator não é negativo de
+#: permissão — é só uma chamada que deu 404.
+_ACTOR_FIXTURES = {"authenticated", "agent_key"}
+
+_HTTP_VERBS = {"get", "post", "patch", "put", "delete"}
+
+
+def _url_pattern(node: ast.expr, variables: dict[str, str]) -> str | None:
+    """Resolve a expressão de URL para o padrão, com `{}` no lugar do dinâmico.
+
+    Três formas, e as três são reais neste diretório: o literal, a f-string
+    (`f"/api/v1/admin/organizations/{org.id}/retention"`) e a variável local
+    montada antes (`base = f"..."` seguido de `f"{base}/keys"`), que é como
+    `test_admin_endpoints.py` escreve o laço de negativos.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return variables.get(node.id)
+    if isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for piece in node.values:
+            if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+                parts.append(piece.value)
+            elif isinstance(piece, ast.FormattedValue):
+                inner = _url_pattern(piece.value, variables)
+                parts.append(inner if inner is not None else "{}")
+            else:
+                return None
+        return "".join(parts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _url_pattern(node.left, variables)
+        right = _url_pattern(node.right, variables)
+        return None if left is None or right is None else left + right
+    return None
+
+
+def _string_variables(fn: ast.AST) -> dict[str, str]:
+    known: dict[str, str] = {}
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name):
+                resolved = _url_pattern(node.value, known)
+                if resolved is not None:
+                    known[target.id] = resolved
+    return known
+
+
+def _requests_in(fn: ast.AST) -> set[tuple[str, str]]:
+    """Os pares (verbo, padrão de URL) que este corpo dispara pelo `TestClient`."""
+    variables = _string_variables(fn)
+    found: set[tuple[str, str]] = set()
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr in _HTTP_VERBS):
+            continue
+        if not (isinstance(func.value, ast.Name) and func.value.id == "client"):
+            continue
+        if not node.args:
+            continue
+        url = _url_pattern(node.args[0], variables)
+        if url:
+            found.add((func.attr, _normalise_path(url)))
+    return found
+
+
+def _normalise_path(url: str) -> str:
+    """`/x/{project_id}/y?a=1` e `/x/{uuid4()}/y` viram o mesmo `/x/{}/y`."""
+    return re.sub(r"\{[^}]*\}", "{}", url).split("?")[0].rstrip("/")
+
+
+def _response_variables(
+    fn: ast.AST, helpers: dict[str, set[tuple[str, str]]]
+) -> dict[str, set[tuple[str, str]]]:
+    """Nome da variável → as requisições cuja resposta ela guarda.
+
+    Cobre as três formas que aparecem aqui: uma chamada (`refused = client.get(…)`),
+    uma lista delas (`responses = [client.get(…), client.post(…)]`, o laço de
+    negativos de `test_admin_endpoints.py`) e o auxiliar de módulo
+    (`response = _post(…)`, em `test_agent_events.py`).
+    """
+    variables = _string_variables(fn)
+    held: dict[str, set[tuple[str, str]]] = {}
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        sources = (
+            node.value.elts
+            if isinstance(node.value, (ast.List, ast.Tuple))
+            else [node.value]
+        )
+        pairs: set[tuple[str, str]] = set()
+        for source in sources:
+            if not isinstance(source, ast.Call):
+                continue
+            func = source.func
+            if isinstance(func, ast.Name) and func.id in helpers:
+                pairs |= helpers[func.id]
+            elif (
+                isinstance(func, ast.Attribute)
+                and func.attr in _HTTP_VERBS
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "client"
+                and source.args
+            ):
+                url = _url_pattern(source.args[0], variables)
+                if url:
+                    pairs.add((func.attr, _normalise_path(url)))
+        if pairs:
+            held[target.id] = pairs
+    return held
+
+
+def _denied_in(fn: ast.AST, helpers: dict[str, set[tuple[str, str]]]) -> set[tuple[str, str]]:
+    """As requisições **deste** teste cuja resposta ele afirma ser 404.
+
+    A ligação é entre o 404 e a resposta, e não entre o 404 e o arquivo. Isso foi
+    medido: com o elo frouxo — "a função chama a rota e em algum lugar do corpo há
+    um 404" — `POST /api/v1/chat` aparecia coberto por
+    `test_rating_a_colleagues_answer_is_404`, onde o chat só monta a conversa e o
+    404 é da rota de feedback. A guarda nasceria verde sobre uma rota sem negativo,
+    que é exatamente o defeito da ADR 0033.
+    """
+    held = _response_variables(fn, helpers)
+    denied: set[tuple[str, str]] = set()
+    for node in ast.walk(fn):
+        if not isinstance(node, (ast.Assert, ast.Compare)):
+            continue
+        if not any(
+            isinstance(inner, ast.Constant) and inner.value == 404
+            for inner in ast.walk(node)
+        ):
+            continue
+        # Quem é mencionado ao lado do 404: as variáveis de resposta e as chamadas
+        # feitas ali mesmo (`assert client.get(…).status_code == 404`).
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Name) and inner.id in held:
+                denied |= held[inner.id]
+        denied |= _requests_in(node)
+    return denied
+
+
+def _proven_denials() -> set[tuple[str, str]]:
+    """Todo par rota+verbo que algum teste nega com 404, trocando de ator.
+
+    Segue os auxiliares de módulo, e isso não é refinamento: `test_agent_events.py`
+    manda a requisição por um `_post()` de três linhas, então uma varredura que só
+    olhasse `client.post(...)` dentro da função de teste concluiria que a rota de
+    eventos — a única com credencial própria — não tem negativo nenhum.
+    """
+    proven: set[tuple[str, str]] = set()
+    for path in sorted(pathlib.Path(__file__).parent.glob("test_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        helpers = {
+            node.name: _requests_in(node)
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and not node.name.startswith("test_")
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not node.name.startswith("test_"):
+                continue
+            parameters = {arg.arg for arg in node.args.args}
+            if not (parameters & _ACTOR_FIXTURES):
+                continue
+            proven |= _denied_in(node, helpers)
+    return proven
+
+
+#: A única rota que promete 404 e não pode prová-lo, com o motivo. Ela responde
+#: **200 com lista vazia** por desenho (ADR 0027) — não há recurso nomeado cuja
+#: existência se possa vazar —, e o 404 no contrato vem do `CLIENT_ERRORS` que
+#: toda rota de `admin.py` carrega. O negativo dela existe e tem outra forma: a
+#: lista não traz a organização alheia, afirmado em
+#: `test_the_organizations_listing_only_shows_what_the_caller_administers`.
+_CANNOT_ANSWER_404 = {
+    ("get", "/api/v1/admin/organizations"): (
+        "responde 200 com lista vazia (ADR 0027); o negativo é a filtragem da lista"
+    ),
+}
+
+
+def test_every_route_that_promises_a_404_proves_it() -> None:
+    """Regra 6 do `AGENTS.md`, cobrada do contrato e não da memória.
+
+    Nasceu vermelha com seis pares, e o mais caro deles não era um esquecimento
+    de borda: `GET /api/v1/projects/{project_id}/results` é a **única** rota de
+    cliente que recebe um identificador de projeto no caminho, ou seja, o caso
+    literal da regra 1 — "nunca use um identificador fornecido pelo cliente sem
+    validar o vínculo no servidor" —, e não havia teste nenhum a exercitando.
+    Junto vieram as duas rotas do teto de gasto de IA, que não tinham teste de
+    espécie alguma, o histórico do expurgo e o chat.
+    """
+    document = openapi.schema()
+    proven = _proven_denials()
+
+    missing = sorted(
+        f"{method.upper()} {path}"
+        for path, operations in document["paths"].items()
+        for method, operation in operations.items()
+        if "404" in operation["responses"]
+        and (method.lower(), _normalise_path(path)) not in proven
+        and (method.lower(), _normalise_path(path)) not in _CANNOT_ANSWER_404
+    )
+
+    assert missing == [], (
+        "estas rotas prometem 404 no contrato e nenhum teste prova a negação: "
+        + ", ".join(missing)
+        + ". Escreva o caso negativo de permissão (regra 6 do `AGENTS.md`) — um"
+        " teste que troque de ator e afirme 404."
+    )
+
+
+def test_the_exception_to_the_404_proof_is_still_needed() -> None:
+    """A linha some quando o motivo some — a regra do `advisories.json` (ADR 0023)."""
+    document = openapi.schema()
+    proven = _proven_denials()
+
+    obsolete = sorted(
+        f"{method.upper()} {path}"
+        for method, path in _CANNOT_ANSWER_404
+        if (method, path) in proven
+        or "404" not in document["paths"].get(path, {}).get(method, {}).get("responses", {})
+    )
+
+    assert obsolete == [], (
+        f"`_CANNOT_ANSWER_404` guarda linhas que deixaram de ser necessárias: {obsolete}."
+    )

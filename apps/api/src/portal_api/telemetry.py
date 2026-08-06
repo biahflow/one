@@ -114,9 +114,19 @@ def _redact(key: str, value: Any) -> Any:
 class JsonFormatter(logging.Formatter):
     """Uma linha JSON por registro, com os campos de ``extra`` promovidos.
 
-    ``event`` é a mensagem quando ela é um nome estável (``auth.rejected``) e
-    também quando é prosa — quem consome filtra por ``event`` de qualquer jeito,
-    e ter dois campos para "o que aconteceu" só criaria a dúvida de qual ler.
+    ``event`` é a mensagem, e por isso **a mensagem tem de ser um nome estável**
+    (``auth.rejected``), com o detalhe em ``extra``. Não são dois campos para "o
+    que aconteceu" justamente para não criar a dúvida de qual ler.
+
+    A frase que estava aqui até a ADR 0034 dizia que a mensagem servia "também
+    quando é prosa, porque quem consome filtra por ``event`` de qualquer jeito",
+    e ela era falsa no ponto que importa: o que entra em ``event`` é
+    ``getMessage()``, ou seja, a mensagem **já interpolada**. Um
+    ``logger.warning("Objeto %s não removido", key)`` produz um ``event``
+    diferente a cada chave — inconsultável, e o limiar que o ``alerts.md``
+    promete para cada evento deixa de ser aplicável. Dez sítios viviam assim, e
+    um deles era o único sinal de que o antivírus havia caído.
+    ``test_telemetry.py`` varre o AST e reprova a volta.
     """
 
     def format(self, record: logging.LogRecord) -> str:

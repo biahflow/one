@@ -7,6 +7,14 @@
 3. Respostas de IA devem citar fontes. Sem evidência, devem declarar a lacuna e criar uma pendência, nunca inventar uma resposta.
 4. Migrações são aditivas e revisadas; alterações de tenant, autenticação, RAG ou retenção exigem ADR/RFC.
 5. Não inclua segredos em commits, fixtures, logs ou documentação.
+6. Todo endpoint ou busca nova tem caso negativo de permissão, e ele afirma 404 — nunca 403.
+
+*A regra 6 foi escrita como princípio na ADR 0035. Ela já era citada "regra 6 do
+`AGENTS.md`" por duas ADRs, uma FDD e três arquivos de teste, e o número não
+existia: o texto vivia como item da lista de pull request abaixo, e a numeração
+que circulava vinha da cópia do `CLAUDE.md` — que tinha seis itens, promovera uma
+convenção a princípio e **descartara** a regra 5. Uma guarda afirma que as duas
+listas são a mesma e que toda citação por número resolve.*
 
 ## Convenções
 

@@ -141,7 +141,14 @@ class ClamavScanner:
         try:
             response = self._instream(data)
         except OSError as exc:
-            logger.warning("clamd indisponível em %s:%s: %s", self._host, self._port, exc)
+            # Nome estável, e aqui isso não é estilo: esta linha é o **único**
+            # sinal de que o antivírus caiu, e até a ADR 0034 o `alerts.md`
+            # mandava vigiar `scan_state=skipped` para descobrir isso — um
+            # estado que este objeto nunca produz (ver o docstring do módulo).
+            logger.warning(
+                "document.scan_unavailable",
+                extra={"host": self._host, "port": self._port, "detail": str(exc)},
+            )
             return ScanVerdict(ScanState.error, detail=f"clamd indisponível: {exc}")
 
         if response.endswith("OK"):

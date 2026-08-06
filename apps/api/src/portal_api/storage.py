@@ -121,7 +121,10 @@ def ensure_bucket(settings: Settings) -> None:
         try:
             client.create_bucket(Bucket=settings.storage_bucket)
         except Exception as exc:  # corrida entre dois processos, ou sem permissão
-            logger.info("Bucket %s não criado: %s", settings.storage_bucket, exc)
+            logger.info(
+                "storage.bucket_not_created",
+                extra={"bucket": settings.storage_bucket, "detail": str(exc)},
+            )
 
 
 def put_object(settings: Settings, key: str, data: bytes, content_type: str | None) -> None:

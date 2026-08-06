@@ -127,3 +127,32 @@ vermelhos:**
   a indexação com o **mesmo** orçamento do teste, e `drive.spec.ts` esperava 90s
   dentro de um teste de 60s. A regra que ficou no `playwright.config.ts`: espera
   interna nunca passa de metade do orçamento. 19/19 em três execuções.
+
+## Acrescentado na ADR 0035 — o contrato cobra o caso negativo
+
+*Acrescentado em 06/08/2026.* As propriedades acima afirmam o que toda rota
+**declara**; faltava a que cobra o que alguém **provou**. A regra 6 do `AGENTS.md`
+— caso negativo de permissão para qualquer endpoint ou busca nova — era a única
+inegociável sem portão derivado: 30 funções escritas à mão contra 46 pares
+rota+método publicados, e nada perguntando se a lista estava inteira. É a forma do
+defeito que a ADR 0033 encontrou na guarda de consumo, um nível acima.
+
+- `apps/api/tests/test_authorization.py`: `test_every_route_that_promises_a_404_proves_it`.
+  O predicado sai do artefato — **quem promete 404 prova o 404** —, e é essa
+  escolha que dispensa allowlist: as sondas, o webhook e as duas rotas `/me` sem
+  identificador não declaram 404 e se isentam sozinhas. Sobrou uma exceção
+  escrita, `GET /api/v1/admin/organizations`, que responde 200 com lista vazia por
+  desenho (ADR 0027), com guarda de obsolescência.
+- **O elo liga o 404 à resposta daquela chamada, e isso foi medido.** Com o elo
+  frouxo — "a função chama a rota e há um 404 no corpo" — `POST /api/v1/chat`
+  aparecia coberto por um teste em que o chat só monta a conversa e o 404 é da rota
+  de feedback. A guarda nasceria verde sobre uma rota sem negativo.
+- A varredura segue auxiliares de módulo: `test_agent_events.py` manda a requisição
+  por um `_post()`, e sem isso a rota de eventos pareceria descoberta.
+- Nasceu vermelha com cinco pares. Prova de que casa: neutralizado o `assert` de
+  404 do negativo de retenção, ela reprova nomeando **só** o `PUT` — o `GET`
+  continua provado por outro teste.
+- `tests/api-contract.test.mjs`: `NOT_CONSUMED` e `NOT_CALLED` passaram a
+  `{reason, review_by}` e o prazo **vence**, como o do `advisories.json` — antes
+  "Rever em 02/2027" era prosa dentro do motivo e nada lia a data. A asserção de
+  obsolescência passou a cobrir `NOT_CALLED`, que ficara de fora.

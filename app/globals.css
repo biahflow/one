@@ -85,7 +85,7 @@
   }
 
   .state {
-    @apply inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold;
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold;
   }
   .state--0 { @apply bg-brand-50 text-brand-700; }
   .state--1, .state--done { @apply bg-success-50 text-success-600; }

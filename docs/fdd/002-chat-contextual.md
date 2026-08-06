@@ -50,3 +50,17 @@ acumulado mostraria zero.
 404 de dono), os casos de conversa em `apps/api/tests/test_rls_isolation.py` (dono no predicado e o
 grant de coluna), `test_eval_a_sentence_planted_in_a_previous_turn_never_becomes_a_citation` em
 `apps/api/tests/test_chat_ai.py`, e `tests/e2e/chat.spec.ts`, onde o **F5** é o teste.
+
+## O sinal, para quem mantém o assistente (ADR 0030)
+
+`/admin/assistente` mostra, por projeto: quantas respostas, quantas foram avaliadas, quantas
+ajudaram, quantas declararam lacuna — e a lista das avaliações com o comentário que o cliente
+deixou, a calibragem (`responder`, `model`, `prompt_version`) e se o turno abriu pendência.
+
+**A pergunta do cliente não aparece, e a garantia é do banco.** O papel `portal_admin` teve o
+`SELECT` de tabela revogado em `conversation_message` e `conversation`, e recebeu um GRANT de
+coluna que exclui `text`, `citations` e `title` — este último porque é derivado da primeira
+pergunta. Um `select()` distraído na rota falha em vez de vazar.
+
+Fechado o adiamento da ADR 0015 ("sem dado acumulado mostraria zero"): o dado acumulou, e as
+primeiras seis avaliações eram todas negativas.

@@ -17,6 +17,7 @@ Dois invariantes valem mais que o resto:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -336,3 +337,152 @@ def test_the_admin_credential_is_not_a_way_around_rls(admin_engine: Engine) -> N
 
     assert row.rolsuper is False
     assert row.rolbypassrls is False
+
+
+# --- o sinal do assistente, e o que ele deliberadamente não alcança (ADR 0030)
+
+
+@pytest.fixture
+def recorded_turn(world: World, migrated_engine: Engine) -> Iterator[uuid.UUID]:
+    """Um turno do chat na Acme, escrito pelo papel de sistema e commitado."""
+    from portal_api.models import (
+        Conversation,
+        ConversationMessage,
+        ConversationRole,
+        MessageConfidence,
+        MessageFeedback,
+    )
+
+    with Session(migrated_engine) as session:
+        conversation = Conversation(
+            organization_id=world.acme.organization_id,
+            project_id=world.acme.project_id,
+            user_id=world.acme.client_user_id,
+            title="Quando entraremos em produção?",
+            last_message_at=datetime.now(timezone.utc),
+        )
+        session.add(conversation)
+        session.flush()
+        message = ConversationMessage(
+            organization_id=world.acme.organization_id,
+            project_id=world.acme.project_id,
+            conversation_id=conversation.id,
+            user_id=world.acme.client_user_id,
+            ordinal=2,
+            role=ConversationRole.assistant,
+            text="Não há evidência suficiente no contexto do projeto.",
+            confidence=MessageConfidence.insufficient_context,
+            feedback=MessageFeedback.not_helpful,
+            feedback_comment="A resposta não respondeu o que perguntei.",
+        )
+        session.add(message)
+        session.commit()
+        created = message.id
+        thread = conversation.id
+
+    yield created
+
+    with Session(migrated_engine) as session:
+        session.execute(delete(Conversation).where(Conversation.id == thread))
+        session.commit()
+
+
+def test_the_admin_reads_the_signal_of_an_answer_they_did_not_receive(
+    world: World, admin_session: Session, bind_admin_context, recorded_turn: uuid.UUID
+) -> None:
+    """A metade positiva: sem isto a tela do sinal leria zero linhas.
+
+    A conversa é da pessoa que perguntou — as policies de `portal_app` são
+    `user_id = portal.current_user_id()` —, então o time interno precisava de uma
+    policy própria para ler a avaliação que o cliente deixou para ele.
+    """
+    from portal_api.models import ConversationMessage
+
+    bind_admin_context(
+        subject=world.acme.admin_subject,
+        user_id=world.acme.admin_user_id,
+        admin_organization_id=world.acme.organization_id,
+    )
+
+    row = admin_session.execute(
+        select(
+            ConversationMessage.id,
+            ConversationMessage.feedback,
+            ConversationMessage.feedback_comment,
+            ConversationMessage.confidence,
+        ).where(ConversationMessage.id == recorded_turn)
+    ).one()
+
+    assert row.id == recorded_turn
+    assert row.feedback_comment == "A resposta não respondeu o que perguntei."
+
+
+def test_the_admin_cannot_read_what_the_client_asked(
+    world: World, admin_session: Session, bind_admin_context, recorded_turn: uuid.UUID
+) -> None:
+    """A metade negativa, e é ela que define a fatia (ADR 0030).
+
+    A policy decide **quais linhas**; ela não sabe decidir quais colunas. Sem o
+    GRANT de coluna, dar ao time interno acesso à avaliação daria junto acesso à
+    pergunta do cliente — conteúdo confidencial dele
+    (`docs/data-classification.md`), que `ai/service.py` já se recusa a pôr no
+    `audit_log` pelo mesmo motivo.
+    """
+    from portal_api.models import ConversationMessage
+
+    bind_admin_context(
+        subject=world.acme.admin_subject,
+        user_id=world.acme.admin_user_id,
+        admin_organization_id=world.acme.organization_id,
+    )
+
+    with pytest.raises(ProgrammingError) as refused:
+        admin_session.execute(
+            select(ConversationMessage.text).where(
+                ConversationMessage.id == recorded_turn
+            )
+        ).all()
+
+    assert "permission denied" in str(refused.value).lower()
+
+
+def test_the_admin_cannot_read_the_thread_title_either(
+    world: World, admin_session: Session, bind_admin_context, recorded_turn: uuid.UUID
+) -> None:
+    """A exclusão que quase passou.
+
+    `conversation.title` é derivado da **primeira pergunta**
+    (`conversations._title_from`). Barrar `text` e conceder `title` entregaria a
+    pergunta pela porta dos fundos — a coluna óbvia de barrar era uma, e a que
+    teria vazado assim mesmo era a outra.
+    """
+    from portal_api.models import Conversation
+
+    bind_admin_context(
+        subject=world.acme.admin_subject,
+        user_id=world.acme.admin_user_id,
+        admin_organization_id=world.acme.organization_id,
+    )
+
+    with pytest.raises(ProgrammingError) as refused:
+        admin_session.execute(select(Conversation.title)).all()
+
+    assert "permission denied" in str(refused.value).lower()
+
+
+def test_the_signal_of_another_organization_stays_invisible(
+    world: World, admin_session: Session, bind_admin_context, recorded_turn: uuid.UUID
+) -> None:
+    """A policy nova é `TO portal_admin` e keyed na GUC de terceiro estágio,
+    como todo o resto de `admin.py`: administrar a Globex não abre a Acme."""
+    from portal_api.models import ConversationMessage
+
+    bind_admin_context(
+        subject=world.globex.admin_subject,
+        user_id=world.globex.admin_user_id,
+        admin_organization_id=world.globex.organization_id,
+    )
+
+    visible = admin_session.execute(select(ConversationMessage.id)).scalars().all()
+
+    assert recorded_turn not in visible

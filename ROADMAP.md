@@ -182,8 +182,16 @@ e o cliente vê o número ao lado da premissa que o produziu.*
       pela primeira vez numa tabela que ele *origina* — e o que impede alguém de plantar uma frase e
       vê-la citada depois não é privilégio de banco, é `conversation_message` não ser fonte de
       recuperação, com um eval que executa o ataque. O feedback é GRANT de coluna, como o `read_at`
-      da notificação: avalia-se a resposta, não se reescreve. Falta a tela que lê esse sinal — sem
-      dado acumulado ela mostraria zero. ADR 0015, FDD 002.)*
+      da notificação: avalia-se a resposta, não se reescreve. ~~Falta a tela que lê esse sinal — sem
+      dado acumulado ela mostraria zero.~~ ADR 0015, FDD 002.)* **A tela chegou em 06/08/2026
+      (ADR 0030), e o adiamento era condicional:** o dado acumulou — 143 respostas, 6 avaliadas,
+      **as 6 negativas**, e ninguém conseguia ver. O que a fatia decidiu não foi a tela e sim a
+      fronteira: `portal_admin` teve o `SELECT` de tabela **revogado** em `conversation_message`
+      e `conversation` e recebeu GRANT de coluna sem `text`, sem `citations` e sem `title` — o
+      privilégio já vinha do default privilege do `roles.sql`, e só a **ausência de policy**
+      escondia a pergunta do cliente, de modo que qualquer policy nova a teria aberto no mesmo
+      commit. O título ficou de fora por ser derivado da primeira pergunta: era a coluna que
+      teria vazado depois de barrar a óbvia.
 - [x] Criar dataset de avaliação e bloquear regressão em citações, isolamento, lacunas e prompt
       injection. *(`docs/ai/eval-dataset.md` deixou de ser um parágrafo e virou a lista dos casos
       que `test_chat_ai.py` executa — agora incluindo página correta na citação, documento de outro

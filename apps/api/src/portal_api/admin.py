@@ -45,6 +45,8 @@ from portal_api.models import (
     SCOPE_EVENTS_WRITE,
     AgentApiKey,
     AuditLog,
+    ConversationMessage,
+    ConversationRole,
     DataErasureRequest,
     Document,
     DocumentChunk,
@@ -55,6 +57,8 @@ from portal_api.models import (
     ErasureState,
     MemberRole,
     Membership,
+    MessageConfidence,
+    MessageFeedback,
     Organization,
     OrganizationAiQuota,
     OrganizationRetentionPolicy,
@@ -1754,3 +1758,133 @@ def _erasure_out(record: DataErasureRequest) -> ErasureRequestOut:
         removed=record.removed,
         error=record.error,
     )
+
+
+# --------------------------------------------------------------------------- #
+# O sinal do assistente (Fase 6, ADR 0030)
+#
+# Leitura, e a única rota de `admin.py` cujo assunto é a conversa de outra
+# pessoa. O que ela devolve é deliberadamente estreito: a avaliação, a
+# calibragem e se o turno abriu pendência — nunca o que foi perguntado. A
+# fronteira não é imposta aqui, e sim pelo GRANT de coluna da migração 0020: o
+# papel do banco **não consegue** ler `conversation_message.text`, então um
+# `select()` distraído nesta rota falha em vez de vazar.
+# --------------------------------------------------------------------------- #
+
+
+class RatedTurnOut(BaseModel):
+    message_id: uuid.UUID
+    created_at: datetime
+    confidence: str | None
+    feedback: str
+    #: A nota que a pessoa **escolheu** escrever para quem a atende. É o único
+    #: texto do cliente nesta resposta, e está aqui por ter sido endereçado ao
+    #: time — ao contrário da pergunta, que foi endereçada ao assistente.
+    feedback_comment: str | None
+    feedback_at: datetime | None
+    responder: str | None
+    model: str | None
+    prompt_version: str | None
+    #: Se aquele turno abriu pendência por lacuna de contexto.
+    opened_pending: bool
+
+
+class AssistantSignalOut(BaseModel):
+    project_id: uuid.UUID
+    answers_total: int
+    rated_total: int
+    helpful: int
+    not_helpful: int
+    #: Turnos que declararam lacuna, com ou sem avaliação. É o outro sinal, e o
+    #: mais objetivo dos dois: ninguém precisa clicar no polegar para ele contar.
+    insufficient_context: int
+    turns: list[RatedTurnOut]
+
+
+@router.get(
+    "/projects/{project_id}/assistant-signal", response_model=AssistantSignalOut
+)
+def get_assistant_signal(
+    project_id: uuid.UUID, principal: CurrentPrincipal, limit: int = 50
+) -> AssistantSignalOut:
+    """Como o assistente está indo, para quem o mantém.
+
+    Existe porque o feedback era gravado desde a ADR 0015 e **ninguém nunca o
+    leu**: aquela ADR adiou a tela dizendo que "sem dado acumulado ela mostraria
+    zero", e o dado acumulou. O sinal só é útil em agregado, e é por isso que a
+    resposta traz contagens antes da lista.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        _, project = _authorized(session, principal, project_id)
+
+        # **Nunca `select(ConversationMessage)`**, e isto não é estilo: a
+        # entidade expande para todas as colunas, `text` inclusive, e o papel
+        # não a tem — a primeira versão desta rota fez exatamente isso e
+        # respondeu 500. É o GRANT da migração 0020 funcionando como projetado:
+        # um `select()` distraído aqui **falha em vez de vazar**, e a falha
+        # aparece no primeiro clique em vez de num incidente.
+        answers = (
+            ConversationMessage.project_id == project.id,
+            ConversationMessage.role == ConversationRole.assistant,
+        )
+        counts = session.execute(
+            select(
+                func.count(),
+                func.count(ConversationMessage.feedback),
+                func.count(1).filter(
+                    ConversationMessage.feedback == MessageFeedback.helpful
+                ),
+                func.count(1).filter(
+                    ConversationMessage.feedback == MessageFeedback.not_helpful
+                ),
+                func.count(1).filter(
+                    ConversationMessage.confidence
+                    == MessageConfidence.insufficient_context
+                ),
+            ).where(*answers)
+        ).one()
+
+        rated = session.execute(
+            select(
+                ConversationMessage.id,
+                ConversationMessage.created_at,
+                ConversationMessage.confidence,
+                ConversationMessage.feedback,
+                ConversationMessage.feedback_comment,
+                ConversationMessage.feedback_at,
+                ConversationMessage.responder,
+                ConversationMessage.model,
+                ConversationMessage.prompt_version,
+                ConversationMessage.pending_item_id,
+            )
+            .where(
+                *answers,
+                ConversationMessage.feedback.is_not(None),
+            )
+            .order_by(ConversationMessage.feedback_at.desc().nullslast())
+            .limit(max(1, min(limit, 200)))
+        ).all()
+
+        return AssistantSignalOut(
+            project_id=project.id,
+            answers_total=counts[0],
+            rated_total=counts[1],
+            helpful=counts[2],
+            not_helpful=counts[3],
+            insufficient_context=counts[4],
+            turns=[
+                RatedTurnOut(
+                    message_id=turn.id,
+                    created_at=turn.created_at,
+                    confidence=turn.confidence.value if turn.confidence else None,
+                    feedback=turn.feedback.value,
+                    feedback_comment=turn.feedback_comment,
+                    feedback_at=turn.feedback_at,
+                    responder=turn.responder.value if turn.responder else None,
+                    model=turn.model,
+                    prompt_version=turn.prompt_version,
+                    opened_pending=turn.pending_item_id is not None,
+                )
+                for turn in rated
+            ],
+        )

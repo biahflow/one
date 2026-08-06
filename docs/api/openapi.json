@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "AdministeredOrganizationOut": {
+        "description": "A organização e o que a tela precisa para falar dela.\n\nO ``slug`` está aqui porque é a confirmação que `request_erasure` exige\ndigitada: a tela precisa poder mostrar **qual** tenant está prestes a ser\napagado ao lado do campo. Mostrá-lo não enfraquece a confirmação — o que\nela protege é o erro de olhar para o tenant errado, não o segredo do nome.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_id",
+          "name",
+          "slug"
+        ],
+        "title": "AdministeredOrganizationOut",
+        "type": "object"
+      },
       "AgentEventAcceptedOut": {
         "additionalProperties": false,
         "description": "202 em ambos os casos: ``accepted`` na primeira vez, ``duplicate`` no\nreenvio. O produtor precisa distinguir reenvio de recusa, e nenhum dos dois\né erro (ADR 0013).",
@@ -2956,6 +2981,57 @@
           }
         ],
         "summary": "Finish Drive Authorization",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/organizations": {
+      "get": {
+        "description": "As organizações que o chamador administra. Lista vazia, nunca 404.\n\nA rota que faltava para as outras seis existirem de fato (ADR 0027). Elas\nsão chaveadas por ``{organization_id}`` e, até aqui, **nenhuma resposta da\nAPI devolvia esse uuid** — `MeOut.organization` é o *nome*. Havia rota,\nmodelo, policy e teste, e nenhum caller possível que não consultasse o\nPostgres à mão.\n\nLista vazia e não 404, ao contrário de todo o resto de ``admin.py``: aqui\nnão há recurso nomeado cuja existência se possa vazar. \"Não administro\nnenhuma\" é uma resposta verdadeira sobre o chamador, do mesmo feitio que\n``projects`` vazio em `GET /api/v1/me` — autenticar não é autorizar.\n\nNão chama ``bind_admin_org``, e isso é o desenho: a pergunta é *quais*\norganizações, e a GUC de terceiro estágio guarda uma. Antes dela a\ntransação enxerga apenas os vínculos do próprio chamador, que é exatamente\no recorte que esta listagem quer — a mesma propriedade que impede\n`_authorized_org` de ser circular.",
+        "operationId": "list_administered_organizations_api_v1_admin_organizations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdministeredOrganizationOut"
+                  },
+                  "title": "Response List Administered Organizations Api V1 Admin Organizations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente ou inválido, com o motivo só no log."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Sem vínculo, sem o papel `internal_admin` no projeto, ou o recurso não existe. **Nunca 403.**"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Administered Organizations",
         "tags": [
           "admin"
         ]

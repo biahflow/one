@@ -600,6 +600,49 @@ def test_an_infected_document_has_no_download_url(
     assert response.status_code == 404
 
 
+# --- a listagem que dá caller às rotas de organização (Fase 6, ADR 0027) ----
+
+
+def test_a_client_administers_no_organization_and_the_list_says_so(
+    world: World, authenticated
+) -> None:
+    """Lista vazia com 200 — a única rota de `admin.py` que não responde 404.
+
+    E é o desenho: aqui não há recurso nomeado cuja existência se possa vazar.
+    "Não administro nenhuma" é uma verdade sobre o chamador, do mesmo feitio que
+    `projects` vazio em `GET /api/v1/me`.
+    """
+    authenticated(world.acme.client)
+
+    response = client.get("/api/v1/admin/organizations")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_the_list_carries_the_callers_organization_and_not_the_other_tenants(
+    world: World, authenticated
+) -> None:
+    """As duas metades importam, e a segunda é a que torna a primeira significativa.
+
+    O `internal_admin` da Acme recebe o uuid da Acme — que é a peça que nenhuma
+    resposta da API devolvia e sem a qual as seis rotas de organização não têm
+    caller possível (ADR 0027). E **não** recebe o da Globex, que é a mesma
+    fronteira que `test_staff_cannot_reach_another_organizations_retention`
+    afirma do outro lado: não basta a rota de escrita recusar o tenant alheio se
+    a listagem o entrega.
+    """
+    authenticated(world.staff)
+
+    body = client.get("/api/v1/admin/organizations").json()
+
+    listed = {item["organization_id"] for item in body}
+    assert listed == {str(world.acme.organization_id)}
+    assert str(world.globex.organization_id) not in listed
+    # O slug vai junto porque é a confirmação que o expurgo exige digitada.
+    assert all(item["slug"] for item in body)
+
+
 # --- retenção e expurgo (Fase 5, ADR 0017) ----------------------------------
 
 

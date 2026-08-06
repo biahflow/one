@@ -31,8 +31,11 @@ PYTHONPATH=apps/api/src python scripts/loadtest.py \
    relatório.
 4. **A quota da organização é um teto real.** Uma execução longa pode esbarrar nela e o relatório
    passa a contar `quota_exhausted`. Isso não é falha do harness: é o controle da ADR 0022
-   funcionando. Suba o teto daquela organização pelo `/api/v1/admin/organizations/{id}/ai-quota`
-   antes, e devolva-o depois.
+   funcionando. Suba o teto daquela organização em **`/admin/organizacao`** antes, e devolva-o
+   depois — a tela mostra o gasto do mês ao lado do campo, que é o número que decide para quanto
+   subir. *(Até a ADR 0027 esta linha mandava chamar
+   `/api/v1/admin/organizations/{id}/ai-quota` diretamente, e a instrução não tinha como ser
+   seguida: a rota é chaveada por um `organization_id` que nenhuma resposta da API devolvia.)*
 
 ## Lendo o relatório
 

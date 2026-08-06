@@ -1406,6 +1406,55 @@ class ErasureRequestOut(BaseModel):
     error: str | None
 
 
+class AdministeredOrganizationOut(BaseModel):
+    """A organização e o que a tela precisa para falar dela.
+
+    O ``slug`` está aqui porque é a confirmação que `request_erasure` exige
+    digitada: a tela precisa poder mostrar **qual** tenant está prestes a ser
+    apagado ao lado do campo. Mostrá-lo não enfraquece a confirmação — o que
+    ela protege é o erro de olhar para o tenant errado, não o segredo do nome.
+    """
+
+    organization_id: uuid.UUID
+    name: str
+    slug: str
+
+
+@router.get("/organizations", response_model=list[AdministeredOrganizationOut])
+def list_administered_organizations(
+    principal: CurrentPrincipal,
+) -> list[AdministeredOrganizationOut]:
+    """As organizações que o chamador administra. Lista vazia, nunca 404.
+
+    A rota que faltava para as outras seis existirem de fato (ADR 0027). Elas
+    são chaveadas por ``{organization_id}`` e, até aqui, **nenhuma resposta da
+    API devolvia esse uuid** — `MeOut.organization` é o *nome*. Havia rota,
+    modelo, policy e teste, e nenhum caller possível que não consultasse o
+    Postgres à mão.
+
+    Lista vazia e não 404, ao contrário de todo o resto de ``admin.py``: aqui
+    não há recurso nomeado cuja existência se possa vazar. "Não administro
+    nenhuma" é uma resposta verdadeira sobre o chamador, do mesmo feitio que
+    ``projects`` vazio em `GET /api/v1/me` — autenticar não é autorizar.
+
+    Não chama ``bind_admin_org``, e isso é o desenho: a pergunta é *quais*
+    organizações, e a GUC de terceiro estágio guarda uma. Antes dela a
+    transação enxerga apenas os vínculos do próprio chamador, que é exatamente
+    o recorte que esta listagem quer — a mesma propriedade que impede
+    `_authorized_org` de ser circular.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        user = resolve_user(session, principal)
+        return [
+            AdministeredOrganizationOut(
+                organization_id=organization.id,
+                name=organization.name,
+                slug=organization.slug,
+            )
+            for organization in access.administered_organizations(session, user)
+        ]
+
+
 def _authorized_org(
     session: Session, principal: Principal, organization_id: uuid.UUID
 ) -> tuple[User, Organization]:

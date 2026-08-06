@@ -37,6 +37,7 @@ async function request<T>(
       revalidatePath("/admin");
       revalidatePath("/admin/resultados");
       revalidatePath("/admin/conhecimento");
+      revalidatePath("/admin/organizacao");
       const data = response.status === 204 ? null : ((await response.json()) as T);
       return { ok: true, data };
     }
@@ -289,6 +290,104 @@ export async function openAssumption(
     },
     {
       409: "A vigência precisa começar depois da premissa atual — o histórico não é reescrito.",
+    },
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* A organização inteira (ADR 0027)                                            */
+/*                                                                             */
+/* Escopo diferente de tudo o que está acima: estas três não levam projeto.    */
+/* "Por quanto tempo os dados ficam", "quanto de IA esta organização pode      */
+/* gastar" e "apague tudo" não são perguntas que se façam projeto a projeto —  */
+/* é o mesmo argumento com que `admin.py` separou as rotas.                    */
+/* -------------------------------------------------------------------------- */
+
+/** Vazio é "usa o padrão", nunca "guarda para sempre" — ver `retention.py`. */
+function optionalDays(formData: FormData, field: string): number | null | undefined {
+  const raw = String(formData.get(field) ?? "").trim();
+  if (!raw) return null;
+  const value = Number(raw);
+  // `undefined` distingue "não é número" de "deixado em branco", e só o
+  // primeiro é erro: em branco é uma escolha, e é a escolha padrão.
+  if (!Number.isInteger(value) || value < 1 || value > 3650) return undefined;
+  return value;
+}
+
+export async function setRetentionPolicy(
+  organizationId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const notification = optionalDays(formData, "notification_days");
+  const agentEvent = optionalDays(formData, "agent_event_days");
+  const conversation = optionalDays(formData, "conversation_days");
+
+  if (notification === undefined || agentEvent === undefined || conversation === undefined) {
+    return { ok: false, error: "Os prazos são inteiros entre 1 e 3650 dias, ou vazio para o padrão." };
+  }
+
+  // PUT e não PATCH pela razão da API: o corpo descreve a linha inteira, e
+  // omitir um campo é dizer "volte ao padrão" — uma decisão, não um silêncio.
+  return callApi(`/api/v1/admin/organizations/${organizationId}/retention`, {
+    method: "PUT",
+    body: JSON.stringify({
+      notification_days: notification,
+      agent_event_days: agentEvent,
+      conversation_days: conversation,
+    }),
+  });
+}
+
+export async function setAiQuota(
+  organizationId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const raw = String(formData.get("monthly_limit") ?? "").trim();
+  if (!raw) {
+    return callApi(`/api/v1/admin/organizations/${organizationId}/ai-quota`, {
+      method: "PUT",
+      body: JSON.stringify({ monthly_limit_cents: null }),
+    });
+  }
+
+  // A tela pede reais e a API fala centavos, como na premissa financeira: o
+  // dinheiro não pode carregar erro de ponto flutuante (ADR 0013).
+  const value = Number(raw.replace(",", "."));
+  if (Number.isNaN(value) || value < 0) {
+    return { ok: false, error: "O teto é um valor em reais, ou vazio para o padrão." };
+  }
+
+  return callApi(`/api/v1/admin/organizations/${organizationId}/ai-quota`, {
+    method: "PUT",
+    body: JSON.stringify({ monthly_limit_cents: Math.round(value * 100) }),
+  });
+}
+
+export async function requestErasure(
+  organizationId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const reason = String(formData.get("reason") ?? "").trim();
+  const confirmSlug = String(formData.get("confirm_slug") ?? "").trim();
+
+  if (reason.length < 3) {
+    return { ok: false, error: "Diga por que o apagamento foi pedido — isso fica no registro." };
+  }
+  if (!confirmSlug) {
+    return { ok: false, error: "Digite o identificador da organização para confirmar." };
+  }
+
+  // O 422 é a única negação do portal que **não** é 404, e é deliberado: quem
+  // chegou aqui já provou que administra a organização, e o que falhou foi a
+  // confirmação. Esconder isso faria a pessoa tentar de novo às cegas.
+  return callApi(
+    `/api/v1/admin/organizations/${organizationId}/erasure`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason, confirm_slug: confirmSlug }),
+    },
+    {
+      422: "O identificador digitado não é o desta organização. Confira qual está na tela.",
     },
   );
 }

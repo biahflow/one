@@ -447,6 +447,32 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       quebra, o "Atualizado há 2 dias" que o status-card mostrava fora do caminho `live`: um
       carimbo de frescor inventado no único lugar onde o demo é permitido.)*
 
+- [x] **A tela da organização, e o id que nenhuma resposta devolvia.** *(ADR 0027, FDD 011/016.
+      Terceira repetição do padrão, e a mais funda: seis rotas de administração por
+      **organização** — retenção, teto de IA e apagamento — existiam completas, testadas e sob
+      `portal_admin` desde as ADRs 0017 e 0022, e não estavam apenas sem tela: `grep
+      organization_id` no `schemas.py` não devolvia nada. As seis são chaveadas por um UUID que
+      **nenhuma resposta da API entregava** (`MeOut.organization` é o *nome*), de modo que eram
+      inalcançáveis por qualquer coisa que não consultasse o Postgres à mão — a forma da ADR
+      0022, onde faltava uma linha de YAML, só que aqui faltava uma rota. **E o desenho sabia da
+      tela que não veio:** `RetentionPolicyOut` devolve prazo escolhido *e* efetivo porque "a
+      tela precisa distinguir escolhido de herdado", e o `confirm_slug` existe para "obrigar quem
+      **clica** a olhar qual tenant está **na tela**". Duas instruções de runbook mandavam usar o
+      que ninguém conseguia usar — o `load-test.md` mandava subir o teto pela rota, e o
+      `alerts.md` falava em "sem abrir a tela" apontando para um `deploy.md` que não menciona
+      nada disso. O caso mais caro era o expurgo: obrigação contratual que só se cumpria por
+      `curl` com um token que o portal nunca emite. Agora há `GET /api/v1/admin/organizations` —
+      lista vazia com **200**, a única rota de `admin.py` que não é 404 na ausência, porque ali
+      não há recurso nomeado a vazar — e `/admin/organizacao`. Documento **não** entra na tela,
+      de propósito: é a evidência de uma citação já dada e não sai por idade (ADR 0017). O
+      argumento que adiava a quota estava trocado: valia para o painel de gasto, não para o
+      controle de teto, que mostra número no primeiro dia. **De quebra, o defeito que só apareceu
+      ao subir a pilha:** `seed._upsert_membership` casava a linha por `user_id` + `project_id IS
+      NULL` **sem filtrar organização** — correto com uma organização só, e desde o bootstrap da
+      ADR 0025 quem administra duas acumula um vínculo org-wide por organização, então o
+      `scalar_one_or_none` estourava `MultipleResultsFound` e o `api-seed` saía com 1 a cada
+      `docker compose up`.)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`

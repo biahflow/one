@@ -20,9 +20,14 @@ obtido.
 - **Métrica e coletor.** Continuam onde a ADR 0018 os deixou: o substrato é o log JSON no
   stdout, que qualquer coletor ingere sem código nosso. O que esta fatia acrescenta é o dado que
   faltava — custo e tokens no `chat.answered`.
-- **Tela de administração da quota.** A rota existe sob `portal_admin`; a tela não. Sem consumo
+- ~~**Tela de administração da quota.** A rota existe sob `portal_admin`; a tela não. Sem consumo
   acumulado ela mostraria zero, que é o mesmo argumento com que a ADR 0015 adiou a tela de
-  feedback.
+  feedback.~~ **Feita em 06/08/2026 (ADR 0027), e o argumento acima estava trocado:** ele vale
+  para o **painel de gasto** e não para o **controle de teto**, que mostra um número no primeiro
+  dia. Os dois foram tratados como uma coisa só, e assim o controle ficou esperando o dado do
+  painel — enquanto `runbooks/alerts.md` mandava subir o teto quando `ai_quota.exhausted`
+  disparasse, por uma rota que ninguém conseguia chamar: ela é chaveada por um
+  `organization_id` que nenhuma resposta da API devolvia.
 
 ## Jornada e interface
 

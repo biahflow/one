@@ -526,6 +526,7 @@ export default function DashboardClient({
           <OverviewView
             user={user}
             onAsk={askAi}
+            onNavigate={goTo}
             overview={view}
             onAnalyze={() => sendQuestion(undefined, "Mostre todas as pendências.")}
           />
@@ -914,7 +915,7 @@ function compact(value: number): string {
   return value.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 }
 
-function OverviewView({ onAsk, onAnalyze, overview, user }: { onAsk: () => void; onAnalyze: () => void; overview: Overview; user: PortalUser }) {
+function OverviewView({ onAsk, onAnalyze, onNavigate, overview, user }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string) => void; overview: Overview; user: PortalUser }) {
   const timeline = overview.milestones;
   const open = openPendings(overview);
   const roi = roiValue(overview.roi);
@@ -937,8 +938,11 @@ function OverviewView({ onAsk, onAnalyze, overview, user }: { onAsk: () => void;
           <div><p>Status do projeto</p><h2>{overview.status}</h2></div>
           {overview.health && <span className={`health-pill health-pill--${overview.health.level}`}>{overview.health.label}</span>}
         </div>
-        <div className="status-meta"><span>{overview.completion}% concluído</span><div className="progress"><i style={{ width: `${overview.completion}%` }} /></div><small>{overview.source === "live" ? "Sincronizado com o Biahflow" : "Atualizado há 2 dias"}</small></div>
-        <button className="details-link">Ver detalhes <ArrowUpRight size={15} /></button>
+        {/* A casca de demonstração não carimba data: "Atualizado há 2 dias" era
+            um frescor inventado no único lugar onde o demo é permitido. */}
+        <div className="status-meta"><span>{overview.completion}% concluído</span><div className="progress"><i style={{ width: `${overview.completion}%` }} /></div><small>{overview.source === "live" ? "Sincronizado com o Biahflow" : "Dados de demonstração"}</small></div>
+        {/* Não há "Ver detalhes": status, percentual e saúde são o que o portal
+            sabe do andamento, e ele não origina status (ADR 0006/0008). */}
       </section>
 
       <section className="metrics-grid" aria-label="Indicadores do projeto">
@@ -964,7 +968,7 @@ function OverviewView({ onAsk, onAnalyze, overview, user }: { onAsk: () => void;
 
       <section className="dashboard-grid">
         <article className="panel timeline-panel">
-          <div className="panel-heading"><div><p className="eyebrow">PRÓXIMOS MARCOS</p><h2>Cronograma</h2></div><button className="text-button">Ver cronograma <ArrowUpRight size={14} /></button></div>
+          <div className="panel-heading"><div><p className="eyebrow">PRÓXIMOS MARCOS</p><h2>Cronograma</h2></div><button className="text-button" onClick={() => onNavigate("Cronograma")}>Ver cronograma <ArrowUpRight size={14} /></button></div>
           <div className="milestones">
             {timeline.map((milestone) => {
               const tone = stateStyle[milestone.state] ?? "2";
@@ -981,18 +985,18 @@ function OverviewView({ onAsk, onAnalyze, overview, user }: { onAsk: () => void;
         </article>
 
         <article className="panel pending-panel">
-          <div className="panel-heading"><div><p className="eyebrow">ACOMPANHAMENTO</p><h2>Pendências abertas <span>{open.length}</span></h2></div><button className="icon-button"><MoreHorizontal size={18} /></button></div>
+          <div className="panel-heading"><div><p className="eyebrow">ACOMPANHAMENTO</p><h2>Pendências abertas <span>{open.length}</span></h2></div></div>
           <div className="pending-list">
             {open.length === 0 && <p className="empty-state">Nenhuma pendência aberta.</p>}
             {open.slice(0, 4).map((item) => <PendingItem key={item.title} item={item} />)}
           </div>
-          <button className="text-button full-width">Ver todas as pendências <ArrowUpRight size={14} /></button>
+          <button className="text-button full-width" onClick={() => onNavigate("Pendências")}>Ver todas as pendências <ArrowUpRight size={14} /></button>
         </article>
       </section>
 
       <section className="bottom-grid">
         <article className="panel source-panel">
-          <div className="panel-heading"><div><p className="eyebrow">CONHECIMENTO DO PROJETO</p><h2>Atualizações recentes</h2></div><button className="icon-button"><MoreHorizontal size={18} /></button></div>
+          <div className="panel-heading"><div><p className="eyebrow">CONHECIMENTO DO PROJETO</p><h2>Atualizações recentes</h2></div></div>
           <div className="source-list">
             {updates.length === 0 && <p className="empty-state">Nenhum documento ou reunião ainda.</p>}
             {updates.map((update) => (
@@ -1074,7 +1078,7 @@ function MeetingsView({ onAsk, overview }: { onAsk: () => void; overview: Overvi
     <>
       <ViewHero eyebrow="REUNIÕES" title="Reuniões do projeto" subtitle="Gravações e transcrições dos encontros." onAsk={onAsk} />
       <article className="panel">
-        <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Encontros recentes <span>{overview.meetings.length}</span></h2></div><button className="icon-button"><MoreHorizontal size={18} /></button></div>
+        <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Encontros recentes <span>{overview.meetings.length}</span></h2></div></div>
         <div className="source-list">
           {overview.meetings.length === 0 && <p className="empty-state">Nenhuma reunião registrada ainda.</p>}
           {overview.meetings.map((meeting) => (
@@ -1106,14 +1110,14 @@ function PendingView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
       <ViewHero eyebrow="PENDÊNCIAS" title="Pendências do projeto" subtitle="O que precisa de decisão ou ação para avançar." onAsk={onAsk} />
       <section className="dashboard-grid">
         <article className="panel pending-panel">
-          <div className="panel-heading"><div><p className="eyebrow">ACOMPANHAMENTO</p><h2>Abertas <span>{open.length}</span></h2></div><button className="icon-button"><MoreHorizontal size={18} /></button></div>
+          <div className="panel-heading"><div><p className="eyebrow">ACOMPANHAMENTO</p><h2>Abertas <span>{open.length}</span></h2></div></div>
           <div className="pending-list">
             {open.length === 0 && <p className="empty-state">Nenhuma pendência aberta.</p>}
             {open.map((item) => <PendingItem key={item.title} item={item} />)}
           </div>
         </article>
         <article className="panel">
-          <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Resolvidas <span>{resolved.length}</span></h2></div><button className="icon-button"><MoreHorizontal size={18} /></button></div>
+          <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Resolvidas <span>{resolved.length}</span></h2></div></div>
           <div className="pending-list">
             {resolved.length === 0 && <p className="empty-state">Nenhuma pendência resolvida ainda.</p>}
             {resolved.map((item) => <PendingItem key={item.title} item={item} />)}
@@ -1334,7 +1338,12 @@ function ProfileView({ onAsk, user, projectName }: { onAsk: () => void; user: Po
     <>
       <ViewHero eyebrow="CONTA" title="Meu perfil" subtitle="Seus dados de acesso ao portal." onAsk={onAsk} />
       <article className="panel">
-        <div className="panel-heading"><div><p className="eyebrow">DADOS PESSOAIS</p><h2>Informações da conta</h2></div><button className="details-link">Editar <ArrowUpRight size={15} /></button></div>
+        {/* Não há "Editar", e não é feature faltando: nome e e-mail vivem no
+            Keycloak (ADR 0010/0011), e o GRANT de coluna de `portal_app` em
+            `user` é (external_subject, notify_by_email, updated_at) — o banco
+            recusa esta edição por desenho. Um botão aqui prometeria o que a
+            rota não tem e a policy não deixaria passar. */}
+        <div className="panel-heading"><div><p className="eyebrow">DADOS PESSOAIS</p><h2>Informações da conta</h2></div></div>
         <div className="profile-head">
           <span className="avatar avatar--lg">{user.initials}</span>
           <div><strong>{user.name}</strong><span>{user.role} <b>•</b> {user.org}</span></div>
@@ -1344,6 +1353,10 @@ function ProfileView({ onAsk, user, projectName }: { onAsk: () => void; user: Po
             <div className="field-row" key={field.label}><span className="field-label">{field.label}</span><span className="field-value">{field.value}</span></div>
           ))}
         </div>
+        <p className="panel-note">
+          Nome e e-mail vêm da sua conta corporativa e mudam lá, não aqui. Função e
+          projeto vêm do seu vínculo — fale com quem administra o portal.
+        </p>
       </article>
     </>
   );
@@ -1411,11 +1424,6 @@ function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) 
     });
   }
 
-  const prefs = [
-    { label: "Idioma", value: "Português (Brasil)" },
-    { label: "Fuso horário", value: "(GMT-3) São Paulo" },
-    { label: "Tema", value: "Claro" },
-  ];
   return (
     <>
       <ViewHero eyebrow="PREFERÊNCIAS" title="Configurações" subtitle="Ajuste como o portal se comporta para você." onAsk={onAsk} />
@@ -1447,14 +1455,17 @@ function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) 
             </div>
           </div>
         </article>
+        {/* Idioma, fuso e tema são constantes do produto, não preferências: não
+            há o que salvar, e o "Salvar alterações" que ficava aqui era o mesmo
+            defeito que o comentário acima condena nos dois interruptores.
+            Persisti-los custaria migração, policy e GRANT para gravar três
+            valores que ninguém pode mudar — então a tela os declara. */}
         <article className="panel">
-          <div className="panel-heading"><div><p className="eyebrow">REGIÃO</p><h2>Preferências</h2></div></div>
-          <div className="field-list">
-            {prefs.map((pref) => (
-              <div className="field-row" key={pref.label}><span className="field-label">{pref.label}</span><span className="field-value">{pref.value}</span></div>
-            ))}
-          </div>
-          <button className="ai-button settings-save"><Check size={16} /> Salvar alterações</button>
+          <div className="panel-heading"><div><p className="eyebrow">REGIÃO</p><h2>Como o portal se apresenta</h2></div></div>
+          <p className="panel-note">
+            O portal fala português do Brasil, mostra datas e horas no fuso de São Paulo
+            e tem um tema só. Nada disso é ajustável por enquanto.
+          </p>
         </article>
       </section>
     </>
@@ -1515,7 +1526,6 @@ function PendingItem({ item }: { item: PendingItemView }) {
         <strong>{item.title}</strong>
         <span>{detail}{item.origin === "portal" && <> <b>•</b> aberta pela IA</>}</span>
       </div>
-      <button className="icon-button"><MoreHorizontal size={17} /></button>
     </div>
   );
 }

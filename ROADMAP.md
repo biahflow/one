@@ -408,7 +408,9 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       `<input>` sem `onChange`, sem handler e sem resultado, embaixo da frase "Comece a digitar
       para buscar no contexto do projeto" — o último controle de demonstração na tela do
       cliente, e o único cuja promessa não estava num documento e sim onde quem paga pelo
-      produto a encontra sozinho. Fecha junto o critério de aceite da Fase 1 acima. Duas fontes:
+      produto a encontra sozinho. *Corrigido em 06/08/2026 (ADR 0026): "o último" estava errado,
+      havia mais onze — dois deles apontando para abas que já existiam. A segunda metade da
+      frase é que era o achado, e vale para os doze.* Fecha junto o critério de aceite da Fase 1 acima. Duas fontes:
       as linhas do read model por título e os **trechos** de documento por full-text, porque sem
       as segundas "buscar no contexto do projeto" entregaria uma lista de títulos — a versão do
       controle que parece funcionar e não responde à pergunta que alguém faz. Sem extensão nova
@@ -422,6 +424,28 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       e o `.menu-backdrop` ficava por cima — enquanto aqueles popovers eram só leitura ninguém
       notou, e o primeiro conteúdo clicável dentro de um deles esbarrou nisso na hora. O "Ver
       todas" da caixa de avisos e o menu de perfil do topo estavam igualmente mortos.)*
+
+- [x] **Os controles que não faziam nada.** *(ADR 0026, FDD 001. Segunda repetição do padrão da
+      ADR 0024, e desta vez a promessa quebrada era **a própria ADR 0024**: ela encerrou dizendo
+      que a lupa era "o último controle de demonstração na tela do cliente", este roadmap
+      repetiu e o `CLAUDE.md` repetiu de novo — e havia mais **onze** botões inertes em
+      `app/DashboardClient.tsx`. Dois deles, "Ver cronograma" e "Ver todas as pendências",
+      apontavam para abas que existiam desde a Fase 2, com um `goTo()` que existia: eram uma
+      linha cada. Os outros nove saíram, com o argumento: "Editar" no perfil promete o que o
+      GRANT de coluna de `portal_app` em `user` recusa **por desenho** (ADR 0010/0011/0012) —
+      feature errada, não feature faltando —, os seis `⋯` só poderiam oferecer ações que
+      originam status, que o portal não faz (ADR 0006/0008), e "Salvar alterações" ficava sob
+      três constantes do produto. O motivo de terem sobrevivido é o que dá a fatia: **toda
+      guarda deste repositório é sobre dado, e nenhuma era sobre affordance** — um `<button>`
+      sem `onClick` renderiza HTML byte a byte idêntico a um que funciona, então nem as
+      asserções sobre o SSR nem o Playwright os alcançavam, e o array de Idioma/Fuso/Tema
+      escapou até da guarda de literais por ser array local e não `const` de módulo, que é a
+      fuga que o comentário daquele teste já documentava. Agora `inertButtons()` exige `onClick`
+      ou `type="submit"` de todo botão sob `app/` e `components/`, e nasceu vermelha listando os
+      onze — o regex ingênuo não serviu, e isso foi medido: o `>` dentro do
+      `aria-label={unreadCount > 0 ? …}` do sino fecha a tag cedo e produz falso positivo. De
+      quebra, o "Atualizado há 2 dias" que o status-card mostrava fora do caminho `live`: um
+      carimbo de frescor inventado no único lugar onde o demo é permitido.)*
 
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,

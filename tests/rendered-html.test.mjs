@@ -193,6 +193,47 @@ async function readSources() {
   return new Map(contents);
 }
 
+/**
+ * Botões que não fazem nada (ADR 0026).
+ *
+ * Toda guarda deste arquivo é sobre **dado**: o fallback fabricado, a citação
+ * inventada, o número fixo. Nenhuma delas alcança um controle inerte, e o
+ * motivo é que um `<button>` sem `onClick` renderiza HTML byte a byte idêntico
+ * a um que funciona — as asserções sobre o HTML do SSR não têm como
+ * distingui-los, e nem o Playwright, que clica e não observa nada acontecer.
+ * Foi assim que o `<input>` da lupa sobreviveu duas fases (ADR 0024) e que
+ * outros onze sobreviveram à afirmação de que ele era o último.
+ *
+ * O regex ingênuo `<button[^>]*>` **não** serve, e isso foi medido: o sino em
+ * `DashboardClient.tsx` tem `aria-label={unreadCount > 0 ? … }`, cujo `>` fecha
+ * a tag cedo demais e esconde o `onClick` da linha seguinte. Daí a varredura
+ * balancear `{}` e pular strings até o `>` de verdade.
+ */
+function inertButtons(source) {
+  const found = [];
+  for (let at = source.indexOf("<button"); at !== -1; at = source.indexOf("<button", at + 1)) {
+    if (/[\w-]/.test(source[at + "<button".length] ?? "")) continue; // <buttonish>
+    let depth = 0;
+    let quote = "";
+    let end = at + "<button".length;
+    for (; end < source.length; end += 1) {
+      const char = source[end];
+      if (quote) {
+        if (char === quote) quote = "";
+      } else if (char === '"' || char === "'" || char === "`") quote = char;
+      else if (char === "{") depth += 1;
+      else if (char === "}") depth -= 1;
+      else if (char === ">" && depth === 0) break;
+    }
+    const tag = source.slice(at, end + 1);
+    // `type="submit"` conta porque o `<form action={…}>` do Server Action é o
+    // que o aciona — é handler, só que declarado do outro lado.
+    if (/\bonClick=|\btype="submit"/.test(tag)) continue;
+    found.push(`linha ${source.slice(0, at).split("\n").length}: ${tag.replace(/\s+/g, " ")}`);
+  }
+  return found;
+}
+
 test("closes the portal to anonymous visitors", async () => {
   const response = await render("/", { redirect: "manual" });
 
@@ -406,6 +447,23 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
       source,
       /"12,4k"|"98,6%"|"1\.203"|"\+142%"|"↑ 2,1 p\.p\. no mês"|"87% sem intervenção humana"/,
       `${path} ressuscitou um dos números de demonstração da aba Resultados`,
+    );
+    // Idioma e fuso da aba Configurações, pela mesma razão e com a mesma
+    // fuga: eram um array local dentro de `SettingsView`, não um `const` de
+    // módulo, e por isso a guarda de cima nunca os viu (ADR 0026). São
+    // constantes do produto, e a tela as declara em vez de fingir que são
+    // preferências guardadas em algum lugar.
+    assert.doesNotMatch(
+      source,
+      /"Português \(Brasil\)"|"\(GMT-3\) São Paulo"/,
+      `${path} ressuscitou as preferências fixas da aba Configurações`,
+    );
+    // E nenhum controle inerte volta. A guarda é sobre a *forma do controle*,
+    // não sobre o HTML que ele produz, que é a única forma de pegá-lo.
+    assert.deepEqual(
+      inertButtons(source),
+      [],
+      `${path} tem <button> sem onClick nem type="submit" (ADR 0026)`,
     );
   }
 

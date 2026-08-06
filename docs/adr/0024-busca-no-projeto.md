@@ -4,6 +4,14 @@
 **Contexto:** Fase 6. Fecha o critério de aceite da Fase 1 que dependia de uma busca que não
 existia, e o último controle de demonstração na tela do cliente.
 
+> **Corrigido em 06/08/2026 (ADR 0026):** "o último" estava errado. Havia mais **onze** botões
+> inertes em `app/DashboardClient.tsx` — "Ver cronograma", "Ver todas as pendências", "Ver
+> detalhes", "Editar", "Salvar alterações" e seis menus `⋯` —, e a razão de esta ADR não os ter
+> visto é a mesma que ela dá para a lupa ter durado duas fases, generalizada: toda guarda deste
+> repositório é sobre dado, e um `<button>` sem `onClick` renderiza HTML idêntico a um que
+> funciona. A ADR 0026 fecha a categoria com uma guarda sobre a forma do controle. O resto desta
+> ADR continua valendo.
+
 ## Contexto
 
 O topbar do portal tem uma lupa desde a primeira versão da tela. Ela abre um popover com um

@@ -459,6 +459,15 @@ def walk_folder(
 
                 if mime == SHORTCUT_MIME:
                     # Aponta para fora com um `parents` legal. Ignorado, nunca seguido.
+                    #
+                    # O log é da ADR 0028, e o precedente é vinte linhas abaixo:
+                    # a outra metade da fronteira já registrava o que barrava, e
+                    # esta some num contador. `alerts.md` mandava ler os dois
+                    # casos como um evento só — e um deles não emitia nada.
+                    logger.warning(
+                        "drive.shortcut_skipped",
+                        extra={"file_id": item.get("id"), "folder_id": folder_id},
+                    )
                     listing.rejected += 1
                     continue
 

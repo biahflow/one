@@ -93,6 +93,23 @@ linha `organization` (âncora do tenant, e o que segura o registro do expurgo) e
 
 O pedido guarda a contagem do que removeu, por tabela. Nunca amostra do que removeu.
 
+### Quando o expurgo falha (ADR 0028)
+
+| Onde falhou | Estado | Evento | Depois |
+|---|---|---|---|
+| Storage | `failed`, com o motivo | `erasure.storage_failed` | Pedir de novo pela tela |
+| Banco | `failed`, com o motivo | `erasure.failed` | Pedir de novo pela tela |
+| Worker morreu no meio | segue `running` | — | Reivindicado depois de `ERASURE_STALE_AFTER_SECONDS` |
+
+`failed` é **terminal para o laço automático**: o beat não retenta, porque uma falha permanente
+viraria o mesmo erro gravado a cada tick com um alerta de "qualquer ocorrência" junto. Quem
+decide tentar de novo é uma pessoa, em `/admin/organizacao` — e um `failed` já libera pedido
+novo, com o registro do anterior preservado.
+
+*Até a ADR 0028 a metade do banco não tinha tratamento nenhum: a linha ficava em `running` para
+sempre, sem evento e sem retentativa, e a tela da ADR 0027 respondia "já existe um pedido em
+execução" indefinidamente — o tenant ficava inapagável pela interface.*
+
 ### Critérios de aceite
 
 - [x] Um arquivo com a assinatura EICAR é barrado, some do bucket e **não** vira trecho.

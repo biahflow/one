@@ -1276,3 +1276,58 @@ def test_disconnecting_revokes_and_keeps_the_trail(
         assert record.enabled is False
         assert record.disconnected_at is not None
         assert record.connected_at is not None
+
+
+# --- o beco sem saída do expurgo (Fase 6, ADR 0028) -------------------------
+
+
+def test_a_failed_erasure_lets_the_screen_ask_again(
+    world, authenticated, migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A asserção que liga a ADR 0028 à tela da ADR 0027.
+
+    Esta rota devolve o pedido existente em vez de enfileirar um segundo, e o
+    filtro é `pending | running`. Antes desta fatia uma falha do banco deixava a
+    linha em `running` para sempre — nada a reivindicava de volta —, então a
+    tela respondia "já existe um pedido em execução" **para sempre** e o tenant
+    ficava permanentemente inapagável pela interface. Uma obrigação contratual
+    virava um beco sem saída por causa de um `except` que não existia.
+    """
+    from portal_api import worker
+    from portal_api.models import DataErasureRequest, ErasureState
+
+    acme = world["acme"]
+    authenticated(acme.admin)
+    with Session(migrated_engine) as session:
+        slug = session.get(Organization, acme.organization_id).slug
+
+    body = {"reason": "encerramento de contrato", "confirm_slug": slug}
+    first = client.post(
+        f"/api/v1/admin/organizations/{acme.organization_id}/erasure", json=body
+    )
+    assert first.status_code == 202
+    first_id = first.json()["request_id"]
+
+    monkeypatch.setattr(
+        worker.retention,
+        "run_erasure",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("deadlock")),
+    )
+    assert worker._run_erasure(uuid.UUID(first_id)) is False
+
+    second = client.post(
+        f"/api/v1/admin/organizations/{acme.organization_id}/erasure", json=body
+    )
+
+    assert second.status_code == 202
+    # Pedido **novo**, e não o anterior devolvido: é a diferença entre poder
+    # tentar de novo e ficar preso.
+    assert second.json()["request_id"] != first_id
+    with Session(migrated_engine) as session:
+        # E o histórico do que falhou fica, com o motivo — a tela o mostra em
+        # vermelho, e sem ele "o que aconteceu com aquela organização" volta a
+        # não ter resposta (ADR 0017).
+        failed = session.get(DataErasureRequest, uuid.UUID(first_id))
+        assert failed is not None
+        assert failed.state is ErasureState.failed
+        assert "deadlock" in (failed.error or "")

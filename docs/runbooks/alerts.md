@@ -14,7 +14,7 @@ Até lá o substrato é o log JSON no stdout de cada serviço, que qualquer cole
 | Evento | Limiar | O que significa | Runbook |
 |---|---|---|---|
 | `document.infected` | qualquer ocorrência | Um arquivo com malware chegou ao portal. O objeto já foi destruído e a linha preservada — o alerta é para **avisar o tenant**, não para conter. | `document-ingestion-failure.md`, `incident-response.md` |
-| `erasure.failed` / `erasure.storage_failed` | qualquer ocorrência | Um apagamento pedido não foi cumprido. É obrigação contratual e o pedido fica `failed` no banco, visível — mas ninguém olha uma tabela sem motivo. | `incident-response.md` |
+| `erasure.failed` / `erasure.storage_failed` | qualquer ocorrência | Um apagamento pedido não foi cumprido. É obrigação contratual e o pedido fica `failed` no banco, visível — mas ninguém olha uma tabela sem motivo. O pedido **não** é retentado sozinho: quem decide tentar de novo é uma pessoa, em `/admin/organizacao`, e um `failed` já libera pedido novo. *`erasure.failed` só passou a ser emitido na ADR 0028 — até então a metade do banco de `_run_erasure` não tinha `except` nenhum, e uma falha ali deixava o pedido em `running` para sempre, sem evento e sem retentativa.* | `incident-response.md` |
 | `health.database_unavailable` | 2 em 5 min | O caminho de requisição perdeu o Postgres. O `/health/ready` já está em 503 e o compose/orquestrador já tirou a réplica do balanceamento. | `auth-failure.md` (a RLS sem contexto devolve zero linhas, que **se parece** com isto) |
 | ausência de `task.started` com `root=beat` | 2× `RETENTION_INTERVAL_SECONDS` | O agendador parou. É alerta **por ausência** porque o `beat` não tem healthcheck: com tick de 15 min a 24 h, nenhuma sonda barata distingue "parado" de "entre ticks" (ver o comentário no `docker-compose.yml`). | `drive-sync-failure.md` |
 | ausência de backup bem-sucedido | 26 h | Também **por ausência**, e pela razão contrária à do `beat`: o backup não roda no `beat` (é operação, não aplicação — ADR 0019), então nada dentro do portal sabe que ele deveria ter rodado. 26 h e não 24 para um backup diário atrasado não acordar ninguém. | `backup-restore.md` |
@@ -45,8 +45,12 @@ ignorar o painel:
   sinal como **taxa**: um salto sustentado de `reason=signature` ou
   `reason=issuer` é sondagem, e aí o runbook é `auth-failure.md`. Um pico de
   `reason=expired` logo depois de um deploy do Keycloak é rotina.
-- `drive.rejected` (atalho, arquivo fora da pasta) — é a fronteira barrando o que
-  deve barrar, como diz `observability.md`.
+- `drive.file_outside_authorized_folder` e `drive.shortcut_skipped` — é a fronteira
+  barrando o que deve barrar, como diz `observability.md`. *Corrigido em 06/08/2026
+  (ADR 0028): esta linha dizia `drive.rejected`, que o código **nunca emitiu**. O
+  primeiro caso sempre teve evento com outro nome; o segundo não tinha nenhum —
+  o atalho só incrementava um contador, então metade da fronteira que a ADR 0016
+  confere duas vezes passava por "nada aconteceu".*
 - `document.scan_state=skipped` — é "ninguém varreu", e é o estado normal da
   stack local e do CI, que não têm ClamAV. **Em produção com `CLAMAV_HOST`
   configurado, `skipped` sustentado é alerta**: significa que o scanner

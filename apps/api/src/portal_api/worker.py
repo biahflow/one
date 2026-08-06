@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from celery import Celery
 from celery.signals import before_task_publish, setup_logging, task_postrun, task_prerun
-from sqlalchemy import select, text, update
+from sqlalchemy import and_, or_, select, text, update
 
 from portal_api import (
     crypto,
@@ -590,11 +590,12 @@ def run_erasure_requests() -> dict[str, int]:
     ``portal_system`` — a ADR 0015 já tinha decidido que "quando o expurgo
     chegar, não será o caminho de requisição a fazê-lo".
     """
+    current = get_settings()
     with get_session(role=DbRole.system) as session:
         pending = list(
             session.execute(
                 select(DataErasureRequest.id).where(
-                    DataErasureRequest.state == ErasureState.pending
+                    _erasure_is_claimable(current)
                 )
             ).scalars()
         )
@@ -605,7 +606,30 @@ def run_erasure_requests() -> dict[str, int]:
     return {"pending": len(pending), "completed": done}
 
 
-def _claim_erasure(session, request_id: uuid.UUID) -> DataErasureRequest | None:
+def _erasure_is_claimable(settings):
+    """``pending``, ou um ``running`` que ficou para trás (ADR 0028).
+
+    O segundo caso é o worker que morreu **no meio** — nenhum ``except`` alcança
+    um processo que sumiu, e sem esta janela a linha ficava `running` para
+    sempre: `_claim_erasure` só reivindicava `pending` e este filtro só
+    selecionava `pending`. É a janela que o sync do Drive tem desde a ADR 0016 e
+    que este caminho deixou de copiar junto com o resto.
+
+    Um predicado só, usado nos dois lugares, porque selecionar e reivindicar com
+    regras diferentes é como se ganha um laço que escolhe o que não consegue
+    pegar.
+    """
+    stale = retention.now() - timedelta(seconds=settings.erasure_stale_after_seconds)
+    return or_(
+        DataErasureRequest.state == ErasureState.pending,
+        and_(
+            DataErasureRequest.state == ErasureState.running,
+            DataErasureRequest.started_at < stale,
+        ),
+    )
+
+
+def _claim_erasure(session, request_id: uuid.UUID, settings) -> DataErasureRequest | None:
     """Reivindica o pedido com um ``UPDATE`` condicional, como o sync do Drive.
 
     Dois workers pegando o mesmo pedido precisam que exatamente um ganhe, e quem
@@ -616,7 +640,7 @@ def _claim_erasure(session, request_id: uuid.UUID) -> DataErasureRequest | None:
         update(DataErasureRequest)
         .where(
             DataErasureRequest.id == request_id,
-            DataErasureRequest.state == ErasureState.pending,
+            _erasure_is_claimable(settings),
         )
         .values(state=ErasureState.running, started_at=retention.now())
         .returning(DataErasureRequest.id)
@@ -629,7 +653,7 @@ def _claim_erasure(session, request_id: uuid.UUID) -> DataErasureRequest | None:
 def _run_erasure(request_id: uuid.UUID) -> bool:
     current = get_settings()
     with get_session(role=DbRole.system) as session:
-        request = _claim_erasure(session, request_id)
+        request = _claim_erasure(session, request_id, current)
         if request is None:
             return False
         organization_id = request.organization_id
@@ -659,14 +683,39 @@ def _run_erasure(request_id: uuid.UUID) -> bool:
         )
         return False
 
-    with get_session(role=DbRole.system) as session:
-        outcome = retention.run_erasure(session, organization_id)
-        request = session.get(DataErasureRequest, request_id)
-        if request is not None:
-            request.state = ErasureState.completed
-            request.completed_at = retention.now()
-            request.removed = {**outcome.removed, "storage_objects": objects}
-            request.error = None
+    try:
+        with get_session(role=DbRole.system) as session:
+            outcome = retention.run_erasure(session, organization_id)
+            request = session.get(DataErasureRequest, request_id)
+            if request is not None:
+                request.state = ErasureState.completed
+                request.completed_at = retention.now()
+                request.removed = {**outcome.removed, "storage_objects": objects}
+                request.error = None
+    except Exception as exc:
+        # A metade do banco não tinha `except` nenhum até a ADR 0028, e o ramo
+        # acima do storage tinha — a assimetria era lapso, não decisão: dez
+        # linhas antes, `purge_expired_data` envolve cada organização.
+        #
+        # Sessão **nova** pelo mesmo motivo que lá: a que falhou foi revertida,
+        # então o carimbo precisa de outra ou some junto com o rollback. É essa
+        # reversão que garante que `failed` nunca descreve meia remoção.
+        #
+        # `failed` é terminal para o laço automático. Quem decide tentar de novo
+        # é uma pessoa, pela tela (ADR 0027) — `admin.py` só bloqueia pedido
+        # novo enquanto houver `pending` ou `running`, então um `failed` já
+        # reabre o caminho, com linha nova e o histórico do anterior intacto.
+        # Retentar sozinho gravaria o mesmo erro a cada tick numa falha
+        # permanente, e dispararia junto um alerta de "qualquer ocorrência".
+        with get_session(role=DbRole.system) as session:
+            failed = session.get(DataErasureRequest, request_id)
+            if failed is not None:
+                failed.state = ErasureState.failed
+                failed.error = str(exc)[:500]
+        logger.exception(
+            "erasure.failed", extra={"organization_id": str(organization_id)}
+        )
+        return False
     return True
 
 

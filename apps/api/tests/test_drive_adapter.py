@@ -8,6 +8,8 @@ rede — o Drive é um acervo de mentira com contador de downloads.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from portal_api.config import Settings
@@ -167,6 +169,29 @@ def test_a_shortcut_inside_the_folder_is_ignored_not_followed() -> None:
     assert [f.id for f in listing.files] == ["contrato"]
     assert listing.rejected == 1
     assert fake.media_requests == []
+
+
+def test_the_skipped_shortcut_leaves_a_trace(caplog) -> None:
+    """A fronteira é conferida duas vezes e registrava só uma (ADR 0028).
+
+    O arquivo fora da pasta emitia `drive.file_outside_authorized_folder`; o
+    atalho só incrementava um contador. `alerts.md` mandava procurar os dois
+    casos sob um nome que o código nunca emitiu, então a metade silenciosa
+    passava por "nada aconteceu".
+    """
+    fake = _drive_with_one_contract()
+    fake.add(
+        FakeFile(id="atalho", name="atalho", mime_type=SHORTCUT_MIME, parents=[ROOT])
+    )
+
+    with caplog.at_level(logging.WARNING, logger="portal_api.integrations.google_drive"):
+        with fake.client() as client:
+            drive.walk_folder(_settings(), "token", ROOT, client=client)
+
+    events = [r for r in caplog.records if r.getMessage() == "drive.shortcut_skipped"]
+    assert len(events) == 1
+    assert events[0].file_id == "atalho"
+    assert events[0].folder_id == ROOT
 
 
 def test_the_walk_descends_into_subfolders_up_to_the_configured_depth() -> None:

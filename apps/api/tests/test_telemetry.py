@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 # Importado pelo efeito colateral: é o `import` que conecta os sinais que ligam
 # o `trace_id` à fila. Sem ele, o teste da fila provaria apenas que o Celery
 # publica mensagens.
+from conftest import captured
 from portal_api.worker import _publish_trace_id  # noqa: F401
 from portal_api.telemetry import (
     TRACE_HEADER,
@@ -174,28 +175,6 @@ def test_two_requests_do_not_share_an_id() -> None:
     assert seen[0] != seen[1]
 
 
-@contextmanager
-def captured(name: str = "portal_api.telemetry") -> Iterator[list[logging.LogRecord]]:
-    """Escuta um logger sem depender do estado global do ``logging``.
-
-    O ``caplog`` do pytest e o nível herdado da raiz não servem aqui: rodar a
-    suíte inteira faz o Celery reconfigurar o logging da raiz ao executar uma
-    task, e os dois testes abaixo passavam sozinhos e falhavam em conjunto. Um
-    handler próprio, com nível fixado e restaurado no fim, torna a asserção
-    independente de quem rodou antes.
-    """
-    records: list[logging.LogRecord] = []
-    handler = logging.Handler()
-    handler.emit = records.append  # type: ignore[method-assign]
-    logger = logging.getLogger(name)
-    previous = logger.level
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-    try:
-        yield records
-    finally:
-        logger.removeHandler(handler)
-        logger.setLevel(previous)
 
 
 def test_access_log_carries_the_route_template_and_not_the_url() -> None:
@@ -204,7 +183,7 @@ def test_access_log_carries_the_route_template_and_not_the_url() -> None:
     seen: list[str] = []
     client = TestClient(_app_that_logs(seen))
 
-    with captured() as records:
+    with captured("portal_api.telemetry") as records:
         client.get("/thing/019f881c-4613-79a2-a277-062ebe43f70e?secret=shhh")
 
     lines = [r for r in records if r.getMessage() == "http.request"]
@@ -220,7 +199,7 @@ def test_an_unmatched_path_is_never_echoed() -> None:
     seen: list[str] = []
     client = TestClient(_app_that_logs(seen))
 
-    with captured() as records:
+    with captured("portal_api.telemetry") as records:
         client.get("/nao-existe/<script>")
 
     routes = [r.route for r in records if r.getMessage() == "http.request"]

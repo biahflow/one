@@ -5,6 +5,35 @@
 3. Conter o acesso, avaliar tenant impactado e restaurar serviço.
 4. Registrar causa, impacto, comunicação e ação preventiva em RFC/ADR quando aplicável.
 
+## `erasure.failed` / `erasure.storage_failed` (ADR 0017, 0028)
+
+O `alerts.md` manda para cá em qualquer ocorrência, e a razão é que um apagamento
+pedido e não cumprido é obrigação contratual. O que fazer:
+
+1. **Ler o motivo na própria linha do pedido** — ele foi gravado junto do estado, e é
+   a diferença entre "o S3 recusou" e "o `DELETE` explodiu", que têm respostas
+   diferentes:
+
+   ```sql
+   SELECT id, state, requested_reason, error, started_at, completed_at, removed
+     FROM portal.data_erasure_request
+    WHERE organization_id = '<org>' ORDER BY created_at DESC;
+   ```
+
+2. **Nada foi apagado pela metade.** A sessão que falhou é revertida antes do carimbo,
+   e há teste que afirma isso (`test_a_failed_erasure_removed_nothing`). Um `failed`
+   descreve uma tentativa inteira que não aconteceu, nunca uma parcial.
+
+3. **O pedido não é retentado sozinho** — de propósito (ADR 0028): numa falha
+   permanente o laço gravaria o mesmo erro a cada tick e dispararia este alerta junto.
+   Corrigida a causa, quem pede de novo é uma pessoa em **`/admin/organizacao`**; um
+   `failed` já libera pedido novo, e o registro do que falhou fica.
+
+4. **Se o estado é `running` e não muda**, o worker morreu no meio. Nenhum `except`
+   alcança um processo que sumiu: espere `ERASURE_STALE_AFTER_SECONDS` (30 min) e o
+   próximo tick reivindica — a mesma janela e o mesmo motivo do
+   `DRIVE_SYNC_STALE_AFTER_SECONDS` em `drive-sync-failure.md`.
+
 ## Como seguir um `trace_id` (ADR 0018)
 
 O identificador é o mesmo do navegador ao worker, e existe em três lugares: no log de

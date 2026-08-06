@@ -18,9 +18,11 @@ Three roles, three fixtures (ADR 0010):
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -60,6 +62,35 @@ def skip_unless_ci(reason: str) -> None:
     if os.environ.get("CI"):
         pytest.fail(f"{reason} — e no CI isto tinha de estar disponível")
     pytest.skip(reason)
+
+
+@contextmanager
+def captured(name: str) -> Iterator[list[logging.LogRecord]]:
+    """Escuta um logger sem depender do estado global do ``logging``.
+
+    O ``caplog`` do pytest e o nível herdado da raiz não servem: rodar a suíte
+    inteira faz o Celery reconfigurar o logging da raiz ao executar uma task, e
+    um teste que passa sozinho falha em conjunto. Um handler próprio, com nível
+    fixado e restaurado no fim, torna a asserção independente de quem rodou
+    antes.
+
+    Mora aqui, e não ao lado do primeiro teste que precisou dela, porque a
+    segunda a precisar foi a de outro módulo (o evento ``erasure.failed``, ADR
+    0028) — e duplicar um utilitário cuja razão de existir é um comentário de
+    dez linhas garante que uma das cópias envelheça sozinha.
+    """
+    records: list[logging.LogRecord] = []
+    handler = logging.Handler()
+    handler.emit = records.append  # type: ignore[method-assign]
+    logger = logging.getLogger(name)
+    previous = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
 
 
 def _alembic_config() -> Config:

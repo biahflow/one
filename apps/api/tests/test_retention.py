@@ -15,13 +15,17 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from portal_api import retention
+from conftest import captured
+
+from portal_api import retention, worker
 from portal_api.config import Settings
 from portal_api.models import (
     Conversation,
+    DataErasureRequest,
     Document,
     DocumentOrigin,
     DocumentSource,
+    ErasureState,
     MemberRole,
     Membership,
     Notification,
@@ -424,3 +428,148 @@ def test_the_storage_prefix_cannot_match_a_neighbouring_organization() -> None:
 
     assert prefix.endswith("/")
     assert prefix == "org/11111111-1111-1111-1111-111111111111/"
+
+
+# --- o expurgo que falha (Fase 6, ADR 0028) ---------------------------------
+#
+# Os três acima provam que `retention.run_erasure` apaga o certo. Estes provam o
+# que acontece quando ele **não** apaga — que era o caminho sem código: só a
+# metade do storage tinha `except`, e uma falha do banco deixava a linha em
+# `running` para sempre, sem evento e sem retentativa.
+
+
+def _erasure_request(session: Session, organization_id: uuid.UUID) -> uuid.UUID:
+    record = DataErasureRequest(
+        organization_id=organization_id,
+        requested_reason="encerramento de contrato",
+    )
+    session.add(record)
+    session.flush()
+    return record.id
+
+
+@pytest.mark.integration
+def test_a_database_failure_marks_the_request_and_emits_the_alert(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`alerts.md` promete `erasure.failed` para qualquer ocorrência.
+
+    Até esta fatia o evento não existia, porque o caminho de falha não existia:
+    a exceção subia da task, a transação revertia e a linha ficava `running`.
+    """
+    with Session(migrated_engine) as session:
+        request_id = _erasure_request(session, tenants["acme_org"])
+        session.commit()
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("deadlock ao apagar o tenant")
+
+    monkeypatch.setattr(worker.retention, "run_erasure", explode)
+
+    with captured("portal_api.worker") as records:
+        assert worker._run_erasure(request_id) is False
+
+    events = [r for r in records if r.getMessage() == "erasure.failed"]
+    assert len(events) == 1
+    assert events[0].organization_id == str(tenants["acme_org"])
+
+    with Session(migrated_engine) as session:
+        failed = session.get(DataErasureRequest, request_id)
+        assert failed is not None
+        assert failed.state is ErasureState.failed
+        assert "deadlock" in (failed.error or "")
+
+
+@pytest.mark.integration
+def test_a_failed_erasure_removed_nothing(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """O carimbo de `failed` não pode chegar depois de meia remoção.
+
+    É o que prova que o rollback aconteceu: a sessão que falhou é revertida e o
+    estado é escrito por outra, como no ramo do `StorageError`.
+    """
+    with Session(migrated_engine) as session:
+        session.add(
+            Document(
+                organization_id=tenants["acme_org"],
+                project_id=tenants["acme_project"],
+                title="Contrato",
+                source=DocumentSource.upload,
+                origin=DocumentOrigin.portal,
+                mime_type="text/plain",
+            )
+        )
+        request_id = _erasure_request(session, tenants["acme_org"])
+        session.commit()
+
+    monkeypatch.setattr(
+        worker.retention,
+        "run_erasure",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("falhou no meio")),
+    )
+    worker._run_erasure(request_id)
+
+    with Session(migrated_engine) as session:
+        assert session.get(Project, tenants["acme_project"]) is not None
+        assert (
+            session.execute(
+                select(Document).where(Document.organization_id == tenants["acme_org"])
+            ).first()
+            is not None
+        )
+
+
+@pytest.mark.integration
+def test_a_worker_that_died_mid_erasure_does_not_strand_the_request(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """Um `running` vencido é reivindicado; um recente, não.
+
+    O `_claim_erasure` diz no próprio docstring que copia o sync do Drive.
+    Copiou o `UPDATE` condicional e não a janela de `stale`, que existe lá
+    justamente para um processo morto não deixar a linha presa — e aqui a linha
+    presa também tranca a tela, porque `admin.py` recusa um pedido novo enquanto
+    houver `pending` ou `running`.
+    """
+    settings = Settings()
+    with Session(migrated_engine) as session:
+        stale_id = _erasure_request(session, tenants["acme_org"])
+        fresh_id = _erasure_request(session, tenants["globex_org"])
+        for record_id, age in ((stale_id, 7200), (fresh_id, 30)):
+            record = session.get(DataErasureRequest, record_id)
+            assert record is not None
+            record.state = ErasureState.running
+            record.started_at = retention.now() - timedelta(seconds=age)
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        assert worker._claim_erasure(session, stale_id, settings) is not None
+        assert worker._claim_erasure(session, fresh_id, settings) is None
+        session.commit()
+
+
+@pytest.mark.integration
+def test_the_tick_picks_up_a_stranded_request_and_not_a_running_one(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """Reivindicar não basta: o tick também precisa **selecionar** o vencido.
+
+    Sem isto a janela da decisão 3 seria código que nada exerce — o
+    `run_erasure_requests` filtrava só por `pending`.
+    """
+    with Session(migrated_engine) as session:
+        stale_id = _erasure_request(session, tenants["acme_org"])
+        record = session.get(DataErasureRequest, stale_id)
+        assert record is not None
+        record.state = ErasureState.running
+        record.started_at = retention.now() - timedelta(seconds=7200)
+        session.commit()
+
+    result = worker.run_erasure_requests()
+
+    assert result["completed"] >= 1
+    with Session(migrated_engine) as session:
+        done = session.get(DataErasureRequest, stale_id)
+        assert done is not None
+        assert done.state is ErasureState.completed

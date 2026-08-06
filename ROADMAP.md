@@ -473,6 +473,29 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       `scalar_one_or_none` estourava `MultipleResultsFound` e o `api-seed` saía com 1 a cada
       `docker compose up`.)*
 
+- [x] **O expurgo que falha, e o alerta que o denunciaria.** *(ADR 0028, FDD 011. O
+      `alerts.md` promete `erasure.failed` para "qualquer ocorrência", com o argumento na
+      própria linha: apagamento não cumprido é obrigação contratual, e o pedido fica no banco
+      "mas ninguém olha uma tabela sem motivo". **O código nunca emitiu esse evento**, porque o
+      caminho de falha não existia — em `_run_erasure` só a metade do *storage* tinha `except`.
+      Uma exceção na metade do banco revertia a transação, deixava a linha em `running` **para
+      sempre** (o claim e o filtro do tick só olhavam `pending`), não registrava nada, e — desde
+      a ADR 0027 — fazia a tela responder "já existe um pedido em execução" indefinidamente,
+      deixando o tenant inapagável pela interface. Dar tela à rota não criou o defeito; tornou-o
+      alcançável. **Duas assimetrias mostram que foi lapso:** `purge_expired_data`, dez linhas
+      acima, envolve cada organização em `try/except` e emite `retention.purge_failed`; e o
+      docstring de `_claim_erasure` diz que ele reivindica "como o sync do Drive" — copiou o
+      `UPDATE` condicional e não a janela de `stale`, que existe lá para um processo morto não
+      prender a linha. Agora a metade do banco carimba `failed` com o motivo em sessão nova (a
+      que falhou reverteu, e é isso que garante que `failed` nunca descreva meia remoção), emite
+      o evento, e **não** retenta sozinho: quem decide é uma pessoa pela tela, e um `failed` já
+      libera pedido novo. `erasure_stale_after_seconds` cobre o worker que morreu no meio, com um
+      predicado único usado no filtro e no claim — separá-los daria um laço que escolhe o que não
+      consegue pegar. De quebra, o mesmo runbook nomeava `drive.rejected` para atalho e arquivo
+      fora da pasta: o segundo sempre teve evento com outro nome, e o **atalho não tinha
+      nenhum**, então metade da fronteira que a ADR 0016 confere duas vezes passava por "nada
+      aconteceu".)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`

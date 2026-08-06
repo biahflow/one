@@ -250,6 +250,13 @@ class Settings(BaseSettings):
     #: lotes para um acervo antigo não virar uma transação de horas segurando
     #: lock; o que sobra sai na passagem seguinte.
     retention_batch_size: int = 5000
+    #: Um expurgo em ``running`` há mais que isto pode ser recomeçado (ADR 0028).
+    #: Mesmo número e mesmo motivo do `drive_sync_stale_after_seconds`, e a
+    #: omissão dele aqui custava mais: uma conexão de Drive presa deixa de
+    #: sincronizar, um expurgo preso deixa uma obrigação contratual por cumprir
+    #: **e** tranca a tela, porque `admin.py` recusa pedido novo enquanto houver
+    #: `pending` ou `running`.
+    erasure_stale_after_seconds: int = 1800
 
     # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
     # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.

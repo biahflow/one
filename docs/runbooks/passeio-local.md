@@ -45,15 +45,19 @@ mesmo jeito que o Mailpit permite ler os e-mails sem provedor de SMTP.
 
 ## 2. Quem é quem
 
-Três contas, semeadas por `apps/api/src/portal_api/seed.py`. **A senha é a mesma para as três**
-e está versionada no realm, porque este ambiente é descartável por construção:
-`portal_local_only`.
+Três contas, semeadas por `apps/api/src/portal_api/seed.py`. A senha está versionada no realm,
+porque este ambiente é descartável por construção — e o sufixo `_local_only` não é enfeite: o
+`preflight` recusa a subida fora de `ENVIRONMENT=local` com qualquer valor assim.
 
-| Usuário | Papel | O que alcança |
-|---|---|---|
-| `marina.farias` | `client_member` | o portal do cliente. **Não** alcança `/admin` |
-| `helena.dias` | `internal_admin` | tudo, incluindo as três telas de administração |
-| `rafael.costa` | `internal_member` | o projeto, sem administrar |
+| Usuário | E-mail | Senha | Papel | O que alcança |
+|---|---|---|---|---|
+| `marina.farias` | `marina.farias@acme.com.br` | `portal_local_only` | `client_member` | o portal do cliente. **Não** alcança `/admin` |
+| `helena.dias` | `helena.dias@portallabs.com.br` | `portal_local_only` | `internal_admin` | tudo, incluindo as três telas de administração |
+| `rafael.costa` | `rafael.costa@portallabs.com.br` | `portal_local_only` | `internal_member` | o projeto, sem administrar |
+
+**O Keycloak pede o usuário, não o e-mail.** O e-mail está aí porque é por ele que a pessoa
+aparece no Mailpit (passo 3.5) e é ele que se digita ao convidar alguém (passo 3.11) — na tela de
+login, quem entra é `marina.farias`.
 
 Os `sub` do realm e os do seed são os mesmos UUIDs de propósito — é o que faz a linha do banco
 já nascer ligada à conta do Keycloak, em vez de esperar o primeiro login para casar por e-mail.

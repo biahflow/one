@@ -716,3 +716,36 @@ def test_staff_cannot_read_the_assistant_signal_of_another_project(
     )
 
     assert response.status_code == 404
+
+
+def test_a_named_conversation_of_someone_else_is_not_found(
+    world: World, authenticated, db_session: Session
+) -> None:
+    """A rota nova da ADR 0031, com o caso que dá sentido a ela.
+
+    Duas barreiras, e nenhuma escrita na rota: o repositório filtra por
+    `user_id` e a policy de `conversation` exige
+    `user_id = portal.current_user_id()`.
+    """
+    from portal_api.models import Conversation
+
+    other = db_session.execute(
+        select(User).where(User.external_subject == world.globex.client.subject)
+    ).scalar_one()
+    conversation = Conversation(
+        organization_id=world.globex.organization_id,
+        project_id=world.globex.project_id,
+        user_id=other.id,
+        title="pergunta da globex",
+        last_message_at=datetime.now(timezone.utc),
+    )
+    db_session.add(conversation)
+    db_session.commit()
+
+    authenticated(world.acme.client)
+    response = client.get(f"/api/v1/me/conversations/{conversation.id}")
+
+    assert response.status_code == 404
+
+    db_session.delete(conversation)
+    db_session.commit()

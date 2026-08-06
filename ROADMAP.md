@@ -78,7 +78,13 @@ termo pela mesma rota.*
 - [x] Implementar pendências com responsável, estados e histórico (abertas/resolvidas), com
       distinção de origem: espelhadas do Biahflow vs. abertas pela IA por lacuna de contexto,
       que sobrevivem ao sync (`PendingItem.origin`, migração `0006_portal_sync_fields`).
-      *Comentários e vínculo a conversas seguem pendentes.* **Prioridade feita em 06/08/2026
+      *Comentários seguem pendentes.* **Vínculo a conversas feito em 06/08/2026 (ADR 0031),
+      e ele também não estava "pendente":** o FK `conversation_message.pending_item_id` existia
+      desde a ADR 0015 e era lido **como booleano** (`pending_created`), então o cliente via
+      "aberta pela IA" e não tinha volta à pergunta. A implementação mudou de desenho ao medir:
+      as pendências da IA vivem em conversas antigas e o chat carrega só a corrente, então a
+      primeira versão abria o painel sem nada a destacar — foi preciso levar a *thread* no payload
+      e uma rota para abri-la. **Prioridade feita em 06/08/2026
       (ADR 0029), e ela não estava "pendente":** havia coluna com enum desde a Fase 1, campo no
       `PendingOut`, chave no payload e até declaração no tipo `ApiPending` do BFF — que a
       **descartava** no mapeamento. E a causa era mais funda: `sync_snapshot` nunca lia

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from portal_api import notifications, results
 from portal_api.models import (
+    ConversationMessage,
     DeliverableState,
     DigitalEmployee,
     DigitalEmployeeStatus,
@@ -440,6 +441,36 @@ def _journey_projection(session: Session, project: Project) -> dict[str, Any]:
     }
 
 
+def _turn_that_opened(session: Session, project: Project) -> dict[uuid.UUID, uuid.UUID]:
+    """Pendência da IA → (id do turno, id da conversa) que a abriu (ADR 0031).
+
+    O FK existe e é gravado desde a ADR 0015 (``conversations.append_turn``), e
+    até esta fatia era lido **só como booleano** (``pending_created`` em
+    ``main.py``): o cliente via "aberta pela IA" e não tinha como voltar à
+    pergunta que a gerou.
+
+    Roda sob o mesmo papel do resto do dashboard, e é o que torna a leitura
+    correta sem policy nova: a linha é da pessoa que perguntou, então quem
+    enxerga o turno é exatamente quem deveria — as policies de
+    ``conversation_message`` já dizem isso, e uma pendência aberta pela conversa
+    de outra pessoa simplesmente não casa aqui.
+    """
+    rows = session.execute(
+        select(
+            ConversationMessage.pending_item_id,
+            ConversationMessage.id,
+            ConversationMessage.conversation_id,
+        ).where(
+            ConversationMessage.project_id == project.id,
+            ConversationMessage.pending_item_id.is_not(None),
+        )
+    ).all()
+    return {
+        pending_id: (message_id, conversation_id)
+        for pending_id, message_id, conversation_id in rows
+    }
+
+
 def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
     """Dashboard projection from the portal read model (fed by Biahflow)."""
     milestones = list(
@@ -449,6 +480,7 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
             .order_by(Milestone.position)
         ).scalars()
     )
+    opened_by = _turn_that_opened(session, project)
     documents = session.execute(
         select(Document)
         .where(Document.project_id == project.id)
@@ -543,6 +575,17 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         "pendings": [
             {
                 "title": pending.title,
+                # O turno que abriu esta pendência, quando foi a IA (ADR 0031).
+                # `None` para o que veio do Biahflow, e para a pendência da IA
+                # cuja conversa pertence a outra pessoa do projeto.
+                "opened_by_message_id": (
+                    str(opened_by[pending.id][0]) if pending.id in opened_by else None
+                ),
+                # A thread, e não só o turno: ele quase nunca está na conversa
+                # corrente, e o histórico do chat é de uma só (ADR 0015/0031).
+                "opened_by_conversation_id": (
+                    str(opened_by[pending.id][1]) if pending.id in opened_by else None
+                ),
                 "description": pending.description,
                 "owner_label": pending.owner_label,
                 "state": pending.state.value,

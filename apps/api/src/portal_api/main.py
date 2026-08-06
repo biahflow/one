@@ -905,6 +905,46 @@ def my_latest_conversation(principal: CurrentPrincipal) -> dict:
         }
 
 
+@app.get(
+    "/api/v1/me/conversations/{conversation_id}",
+    response_model=schemas.ConversationOut,
+    response_model_exclude_unset=True,
+    responses=CLIENT_ERRORS,
+)
+def my_conversation(conversation_id: UUID, principal: CurrentPrincipal) -> dict:
+    """Uma thread nomeada, para o cliente voltar à pergunta que abriu a pendência.
+
+    Existe por causa da ADR 0031: a pendência aberta pela IA aponta um turno, e
+    ele quase nunca está na thread **corrente** — o histórico do chat é de uma
+    conversa só (ADR 0015), então sem esta rota o caminho de volta abriria o
+    painel e não mostraria nada.
+
+    Conversa de outra pessoa é 404 pelo caminho normal do portal, e a checagem
+    não é escrita aqui: ``ConversationRepository.get_for_user`` filtra por
+    ``user_id`` e a policy de `conversation` exige
+    ``user_id = portal.current_user_id()``. As duas barreiras, como sempre.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.default_project(session, user)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        ctx = TenantContext(project.organization_id, project.id)
+        conversation = ConversationRepository(session, ctx).get_for_user(
+            conversation_id, user.id
+        )
+        if conversation is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+        messages = ConversationMessageRepository(session, ctx).list_for_conversation(
+            conversation.id, user.id, limit=conversations.HISTORY_LIMIT
+        )
+        return {
+            "conversation_id": str(conversation.id),
+            "title": conversation.title,
+            "messages": [_message_payload(message) for message in messages],
+        }
+
+
 @app.post(
     "/api/v1/me/conversations/messages/{message_id}/feedback",
     response_model=schemas.FeedbackOut,

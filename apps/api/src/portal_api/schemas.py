@@ -285,6 +285,13 @@ class PendingOut(Out):
     #: Espelhada do Biahflow ou aberta pela IA por lacuna de contexto. É o que
     #: faz a pendência da IA sobreviver ao sync seguinte (ADR 0012).
     origin: str
+    #: O turno do chat que abriu esta pendência, quando foi a IA (ADR 0031). O FK
+    #: existe desde a ADR 0015 e era lido só como booleano; sem o id, o cliente vê
+    #: "aberta pela IA" e não tem como voltar à pergunta que a gerou.
+    opened_by_message_id: str | None
+    #: A thread daquele turno. Sem ela o cliente abriria o chat na conversa
+    #: corrente, que quase nunca é a que gerou a pendência.
+    opened_by_conversation_id: str | None
     created_at: str
     resolved_at: str | None
 

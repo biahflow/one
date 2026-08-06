@@ -11,6 +11,7 @@ import hmac
 import json
 import uuid
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from typing import Any
 
@@ -441,3 +442,71 @@ def test_webhook_syncs_new_object_types(
     dashboard = biahflow.build_dashboard(db_session, project)
     assert len(dashboard["meetings"]) == 2
     assert len(dashboard["pendings"]) == 2
+
+
+@pytest.mark.integration
+def test_the_dashboard_says_which_turn_opened_an_ai_pending(db_session: Session) -> None:
+    """O FK existia desde a ADR 0015 e era lido só como booleano (ADR 0031).
+
+    A pendência espelhada do Biahflow não tem turno; a aberta pela IA tem — e é
+    o que dá ao cliente o caminho de volta à pergunta que ele mesmo fez.
+    """
+    from portal_api.models import (
+        Conversation,
+        ConversationMessage,
+        ConversationRole,
+        PendingItem,
+        PendingOrigin,
+        User,
+    )
+
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=91, client_id=90)
+    )
+    asker = User(
+        email=f"quem-perguntou-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="Quem Perguntou",
+        external_subject=str(uuid.uuid4()),
+    )
+    db_session.add(asker)
+    db_session.flush()
+    pending = PendingItem(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        title="Responder dúvida do cliente: quanto falta?",
+        origin=PendingOrigin.portal,
+    )
+    db_session.add(pending)
+    conversation = Conversation(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        user_id=asker.id,
+        title="quanto falta?",
+        last_message_at=datetime.now(timezone.utc),
+    )
+    db_session.add(conversation)
+    db_session.flush()
+    turn = ConversationMessage(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        conversation_id=conversation.id,
+        user_id=conversation.user_id,
+        ordinal=2,
+        role=ConversationRole.assistant,
+        text="Não há evidência suficiente.",
+        pending_item_id=pending.id,
+    )
+    db_session.add(turn)
+    db_session.flush()
+
+    pendings = {
+        item["title"]: item
+        for item in biahflow.build_dashboard(db_session, project)["pendings"]
+    }
+
+    assert pendings["Responder dúvida do cliente: quanto falta?"][
+        "opened_by_message_id"
+    ] == str(turn.id)
+    # A do Biahflow não veio de conversa nenhuma, e dizer o contrário seria
+    # inventar procedência.
+    assert pendings["Aprovar fluxo de exceções"]["opened_by_message_id"] is None

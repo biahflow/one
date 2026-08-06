@@ -75,27 +75,50 @@ test("a pendência aberta pela IA leva de volta à pergunta que a gerou", async 
   await expect(page.locator(".message--focused")).toHaveCount(1);
 });
 
-const ADMIN = { username: "helena.dias", password: "portal_local_only" };
+/**
+ * O "outro lado" é o `internal_member`, e não a administradora, e a razão é do
+ * ambiente: `helena.dias` tem vínculo org-wide em **duas** organizações nesta
+ * máquina (o bootstrap da ADR 0025 rodou aqui), então o `default_project` dela é
+ * o outro projeto e a caixa dela é a de outro tenant. `rafael.costa` pertence só
+ * à organização semeada — e é ele quem, no produto, acompanha o projeto.
+ */
+const STAFF = { username: "rafael.costa", password: "portal_local_only" };
 
 test("o comentário do cliente chega ao time, com aviso no sino", async ({ page }) => {
   const mark = `combinado-${Date.now().toString(36)}`;
 
   await signIn(page, CLIENT);
-  await page.getByRole("button", { name: /^Pendências/ }).click();
 
-  // O fio abre por clique: oito pendências com todos abertos viram mural.
+  /** A contagem do sino, ou 0 quando não há badge. */
+  async function unread(): Promise<number> {
+    const bell = page.getByRole("button", { name: /^Notificações/ });
+    const label = (await bell.getAttribute("aria-label")) ?? "";
+    return Number(label.match(/\((\d+)/)?.[1] ?? "0");
+  }
+
+  // Medido antes, e não comparado com zero: este banco acumula avisos de sync
+  // anteriores, e exigir zero confundiria "não recebeu pelo próprio comentário"
+  // com "não tem aviso nenhum".
+  const before = await unread();
+
+  await page.getByRole("button", { name: /^Pendências/ }).click();
   const row = page.locator(".pending-entry", { hasText: "Aprovar fluxo de exceções" }).first();
+  // O fio abre por clique: oito pendências com todos abertos viram mural.
   await row.getByRole("button", { name: /Comentar|comentário/ }).click();
   await row.getByLabel("Novo comentário").fill(`Já enviei, ${mark}`);
   await row.getByRole("button", { name: "Enviar" }).click();
   await expect(row.getByText(new RegExp(mark))).toBeVisible();
 
-  // O outro lado vê o comentário **e** é avisado. A Marina não deve ter recebido
-  // aviso do próprio comentário — é o que `exclude_user_id` garante (ADR 0032).
-  await expect(page.getByRole("button", { name: /Notificações \(/ })).toHaveCount(0);
+  // Quem escreveu não é avisado do próprio comentário — é o que
+  // `exclude_user_id` garante (ADR 0032).
+  await page.reload();
+  expect(await unread()).toBe(before);
 
-  await signIn(page, ADMIN);
-  await expect(page.getByRole("button", { name: /Notificações \(\d+ não lidas\)/ })).toBeVisible();
+  // E o outro lado vê o comentário e recebe o aviso.
+  await signIn(page, STAFF);
+  await expect(
+    page.getByRole("button", { name: /Notificações \(\d+ não lidas\)/ }),
+  ).toBeVisible();
   await page.getByRole("button", { name: /^Pendências/ }).click();
   const sameRow = page
     .locator(".pending-entry", { hasText: "Aprovar fluxo de exceções" })

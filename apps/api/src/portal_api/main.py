@@ -19,6 +19,7 @@ from portal_api import (
     agent_auth,
     chat_limit,
     conversations,
+    pending_comments,
     results,
     schemas,
     search,

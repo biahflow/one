@@ -23,6 +23,12 @@ assinatura nova, e a tela do cliente que explica o prazo de retenção dos dados
 | Abrir documento citado | qualquer membro do projeto | `GET /api/v1/me/documents/{id}/download` |
 | Ler/definir prazo | `internal_admin` da organização | `.../admin/organizations/{id}/retention` |
 | Pedir apagamento | `internal_admin` da organização | `POST .../admin/organizations/{id}/erasure` |
+| Descobrir quais organizações | `internal_admin` | `GET /api/v1/admin/organizations` (ADR 0027) |
+
+*As duas últimas linhas eram inalcançáveis até 06/08/2026, e não por falta de tela: elas são
+chaveadas por um `organization_id` que **nenhuma resposta da API devolvia** — `GET /api/v1/me`
+traz o *nome* da organização. A ADR 0027 acrescentou a rota de descoberta e a tela
+`/admin/organizacao`, e é lá que o slug do expurgo é digitado.*
 
 Negação é 404 em todas, como no resto da API. O papel de banco é `portal_admin` para as rotas de
 administração e `portal_app` para o download; a poda e o expurgo rodam sob `portal_system`, no
@@ -76,7 +82,9 @@ uma transação cada: um erro numa não desfaz a poda das outras.
 ## Expurgo por organização
 
 `POST .../erasure` grava a intenção e responde **202**. Exige motivo e o `slug` da organização
-digitado — a confirmação existe porque é a única ação do portal que nenhuma tela desfaz.
+digitado — a confirmação existe porque é a única ação do portal que nenhuma tela desfaz. *Onde
+se digita é `/admin/organizacao`, desde a ADR 0027; até lá esta frase descrevia uma tela que não
+existia, e o pedido só se fazia por `curl` com um token que o portal não emite.*
 
 O worker executa: storage primeiro (pelo prefixo `org/<id>/`, que existe na chave desde a
 ADR 0014 exatamente para isto), banco depois. Sai o conteúdo dos projetos e os vínculos; ficam a

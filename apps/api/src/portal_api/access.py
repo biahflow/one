@@ -94,6 +94,50 @@ def require_organization(
     return organization if roles & allowed else None
 
 
+def administered_organizations(
+    session: Session,
+    user: User,
+    allowed: frozenset[MemberRole] = ADMIN_ONLY,
+) -> list[Organization]:
+    """The organizations the caller administers — the plural of ``require_organization``.
+
+    Exists because the six organization-scoped admin routes are keyed on an
+    ``organization_id`` that **no response in the API returned** (ADR 0027):
+    ``MeOut.organization`` is the organization's *name*, and nothing else
+    carried the uuid. They were not merely unscreened — they had no reachable
+    caller at all.
+
+    Same membership rule as ``require_organization``: an admin link of either
+    scope counts, the organization-wide one (``project_id IS NULL``) or one on
+    any project of it.
+
+    Like ``visible_projects``, it binds **no** tenant: the listing spans
+    organizations while the GUCs hold one. It also runs before any
+    ``bind_admin_org``, and that is the point rather than an omission — at that
+    stage the transaction sees only the caller's own memberships, which is the
+    same property that keeps ``_authorized_org`` from being circular. There is
+    no organization to pin when the question is *which* organizations.
+    """
+    organization_ids = set(
+        session.execute(
+            select(Membership.organization_id).where(
+                Membership.user_id == user.id,
+                Membership.role.in_(allowed),
+            )
+        ).scalars()
+    )
+    if not organization_ids:
+        return []
+
+    return list(
+        session.execute(
+            select(Organization)
+            .where(Organization.id.in_(organization_ids))
+            .order_by(Organization.name)
+        ).scalars()
+    )
+
+
 def default_project(session: Session, user: User) -> Project | None:
     """The project to show when the caller did not name one.
 

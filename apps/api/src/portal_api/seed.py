@@ -131,8 +131,19 @@ def _upsert_membership(
         if project_id is not None
         else Membership.project_id.is_(None)
     )
+    # E filtra pela organização, sem o que a busca não identifica uma linha.
+    # Isto só passou a importar quando a **segunda** organização passou a
+    # existir: o bootstrap da ADR 0025 dá a quem administra um vínculo de escopo
+    # organizacional na organização nova, então uma pessoa interna acumula um
+    # `project_id IS NULL` por organização — e o `scalar_one_or_none` acima
+    # estourava `MultipleResultsFound`, derrubando o `api-seed` a cada
+    # `docker compose up`.
     membership = session.execute(
-        select(Membership).where(Membership.user_id == user.id, scope)
+        select(Membership).where(
+            Membership.user_id == user.id,
+            Membership.organization_id == project.organization_id,
+            scope,
+        )
     ).scalar_one_or_none()
     if membership is None:
         membership = Membership(

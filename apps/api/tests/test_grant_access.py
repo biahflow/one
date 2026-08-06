@@ -307,3 +307,74 @@ def test_the_cli_exits_nonzero_when_it_refuses(orphan: Orphan) -> None:
         ["--email", "ninguem@exemplo.com", "--organization", orphan.organization_slug]
     ) == 1
     assert main(["--email", orphan.email, "--organization", orphan.organization_slug]) == 0
+
+
+def test_the_seed_survives_a_person_who_administers_two_organizations(
+    orphan: Orphan, migrated_engine: Engine
+) -> None:
+    """O defeito que só apareceu ao subir a pilha depois desta ADR.
+
+    O bootstrap dá um vínculo de **escopo organizacional** (`project_id IS NULL`)
+    na organização nova. Quem já administrava outra passa a ter um
+    `project_id IS NULL` por organização — e `seed._upsert_membership` procurava
+    a linha por `user_id` + `project_id IS NULL` **sem filtrar a organização**,
+    de modo que o `scalar_one_or_none` estourava `MultipleResultsFound` e o
+    serviço `api-seed` saía com 1 a cada `docker compose up`.
+
+    Não é sujeira de máquina: é o estado normal de qualquer instalação onde o
+    sync do Biahflow criou uma segunda organização e alguém rodou o bootstrap —
+    exatamente o caminho que a ADR 0025 abriu.
+    """
+    from portal_api.seed import SeedUser, _upsert_membership
+
+    with Session(migrated_engine) as session:
+        grant(
+            session,
+            email=orphan.email,
+            organization_slug=orphan.organization_slug,
+            role=MemberRole.internal_admin,
+        )
+        session.commit()
+
+    tag = uuid.uuid4().hex[:8]
+    with Session(migrated_engine) as session:
+        other = Organization(name="Outra", slug=f"outra-{tag}")
+        session.add(other)
+        session.flush()
+        other_project = Project(
+            organization_id=other.id,
+            name="Projeto da outra",
+            slug=f"outra-projeto-{tag}",
+            status=ProjectStatus.discovery,
+            completion_percent=0,
+        )
+        session.add(other_project)
+        session.flush()
+
+        person = session.get(User, orphan.user_id)
+        assert person is not None
+        seed_user = SeedUser(
+            subject=person.external_subject or "",
+            email=person.email,
+            full_name=person.full_name,
+            role=MemberRole.internal_admin,
+        )
+
+        created = _upsert_membership(session, person, other_project, seed_user)
+        session.commit()
+
+        # Uma linha nova, na organização certa — e não um erro.
+        assert created.organization_id == other.id
+        assert created.project_id is None
+
+        # E a da outra organização continua onde estava: o seed não realoca um
+        # vínculo existente para o tenant que ele acabou de semear.
+        held = session.execute(
+            select(Membership.organization_id).where(
+                Membership.user_id == person.id, Membership.project_id.is_(None)
+            )
+        ).scalars().all()
+        assert set(held) == {orphan.organization_id, other.id}
+
+        session.execute(delete(Organization).where(Organization.id == other.id))
+        session.commit()

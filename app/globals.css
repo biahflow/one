@@ -90,6 +90,9 @@
   .state--0 { @apply bg-brand-50 text-brand-700; }
   .state--1, .state--done { @apply bg-success-50 text-success-600; }
   .state--2 { @apply bg-slate-100 text-slate-500; }
+  /* Um expurgo que falhou é obrigação contratual não cumprida (ADR 0027), e o
+     cinza de `state--2` o esconderia entre os pendentes. */
+  .state--3 { @apply bg-danger-50 text-danger-600; }
 
   .empty-state {
     @apply rounded-xl border border-dashed border-line px-4 py-6 text-center text-xs text-muted;
@@ -567,6 +570,14 @@
     @apply rounded-xl border border-line bg-white px-3 py-2.5 text-[13px] text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
   }
   .admin-submit { @apply mt-1.5 justify-center py-3 text-sm disabled:opacity-60; }
+  /* A única ação do portal que nenhuma tela desfaz não deve parecer com as
+     outras (ADR 0027). O `confirm_slug` é a trava; a cor é o aviso. */
+  .admin-submit--danger { @apply bg-danger-600 hover:bg-danger-600/90; }
+  /* A frase que explica um campo, embaixo dele. Existe porque "vazio = padrão"
+     e "digite o slug" são regras que o rótulo não comporta e que, não ditas,
+     transformam o formulário numa adivinhação. */
+  .field-hint { @apply text-[10px] leading-relaxed text-muted; }
+  .admin-head h2 svg, .panel-heading h2 svg { @apply mr-1.5 inline-block align-[-3px]; }
 
   /* ---------- Login ---------- */
   .auth-shell { @apply grid min-h-screen grid-cols-[1.05fr_1fr] bg-canvas; }

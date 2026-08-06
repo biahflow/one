@@ -429,7 +429,12 @@ def test_a_tampered_backup_is_refused_before_any_database_is_touched(
 ) -> None:
     """O digest do manifesto é conferido antes do primeiro CREATE DATABASE."""
     if not script_env.get("POSTGRES_PASSWORD"):
-        pytest.skip("POSTGRES_USER/POSTGRES_PASSWORD não definidos")
+        # O último `pytest.skip` cru do arquivo, e o vizinho de `restored` já
+        # dizia por que isso não serve: o pulo silencioso em toda execução do CI
+        # é o que deixou as afirmações do backup semanas sem rodar (ADR 0019/0020).
+        # Este teste é a decisão 6 daquela ADR — restaurar bytes corrompidos é
+        # pior que falhar —, então some em verde exatamente quem mais precisa gritar.
+        skip_unless_ci("POSTGRES_USER/POSTGRES_PASSWORD não definidos")
 
     out = tmp_path / "snapshot"
     env = {**script_env, "TMPDIR": str(tmp_path)}

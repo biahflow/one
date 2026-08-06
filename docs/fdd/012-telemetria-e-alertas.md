@@ -141,3 +141,27 @@ lado: doze eventos emitidos que nenhum runbook conhecia.
 - **Sem eval de IA.** Nada aqui toca prompt, recuperador, modelo ou ferramenta.
 - **Sem spec de e2e novo.** O que esta fatia precisa provar cabe nos níveis de
   baixo, e o `e2e-login` é `continue-on-error` no CI.
+
+## Acrescentado na ADR 0035 — o BFF entra na guarda
+
+*Acrescentado em 06/08/2026.* A guarda bidirecional acima parava na fronteira do
+pacote Python, e o BFF tem logger estruturado próprio (`app/lib/log.ts`) que
+escreve no mesmo formato. Quatro eventos — `api.rejected`, `api.unreachable`,
+`api.failed` e `web.request_error` — eram emitidos em produção **sem linha em
+runbook nenhum**, que é exatamente a divergência que esta FDD existe para impedir.
+
+A evidência estava dentro da própria guarda: um `elsewhere = {"web.request_error"}`
+que declarava o evento como "emitido pelo BFF, não por este código". A exceção
+descrevia o ponto cego em vez de fechá-lo.
+
+- `apps/api/tests/test_telemetry.py`: a varredura passou a incluir os `.ts` da raiz
+  e `app/`+`components/`, por expressão regular e não por AST (é TypeScript), com
+  `app/lib/log.ts` de fora por ser a **definição** das funções. `emitted_events()`
+  agora responde pelos dois deployables, e `test_every_web_log_line_is_a_named_event`
+  reprova um `logWarn(\`api falhou: ${erro}\`)` — medido, neutralizando o sítio de
+  `app/actions.ts:39`.
+- Numa guarda só, e não num teste node ao lado: o `alerts.md` é um arquivo só, e
+  duas guardas sobre ele divergem. O precedente é `test_seed_matches_realm.py`.
+- Os quatro eventos ganharam linha em `docs/runbooks/alerts.md`, com o par
+  `api.rejected`/`api.unreachable` distinto de propósito — lá alguém respondeu,
+  aqui ninguém atendeu.

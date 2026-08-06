@@ -368,7 +368,26 @@ def test_the_rate_limit_event_shows_only_the_prefix_of_the_subject() -> None:
 EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 SOURCE_ROOT = Path(portal_api.__file__).parent
-ALERTS = Path(__file__).resolve().parents[3] / "docs" / "runbooks" / "alerts.md"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+ALERTS = REPO_ROOT / "docs" / "runbooks" / "alerts.md"
+
+#: O BFF tem logger estruturado próprio (`app/lib/log.ts`) e emite eventos que
+#: chegam ao mesmo coletor. Até a ADR 0035 esta guarda parava na fronteira do
+#: pacote Python, e os quatro eventos do lado web não tinham linha em runbook
+#: nenhum — a mesma divergência que a ADR 0034 acabara de fechar do outro lado.
+#:
+#: A varredura é por expressão regular e não por AST porque é TypeScript, e mora
+#: **aqui** em vez de num teste node ao lado: o `alerts.md` é um arquivo só, e
+#: duas guardas sobre o mesmo arquivo divergem — que é literalmente o defeito
+#: que esta seção existe para impedir. O precedente de teste Python lendo
+#: artefato de fora do pacote é o `test_seed_matches_realm.py`.
+_WEB_DIRECTORIES = ("app", "components")
+
+#: `app/lib/log.ts` **define** `logInfo`/`logWarn`/`logError`; as ocorrências ali
+#: são a assinatura das funções, não sítios de emissão.
+_WEB_LOGGER_MODULE = "app/lib/log.ts"
+
+_WEB_LOG_CALL = re.compile(r"\blog(?:Info|Warn|Error)\(\s*([^,)]+)")
 
 #: Módulos cujo `logger` fala com **uma pessoa no terminal**, não com um
 #: coletor: são comandos de operação (`python -m portal_api.seed`, o bootstrap
@@ -397,7 +416,6 @@ NOT_AN_ALERT = {
     "identity.linked": "primeiro login de quem já tinha linha; curso normal",
     "identity.provisioned": "primeiro login de quem não tinha; curso normal",
     "preflight.ok": "diz que a subida passou; o que interessa é a recusa, e ela impede o boot",
-    "web.request_error": "emitido pelo BFF, não por este código; documentado no `incident-response.md`",
 }
 
 
@@ -421,13 +439,74 @@ def _logger_calls() -> list[tuple[str, int, ast.expr]]:
     return calls
 
 
+def _web_sources() -> list[Path]:
+    """Os fontes do BFF: os `.ts` da raiz (`instrumentation.ts`) e `app/`+`components/`."""
+    files = [path for path in sorted(REPO_ROOT.glob("*.ts")) if path.is_file()]
+    for directory in _WEB_DIRECTORIES:
+        root = REPO_ROOT / directory
+        if root.is_dir():
+            files += sorted(root.rglob("*.ts")) + sorted(root.rglob("*.tsx"))
+    return [
+        path
+        for path in files
+        if path.relative_to(REPO_ROOT).as_posix() != _WEB_LOGGER_MODULE
+    ]
+
+
+def _web_log_calls() -> list[tuple[str, int, str]]:
+    """Todo `logInfo`/`logWarn`/`logError` do BFF, com o primeiro argumento cru."""
+    calls: list[tuple[str, int, str]] = []
+    for path in _web_sources():
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for match in _WEB_LOG_CALL.finditer(line):
+                calls.append((relative, number, match.group(1).strip()))
+    return calls
+
+
+def _web_event_name(argument: str) -> str | None:
+    """O nome, quando o argumento é um literal — `None` quando é template ou variável."""
+    if len(argument) >= 2 and argument[0] == '"' and argument[-1] == '"':
+        return argument[1:-1]
+    return None
+
+
 def emitted_events() -> set[str]:
+    """Os eventos nomeados dos **dois** deployables que falam com o coletor."""
     names = set()
     for _, _, first in _logger_calls():
         if isinstance(first, ast.Constant) and isinstance(first.value, str):
             if EVENT_NAME.match(first.value):
                 names.add(first.value)
+    for _, _, argument in _web_log_calls():
+        candidate = _web_event_name(argument)
+        if candidate and EVENT_NAME.match(candidate):
+            names.add(candidate)
     return names
+
+
+def test_every_web_log_line_is_a_named_event() -> None:
+    """A mesma regra do lado do BFF, e pelo mesmo motivo (ADR 0035).
+
+    `app/lib/log.ts` escreve uma linha JSON com o campo `event`, exatamente como
+    o `JsonFormatter`. Um `logWarn(\\`api falhou: ${erro}\\`)` produziria ali o
+    mesmo valor irrepetível que os dez sítios em prosa que a ADR 0034 corrigiu no
+    Python — e nada impedia, porque a guarda parava na fronteira do pacote.
+    """
+    offenders = [
+        f"{name}:{line}"
+        for name, line, argument in _web_log_calls()
+        if not (
+            (candidate := _web_event_name(argument)) and EVENT_NAME.match(candidate)
+        )
+    ]
+
+    assert offenders == [], (
+        "estas chamadas de log do BFF não usam um nome de evento estável: "
+        + ", ".join(offenders)
+        + ". A mensagem é o nome (`familia.acontecimento`) e o detalhe vai nos"
+        " campos — senão o `event` muda a cada ocorrência (ADR 0018/0034/0035)."
+    )
 
 
 def test_every_log_line_is_a_named_event() -> None:
@@ -533,11 +612,10 @@ def test_every_event_the_runbook_names_is_emitted() -> None:
     asserção, o conserto vale até o próximo alguém — que foi o que aconteceu.
     """
     emitted = emitted_events()
-    # Emitidos fora deste pacote, mas legitimamente citados pelo runbook.
-    elsewhere = {"web.request_error"}
-    ghosts = sorted(
-        e for e in _events_named_in_the_runbook() if e not in emitted and e not in elsewhere
-    )
+    # Até a ADR 0035 havia aqui um `elsewhere = {"web.request_error"}`: o evento
+    # era emitido pelo BFF, que esta guarda não enxergava. Agora enxerga, e a
+    # exceção saiu — a assimetria era o defeito, como no `health.broker_unavailable`.
+    ghosts = sorted(e for e in _events_named_in_the_runbook() if e not in emitted)
 
     assert ghosts == [], (
         "o `alerts.md` manda vigiar estes eventos e nenhum código os emite: "
@@ -553,7 +631,7 @@ def test_the_allowlists_do_not_keep_a_line_that_stopped_being_needed() -> None:
     stale_modules = sorted(
         name for name in PROSE_IS_FINE if not (SOURCE_ROOT / name).exists()
     )
-    stale_events = sorted(e for e in NOT_AN_ALERT if e not in emitted and e != "web.request_error")
+    stale_events = sorted(e for e in NOT_AN_ALERT if e not in emitted)
 
     assert stale_modules == [], f"PROSE_IS_FINE cita módulos que não existem: {stale_modules}"
     assert stale_events == [], f"NOT_AN_ALERT cita eventos que ninguém emite: {stale_events}"

@@ -104,6 +104,13 @@ Biahflow é fonte da verdade de *status*, não de *autorização*. Um webhook pa
 acesso, e a regra 5 do `AGENTS.md` — o backend valida identidade, organização, projeto e papel —
 deixaria de ter onde ser aplicada.
 
+*Corrigido em 06/08/2026 (ADR 0035): o argumento continua de pé, o número está trocado. "O backend
+valida identidade, organização, projeto e papel" é uma **convenção** do `AGENTS.md`, não um
+princípio numerado; a regra 5 é a dos segredos em commits, fixtures, logs e documentação, que é o
+que `docs/adr/0018` e `docs/fdd/012` querem dizer quando a citam. A frase ficou como estava porque
+o registro do erro é o que impede a repetição — e porque foi ao contar estas citações que se
+descobriu que a numeração em circulação era a do `CLAUDE.md`, não a do arquivo citado.*
+
 **Um papel de realm "super admin" que atravessa organizações.** É a categoria que a ADR 0002
 recusa. Um token comprometido passaria a valer para todos os tenants, e a RLS — que existe
 justamente para o caso de a aplicação errar — deixaria de ser a segunda barreira, porque a

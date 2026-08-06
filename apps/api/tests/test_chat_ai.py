@@ -10,6 +10,7 @@ gap-refusal, and prompt-injection resistance.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -44,8 +45,13 @@ from portal_api.repositories import (
     TenantContext,
     UserRepository,
 )
+from portal_api.telemetry import _SECRET_HINTS
 
 SETTINGS = get_settings()  # anthropic_api_key vazio → OfflineResponder
+
+#: Um DSN com credencial: `esquema://usuario:` + senha + `@resto`. O grupo do
+#: meio é o que a sentinela substitui.
+_DSN_WITH_PASSWORD = re.compile(r"^([a-z+]+://[^:/@]+:)([^@]+)(@.+)$")
 
 #: Literal, e não segredo: existe para o roteamento escolher o respondedor real
 #: sem chave nenhuma no ambiente, e é uma das sentinelas conferidas como ausentes
@@ -722,12 +728,89 @@ def test_eval_the_evidence_travels_inside_the_delimiter(
     assert "Qual o prazo de suporte?" in content[closing:]
 
 
+#: Campos de `Settings` cujo nome casa `_SECRET_HINTS` sem serem segredo, com o
+#: motivo. Cinco dos seis são o mesmo falso positivo: **"keycloak" contém "key"**,
+#: então o casador pega o realm e os dois client ids junto com o client secret que
+#: de fato importa. Medido, não suposto — e allowlist em vez de regex mais esperta
+#: porque a lista de exceções é lida, e uma condição a mais no casador não é.
+_NOT_A_SECRET = {
+    "keycloak_realm": "nome do realm; viaja na URL pública do OIDC",
+    "keycloak_internal_url": "endereço do contêiner (ADR 0010), não credencial",
+    "keycloak_web_client_id": "client id público do fluxo de código",
+    "keycloak_admin_client_id": "client id; o segredo é o `_client_secret` ao lado",
+    "google_oauth_token_url": "endpoint publicado do Google",
+    "agent_key_lifetime_days": "prazo em dias (ADR 0013), não chave",
+}
+
+
+def _secret_fields() -> dict[str, str]:
+    """Todo campo de `Settings` que carrega segredo, e a sentinela de cada um.
+
+    **Dois casadores, porque o segredo se esconde de duas formas.** O primeiro é o
+    `_SECRET_HINTS` de `telemetry.py`, importado e não recopiado — o precedente é
+    `test_openapi_contract.py`, e duplicar garantiria que uma das cópias
+    envelhecesse sozinha (o argumento que moveu `captured()` para o `conftest.py`
+    na ADR 0028).
+
+    O segundo existe porque o primeiro **não basta aqui**, e isso foi medido: as
+    quatro `database_*_url` carregam a senha do papel dentro do valor
+    (`postgresql+psycopg://portal_app:…@…`) e nenhuma casa `_SECRET_HINTS`, porque
+    o casador do log pergunta pelo *nome* do campo — que no log é a chave do
+    `extra`, e ali está certo. Num DSN o segredo é o valor, e a senha do
+    `portal_admin` é a credencial que escreve `membership` (ADR 0011).
+    """
+    sentinels: dict[str, str] = {}
+    for name in type(SETTINGS).model_fields:
+        if name in _NOT_A_SECRET:
+            continue
+        value = getattr(SETTINGS, name)
+        sentinel = f"SENTINELA-{name}"
+        if any(hint in name.lower() for hint in _SECRET_HINTS):
+            sentinels[name] = sentinel
+        elif isinstance(value, str) and _DSN_WITH_PASSWORD.match(value):
+            # Troca só a senha e mantém a forma do DSN: o que se afirma ausente é
+            # a credencial, não o host — que poderia aparecer por outro caminho.
+            sentinels[name] = _DSN_WITH_PASSWORD.sub(rf"\1{sentinel}\3", value)
+    return sentinels
+
+
+def test_the_allowlist_of_false_positives_is_still_needed() -> None:
+    """A linha some quando o motivo some — a regra do `advisories.json` (ADR 0023).
+
+    Sem isto a allowlist vira sedimento: um campo renomeado, ou que deixe de casar
+    o `_SECRET_HINTS`, mantém aqui uma isenção que passa a cobrir nada — e a
+    próxima pessoa lê seis motivos dos quais só alguns são verdade.
+    """
+    fields = type(SETTINGS).model_fields
+    obsolete = [
+        name
+        for name in _NOT_A_SECRET
+        if name not in fields
+        or not any(hint in name.lower() for hint in _SECRET_HINTS)
+    ]
+
+    assert obsolete == [], (
+        f"`_NOT_A_SECRET` guarda linhas que deixaram de ser necessárias: {obsolete}."
+    )
+
+
 @pytest.mark.integration
 def test_eval_no_secret_ever_reaches_the_model(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Regra 2 do `AGENTS.md` como contra-asserção, e não como intenção."""
+    """Regra 2 do `AGENTS.md` como contra-asserção, e não como intenção.
+
+    **Derivado de `Settings`, e não de uma lista escrita à mão.** Até a ADR 0035
+    eram seis sentinelas fixas contra dezesseis campos de segredo — a proporção da
+    ADR 0033, na única asserção do repositório dedicada à regra 2. Ficavam de fora,
+    entre outros, a chave **anterior** da rotação do Drive (que abre todo
+    ciphertext ainda não resselado, ADR 0016) e as quatro senhas de banco.
+
+    Um campo de segredo novo em `config.py` já nasce coberto, que é a diferença
+    entre uma guarda e um inventário.
+    """
     from portal_api.ai import responder as responder_module
+    from portal_api.ai import retrieval as retrieval_module
 
     project = biahflow.sync_snapshot(db_session, _snapshot(
         biahflow_project_id=64, client_id=74, milestones=[_milestone(1, "Kickoff", "done")],
@@ -735,25 +818,32 @@ def test_eval_no_secret_ever_reaches_the_model(
     ctx = TenantContext(project.organization_id, project.id)
     fake = FakeAnthropic.answering("...", [])
     monkeypatch.setattr(responder_module, "anthropic_client", lambda _key: fake)
-    settings = SETTINGS.model_copy(update={
-        "anthropic_api_key": FAKE_KEY,
-        "agent_key_pepper": "PEPPER-SENTINELA",
-        "biahflow_read_token": "TOKEN-SENTINELA",
-        "biahflow_webhook_secret": "WEBHOOK-SENTINELA",
-        "storage_secret_key": "STORAGE-SENTINELA",
-        "drive_token_encryption_key": "DRIVE-SENTINELA",
-    })
+    # `voyage_api_key` com sentinela escolheria o `VoyageEmbedder`, que abriria
+    # rede de verdade. O embedder é fixado offline e a sentinela **continua
+    # atravessando** o serviço — que é o que a asserção precisa: o caminho existe,
+    # e o que se prova é que ele não termina no pedido.
+    monkeypatch.setattr(
+        retrieval_module,
+        "get_embedder",
+        lambda _settings: OfflineEmbedder(
+            SETTINGS.embedding_dimensions, SETTINGS.rag_offline_max_distance
+        ),
+    )
+
+    sentinels = _secret_fields()
+    # A chave da Anthropic é sentinela como qualquer outra: é ela que faz o
+    # roteamento escolher o `AnthropicResponder`, e é ela que não pode sair.
+    assert "anthropic_api_key" in sentinels
+    settings = SETTINGS.model_copy(update=dict(sentinels))
 
     chat_service.answer_question(
         db_session, ctx, project, "Qual é o status do projeto?", settings
     )
 
     sent = fake.sent_text()
-    for sentinel in (
-        "PEPPER-SENTINELA", "TOKEN-SENTINELA", "WEBHOOK-SENTINELA",
-        "STORAGE-SENTINELA", "DRIVE-SENTINELA", FAKE_KEY,
-    ):
-        assert sentinel not in sent, sentinel
+    leaked = sorted(name for name in sentinels if f"SENTINELA-{name}" in sent)
+
+    assert leaked == [], f"estes segredos de `Settings` chegaram ao modelo: {leaked}."
     # A chave viaja no construtor do cliente, nunca no corpo do pedido: é o que
     # separa "autenticar" de "contar ao modelo".
     assert "api_key" not in fake.last_request()

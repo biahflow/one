@@ -14,10 +14,17 @@ Browser → Next.js BFF → FastAPI → PostgreSQL + pgvector
 
 PostgreSQL é a fonte de verdade. O banco aplica RLS por organização e projeto; a API também executa autorização explícita. O worker recebe somente jobs com escopo de projeto e propaga o contexto de tenant.
 
-Três credenciais de banco, uma por tipo de trabalho (ADR 0010): `portal_app` no caminho de
+Quatro credenciais de banco, uma por tipo de trabalho (ADR 0010/0011): `portal_app` no caminho de
 requisição, **sujeito às policies**; `portal_system` (`BYPASSRLS`) para o webhook e o seed, que
-criam o tenant; `portal_migrator`, dono do schema, para as migrações. A separação não é
+criam o tenant; `portal_migrator`, dono do schema, para as migrações; e `portal_admin`, também
+**sujeito às policies**, que é o único que escreve `membership`. A separação não é
 organizacional — é o que faz a RLS existir, já que superusuário a ignora incondicionalmente.
+
+*Corrigido em 06/08/2026 (ADR 0035): este parágrafo dizia "Três credenciais" e nomeava três,
+enquanto a seção de topologia logo abaixo já dizia "as quatro credenciais de banco". A frase é da
+Fase 1, anterior ao `portal_admin` (ADR 0011), e a que a contradiz foi escrita na ADR 0022 sem que
+ninguém voltasse aqui — de modo que a lista canônica de credenciais omitia justamente o papel que
+escreve na tabela mais sensível do modelo de autorização.*
 
 ## Topologia de implantação (ADR 0022)
 

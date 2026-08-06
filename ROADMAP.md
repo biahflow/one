@@ -587,6 +587,44 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       **ignora as notas históricas** (`*Corrigido em …*`): sem isso ela cobraria que o repositório
       apagasse o registro do próprio erro, que é a memória que impede a terceira repetição.)*
 
+- [x] **A guarda escrita à mão, e a regra que ninguém verifica.** *(ADR 0035, FDD 012/014/015.
+      Sexta repetição do padrão, e desta vez o alvo é o mecanismo inteiro: **as guardas que
+      carregam as regras inegociáveis eram, elas próprias, listas digitadas** — o defeito que a
+      ADR 0033 nomeou, sobrevivendo em quatro lugares, três deles a única prova executável de uma
+      regra do `AGENTS.md`. **A regra 2** ("nunca envie segredos ao modelo") era provada por
+      **seis sentinelas fixas contra dezesseis campos de segredo**, e o segundo casador mostra por
+      que uma lista não bastava: doze batem o nome, e quatro escondem a credencial **dentro do
+      valor** — as `database_*_url` são DSN completo e não casam `_SECRET_HINTS`, porque o casador
+      do log pergunta pelo nome, que no log é a chave do `extra` e ali está certo. Ficavam de fora
+      a chave **anterior** da rotação do Drive, que abre todo ciphertext ainda não resselado, e a
+      senha do `portal_admin`, que escreve `membership`; medido injetando o vazamento, a guarda
+      nova reprova e a antiga **passa verde**. **A regra 6** — caso negativo de permissão, a
+      disciplina mais invocada do repositório — não tinha portão nenhum: 30 funções à mão contra
+      46 pares rota+método publicados. `GET` e `PUT .../ai-quota`, que definem o teto de gasto de
+      IA de uma organização e têm tela desde a ADR 0027, **não tinham teste de espécie alguma** —
+      as catorze asserções de `test_ai_quota.py` fixam o teto escrevendo no banco pela fixture,
+      nunca pela rota. A guarda nasceu vermelha com cinco pares, e o mais caro não era o teto:
+      `GET /projects/{id}/results` é a **única** rota de cliente que recebe id de projeto no
+      caminho — o caso literal da regra 1 — e ninguém a exercitava. O predicado sai do artefato
+      publicado (**quem promete 404 prova o 404**), e é isso que dispensa allowlist: sondas,
+      webhook e as duas rotas `/me` sem identificador não declaram 404 e se isentam sozinhas. **E
+      o elo foi medido, como na ADR 0033:** com a ligação frouxa, `POST /chat` aparecia coberto
+      por um teste em que o chat só monta a conversa e o 404 é da rota de feedback — a guarda
+      nasceria verde sobre rota sem negativo. Mais **o pulo que escapou** do `skip_unless_ci`
+      (`test_backup_restore.py:432`, o único `pytest.skip` cru do arquivo, e justo sobre a decisão
+      6 da ADR 0019 — restaurar bytes corrompidos é pior que falhar) e **a guarda de eventos que
+      só via metade do repositório**: o BFF emite quatro eventos com logger próprio e nenhum tinha
+      linha em runbook, com a evidência dentro da própria guarda, um `elsewhere` que descrevia o
+      ponto cego em vez de fechá-lo. De quebra, o que fecha o círculo: **a numeração que todo
+      mundo cita não existia.** O `AGENTS.md` tinha cinco princípios e o `CLAUDE.md` publicava
+      seis "from `AGENTS.md`", promovendo uma convenção e um item de checklist a princípio e
+      **descartando** o princípio 5, o dos segredos; a numeração da cópia é que circulava, com
+      seis lugares citando uma "regra 6" inexistente e "regra 5" querendo dizer coisas diferentes
+      em duas ADRs. Agora a regra 6 existe, as listas são a mesma e uma guarda cobra as duas
+      coisas — e ela também achou mais do que o levantamento manual, uma sexta citação em
+      `test_main.py`. **A regra 4 fica declaradamente sem guarda**, e é a única: "migração aditiva"
+      não é verificável por `alembic check` e "exige ADR/RFC" é julgamento.)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`

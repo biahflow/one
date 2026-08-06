@@ -9,13 +9,18 @@ possa restaurar, e que a restauração seja **provada** — não só as linhas d
 mas as garantias: RLS de pé, GRANT de coluna ainda de coluna, uma organização sem
 ver a outra.
 
-**Não objetivos.** Job de CI recorrente: o par backup/restore roda em
-`test_backup_restore.py` e o runbook traz o comando, mas nada o executa a cada
-push ainda — é o próximo passo desta linha. Backup contínuo (WAL archiving / PITR)
+**Não objetivos.** Backup contínuo (WAL archiving / PITR)
 e replicação: pertencem ao item de homologação do roadmap, que é quando existirá
 um ambiente com janela de recuperação declarada. Backup automatizado do realm do
 Keycloak: o runbook nomeia o `kc.sh export` e diz por que ele é obrigatório, sem
 automatizá-lo.
+
+*Corrigido em 06/08/2026 (ADR 0035): este parágrafo abria listando "job de CI recorrente" como
+não-objetivo, afirmando que "nada o executa a cada push ainda". O job `backup-restore` existe no
+`.github/workflows/ci.yml` desde a ADR 0019, sem `if:` restritivo — roda a cada push e a cada PR —,
+e o comentário que o antecede diz textualmente ser "o job que a **FDD 013** pediu e não existia".
+A linha ficou descrevendo como futuro algo que já era passado, e quem a lesse para saber a
+cobertura de CI do par backup/restore concluiria o contrário do que é verdade.*
 
 ## Jornada e interface
 

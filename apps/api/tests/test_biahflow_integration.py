@@ -104,9 +104,12 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
              "recording_url": "https://rec.example/4", "has_transcript": True,
              "status": "held"},
         ],
+        # A primeira traz `priority`; a segunda **não**, de propósito: o campo é
+        # opcional no snapshot e o teste abaixo cobra os dois caminhos.
         "pendencias": [
             {"id": 71, "title": "Aprovar fluxo de exceções", "status": "open",
-             "party": "client", "created_at": "2026-08-02T10:00:00+00:00",
+             "party": "client", "priority": "high",
+             "created_at": "2026-08-02T10:00:00+00:00",
              "resolved_at": None},
             {"id": 72, "title": "Definir alçada de aprovação", "status": "resolved",
              "party": "provider", "created_at": "2026-07-25T10:00:00+00:00",
@@ -281,6 +284,14 @@ def test_sync_snapshot_mirrors_documents_meetings_and_pendings(db_session: Sessi
     assert pendings["Definir alçada de aprovação"]["resolved_at"] is not None
     # `created_at` vem do Biahflow, não do momento do sync.
     assert pendings["Aprovar fluxo de exceções"]["created_at"].startswith("2026-08-02")
+    # A prioridade também (ADR 0029). Até esta fatia o sync **não a lia**: a
+    # coluna tinha enum desde a Fase 1, o `PendingOut` a declarava e o payload a
+    # entregava, e nada nunca escrevia outro valor além do default — uma coluna
+    # com contrato e sem produtor é uma constante disfarçada de dado.
+    assert pendings["Aprovar fluxo de exceções"]["priority"] == "high"
+    # E a pendência sem o campo cai no default, porque ele é opcional no
+    # snapshot: o portal não pode exigir que a outra ponta já o envie.
+    assert pendings["Definir alçada de aprovação"]["priority"] == "medium"
 
 
 @pytest.mark.integration

@@ -31,6 +31,8 @@ payload**:
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -274,7 +276,12 @@ class PendingOut(Out):
     description: str | None
     owner_label: str | None
     state: str
-    priority: str
+    #: O único campo enumerado desta resposta, e a exceção tem motivo (ADR 0029):
+    #: a fixture do teste de SSR dizia ``"normal"`` — valor que
+    #: ``PendingPriority`` não tem — e passava, porque ``str`` aceita qualquer
+    #: coisa. Declarar os três valores põe o contrato a serviço de quem o
+    #: consome sem mudar um byte da resposta: eles já saem de ``.value``.
+    priority: Literal["low", "medium", "high"]
     #: Espelhada do Biahflow ou aberta pela IA por lacuna de contexto. É o que
     #: faz a pendência da IA sobreviver ao sync seguinte (ADR 0012).
     origin: str

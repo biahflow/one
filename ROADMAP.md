@@ -78,7 +78,12 @@ termo pela mesma rota.*
 - [x] Implementar pendências com responsável, estados e histórico (abertas/resolvidas), com
       distinção de origem: espelhadas do Biahflow vs. abertas pela IA por lacuna de contexto,
       que sobrevivem ao sync (`PendingItem.origin`, migração `0006_portal_sync_fields`).
-      *Prioridade, comentários e vínculo a conversas seguem pendentes.*
+      *Comentários e vínculo a conversas seguem pendentes.* **Prioridade feita em 06/08/2026
+      (ADR 0029), e ela não estava "pendente":** havia coluna com enum desde a Fase 1, campo no
+      `PendingOut`, chave no payload e até declaração no tipo `ApiPending` do BFF — que a
+      **descartava** no mapeamento. E a causa era mais funda: `sync_snapshot` nunca lia
+      `priority`, o snapshot do Biahflow não carregava o campo, e nenhum documento o mencionava.
+      Quatro camadas presentes e nenhum produtor.
 - [x] Criar central de notificações e e-mails via Mailpit local/provedor configurável em produção.
       *(O produtor é o sync: `sync_snapshot` compara o read model antes e depois do snapshot e
       grava uma linha por destinatário — o portal continua sem originar status. Sino com
@@ -90,7 +95,11 @@ termo pela mesma rota.*
       ingestão de texto da Fase 4.*
 - [x] Exibir detalhes e histórico em todas as abas do projeto — Cronograma (com responsável
       vindo do `party`), Documentos (tipo, autor e link), Reuniões e Pendências passam a ler
-      `GET /api/v1/me/dashboard` no lugar dos dados de demonstração. *Filtros seguem pendentes.*
+      `GET /api/v1/me/dashboard` no lugar dos dados de demonstração. *Filtros feitos em
+      06/08/2026 (ADR 0029): um componente de chips com contagem nas quatro abas longas, do lado
+      do cliente sobre o payload que já veio — filtrar no servidor exigiria parâmetro, esquema
+      novo e caso negativo de permissão para responder o que o navegador tem em mãos. Quando a
+      lista não couber numa resposta, a decisão muda, e aí é paginação.*
 
 **Aceite:** equipe interna atualiza o projeto **no Biahflow**; o cliente acompanha as alterações
 no portal em quase tempo real — e é avisado delas, no sino e por e-mail, sem precisar abrir o

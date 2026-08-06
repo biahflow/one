@@ -2321,6 +2321,11 @@
             "title": "Owner Label"
           },
           "priority": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
             "title": "Priority",
             "type": "string"
           },

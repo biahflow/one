@@ -16,10 +16,35 @@ Cliente pode abrir e acompanhar pendências. Falta de contexto no chat cria uma 
   Critério de aceite coberto por teste: uma pendência criada pelo chat continua visível depois
   de um novo webhook do Biahflow (`test_sync_replaces_biahflow_pendings_but_keeps_portal_ones`).
 
+- **Prioridade e filtro (Fase 2 / ADR 0029) — feito:** a pendência mostra a prioridade e as
+  abertas vêm ordenadas por ela; a aba filtra por prioridade, e Cronograma, Documentos e
+  Reuniões ganharam o mesmo componente de chips. Só `high` e `low` têm selo — `medium` é o
+  default da coluna, e marcar toda linha é não marcar nenhuma.
+
+  Três coisas que valem estar escritas aqui:
+
+  1. **A prioridade é do Biahflow.** `pendencia.priority` entrou no contrato do snapshot,
+     **opcional**, com default `medium`. O portal espelha e não origina (ADR 0006/0008): não há
+     como o cliente mudar a prioridade pela tela, e não deve haver.
+  2. **Até a ADR 0029 nada escrevia a coluna.** Ela tinha enum desde a Fase 1, o `PendingOut` a
+     declarava e o payload a entregava — e `sync_snapshot` não a lia. Todas as pendências
+     ficavam no default.
+  3. **A ordenação é do cliente e só olha a prioridade.** O `sort` é estável e a API devolve por
+     `created_at desc`, então dentro de cada faixa a mais recente continua em cima. A Visão
+     geral mostra as quatro primeiras, que agora são as quatro mais urgentes.
+
+  Critério de aceite coberto por teste: `test_sync_snapshot_mirrors_documents_meetings_and_pendings`
+  (o campo presente e o ausente), a asserção de ordem em `tests/rendered-html.test.mjs`,
+  `tests/api-contract.test.mjs` (o BFF consome todo campo que o contrato entrega) e
+  `tests/e2e/pendencias.spec.ts`.
+
 - **Central de notificações e e-mail (Fase 2 / ADR 0012) — feito:** ver abaixo.
 - **Fora de escopo:** resolução de pendência pelo cliente — o portal é read-only e a pendência é
   resolvida no Biahflow (ADR 0006). Preferência por tipo de notificação e push também não
   entram; a preferência que existe é uma só, ligar ou desligar o e-mail.
+- **Segue aberto:** comentários na pendência (dado originado no portal, o que pede decisão
+  contra a ADR 0006/0008) e vínculo a conversas (`pending_item` não tem coluna de conversa, e
+  ligá-la pede migração).
 
 ## Notificações
 

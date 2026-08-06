@@ -23,6 +23,20 @@ O webhook é **fino** (`event`, `object_type`, `project_id`): quem carrega o dad
 que o portal puxa em seguida. É por isso que uma entrega perdida não perde informação — a
 próxima entrega traz o estado inteiro.
 
+### O que o portal passou a ler do snapshot e o Biahflow talvez ainda não envie
+
+| Campo | Onde | Desde | Ausente significa |
+|---|---|---|---|
+| `pendencias[].priority` | `low` / `medium` / `high` | ADR 0029 | `medium` |
+
+Opcional de propósito: o portal não pode exigir campo novo da outra ponta, e a ausência tem de
+continuar significando o padrão em vez de derrubar o sync. Enquanto o Biahflow não enviar, toda
+pendência espelhada fica em `medium` — a tela mostra a mistura só na stack local, porque o seed
+a traz.
+
+Quem originar é o Biahflow: **não há como mudar a prioridade pelo portal**, e não deve haver,
+pela mesma razão que não há CRUD de status aqui (ADR 0006/0008).
+
 ## 1. Os pares de segredo
 
 Quatro valores, dois deles **idênticos dos dois lados**:

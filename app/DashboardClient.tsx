@@ -76,9 +76,31 @@ const navItems = [
   { label: "Resultados", icon: TrendingUp },
 ];
 
-/** Pendências que ainda pedem ação — resolvidas ficam no histórico. */
+/** Alta antes de média antes de baixa. Desconhecida vai para o fim, não para o topo. */
+const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+/**
+ * Pendências que ainda pedem ação — resolvidas ficam no histórico —, com as
+ * urgentes primeiro (ADR 0029).
+ *
+ * A ordem importa mais do que parece: a Visão geral mostra as **quatro
+ * primeiras**, e sem isto ela mostrava as quatro mais recentes. Um resumo que
+ * corta por data é as primeiras linhas de um `ORDER BY created_at` com nome de
+ * resumo — foi o que escondeu a pendência semeada quando o e2e rodou num banco
+ * usado.
+ *
+ * Só a prioridade entra na comparação: o `sort` é estável, e a API já devolve
+ * por `created_at desc`, então dentro de cada faixa a mais recente continua em
+ * cima sem que este arquivo precise repetir o critério dela.
+ */
 function openPendings(overview: Overview): PendingItemView[] {
-  return overview.pendings.filter((item) => item.state !== "resolved");
+  return overview.pendings
+    .filter((item) => item.state !== "resolved")
+    .slice()
+    .sort(
+      (a, b) =>
+        (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9),
+    );
 }
 
 // Mapeia o estado do marco para as classes de cor já existentes no CSS
@@ -148,7 +170,7 @@ export type ProjectSummary = { id: string; name: string; status: string; current
 export type OverviewMilestone = { title: string; owner: string; state: string; date: string };
 export type ProjectDocument = { title: string; type: string | null; author: string | null; link: string | null; updated: string };
 export type MeetingView = { title: string; date: string; status: string; hasTranscript: boolean; recordingUrl: string | null };
-export type PendingItemView = { title: string; description: string | null; owner: string | null; state: string; stateLabel: string; origin: string; age: string };
+export type PendingItemView = { title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; age: string };
 export type ProjectResults = { milestonesTotal: number; milestonesDone: number; overdue: number; onTimePercent: number };
 export type MeasuredAssumption = { hourlyRate: number; monthlyInvestment: number; effectiveFrom: string; note: string | null };
 /** O que os agentes produziram no período, apurado pela API (ADR 0013). Não se
@@ -469,6 +491,11 @@ export default function DashboardClient({
             owner: "Portal Labs",
             state: "open",
             stateLabel: "Aberta",
+            // `medium` é o default da coluna, e é o que `ai/service.py` grava:
+            // este espelho tem de dizer o que o banco diz, senão a linha muda
+            // de lugar na lista no primeiro recarregamento.
+            priority: "medium",
+            priorityLabel: "Média",
             origin: "portal",
             age: "agora",
           },
@@ -1021,14 +1048,35 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, overview, user }: { onAsk:
 }
 
 function ScheduleView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+  const [state, setState] = useState<string | null>(null);
+  const counts = countBy(overview.milestones, (item) => item.state);
+  const milestones =
+    state === null ? overview.milestones : overview.milestones.filter((item) => item.state === state);
   return (
     <>
       <ViewHero eyebrow="CRONOGRAMA" title="Cronograma do projeto" subtitle="Marcos concluídos, em andamento e planejados." onAsk={onAsk} />
       <article className="panel timeline-panel">
         <div className="panel-heading"><div><p className="eyebrow">LINHA DO TEMPO</p><h2>Todos os marcos</h2></div><span className="state state--1">{overview.completion}% concluído</span></div>
+        {/* Os estados vêm do que a lista tem, não de uma lista fixa: o rótulo é
+            do Biahflow, e enumerá-lo aqui criaria um segundo mapa para envelhecer. */}
+        <FilterChips
+          label="Filtrar por estado do marco"
+          active={state}
+          onPick={setState}
+          options={[
+            { value: null, label: "Todos", count: overview.milestones.length },
+            ...Object.keys(counts).map((value) => ({ value, label: value, count: counts[value] })),
+          ]}
+        />
         <div className="milestones">
-          {overview.milestones.length === 0 && <p className="empty-state">Nenhum marco cadastrado ainda.</p>}
-          {overview.milestones.map((item) => {
+          {milestones.length === 0 && (
+            <p className="empty-state">
+              {overview.milestones.length === 0
+                ? "Nenhum marco cadastrado ainda."
+                : "Nenhum marco neste estado."}
+            </p>
+          )}
+          {milestones.map((item) => {
             const tone = stateStyle[item.state] ?? "2";
             return (
               <div className="milestone" key={item.title}>
@@ -1046,12 +1094,31 @@ function ScheduleView({ onAsk, overview }: { onAsk: () => void; overview: Overvi
 }
 
 function DocumentsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+  const [type, setType] = useState<string | null>(null);
+  const counts = countBy(overview.documents, (doc) => doc.type || null);
+  const documents =
+    type === null ? overview.documents : overview.documents.filter((doc) => doc.type === type);
   return (
     <>
       <ViewHero eyebrow="DOCUMENTOS" title="Documentos do projeto" subtitle="Planos, relatórios e materiais compartilhados." onAsk={onAsk} />
       {overview.documents.length === 0 && <p className="empty-state">Nenhum documento compartilhado ainda.</p>}
+      {/* Só aparece quando há mais de um tipo: um filtro de uma opção não filtra. */}
+      {Object.keys(counts).length > 1 && (
+        <FilterChips
+          label="Filtrar por tipo de documento"
+          active={type}
+          onPick={setType}
+          options={[
+            { value: null, label: "Todos", count: overview.documents.length },
+            ...Object.keys(counts).map((value) => ({ value, label: value, count: counts[value] })),
+          ]}
+        />
+      )}
+      {overview.documents.length > 0 && documents.length === 0 && (
+        <p className="empty-state">Nenhum documento deste tipo.</p>
+      )}
       <section className="card-grid" aria-label="Lista de documentos">
-        {overview.documents.map((doc) => (
+        {documents.map((doc) => (
           <article className="panel doc-card" key={doc.title}>
             <div className="source-row">
               <span className="file-icon"><FileText size={17} /></span>
@@ -1074,14 +1141,34 @@ function DocumentsView({ onAsk, overview }: { onAsk: () => void; overview: Overv
 }
 
 function MeetingsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+  const [only, setOnly] = useState<string | null>(null);
+  const withTranscript = overview.meetings.filter((meeting) => meeting.hasTranscript);
+  const meetings = only === "transcript" ? withTranscript : overview.meetings;
   return (
     <>
       <ViewHero eyebrow="REUNIÕES" title="Reuniões do projeto" subtitle="Gravações e transcrições dos encontros." onAsk={onAsk} />
       <article className="panel">
-        <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Encontros recentes <span>{overview.meetings.length}</span></h2></div></div>
+        <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Encontros recentes <span>{meetings.length}</span></h2></div></div>
+        {/* Transcrição é o que faz a reunião ser citável pelo assistente
+            (ADR 0014), então é o corte que alguém realmente procura aqui. */}
+        <FilterChips
+          label="Filtrar reuniões"
+          active={only}
+          onPick={setOnly}
+          options={[
+            { value: null, label: "Todas", count: overview.meetings.length },
+            { value: "transcript", label: "Com transcrição", count: withTranscript.length },
+          ]}
+        />
         <div className="source-list">
-          {overview.meetings.length === 0 && <p className="empty-state">Nenhuma reunião registrada ainda.</p>}
-          {overview.meetings.map((meeting) => (
+          {meetings.length === 0 && (
+            <p className="empty-state">
+              {overview.meetings.length === 0
+                ? "Nenhuma reunião registrada ainda."
+                : "Nenhuma reunião com transcrição ainda."}
+            </p>
+          )}
+          {meetings.map((meeting) => (
             <div className="source-row" key={meeting.title}>
               <span className="file-icon"><Video size={17} /></span>
               <div>
@@ -1102,8 +1189,60 @@ function MeetingsView({ onAsk, overview }: { onAsk: () => void; overview: Overvi
   );
 }
 
+/**
+ * O filtro das abas longas (ADR 0029).
+ *
+ * Um componente para as quatro, e do lado do cliente: o dashboard já trouxe a
+ * lista inteira, então perguntar ao servidor exigiria parâmetro,
+ * `response_model` novo, esquema regenerado e caso negativo de permissão para
+ * responder o que o navegador tem em mãos. No dia em que a lista não couber
+ * numa resposta, a decisão muda — e aí é paginação, não filtro.
+ *
+ * `value === null` é "tudo", e é sempre a primeira opção: um filtro sem caminho
+ * de volta esconde dado e parece lista vazia.
+ */
+function FilterChips({
+  label,
+  options,
+  active,
+  onPick,
+}: {
+  label: string;
+  options: { value: string | null; label: string; count: number }[];
+  active: string | null;
+  onPick: (value: string | null) => void;
+}) {
+  return (
+    <div className="filter-bar" role="group" aria-label={label}>
+      {options.map((option) => (
+        <button
+          key={option.value ?? "todos"}
+          className={`filter-chip ${option.value === active ? "filter-chip--on" : ""}`}
+          aria-pressed={option.value === active}
+          onClick={() => onPick(option.value)}
+        >
+          {option.label} <em>{option.count}</em>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Conta quantos itens caem em cada valor, para o chip dizer o tamanho do corte. */
+function countBy<T>(items: T[], of: (item: T) => string | null): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    const key = of(item);
+    if (key !== null) counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
 function PendingView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
-  const open = openPendings(overview);
+  const [priority, setPriority] = useState<string | null>(null);
+  const all = openPendings(overview);
+  const counts = countBy(all, (item) => item.priority);
+  const open = priority === null ? all : all.filter((item) => item.priority === priority);
   const resolved = overview.pendings.filter((item) => item.state === "resolved");
   return (
     <>
@@ -1111,8 +1250,25 @@ function PendingView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
       <section className="dashboard-grid">
         <article className="panel pending-panel">
           <div className="panel-heading"><div><p className="eyebrow">ACOMPANHAMENTO</p><h2>Abertas <span>{open.length}</span></h2></div></div>
+          <FilterChips
+            label="Filtrar por prioridade"
+            active={priority}
+            onPick={setPriority}
+            options={[
+              { value: null, label: "Todas", count: all.length },
+              { value: "high", label: "Alta", count: counts.high ?? 0 },
+              { value: "medium", label: "Média", count: counts.medium ?? 0 },
+              { value: "low", label: "Baixa", count: counts.low ?? 0 },
+            ]}
+          />
           <div className="pending-list">
-            {open.length === 0 && <p className="empty-state">Nenhuma pendência aberta.</p>}
+            {open.length === 0 && (
+              <p className="empty-state">
+                {all.length === 0
+                  ? "Nenhuma pendência aberta."
+                  : "Nenhuma pendência aberta com esta prioridade."}
+              </p>
+            )}
             {open.map((item) => <PendingItem key={item.title} item={item} />)}
           </div>
         </article>
@@ -1526,6 +1682,11 @@ function PendingItem({ item }: { item: PendingItemView }) {
         <strong>{item.title}</strong>
         <span>{detail}{item.origin === "portal" && <> <b>•</b> aberta pela IA</>}</span>
       </div>
+      {/* Só a alta e a baixa ganham selo. "Média" é o padrão da coluna, e um
+          selo em toda linha deixa de distinguir qualquer coisa (ADR 0029). */}
+      {item.priority !== "medium" && (
+        <span className={`priority-pill priority-pill--${item.priority}`}>{item.priorityLabel}</span>
+      )}
     </div>
   );
 }

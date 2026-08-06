@@ -35,6 +35,7 @@ from portal_api.models import (
     Organization,
     PendingItem,
     PendingOrigin,
+    PendingPriority,
     PendingState,
     PhaseDeliverable,
     PhaseState,
@@ -74,6 +75,18 @@ DIGITAL_EMPLOYEE_STATUS_MAP: dict[str, DigitalEmployeeStatus] = {
 PENDING_STATE_MAP: dict[str, PendingState] = {
     "open": PendingState.open,
     "resolved": PendingState.resolved,
+}
+#: A prioridade da pendência, no vocabulário do Biahflow (ADR 0029).
+#:
+#: **Opcional, e o default é `medium`** — o campo é novo no snapshot e o portal
+#: não pode exigir que a outra ponta já o envie. Até esta fatia o sync não o lia
+#: de jeito nenhum: a coluna existia com enum desde a Fase 1, o `PendingOut` a
+#: declarava e o payload a entregava, e **nada nunca escrevia outro valor**.
+#: Uma coluna com contrato e sem produtor é uma constante disfarçada de dado.
+PENDING_PRIORITY_MAP: dict[str, PendingPriority] = {
+    "low": PendingPriority.low,
+    "medium": PendingPriority.medium,
+    "high": PendingPriority.high,
 }
 
 # Quem responde pelo item, no vocabulário do Biahflow (``party``). "provider" é sempre a
@@ -313,6 +326,9 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             title=pendencia["title"],
             owner_label=_party_label(pendencia.get("party"), organization.name),
             state=PENDING_STATE_MAP.get(pendencia["status"], PendingState.open),
+            priority=PENDING_PRIORITY_MAP.get(
+                str(pendencia.get("priority") or ""), PendingPriority.medium
+            ),
             origin=PendingOrigin.biahflow,
             external_ref=str(pendencia["id"]),
             resolved_at=_parse_datetime(pendencia.get("resolved_at")),

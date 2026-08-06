@@ -63,8 +63,16 @@ export const DASHBOARD = {
   meetings: [
     { title: "Comitê de projeto", date: "2026-08-28", recording_url: null, has_transcript: false, status: "scheduled" },
   ],
+  // Três abertas com prioridades diferentes, e a alta é a **mais antiga** de
+  // propósito: é o que torna a ordenação da ADR 0029 observável no HTML do SSR.
+  // Ordenada por data, "Aprovar fluxo de exceções" viria por último.
+  //
+  // A `priority` dizia `"normal"` até esta fatia — valor que `PendingPriority`
+  // não tem. Passava porque o contrato declarava `str`; hoje declara os três.
   pendings: [
-    { title: "Aprovar fluxo de exceções", description: null, owner_label: "Acme Brasil", state: "open", priority: "normal", origin: "biahflow", created_at: "2026-08-02T10:00:00+00:00", resolved_at: null },
+    { title: "Renovar o certificado do integrador", description: null, owner_label: "Acme Brasil", state: "open", priority: "low", origin: "biahflow", created_at: "2026-08-04T10:00:00+00:00", resolved_at: null },
+    { title: "Enviar lista de usuários piloto", description: null, owner_label: "Acme Brasil", state: "open", priority: "medium", origin: "biahflow", created_at: "2026-08-03T10:00:00+00:00", resolved_at: null },
+    { title: "Aprovar fluxo de exceções", description: null, owner_label: "Acme Brasil", state: "open", priority: "high", origin: "biahflow", created_at: "2026-08-02T10:00:00+00:00", resolved_at: null },
   ],
   results: { milestones_total: 3, milestones_done: 0, overdue: 0, on_time_percent: 100 },
   // Apuração dos eventos dos agentes (Fase 3, ADR 0013). Os números batem com a

@@ -266,6 +266,25 @@
   .pending-avatar--amber { @apply bg-amber-100 text-amber-700!; }
   .pending-avatar--violet { @apply bg-brand-50 text-brand-600!; }
   .pending-avatar--blue { @apply bg-sky-50 text-sky-700!; }
+  /* A prioridade que a API mandava e a tela descartava (ADR 0029). Só alta e
+     baixa têm selo — "média" é o padrão da coluna, e marcar toda linha é não
+     marcar nenhuma. */
+  .priority-pill {
+    @apply shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap;
+  }
+  .priority-pill--high { @apply bg-danger-50 text-danger-600; }
+  .priority-pill--low { @apply bg-slate-100 text-slate-500; }
+
+  /* O filtro das abas longas. `em` é a contagem, e ela é o que distingue um
+     chip útil de um enfeite: sem o número, escolher é adivinhar. */
+  .filter-bar { @apply mb-3.5 flex flex-wrap gap-1.5; }
+  .filter-chip {
+    @apply rounded-full border border-line bg-white px-2.5 py-1 text-[11px] font-semibold text-muted transition-colors;
+    @apply hover:border-brand-300 hover:text-brand-600;
+  }
+  .filter-chip em { @apply ml-1 text-[10px] font-bold text-slate-400 not-italic; }
+  .filter-chip--on { @apply border-brand-500 bg-brand-50 text-brand-700; }
+  .filter-chip--on em { @apply text-brand-600; }
   .pending-avatar--green { @apply bg-success-50 text-success-600!; }
   .full-width { @apply mt-4 w-full justify-center border-t border-line pt-3.5; }
 

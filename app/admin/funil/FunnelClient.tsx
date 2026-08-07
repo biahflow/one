@@ -23,6 +23,7 @@ export type ClientRow = {
  * que aconteceu.
  */
 const STEP_LABELS: Record<string, string> = {
+  artifact_accepted: "Nenhuma aprovação registrada",
   first_login: "Nunca entrou no portal",
   first_document_opened: "Nunca abriu um documento",
   first_pending_answered: "Nunca respondeu uma pendência",
@@ -37,6 +38,8 @@ const STEP_LABELS: Record<string, string> = {
  * impede alguém de ligar para quem já cumpriu o degrau.
  */
 const GAP_LABELS: Record<string, string> = {
+  artifact_not_reported:
+    "o Biahflow não reporta aprovação deste cliente, mas há projeto vivo — o negócio fechou, e o que falta é o registro",
   before_instrumentation:
     "anterior à instrumentação (07/08/2026): este degrau pode ter sido cumprido antes de existir medição",
   login_before_instrumentation:

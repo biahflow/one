@@ -716,7 +716,7 @@ antes do seguinte. O gargalo nunca foi construir sinal: é a capacidade do time 
 ele, e três radares tocando para um time que não dá conta de agir em um é pior que um radar
 que ele respeita.
 
-- [ ] **Funil de onboarding medido — passos 1 e 3 feitos, passo 4 aberto** *(RFC 001, FDD 020, ADR 0039, ADR 0040)*: os degraus
+- [ ] **Funil de onboarding medido — passos 1, 2 e 3 feitos e os sete degraus de pé, passo 4 aberto** *(RFC 001, FDD 020, ADR 0039, ADR 0040, ADR 0041)*: os degraus
       foram carimbados **antes** de qualquer leitor, que é a ordem que a RFC exige — escritor
       primeiro, leitor depois, porque a ADR 0033 achou um painel publicado sobre um campo sem
       escritor.
@@ -746,8 +746,34 @@ que ele respeita.
       perguntas, e ao separá-las ficou claro que no primeiro dia da instrumentação *toda*
       organização é anterior a ela — a tela nasceria mandando ligar para todo cliente do produto
       para dizer que ele nunca entrou no portal. A saída foi a evidência que a própria RFC apontava
-      e ninguém lia: `user.external_subject`, o único degrau com corroboração fora do funil. Falta
-      o passo 4 (a vigília da IA).
+      e ninguém lia: `user.external_subject`, o único degrau com corroboração fora do funil.
+      **E o sétimo degrau chegou no mesmo dia (ADR 0041), com o adiamento cumprindo a própria
+      condição:** o critério (3) da FDD 020 dizia que `artifact_accepted` não existia no enum
+      "porque o snapshot do Biahflow não carrega artefato", e terminava com *"ele entra quando o
+      outro lado o afirmar"*. Lá o dado estava inteiro desde a FDD 016 — `Artifact` com
+      `sent → accepted`, `decided_at` carimbado no `save()`, o e-sign fechando o contrato sozinho —
+      e o docstring do modelo dizia para que ele serve: *"permite medir onde a jornada trava entre
+      uma etapa e a seguinte"*, que é esta RFC. Faltava **atravessar**: `build_snapshot` não levava
+      artefato e `signals.py` não tinha receiver, a forma da ADR 0037 um degrau antes. Agora
+      atravessa **só a data** (nem `kind`, nem `title`, nem `content`), com a linha "nenhum dado
+      comercial é exposto" de lá **qualificada em emenda** em vez de contornada. **E o que a fatia
+      destrava não é um item de lista, é a régua:** o `_anchor` nunca teve o *ganho* — contava do
+      convite —, de modo que dezoito dias entre fechar o contrato e convidar a pessoa, que é demora
+      **nossa**, encurtavam o número em vez de aparecer nele. O degrau entra **primeiro** na escada,
+      é sempre `Blame.us` (o portal não hospeda aquela aprovação nem tem como coletá-la), e ganhou a
+      mesma corroboração do login, desta vez prevista: **projeto vivo significa negócio fechado**,
+      senão toda organização anterior à fatia apareceria mandando registrar um contrato assinado há
+      meses. Na prática ele nunca é o degrau travado, e isso é a resposta certa — "não registraram o
+      artefato" é higiene de cadastro, não desengajamento. **De quebra, um defeito da ADR 0039 que
+      só apareceu ao construir o sétimo degrau:** `sync_snapshot` **cria** a organização e chamava
+      um `stamp` de sessão própria, então no primeiro snapshot de um cliente novo a chave
+      estrangeira barrava o `INSERT` e o carimbo se perdia em silêncio, saindo como
+      `onboarding.stamp_failed` — que o `alerts.md` diagnostica como indisponibilidade do banco.
+      Valia para o entregável desde sempre (medido), era raro lá e é o caso **central** aqui.
+      `stamp_within` carimba dentro da transação que já é do sistema, com `SAVEPOINT`, porque um
+      `IntegrityError` deixa a transação abortada e engolir a exceção sem ele trocaria um degrau
+      perdido por um snapshot perdido. Falta o passo 4 (a vigília da IA), que segue condicionado ao
+      histórico que ainda não existe.
       *A régua continua sendo o **time-to-first-value**, e as duas travas da proposta seguem
       valendo: instrumentar **degraus de valor, não vaidade** — o enum não tem nenhum degrau de
       esforço — e separar "travou no cliente" de "travou em nós", que agora é estrutura da tela

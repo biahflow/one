@@ -25,15 +25,22 @@ from portal_api.db.base import Base, TenantMixin, TimestampMixin
 class OnboardingStepName(str, enum.Enum):
     """Os degraus, na ordem em que a jornada os alcança.
 
-    Cinco nascem aqui e um nasce no Biahflow — e a diferença importa na hora de separar
-    "travou no cliente" de "travou em nós" (RFC 001), que é o passo seguinte.
+    Cinco nascem aqui e dois nascem no Biahflow — e a diferença importa na hora de separar
+    "travou no cliente" de "travou em nós" (RFC 001).
 
-    **``artifact_accepted`` não está aqui de propósito.** A RFC o lista, mas o snapshot do
-    Biahflow não carrega nada de artefato: `grep artefato` em ``integrations/biahflow.py``
-    devolve zero. Declará-lo agora criaria um degrau que nada carimba — a forma exata do
-    painel sem escritor que a ADR 0033 achou. Ele entra quando o outro lado o afirmar.
+    *Até 07/08/2026 este docstring dizia que ``artifact_accepted`` **não** estava aqui de
+    propósito, porque "o snapshot do Biahflow não carrega nada de artefato" e declarar um
+    degrau que nada carimba seria o painel sem escritor da ADR 0033. A frase terminava com a
+    condição — "ele entra quando o outro lado o afirmar" —, e o outro lado afirmou: a FDD 031
+    de lá pôs ``artifact_accepted_at`` no snapshot, com emissor. O registro fica porque é ele
+    que explica por que o degrau chegou último, e não por que faltava (ADR 0041).*
     """
 
+    #: O cliente **aprovou** alguma coisa pela primeira vez — a jornada comercial saindo de
+    #: ``sent`` para ``accepted`` no Biahflow. É o degrau que dá origem à régua: sem ele o
+    #: portal contava o *time-to-first-value* a partir do convite, que é quando **ele** conheceu
+    #: o cliente, e não a partir do ganho.
+    artifact_accepted = "artifact_accepted"
     #: O convite virou conta: ``user.external_subject`` deixou de ser nulo.
     first_login = "first_login"
     #: O cliente abriu um documento pela primeira vez — recebeu conteúdo, não só navegou.

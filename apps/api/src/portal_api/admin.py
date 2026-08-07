@@ -1640,7 +1640,7 @@ class OnboardingFunnelOut(BaseModel):
     id na URL — e a escada com as seis datas, que nenhuma coluna da FDD 020 pede.
     """
 
-    #: O primeiro degrau sem carimbo, ou nulo quando os seis foram alcançados.
+    #: O primeiro degrau sem carimbo, ou nulo quando os sete foram alcançados.
     current_step: OnboardingStepName | None
     #: ``client`` ou ``us``. Enum e não texto livre porque a FDD 020 exige que os dois
     #: **nunca** sejam somados na mesma contagem, e um tipo diz isso melhor que uma

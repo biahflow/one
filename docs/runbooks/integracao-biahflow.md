@@ -31,6 +31,7 @@ próxima entrega traz o estado inteiro.
 | Campo | Onde | Desde | Ausente significa |
 |---|---|---|---|
 | `pendencias[].priority` | `low` / `medium` / `high` | ADR 0029 | `medium` |
+| `artifact_accepted_at` | raiz do snapshot, ISO 8601 ou `null` | ADR 0041 (FDD 031 de lá) | degrau do funil não carimbado |
 
 Opcional de propósito: o portal não pode exigir campo novo da outra ponta, e a ausência tem de
 continuar significando o padrão em vez de derrubar o sync. Enquanto o Biahflow não enviar, toda
@@ -39,6 +40,16 @@ a traz.
 
 Quem originar é o Biahflow: **não há como mudar a prioridade pelo portal**, e não deve haver,
 pela mesma razão que não há CRUD de status aqui (ADR 0006/0008).
+
+O `artifact_accepted_at` é a data da **primeira** aceitação daquele cliente (`sent → accepted`
+no `Artifact` de lá), e é só isso que atravessa — nem tipo, nem título, nem conteúdo, nem
+valor. Do lado do Biahflow ele nasce em `portal._artifact_accepted_at`, com `post_save` de
+`Artifact` emitindo webhook **só** em `ACCEPTED`. Duas coisas para não estranhar ao percorrer o
+caminho: aceitar um artefato preso a uma **oportunidade sem projeto** não emite nada (o `emit`
+de lá não faz nada sem `project_id`, e o fato chega inteiro no primeiro snapshot depois que o
+projeto nascer, porque o campo é calculado sobre o cliente); e este lado **não desfaz** o
+carimbo se o artefato for arquivado depois — o cliente aprovou naquele dia, e o funil não tem
+`UPDATE` para ninguém.
 
 ## 1. Os pares de segredo
 

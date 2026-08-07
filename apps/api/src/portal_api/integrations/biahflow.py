@@ -225,10 +225,15 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             )
         )
 
-    # O degrau do funil que **nasce no Biahflow** (RFC 001): o primeiro entregável fora de
-    # `pending`. Só sai de afirmação do snapshot — ausência não é negação, e um sync
-    # truncado não pode virar degrau falso.
+    # Os degraus do funil que **nascem no Biahflow** (RFC 001). Só saem de afirmação do
+    # snapshot — ausência não é negação, e um sync truncado não pode virar degrau falso.
+    #
+    # O primeiro entregável fora de `pending`, e a primeira aprovação do cliente. O segundo
+    # chegou depois (ADR 0041): até a FDD 031 de lá o snapshot não carregava artefato nenhum,
+    # e `.get` sem default continua sendo o certo — um Biahflow anterior àquela fatia manda
+    # um corpo sem a chave, e isso é ausência de afirmação, não negação.
     delivered_seen = False
+    accepted_at = _parse_datetime(snapshot.get("artifact_accepted_at"))
     # Journey phases + deliverables are also fully replaced (deliverables first, FK order).
     journey = snapshot.get("journey") or {}
     session.execute(delete(PhaseDeliverable).where(PhaseDeliverable.project_id == project.id))
@@ -361,15 +366,31 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     session.flush()
 
     notifications.emit_changes(session, project, before)
-    if delivered_seen:
-        # Sem `user_id`: o fato é do Biahflow, e não há pessoa deste lado a nomear.
-        # Importado aqui, e não no topo, porque `onboarding` abre transação própria sob
-        # `portal_system` e este módulo é importado pelo worker e pelo seed.
+    # Os dois degraus do funil que **nascem no Biahflow** (RFC 001). Sem `user_id`: o fato é
+    # de lá, e não há pessoa deste lado a nomear. Importado aqui, e não no topo, para o
+    # `onboarding` não entrar no grafo de importação do worker e do seed por este caminho.
+    #
+    # `stamp_within` e **não** `stamp`: esta função já roda sob `portal_system`, e abrir
+    # sessão separada aqui dentro fazia o `INSERT` não enxergar a organização que esta mesma
+    # transação acabou de criar — o carimbo do primeiro snapshot de um cliente novo falhava
+    # na chave estrangeira, em silêncio. O defeito é da ADR 0039 e foi medido na 0041.
+    if delivered_seen or accepted_at is not None:
         from portal_api import onboarding
 
-        onboarding.stamp(
-            organization.id, OnboardingStepName.first_deliverable_delivered
-        )
+        if delivered_seen:
+            onboarding.stamp_within(
+                session, organization.id, OnboardingStepName.first_deliverable_delivered
+            )
+        if accepted_at is not None:
+            # `reached_at` é a data da **decisão**, não a da passagem do sync: é para isso
+            # que a coluna existe separada do `created_at` (ADR 0039), e é o que faz a
+            # âncora do funil começar no ganho em vez de na primeira vez que o portal olhou.
+            onboarding.stamp_within(
+                session,
+                organization.id,
+                OnboardingStepName.artifact_accepted,
+                reached_at=accepted_at,
+            )
     return project
 
 

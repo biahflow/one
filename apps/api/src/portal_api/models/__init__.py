@@ -35,6 +35,7 @@ from portal_api.models.financial import ProjectFinancialAssumption
 from portal_api.models.identity import MemberRole, Membership, User
 from portal_api.models.meeting import Meeting
 from portal_api.models.notification import Notification, NotificationKind
+from portal_api.models.onboarding import OnboardingStep, OnboardingStepName
 from portal_api.models.organization import Organization
 from portal_api.models.project import (
     Delivery,
@@ -99,6 +100,8 @@ __all__ = [
     "MilestoneState",
     "Notification",
     "NotificationKind",
+    "OnboardingStep",
+    "OnboardingStepName",
     "Organization",
     "OrganizationAiQuota",
     "OrganizationRetentionPolicy",

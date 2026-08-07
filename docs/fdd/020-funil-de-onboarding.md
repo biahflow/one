@@ -1,7 +1,13 @@
 # FDD 020 — Funil de onboarding
 
-**Status:** proposta — 07/08/2026. Nada aqui está implementado. Recorte construível da
+**Status:** **parcialmente implementado** — 07/08/2026 (ADR 0039). Recorte construível da
 **RFC 001**.
+
+> *O passo 1 da RFC — "carimbar sem expor" — está de pé: a tabela, as policies, os seis
+> degraus escritos pelas rotas de verdade, e a purga e o apagamento alcançando-os. **Não**
+> estão de pé a lista interna de clientes travados, a distinção "travou no cliente" × "travou
+> em nós" e a vigília da IA; eles são os passos 3 e 4 da RFC, e a ordem é deliberada. Os
+> critérios de aceite abaixo estão marcados um a um.*
 
 ## Objetivo e não objetivos
 
@@ -82,13 +88,19 @@ Eventos com runbook correspondente, porque a guarda é bidirecional (ADR 0034): 
 carimbado, cliente entrando em estado travado, alerta emitido. Nenhum deles carrega conteúdo
 — só identificadores e o nome do degrau.
 
-**Aceite.** (1) Um cliente novo, convidado e sem login, aparece na lista interna com o degrau
-"convite aceito" pendente e a contagem de dias correta. (2) O primeiro login carimba a data
-uma vez, e um segundo login **não** altera o carimbo. (3) Um artefato aceito no Biahflow
-carimba o degrau correspondente após o sync, e nunca antes. (4) Um cliente cujo degrau
-depende de entrega não realizada aparece rotulado como travado **em nós**. (5) O apagamento
-de uma organização leva os degraus dela junto. (6) O cliente não vê nada disso em nenhuma
-tela nem em nenhuma resposta de API sua.
+**Aceite.** (1) ~~Um cliente novo, convidado e sem login, aparece na lista interna com o
+degrau "convite aceito" pendente e a contagem de dias correta.~~ **Passo 3** — não há lista.
+(2) **Feito:** o primeiro login carimba a data uma vez, e um segundo login não altera o
+carimbo (`test_the_stamp_is_immutable`). (3) **Adiado, e não esquecido:** o snapshot do
+Biahflow não carrega artefato nenhum, então o degrau `artifact_accepted` **não existe** no
+enum — declará-lo sem produtor seria o painel sem escritor de novo. O degrau do Biahflow que
+existe é o primeiro entregável fora de `pending`, carimbado pelo sync e nunca antes.
+(4) ~~Um cliente cujo degrau depende de entrega não realizada aparece rotulado como travado
+**em nós**.~~ **Passo 3.** (5) **Feito:** o apagamento leva os degraus junto, e precisou de
+exclusão escrita à mão — escopado por organização, o funil não vem no CASCADE do projeto
+(`test_the_erasure_removes_the_funnel_too`). (6) **Feito:** nenhuma rota de cliente devolve o
+funil, e o papel de requisição não tem policy sobre a tabela
+(`test_the_app_role_never_reads_the_funnel`).
 
 ## Testes e avaliações de IA
 

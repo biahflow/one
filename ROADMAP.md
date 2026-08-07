@@ -716,13 +716,25 @@ antes do seguinte. O gargalo nunca foi construir sinal: é a capacidade do time 
 ele, e três radares tocando para um time que não dá conta de agir em um é pior que um radar
 que ele respeita.
 
-- [ ] **Funil de onboarding medido.** *(RFC 001, FDD 020.)* Degraus de valor com carimbo de
-      tempo por organização, e alerta de quem travou. A régua é o **time-to-first-value**: do
-      ganho até a primeira aprovação e até o primeiro ROI visto — número que prediz retenção
-      melhor que qualquer health de projeto. O dado já ocorre; falta registrar **quando**.
-      Duas travas: instrumentar **degraus de valor, não vaidade** ("logou doze vezes" pode ser
-      um cliente perdido procurando o que devia estar óbvio), e separar "travou no cliente" de
-      "travou em nós". A IA vigia e escreve o sinal ao time; **não conversa**.
+- [ ] **Funil de onboarding medido — passo 1 feito, passos 3 e 4 abertos** *(RFC 001, FDD 020, ADR 0039)*: os degraus
+      são carimbados e ninguém os expõe ainda, que é a ordem que a RFC exige — escritor primeiro,
+      leitor depois, porque a ADR 0033 achou um painel publicado sobre um campo sem escritor.
+      Tabela por organização com carimbo **imutável** (nenhum papel tem `UPDATE`), `portal_app`
+      **sem policy nenhuma** — um caminho de requisição capaz de escrever o próprio degrau é um
+      caminho capaz de falsear o próprio engajamento —, seis degraus escritos pelas rotas de
+      verdade, e a purga e o apagamento alcançando-os (este último precisou de exclusão à mão: o
+      funil é escopado por organização e **não** vem no CASCADE do projeto, que o docstring do
+      `_erase` dava como a única exceção). `artifact_accepted` ficou **fora do enum** porque o
+      snapshot do Biahflow não carrega artefato — declarar degrau sem produtor seria o mesmo
+      defeito. De quebra, o que só apareceu ao executar: `bool(rowcount)` não diz se a linha
+      nasceu, porque `ON CONFLICT DO NOTHING` devolve **-1** nos dois casos e `bool(-1)` é `True` —
+      todo carimbo se dizia "primeira vez", e o evento sairia a cada download. Faltam os passos 3
+      (alerta de cliente travado) e 4 (a vigília da IA).
+      *A régua continua sendo o **time-to-first-value**, e as duas travas da proposta seguem
+      valendo para os passos que faltam: instrumentar **degraus de valor, não vaidade** — o
+      enum não tem nenhum degrau de esforço — e separar "travou no cliente" de "travou em
+      nós", que é do alerta e ainda não existe. A IA vigia e escreve o sinal ao time;
+      **não conversa**.*
 - [ ] **Canal de WhatsApp.** *(RFC 002, FDD 021.)* Aviso 1:1 por template ao lado do sino e do
       digest, no ponto de extensão que a ADR 0012 já descreve, com opt-in revogável como
       coluna da pessoa. **Nunca grupo**: a razão de existir de um grupo é conversa de muitos

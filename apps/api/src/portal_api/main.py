@@ -20,6 +20,7 @@ from portal_api import (
     agent_auth,
     chat_limit,
     conversations,
+    onboarding,
     pending_comments,
     results,
     schemas,
@@ -40,6 +41,7 @@ from portal_api.models import (
     AuditLog,
     ConversationMessage,
     Document,
+    OnboardingStepName,
     Organization,
     Project,
 )
@@ -492,6 +494,8 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
             "conversation_id": str(conversation.id),
             "message_id": str(answer.id),
         }
+        organization_id, asker_id = project.organization_id, user.id
+        internal_asker = user.is_internal
 
     # Depois do commit, pelo mesmo motivo do webhook: o worker lê a pendência do
     # banco, então ela precisa existir lá antes da task rodar.
@@ -499,6 +503,13 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
         from portal_api.worker import queue_pending_notification
 
         queue_pending_notification(str(project_id), str(result.pending_id))
+    # E o degrau, pelo motivo de sempre: roda sob `portal_system`. Carimba mesmo quando o
+    # turno virou lacuna — perguntar e receber uma resposta honesta *é* receber algo, e
+    # exigir resposta "boa" faria o degrau depender da qualidade do índice naquele dia.
+    if not internal_asker:
+        onboarding.stamp(
+            organization_id, OnboardingStepName.first_chat_turn, user_id=asker_id
+        )
     return response
 
 
@@ -785,10 +796,19 @@ def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
                 data=audit_data(ttl_seconds=settings.document_download_ttl_seconds),
             )
         )
+        organization_id, user_id = project.organization_id, user.id
+        internal_caller = user.is_internal
 
     expires_at = datetime.now(timezone.utc) + timedelta(
         seconds=settings.document_download_ttl_seconds
     )
+    # Degrau do funil (RFC 001), fora da transação da requisição porque o carimbo roda sob
+    # `portal_system`. É o momento em que o cliente **recebeu** conteúdo, e não em que se
+    # esforçou para procurá-lo — a URL assinada já foi emitida quando se chega aqui.
+    if not internal_caller:
+        onboarding.stamp(
+            organization_id, OnboardingStepName.first_document_opened, user_id=user_id
+        )
     return {"url": url, "expires_at": expires_at.isoformat()}
 
 
@@ -807,7 +827,28 @@ def my_dashboard(principal: CurrentPrincipal) -> dict:
         organization = session.get(Organization, project.organization_id)
         data = biahflow.build_dashboard(session, project)
         data["organization"] = organization.name if organization else None
-        return data
+        organization_id, user_id, internal = project.organization_id, user.id, user.is_internal
+        roi_seen = bool((data.get("roi") or {}).get("net") is not None)
+
+    # Fora da transação da requisição, porque o funil roda sob `portal_system` (RFC 001).
+    #
+    # **O login é carimbado aqui e não em `identity.py`**, e a razão está escrita lá: quando o
+    # `external_subject` deixa de ser nulo ainda não há organização resolvida — o próprio
+    # módulo diz isso ao explicar por que não grava `audit_log`. Aqui há, e o degrau fica
+    # melhor definido: "aceitou o convite" passa a significar que a pessoa **entrou e viu o
+    # projeto**, não que um token foi validado. A idempotência não depende de saber que é a
+    # primeira vez: `stamp` é `ON CONFLICT DO NOTHING`, e só a primeira cria linha.
+    if not internal:
+        onboarding.stamp(
+            organization_id, OnboardingStepName.first_login, user_id=user_id
+        )
+        # ROI **visto** exige número: um dashboard servido com lacuna não é ROI visto, pelo
+        # mesmo princípio com que `results.py` declara base ausente em vez de exibir zero.
+        if roi_seen:
+            onboarding.stamp(
+                organization_id, OnboardingStepName.first_roi_seen, user_id=user_id
+            )
+    return data
 
 
 @app.get(
@@ -1045,11 +1086,19 @@ def add_pending_comment(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
         response = _comment_payload(comment)
         queued = (str(project.id), str(comment.id))
+        organization_id, author_id = project.organization_id, user.id
+        internal_author = user.is_internal
 
     # Fora da transação, como o upload e o expurgo: o worker lê a linha do banco.
     from portal_api.worker import queue_pending_comment_notification
 
     queue_pending_comment_notification(*queued)
+    # E o degrau do funil, pela mesma razão de estar fora: roda sob `portal_system`.
+    # Responder uma pendência é onde o cliente deixa de assistir e passa a participar.
+    if not internal_author:
+        onboarding.stamp(
+            organization_id, OnboardingStepName.first_pending_answered, user_id=author_id
+        )
     return response
 
 

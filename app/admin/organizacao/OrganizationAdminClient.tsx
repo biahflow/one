@@ -14,6 +14,7 @@ export type RetentionPolicy = {
   notificationDays: number | null;
   agentEventDays: number | null;
   conversationDays: number | null;
+  onboardingDays: number | null;
   effective: Record<string, number>;
 };
 
@@ -54,7 +55,7 @@ const ERASURE_STATE: Record<string, { label: string; tone: string }> = {
   failed: { label: "Falhou", tone: "state--3" },
 };
 
-/** Os três prazos, na ordem em que a retenção os aplica. */
+/** Os quatro prazos, na ordem em que a retenção os aplica. */
 const WINDOWS = [
   {
     field: "notification_days",
@@ -70,6 +71,11 @@ const WINDOWS = [
     field: "conversation_days",
     label: "Conversas",
     hint: "Perguntas, respostas e as citações como foram exibidas.",
+  },
+  {
+    field: "onboarding_days",
+    label: "Funil de onboarding",
+    hint: "Quando o cliente alcançou cada degrau de valor. Prazo mais longo porque a régua só significa algo comparada com a de antes.",
   },
 ] as const;
 
@@ -116,6 +122,7 @@ export default function OrganizationAdminClient({
     notification_days: retention.notificationDays,
     agent_event_days: retention.agentEventDays,
     conversation_days: retention.conversationDays,
+    onboarding_days: retention.onboardingDays,
   };
 
   const openRequest = erasures.find(

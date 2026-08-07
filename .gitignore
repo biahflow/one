@@ -73,3 +73,11 @@ __pycache__/
 # Saída de `scripts/backup.sh` (ADR 0019). Um dump do banco nunca entra no git,
 # cifrado ou não.
 /backups/
+
+# Terraform: estado, plano e provider baixado nunca entram no repositório.
+# O estado mora num bucket GCS versionado (ver infra/terraform/ambientes/hml/backend.tf).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars

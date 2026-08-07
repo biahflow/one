@@ -1,0 +1,13 @@
+# Copie para `terraform.tfvars`. Nenhum segredo entra aqui — os valores dos
+# segredos vão para o Secret Manager por `gcloud secrets versions add`.
+
+projeto = "biahflow-hml"
+regiao  = "us-east1"
+zona    = "us-east1-b"
+
+# Vazio = `nip.io` sobre o IP de saída. Quando houver domínio, preencha e aplique;
+# depois disso, ajuste `redirectUris` e o issuer no realm do Keycloak (runbook).
+dominio = ""
+
+# SHA do commit. O workflow de deploy passa por `-var`; nunca `latest`.
+tag_imagem = "PREENCHER"

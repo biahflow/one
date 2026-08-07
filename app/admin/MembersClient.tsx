@@ -94,6 +94,14 @@ export default function MembersClient({
         <Link className="text-button" href="/admin/organizacao">
           Retenção, gasto de IA e apagamento da organização <ArrowRight size={15} />
         </Link>
+        {/* Também sem `?project=`, e por um motivo próprio: o funil pergunta sobre a
+            relação do cliente com o produto, e um cliente pode ter mais de um
+            projeto (ADR 0039). Esta é a única tela que olha **todas** as
+            organizações administradas de uma vez, porque ranquear por gravidade é
+            comparar clientes entre si (ADR 0040). */}
+        <Link className="text-button" href="/admin/funil">
+          Clientes travados no funil de onboarding <ArrowRight size={15} />
+        </Link>
       </header>
 
       {projects.length > 1 && (

@@ -319,6 +319,36 @@ def test_the_chat_stamp_fields_survive_the_formatter() -> None:
     assert payload["reason"] == "ProviderRefused"
 
 
+def test_the_stuck_client_fields_survive_the_formatter() -> None:
+    """O mesmo cuidado para o alerta do funil (ADR 0040), e ele tem armadilha própria.
+
+    `alerts.md` promete que o limiar de `onboarding.client_stuck` é lido por
+    `organization_id`, e que a linha diz o degrau e de quem é a vez. Nenhum desses nomes
+    pode cair na redaction — e a tentação de chamar a memória do alerta de `dedupe_key` ou
+    `alert_key` foi recusada justamente aqui: `key` é uma das substrings de `_SECRET_HINTS`,
+    e o campo sairia `[redacted]` sem nada ficar vermelho.
+    """
+    payload = json.loads(
+        JsonFormatter().format(
+            _record(
+                "onboarding.client_stuck",
+                organization_id="0f6f0b4e-0000-4000-8000-000000000000",
+                step="first_login",
+                days_stuck=9,
+                blocked_by="client",
+                threshold_days=7,
+            )
+        )
+    )
+
+    assert payload["event"] == "onboarding.client_stuck"
+    assert payload["organization_id"] == "0f6f0b4e-0000-4000-8000-000000000000"
+    assert payload["step"] == "first_login"
+    assert payload["days_stuck"] == 9
+    assert payload["blocked_by"] == "client"
+    assert payload["threshold_days"] == 7
+
+
 def test_the_answered_event_carries_the_prompt_version() -> None:
     payload = json.loads(
         JsonFormatter().format(

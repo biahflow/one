@@ -716,9 +716,10 @@ antes do seguinte. O gargalo nunca foi construir sinal: é a capacidade do time 
 ele, e três radares tocando para um time que não dá conta de agir em um é pior que um radar
 que ele respeita.
 
-- [ ] **Funil de onboarding medido — passo 1 feito, passos 3 e 4 abertos** *(RFC 001, FDD 020, ADR 0039)*: os degraus
-      são carimbados e ninguém os expõe ainda, que é a ordem que a RFC exige — escritor primeiro,
-      leitor depois, porque a ADR 0033 achou um painel publicado sobre um campo sem escritor.
+- [ ] **Funil de onboarding medido — passos 1 e 3 feitos, passo 4 aberto** *(RFC 001, FDD 020, ADR 0039, ADR 0040)*: os degraus
+      foram carimbados **antes** de qualquer leitor, que é a ordem que a RFC exige — escritor
+      primeiro, leitor depois, porque a ADR 0033 achou um painel publicado sobre um campo sem
+      escritor.
       Tabela por organização com carimbo **imutável** (nenhum papel tem `UPDATE`), `portal_app`
       **sem policy nenhuma** — um caminho de requisição capaz de escrever o próprio degrau é um
       caminho capaz de falsear o próprio engajamento —, seis degraus escritos pelas rotas de
@@ -728,13 +729,30 @@ que ele respeita.
       snapshot do Biahflow não carrega artefato — declarar degrau sem produtor seria o mesmo
       defeito. De quebra, o que só apareceu ao executar: `bool(rowcount)` não diz se a linha
       nasceu, porque `ON CONFLICT DO NOTHING` devolve **-1** nos dois casos e `bool(-1)` é `True` —
-      todo carimbo se dizia "primeira vez", e o evento sairia a cada download. Faltam os passos 3
-      (alerta de cliente travado) e 4 (a vigília da IA).
+      todo carimbo se dizia "primeira vez", e o evento sairia a cada download.
+      **O passo 3 chegou em 07/08/2026 (ADR 0040)**, com o leitor, a lista em `/admin/funil` e o
+      alerta em dois canais — evento nomeado com limiar e notificação **só para o time**, a
+      primeira do repositório a usar o `_INTERNAL_ONLY` que a ADR 0012 definiu e nunca usou. Três
+      decisões carregam o resto. O degrau atual é o **mais baixo em aberto** e não o mais alto
+      alcançado, porque o degrau do Biahflow chega retroativo e "mais alto alcançado" diria que
+      completou o funil um cliente que nunca entrou. A rota **autoriza sob `portal_admin` e computa
+      sob `portal_system`**, e o motivo foi encontrado do lado de dentro: `pending_item` não tem
+      policy `TO portal_admin`, então o `EXISTS` de "há pendência aberta?" responderia "não" para
+      **toda** organização e todo cliente do produto apareceria rotulado *travou em nós* — o desenho
+      que a ADR 0039 escolheu de propósito para `portal_app`, visto pelo avesso. E o alerta toca uma
+      vez porque a memória dele **já existia**: é o `dedupe_key` da notificação, o que dispensou a
+      tabela que a ausência de `UPDATE` no funil tornaria inevitável. **De quebra, o defeito que só
+      apareceu ao executar, e ele quase fez a medição nascer cega:** a regra de lacuna juntava duas
+      perguntas, e ao separá-las ficou claro que no primeiro dia da instrumentação *toda*
+      organização é anterior a ela — a tela nasceria mandando ligar para todo cliente do produto
+      para dizer que ele nunca entrou no portal. A saída foi a evidência que a própria RFC apontava
+      e ninguém lia: `user.external_subject`, o único degrau com corroboração fora do funil. Falta
+      o passo 4 (a vigília da IA).
       *A régua continua sendo o **time-to-first-value**, e as duas travas da proposta seguem
-      valendo para os passos que faltam: instrumentar **degraus de valor, não vaidade** — o
-      enum não tem nenhum degrau de esforço — e separar "travou no cliente" de "travou em
-      nós", que é do alerta e ainda não existe. A IA vigia e escreve o sinal ao time;
-      **não conversa**.*
+      valendo: instrumentar **degraus de valor, não vaidade** — o enum não tem nenhum degrau de
+      esforço — e separar "travou no cliente" de "travou em nós", que agora é estrutura da tela
+      (dois painéis, três contadores, nenhum total) e não convenção. A IA vigia e escreve o
+      sinal ao time; **não conversa**.*
 - [ ] **Canal de WhatsApp.** *(RFC 002, FDD 021.)* Aviso 1:1 por template ao lado do sino e do
       digest, no ponto de extensão que a ADR 0012 já descreve, com opt-in revogável como
       coluna da pessoa. **Nunca grupo**: a razão de existir de um grupo é conversa de muitos

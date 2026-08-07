@@ -32,7 +32,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from portal_api import access, agent_auth, crypto, retention, schemas, storage
+from portal_api import (
+    access,
+    agent_auth,
+    crypto,
+    onboarding,
+    retention,
+    schemas,
+    storage,
+)
 from portal_api.ai import quota
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
@@ -59,6 +67,7 @@ from portal_api.models import (
     Membership,
     MessageConfidence,
     MessageFeedback,
+    OnboardingStepName,
     Organization,
     OrganizationAiQuota,
     OrganizationRetentionPolicy,
@@ -1619,6 +1628,81 @@ def _quota_out(
         output_tokens=current.output_tokens,
         calls=current.calls,
         gaps=list(current.gaps),
+    )
+
+
+class OnboardingFunnelOut(BaseModel):
+    """Onde o cliente parou no funil, e de quem é a vez (Fase 7, RFC 001, ADR 0040).
+
+    Os campos são exatamente os que a tela lê, e a lista é curta por isso: um campo que
+    ninguém desreferencia é uma pergunta para a API, e a guarda da ADR 0033 a faz. Ficaram
+    de fora, de propósito, o ``organization_id`` e o nome — seriam **eco** de quem já pôs o
+    id na URL — e a escada com as seis datas, que nenhuma coluna da FDD 020 pede.
+    """
+
+    #: O primeiro degrau sem carimbo, ou nulo quando os seis foram alcançados.
+    current_step: OnboardingStepName | None
+    #: ``client`` ou ``us``. Enum e não texto livre porque a FDD 020 exige que os dois
+    #: **nunca** sejam somados na mesma contagem, e um tipo diz isso melhor que uma
+    #: convenção.
+    blocked_by: onboarding.Blame | None
+    #: Nulo é **lacuna**, jamais zero: um cliente sem carimbo pode não ter chegado lá ou
+    #: ser anterior à instrumentação, e as duas coisas não podem sair iguais (FDD 020).
+    days_stuck: int | None
+    #: Para a tela escrever "9 de 7 dias" sem reimplementar o `config.py`.
+    threshold_days: int
+    #: Decidido pela API. A tela **não** o rederiva de `days_stuck > threshold_days`, que
+    #: poria a mesma regra em dois lugares — o argumento que o docstring de
+    #: `_erasure_is_claimable` já escreveu.
+    stuck: bool
+    next_action: str
+    #: A lacuna declarada, na forma do `gaps` de `results.py` e do `AiQuotaOut` acima.
+    gaps: list[str]
+    #: Desde quando os dias são contados, e de onde a data saiu. Um contador que ninguém
+    #: consegue refazer não é auditável.
+    anchor_at: datetime
+    anchor_source: str
+
+
+@router.get(
+    "/organizations/{organization_id}/onboarding", response_model=OnboardingFunnelOut
+)
+def get_onboarding_funnel(
+    organization_id: uuid.UUID, principal: CurrentPrincipal
+) -> OnboardingFunnelOut:
+    """O estado do funil desta organização, para a lista interna de clientes travados.
+
+    **Autoriza sob ``portal_admin`` e computa sob ``portal_system``**, em duas transações,
+    e isso não é atalho. ``pending_item`` **não tem policy `TO portal_admin`** — o papel
+    herda o ``SELECT`` das default privileges e lê zero linhas em silêncio, que é o mesmo
+    desenho que a ADR 0039 escolheu de propósito para ``portal_app`` nesta mesma tabela.
+    Sob o papel administrativo, o ``EXISTS`` de "há pendência aberta?" responderia "não"
+    para **toda** organização, e todo cliente do produto apareceria rotulado "travou em
+    nós" com a forma de um alerta de verdade.
+
+    A autorização não afrouxa por isso: o ``organization_id`` que a segunda transação usa é
+    o que ``_authorized_org`` acabou de provar, e não o que veio na URL. O precedente de
+    abrir sessão de sistema aqui dentro é ``_claim_oauth_state``.
+    """
+    with get_session(principal, role=DbRole.admin) as session:
+        _, organization = _authorized_org(session, principal, organization_id)
+        scoped = organization.id
+
+    with get_session(role=DbRole.system) as session:
+        reading = onboarding.read_funnel(session, scoped, get_settings())
+
+    if reading is None:  # pragma: no cover - `_authorized_org` já provou que existe
+        raise NOT_FOUND
+    return OnboardingFunnelOut(
+        current_step=reading.current_step,
+        blocked_by=reading.blame,
+        days_stuck=reading.days_stuck,
+        threshold_days=reading.threshold_days,
+        stuck=reading.stuck,
+        next_action=reading.next_action,
+        gaps=reading.gaps,
+        anchor_at=reading.anchor_at,
+        anchor_source=reading.anchor_source,
     )
 
 

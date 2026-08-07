@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowUpRight,
   Bell,
   Bot,
@@ -151,6 +152,10 @@ const notificationIcon: Record<string, LucideIcon> = {
   pending_resolved: Check,
   pending_commented: MessageSquare,
   project_status_changed: TrendingUp,
+  // O único aviso que o cliente nunca recebe: a audiência é `_INTERNAL_ONLY`
+  // (ADR 0040). Está aqui porque quem é interno também abre o portal por este
+  // componente, e o `?? Bell` lá embaixo faria o esquecimento degradar em silêncio.
+  onboarding_stuck: AlertTriangle,
 };
 
 /** Um resultado da busca, como `GET /api/v1/me/search` o devolve (ADR 0024).

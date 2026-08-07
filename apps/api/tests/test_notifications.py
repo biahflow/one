@@ -228,6 +228,24 @@ def test_a_member_of_another_project_receives_nothing(db_session: Session) -> No
     assert outsider not in {item.user_id for item in _notifications(db_session, project.id)}
 
 
+def test_every_notification_kind_declares_its_audience() -> None:
+    """O `.get(kind, _CLIENT_ONLY)` de `recipients` faz o esquecimento **enviar ao cliente**.
+
+    Três linhas contra o defeito mais caro que a ADR 0040 podia introduzir: o aviso de
+    cliente travado é o primeiro cuja audiência é só o time, e sem a entrada no `AUDIENCE`
+    ele contaria ao próprio cliente que ele está sendo medido — que é o que a FDD 020 proíbe
+    na seção de jornada.
+
+    A guarda é sobre **completude** e não sobre o valor de cada linha: quem escrever a
+    próxima espécie escolhe a audiência, e o que não pode é escolher por omissão.
+    """
+    faltando = [
+        kind.value for kind in NotificationKind if kind not in notifications.AUDIENCE
+    ]
+
+    assert faltando == []
+
+
 def test_dedupe_key_survives_a_title_longer_than_the_column() -> None:
     """Marco vai a 200 caracteres e a coluna a 255: a chave não pode estourar."""
     key = notifications._key("milestone", "x" * 300, "done")

@@ -262,6 +262,28 @@ class Settings(BaseSettings):
     #: `pending` ou `running`.
     erasure_stale_after_seconds: int = 1800
 
+    # O alerta de cliente travado no funil (Fase 7, RFC 001 passo 3, ADR 0040).
+    # Ligado por padrão pelo argumento da retenção logo acima: só precisa do
+    # próprio banco, e "ninguém descobre o churn" é a dívida que a RFC declarou.
+    onboarding_alert_enabled: bool = True
+    #: Diário, como a poda, e pelo mesmo motivo: o alerta é por janela de dias, e um
+    #: tick de hora em hora só multiplicaria varreduras que não encontram nada.
+    onboarding_alert_interval_seconds: int = 24 * 60 * 60
+    #: A partir de quantos dias parado num degrau o cliente conta como travado. São
+    #: três números e não um porque os degraus não pedem a mesma paciência.
+    #:
+    #: Sete para o login, e é o número que a fatia inteira existe para atender: o caso
+    #: da RFC é "ganho há nove dias, convite enviado, nunca logou" — aos nove ainda se
+    #: resolve com um telefonema, e um limiar de catorze o descobriria tarde demais.
+    onboarding_alert_login_days: int = 7
+    #: Os degraus do meio pedem folga: dependem de o cliente **voltar** depois do
+    #: primeiro login, e uma semana de férias não é abandono.
+    onboarding_alert_step_days: int = 14
+    #: O do Biahflow é o mais longo justamente porque ele é **sempre nosso**: cobrar a
+    #: entrega aos catorze dias transformaria o radar de engajamento num relatório de
+    #: execução, que é o que o health score e o risco de atraso já fazem.
+    onboarding_alert_deliverable_days: int = 30
+
     # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
     # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.
     # Sem isso, quem segue o `cp .env.example .env` do README não consegue rodar

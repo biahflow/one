@@ -697,6 +697,40 @@ def test_staff_cannot_reach_another_organizations_retention(
     assert response.status_code == 404
 
 
+def test_a_client_cannot_read_the_onboarding_funnel(world: World, authenticated) -> None:
+    """O cliente não deve nem saber que está sendo medido em funil (FDD 020).
+
+    Aqui a regra 6 do `AGENTS.md` guarda mais do que uma fronteira de tenant: a resposta
+    descreve o comportamento de uma pessoa nomeada, que é a classe mais sensível da
+    `data-classification.md`.
+    """
+    authenticated(world.acme.client)
+
+    response = client.get(
+        f"/api/v1/admin/organizations/{world.acme.organization_id}/onboarding"
+    )
+
+    assert response.status_code == 404
+
+
+def test_staff_cannot_read_another_organizations_onboarding_funnel(
+    world: World, authenticated
+) -> None:
+    """A rota computa sob `portal_system`, e a fronteira continua sendo a de sempre.
+
+    É o par negativo que importa mais nesta fatia: a leitura roda com a credencial que
+    enxerga todos os tenants — porque `pending_item` não tem policy para `portal_admin` —,
+    e o que a mantém escopada é o `_authorized_org` **antes** dela, nunca o id da URL.
+    """
+    authenticated(world.staff)
+
+    response = client.get(
+        f"/api/v1/admin/organizations/{world.globex.organization_id}/onboarding"
+    )
+
+    assert response.status_code == 404
+
+
 def test_a_client_cannot_read_or_set_the_ai_spending_cap(
     world: World, authenticated
 ) -> None:

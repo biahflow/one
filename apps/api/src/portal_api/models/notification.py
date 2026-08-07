@@ -43,6 +43,11 @@ class NotificationKind(str, enum.Enum):
     #: diff do snapshot nem de uma decisão da IA: nasce de alguém digitando.
     pending_commented = "pending_commented"
     project_status_changed = "project_status_changed"
+    #: Um cliente parou num degrau do funil de onboarding (ADR 0040). O **primeiro** aviso
+    #: cuja audiência é só o time interno: o cliente não deve nem saber que está sendo
+    #: medido (FDD 020), e é por isso que o ``AUDIENCE`` de ``notifications.py`` ganhou uma
+    #: guarda de completude no mesmo commit — o padrão daquele ``.get`` é o cliente.
+    onboarding_stuck = "onboarding_stuck"
 
 
 class Notification(Base, _ProjectChildMixin, TimestampMixin):

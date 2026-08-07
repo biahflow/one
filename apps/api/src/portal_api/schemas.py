@@ -310,6 +310,11 @@ class DashboardOut(Out):
     project: str
     status: str
     completion: int
+    #: Quando o Biahflow arquivou o projeto, ou ``None`` se ele segue ativo (ADR 0036). É `str`
+    #: e não `datetime` pela regra deste módulo: o produtor já entregou texto (`.isoformat()`),
+    #: e tipar como `datetime` faria o Pydantic reserializar o byte que a fatia prometeu não
+    #: mudar. Preenchido, a tela marca "Projeto encerrado" e as escritas respondem 409.
+    archived_at: str | None
     health: ProjectHealthOut | None
     journey: JourneyOut
     digital_employees: list[DigitalEmployeeOut]
@@ -487,7 +492,9 @@ class AgentEventAcceptedOut(Out):
 
 class WebhookSyncedOut(Out):
     status: str
-    project_id: str
+    #: ``None`` quando o Biahflow não conhece o projeto que o webhook nomeou — não
+    #: há o que reconciliar, e a rota diz isso em vez de estourar (ADR 0036).
+    project_id: str | None
 
 
 class DocumentDownloadOut(Out):

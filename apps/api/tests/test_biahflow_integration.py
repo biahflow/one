@@ -243,6 +243,39 @@ def test_sync_snapshot_projects_journey_roi_and_next_meeting(db_session: Session
 
 
 @pytest.mark.integration
+def test_sync_carrega_o_arquivamento_do_biahflow_nos_dois_sentidos(db_session: Session) -> None:
+    """O projeto encerrado lá vira projeto encerrado aqui — e restaurado, volta (ADR 0036).
+
+    A ida é o defeito que a fatia conserta: até ela, arquivar o projeto tirava o snapshot do ar
+    e o portal só via um 404, indistinguível de "projeto inexistente". A volta é o que impede a
+    correção de virar outro caminho sem saída: a interface do Biahflow arquiva e restaura por
+    item, então `None` aqui precisa significar "ativo", e não "não mexa".
+    """
+    snap = _snapshot(biahflow_project_id=41, client_id=39)
+    project = biahflow.sync_snapshot(db_session, snap)
+    assert project.archived_at is None
+    assert biahflow.build_dashboard(db_session, project)["archived_at"] is None
+
+    snap["project"]["archived_at"] = "2026-08-06T22:23:24.171853+00:00"
+    project = biahflow.sync_snapshot(db_session, snap)
+    assert project.archived_at is not None
+    assert project.archived_at.year == 2026
+    # O andamento **não** foi sobrescrito: encerrado e "em implementação" são fatos diferentes,
+    # e é por isso que o arquivamento é coluna própria e não um valor de `ProjectStatus`.
+    assert project.status is ProjectStatus.in_implementation
+    # E o histórico continua inteiro, que é o que "só leitura" exige.
+    assert len(biahflow.build_dashboard(db_session, project)["milestones"]) == 2
+
+    snap["project"]["archived_at"] = None
+    project = biahflow.sync_snapshot(db_session, snap)
+    assert project.archived_at is None
+
+    # Biahflow anterior à fatia não manda a chave, e ausência é ativo — não "arquivado".
+    snap["project"].pop("archived_at")
+    assert biahflow.sync_snapshot(db_session, snap).archived_at is None
+
+
+@pytest.mark.integration
 def test_sync_snapshot_replaces_phases_and_deliverables(db_session: Session) -> None:
     snap = _snapshot(biahflow_project_id=16, client_id=14)
     biahflow.sync_snapshot(db_session, snap)

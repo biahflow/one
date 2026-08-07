@@ -116,6 +116,29 @@ save de qualquer um dos outros traz o time digital inteiro no snapshot seguinte 
 "Seu Time Digital" fica vazio na tela do cliente por tempo indeterminado, e nada fica vermelho.
 Corrigir é do lado do Biahflow: um receiver, na forma dos que já existem.
 
+**e) Arquivar o *projeto* travava o portal — resolvido na ADR 0036, e vale saber o que era.**
+Arquivar emite (o `archive()` de lá é um `save()`), mas a rota de snapshot filtrava
+`archived_at__isnull=True`: o portal vinha buscar o estado novo e levava **404**, que ele não tem
+como distinguir de "este id nunca existiu". O webhook respondia 500, nada era gravado, e a tela do
+cliente seguia mostrando como **ativo** um projeto encerrado — por todo o tempo que o
+arquivamento durasse, porque cada webhook seguinte batia no mesmo 404.
+
+Hoje o snapshot responde 200 e carrega `project.archived_at`; o portal marca "Projeto encerrado",
+mantém a leitura e recusa escrita com 409. Se você vir o sintoma de novo, é `BIAHFLOW_BASE_URL`
+apontando para outra base — os ids não batem entre instâncias, e aí o 404 é verdadeiro. O portal
+emite `biahflow.snapshot_missing` nesse caso, em vez de 500.
+
+Duas coisas medidas junto, que delimitam o problema: **arquivar item individual** (documento,
+marco, reunião, pendência) sempre funcionou, nos dois sentidos, porque o sync substitui as listas
+inteiras a cada webhook; e **desarquivar o projeto sempre destravou sozinho**, porque o
+`unarchive` também é um `save()` e o snapshot volta a existir.
+
+**f) Exclusão definitiva não avisa ninguém, e isto continua aberto.** Não há receiver de
+`post_delete` nem de `pre_delete` em `signals.py` — os quinze são `post_save`. Onde o Biahflow
+apaga de verdade (`retention.py`, e qualquer cascata de `queryset.delete()`), o portal não fica
+sabendo: o item some do snapshot mas nenhum webhook sai, e o read model só se corrige no próximo
+save de outra coisa naquele projeto. Não confunda com o arquivamento, que é `save()` e emite.
+
 ## 3. Prove que o caminho está aberto, antes de esperar mágica
 
 ```bash
@@ -200,4 +223,7 @@ Mailpit **do portal** (`:8025`), não no do Biahflow (`:19025`).
 | 500 uma vez só, `RemoteProtocolError` | primeira conexão ao `runserver` ocioso; salve de novo antes de investigar |
 | 200 no webhook e nada muda na tela | o projeto sincronizou noutra organização — confira os slugs e o bootstrap |
 | O time digital não aparece | tropeço (d): `DigitalEmployee` não emite; salve outra coisa para forçar |
+| `biahflow.snapshot_missing` no log daqui | o Biahflow respondeu 404 no snapshot: id de outra instância, quase sempre `BIAHFLOW_BASE_URL` |
+| Arquivei/apaguei algo e continua na tela | se foi **arquivar**, é bug — veja (e); se foi apagar de vez, é (f), e nenhum webhook saiu |
+| O projeto encerrado aparece como ativo | o portal não recebeu o `archived_at`: confira se aquele Biahflow já tem a mudança da ADR 0036 |
 | Login, sessão, "sem projeto atribuído" | `auth-failure.md` |

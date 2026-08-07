@@ -21,6 +21,12 @@ let apiStub;
 const seenTraceIds = [];
 
 /**
+ * Substitui o dashboard servido pelo stub, para o caso em que ele difere do
+ * padrão. Hoje só o projeto encerrado (ADR 0036) — `null` volta ao normal.
+ */
+let dashboardOverride = null;
+
+/**
  * Stands in for the FastAPI. Lets the SSR path be exercised for real — the same
  * fetches, the same projection — without Postgres, Keycloak or Python.
  */
@@ -28,7 +34,7 @@ function startApiStub() {
   const server = createServer((request, response) => {
     seenTraceIds.push(request.headers["x-request-id"]);
     const body = request.url?.startsWith("/api/v1/me/dashboard")
-      ? DASHBOARD
+      ? (dashboardOverride ?? DASHBOARD)
       : request.url?.startsWith("/api/v1/me/notifications")
         ? NOTIFICATIONS
         : request.url?.startsWith("/api/v1/me/search")
@@ -317,6 +323,33 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.match(html, /aria-label="Notificações \(2 não lidas\)"/);
   assert.doesNotMatch(html, /Your site is taking shape/);
   assert.doesNotMatch(html, /codex-preview/);
+  // Projeto ativo não mostra o selo — sem isto, a asserção do teste seguinte
+  // passaria mesmo com o selo aparecendo sempre.
+  assert.doesNotMatch(html, /Projeto encerrado/);
+});
+
+test("o projeto encerrado é marcado na tela e fecha a pergunta", async () => {
+  // Arquivar no Biahflow chega até aqui desde a ADR 0036. Antes, o portal
+  // mostrava como ativo um projeto que a fonte da verdade havia encerrado.
+  dashboardOverride = { ...DASHBOARD, archived_at: "2026-08-06T22:23:24.171853+00:00" };
+  try {
+    const response = await render("/", { headers: { cookie: await sessionCookie() } });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+
+    assert.match(html, /Projeto encerrado/);
+    assert.match(html, /health-pill--archived/);
+    // A saúde continua ao lado, e não no lugar: um projeto pode terminar no prazo.
+    assert.match(html, /No prazo/);
+    // O histórico inteiro permanece — é a evidência das respostas já dadas (ADR 0017).
+    assert.match(html, /Plano de implantação v3\.pdf/);
+    assert.match(html, /Aprovar fluxo de exceções/);
+    // O fechamento das escritas não é assertável aqui: o painel de chat só entra no DOM
+    // depois de aberto, e o fio de comentário depois de expandido. Quem cobre a forma é a
+    // varredura de fonte abaixo; quem cobre o comportamento é o e2e.
+  } finally {
+    dashboardOverride = null;
+  }
 });
 
 test("the search route forwards the session and answers from the API", async () => {
@@ -413,6 +446,13 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   // backup que pulavam em silêncio. Um chat que falhou agora diz que falhou.
   assert.doesNotMatch(dashboard, /function answerFor/);
   assert.match(dashboard, /Pendência criada para Portal Labs/);
+  // Projeto encerrado fecha as duas escritas do cliente (ADR 0036). É guarda de forma,
+  // como a de citação abaixo: o formulário de pergunta e o de comentário têm de estar
+  // atrás da condição, e não apenas escondidos por CSS ou desabilitados no submit — a API
+  // responde 409, e uma tela que só falha depois de a pessoa digitar é pior que nenhuma.
+  assert.match(dashboard, /projectArchived \? \(/);
+  assert.match(dashboard, /archived \? \(/);
+  assert.match(dashboard, /fazer novas perguntas/);
   // E a fabricação não pode voltar por outro caminho. A guarda é sobre a *forma*,
   // não sobre os rótulos: toda citação da tela vem de `data.sources`/`data.citations`
   // da API, então um array de literais atribuído a `sources` no cliente do chat só

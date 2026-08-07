@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from time import perf_counter
 from uuid import UUID
 
+import httpx
 import redis
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -39,6 +40,7 @@ from portal_api.models import (
     ConversationMessage,
     Document,
     Organization,
+    Project,
 )
 from portal_api.preflight import preflight
 from portal_api.repositories import (
@@ -167,6 +169,47 @@ CLIENT_ERRORS: dict[int | str, dict[str, object]] = {
         ),
     },
 }
+
+#: A recusa por projeto encerrado, declarada só nas rotas que escrevem (ADR 0036).
+#:
+#: **Não entra em `CLIENT_ERRORS`**: aquele dicionário é o que toda rota de cliente
+#: responde, e a maioria delas continua servindo um projeto arquivado — é o que
+#: "visível e só leitura" quer dizer.
+#:
+#: 409, e a escolha tem argumento. 404 seria mentira e, pior, mentira cara: neste
+#: contrato ele significa **exatamente** a ausência de vínculo, é a única resposta
+#: que `test_authorization.py` verifica em toda rota escopada, e usá-lo aqui
+#: tornaria "você não tem acesso" indistinguível de "este projeto acabou". 403 não
+#: existe nesta API. O precedente é o 429 da quota (ADR 0022), que também recusou
+#: sem ser sobre permissão: o código sai do **motivo**, e o motivo aqui é o estado
+#: do recurso, que é o que 409 nomeia.
+ARCHIVED_PROJECT_ERROR: dict[int | str, dict[str, object]] = {
+    status.HTTP_409_CONFLICT: {
+        "model": schemas.ErrorOut,
+        "description": (
+            "O projeto foi encerrado no Biahflow e está em modo de consulta. A "
+            "leitura continua aberta — o histórico é a evidência das respostas já "
+            "dadas —, mas nada novo é escrito nele."
+        ),
+    },
+}
+
+#: Mensagem única, porque as duas rotas recusam pelo mesmo motivo e quem lê o
+#: corpo é a tela.
+ARCHIVED_PROJECT_DETAIL = "Project archived"
+
+
+def _refuse_when_archived(project: Project) -> None:
+    """Fecha a escrita num projeto que o Biahflow encerrou (ADR 0036).
+
+    Chamada **depois** do 404 em toda rota que a usa, e a ordem não é estilo: a
+    recusa confirma que o projeto existe, então ela só pode acontecer depois de o
+    vínculo do chamador ter sido estabelecido.
+    """
+    if project.archived_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=ARCHIVED_PROJECT_DETAIL
+        )
 
 
 class AgentEventIn(BaseModel):
@@ -361,6 +404,7 @@ def ingest_agent_event(event: AgentEventIn, request: Request) -> dict[str, str]:
     response_model=schemas.ChatOut,
     responses={
         **CLIENT_ERRORS,
+        **ARCHIVED_PROJECT_ERROR,
         status.HTTP_429_TOO_MANY_REQUESTS: {
             "description": (
                 "Perguntas demais na janela de um minuto (ADR 0021), ou teto mensal "
@@ -389,6 +433,10 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
             project = access.default_project(session, user)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        # Depois do 404 e antes da quota (ADR 0036): não há o que cobrar por uma pergunta que
+        # não será respondida. O limite de taxa lá em cima já contou, e isso é aceito — ele é
+        # anterior a saber que projeto é, exatamente como no caso do 404.
+        _refuse_when_archived(project)
         ctx = TenantContext(organization_id=project.organization_id, project_id=project.id)
         # **Depois** do 404, ao contrário do limite de taxa acima, e a diferença
         # de ordem é deliberada (ADR 0022): sem projeto não há organização a que
@@ -464,9 +512,23 @@ async def biahflow_webhook(request: Request) -> dict:
     if not biahflow_project_id:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="project_id required")
 
-    snapshot = biahflow.fetch_snapshot(
-        settings.biahflow_base_url, settings.biahflow_read_token, int(biahflow_project_id)
-    )
+    try:
+        snapshot = biahflow.fetch_snapshot(
+            settings.biahflow_base_url, settings.biahflow_read_token, int(biahflow_project_id)
+        )
+    except httpx.HTTPStatusError as exc:
+        # 404 aqui não é erro desta API, e virar 500 escondia isso atrás de um traceback
+        # anônimo (ADR 0036). O caso que motivou o evento era arquivar um projeto, e esse
+        # está resolvido do outro lado — o snapshot agora existe e declara `archived_at`.
+        # O que sobra é id que nunca existiu ou base errada, e aí não há nada a reconciliar:
+        # nomear e sair é mais honesto do que estourar.
+        if exc.response.status_code != status.HTTP_404_NOT_FOUND:
+            raise
+        logger.warning(
+            "biahflow.snapshot_missing",
+            extra={"biahflow_project_id": str(biahflow_project_id)},
+        )
+        return {"status": "unknown_project", "project_id": None}
     # portal_system (BYPASSRLS): this is the path that creates the tenant, so
     # there is no context to bind and the write would be denied otherwise.
     with get_session(role=DbRole.system) as session:
@@ -891,7 +953,7 @@ def list_pending_comments(
     "/api/v1/me/pendings/{pending_item_id}/comments",
     response_model=schemas.PendingCommentOut,
     status_code=status.HTTP_201_CREATED,
-    responses=CLIENT_ERRORS,
+    responses={**CLIENT_ERRORS, **ARCHIVED_PROJECT_ERROR},
 )
 def add_pending_comment(
     pending_item_id: UUID, payload: PendingCommentIn, principal: CurrentPrincipal
@@ -910,6 +972,7 @@ def add_pending_comment(
         project = access.default_project(session, user)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        _refuse_when_archived(project)
         ctx = TenantContext(project.organization_id, project.id)
         comment = pending_comments.add_comment(
             session,

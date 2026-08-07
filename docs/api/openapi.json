@@ -868,6 +868,17 @@
         "additionalProperties": false,
         "description": "A projeção do read model alimentado pelo Biahflow (ADR 0006).\n\nO portal não origina nada disto: a digitação continua no Biahflow e chega\naqui por snapshot.",
         "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
           "completion": {
             "title": "Completion",
             "type": "integer"
@@ -952,6 +963,7 @@
           "project",
           "status",
           "completion",
+          "archived_at",
           "health",
           "journey",
           "digital_employees",
@@ -2025,6 +2037,17 @@
         "additionalProperties": false,
         "description": "O mesmo dashboard, mais o nome da organização.\n\nA assimetria é real e é anterior a esta fatia: ``GET /me/dashboard``\nacrescenta a chave (`main.py`) e ``GET /projects/{id}/dashboard`` não. Está\ndeclarada em vez de corrigida porque corrigi-la muda um payload, e esta\nfatia descreve o que existe.",
         "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
           "completion": {
             "title": "Completion",
             "type": "integer"
@@ -2120,6 +2143,7 @@
           "project",
           "status",
           "completion",
+          "archived_at",
           "health",
           "journey",
           "digital_employees",
@@ -3081,8 +3105,15 @@
         "additionalProperties": false,
         "properties": {
           "project_id": {
-            "title": "Project Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
           },
           "status": {
             "title": "Status",
@@ -5200,6 +5231,16 @@
             },
             "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O projeto foi encerrado no Biahflow e está em modo de consulta. A leitura continua aberta — o histórico é a evidência das respostas já dadas —, mas nada novo é escrito nele."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5876,6 +5917,16 @@
               }
             },
             "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O projeto foi encerrado no Biahflow e está em modo de consulta. A leitura continua aberta — o histórico é a evidência das respostas já dadas —, mas nada novo é escrito nele."
           },
           "422": {
             "content": {

@@ -195,6 +195,13 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     snapshot_health = snapshot.get("health") or {}
     project.health_label = snapshot_health.get("label")
     project.health_level = snapshot_health.get("level")
+    # Arquivamento (ADR 0036). Lido com `.get`, como todo o resto: um Biahflow anterior à fatia
+    # simplesmente não manda a chave, e ausência aqui significa ativo. A atribuição é
+    # incondicional de propósito — `None` é um valor, não "não mexa" —, porque a interface de lá
+    # restaura por item e um campo que só soubesse ir deixaria o projeto marcado como encerrado
+    # depois de o arquivamento ser desfeito.
+    archived_at = project_data.get("archived_at")
+    project.archived_at = datetime.fromisoformat(archived_at) if archived_at else None
     session.flush()
 
     # Read model: milestones are fully replaced from the snapshot so removals propagate.
@@ -501,6 +508,9 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         "project": project.name,
         "status": project.status.value,
         "completion": project.completion_percent,
+        # Ao lado de `status`, não dentro dele (ADR 0036): o andamento continua sendo o que era
+        # quando o projeto foi encerrado, e é a tela que decide o que fazer com os dois juntos.
+        "archived_at": project.archived_at.isoformat() if project.archived_at else None,
         "health": (
             {"label": project.health_label, "level": project.health_level}
             if project.health_level

@@ -132,6 +132,12 @@ class Project(Base, TenantMixin, TimestampMixin):
     # Saúde amigável vinda do Biahflow (rótulo + cor), sem score/sinais internos.
     health_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
     health_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Quando o Biahflow arquivou o projeto — coluna própria, e não um valor de `ProjectStatus`,
+    # porque as duas coisas são ortogonais: um projeto encerrado tinha um andamento quando
+    # acabou, e `status` é justamente esse andamento. Pausado e encerrado disputando a mesma
+    # coluna faria perder um dos dois. É reversível: a interface do Biahflow restaura por item,
+    # e o sync devolve isto a `None` quando ela o faz (ADR 0036).
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Milestone(Base, _ProjectChildMixin, TimestampMixin):

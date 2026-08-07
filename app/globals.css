@@ -567,6 +567,9 @@
   .health-pill--green { @apply bg-success-50 text-success-600; }
   .health-pill--amber { @apply bg-warning-50 text-warning-600; }
   .health-pill--red { @apply bg-danger-50 text-danger-600; }
+  /* Encerrado não é saúde ruim — é ausência de andamento (ADR 0036). Daí o cinza dos tokens
+     neutros, e não o vermelho: um projeto pode terminar No prazo. */
+  .health-pill--archived { @apply bg-line text-muted; }
 
   /* ---------- Funcionários Digitais ---------- */
   .employees-count { @apply rounded-full bg-brand-50 px-3 py-1.5 text-xs font-bold text-brand-700; }

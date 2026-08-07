@@ -230,6 +230,9 @@ export type Overview = {
   status: string;
   completion: number;
   source: "live" | "demo";
+  /** Quando o Biahflow encerrou o projeto, ou `null` se segue ativo (ADR 0036). Preenchido, a
+   *  tela entra em modo de consulta: o histórico continua inteiro e as escritas fecham. */
+  archivedAt: string | null;
   nextDelivery: { title: string; detail: string } | null;
   milestones: OverviewMilestone[];
   journey: { currentPhase: string | null; phases: JourneyPhase[] };
@@ -312,6 +315,9 @@ export default function DashboardClient({
   notifications?: NotificationCenter;
 }) {
   const router = useRouter();
+  // Projeto encerrado no Biahflow: a tela vira consulta (ADR 0036). Derivado do overview e não
+  // guardado em estado, porque quem decide isto é a fonte da verdade a cada carregamento.
+  const projectArchived = overview.archivedAt !== null;
   const [activeNav, setActiveNav] = useState("Visão geral");
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -813,8 +819,20 @@ export default function DashboardClient({
             ))}
           </div>
           {downloadError && <p className="chat-notice" role="status">{downloadError}</p>}
-          <div className="chat-suggestions">{suggestedQuestions.map((item) => <button key={item} onClick={() => sendQuestion(undefined, item)}>{item}</button>)}</div>
-          <form className="chat-form" onSubmit={sendQuestion}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Pergunte sobre o projeto..." aria-label="Pergunta para IA" /><button type="submit" aria-label="Enviar pergunta"><Send size={17} /></button></form>
+          {/* Projeto encerrado é consulta, não conversa (ADR 0036). O histórico acima continua
+              inteiro — é a evidência das respostas já dadas —, e a API recusaria com 409 de
+              qualquer forma: desabilitar aqui é dizer o motivo antes de a pessoa digitar. */}
+          {projectArchived ? (
+            <p className="chat-notice" role="status">
+              Este projeto foi encerrado. O histórico continua disponível para consulta, mas não é
+              possível fazer novas perguntas.
+            </p>
+          ) : (
+            <>
+              <div className="chat-suggestions">{suggestedQuestions.map((item) => <button key={item} onClick={() => sendQuestion(undefined, item)}>{item}</button>)}</div>
+              <form className="chat-form" onSubmit={sendQuestion}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Pergunte sobre o projeto..." aria-label="Pergunta para IA" /><button type="submit" aria-label="Enviar pergunta"><Send size={17} /></button></form>
+            </>
+          )}
         </section>
       )}
     </main>
@@ -1119,6 +1137,9 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
         <div className="status-main">
           <div className="status-icon"><Check size={19} /></div>
           <div><p>Status do projeto</p><h2>{overview.status}</h2></div>
+          {/* Ao lado da saúde, não no lugar dela: o andamento continua sendo o que era quando
+              o projeto foi encerrado, e as duas informações respondem perguntas diferentes. */}
+          {overview.archivedAt && <span className="health-pill health-pill--archived">Projeto encerrado</span>}
           {overview.health && <span className={`health-pill health-pill--${overview.health.level}`}>{overview.health.label}</span>}
         </div>
         {/* A casca de demonstração não carimba data: "Atualizado há 2 dias" era
@@ -1425,14 +1446,14 @@ function PendingView({ onAsk, overview, onOpenTurn }: { onAsk: () => void; overv
                   : "Nenhuma pendência aberta com esta prioridade."}
               </p>
             )}
-            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread />)}
+            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread archived={overview.archivedAt !== null} />)}
           </div>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Resolvidas <span>{resolved.length}</span></h2></div></div>
           <div className="pending-list">
             {resolved.length === 0 && <p className="empty-state">Nenhuma pendência resolvida ainda.</p>}
-            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread />)}
+            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread archived={overview.archivedAt !== null} />)}
           </div>
         </article>
       </section>
@@ -1871,7 +1892,7 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
  * viram mural, e a contagem no botão é o que diz se vale abrir. Carrega ao abrir
  * e não no render da aba — a maioria das visitas não comenta nada.
  */
-function PendingThread({ item }: { item: PendingItemView }) {
+function PendingThread({ item, archived }: { item: PendingItemView; archived: boolean }) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<PendingComment[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -1933,7 +1954,9 @@ function PendingThread({ item }: { item: PendingItemView }) {
             </p>
           )}
           {comments?.length === 0 && !failed && (
-            <p className="empty-note">Ninguém comentou ainda. Escreva o primeiro.</p>
+            <p className="empty-note">
+              {archived ? "Ninguém comentou nesta pendência." : "Ninguém comentou ainda. Escreva o primeiro."}
+            </p>
           )}
           {comments?.map((comment) => (
             <div className="comment-row" key={comment.id}>
@@ -1946,18 +1969,27 @@ function PendingThread({ item }: { item: PendingItemView }) {
               <small>{new Date(comment.created_at).toLocaleString("pt-BR")}</small>
             </div>
           ))}
-          <form className="comment-form" onSubmit={submit}>
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Escreva um comentário…"
-              maxLength={2000}
-              aria-label="Novo comentário"
-            />
-            <button type="submit" disabled={sending || !draft.trim()}>
-              {sending ? "Enviando…" : "Enviar"}
-            </button>
-          </form>
+          {/* Projeto encerrado fecha a escrita e mantém a leitura (ADR 0036) — a API responde
+              409 aqui, então o formulário sai em vez de falhar depois de a pessoa digitar. */}
+          {archived ? (
+            <p className="empty-note">
+              O projeto foi encerrado: os comentários ficam para consulta e não é possível
+              escrever novos.
+            </p>
+          ) : (
+            <form className="comment-form" onSubmit={submit}>
+              <input
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Escreva um comentário…"
+                maxLength={2000}
+                aria-label="Novo comentário"
+              />
+              <button type="submit" disabled={sending || !draft.trim()}>
+                {sending ? "Enviando…" : "Enviar"}
+              </button>
+            </form>
+          )}
           <p className="field-hint">
             Comentários ficam no portal e não são editáveis nem removíveis — quem escreve não
             reescreve.
@@ -1972,11 +2004,14 @@ function PendingItem({
   item,
   onOpenTurn,
   withThread = false,
+  archived = false,
 }: {
   item: PendingItemView;
   onOpenTurn?: (messageId: string, conversationId: string | null) => void;
   /** O resumo da Visão geral mostra quatro linhas; abrir fio ali é outra tela. */
   withThread?: boolean;
+  /** Projeto encerrado: o fio abre para leitura, sem campo de escrita (ADR 0036). */
+  archived?: boolean;
 }) {
   const tone = pendingTone[item.state] ?? "amber";
   const owner = item.owner ?? "Sem responsável definido";
@@ -2010,7 +2045,7 @@ function PendingItem({
       </div>
       {/* O fio fica **fora** da `.pending-row`, que é um flex de uma linha: pôr
           uma lista dentro dela desalinharia o avatar e o selo (ADR 0032). */}
-      {withThread && <PendingThread item={item} />}
+      {withThread && <PendingThread item={item} archived={archived} />}
     </div>
   );
 }

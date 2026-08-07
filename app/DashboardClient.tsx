@@ -56,7 +56,19 @@ import {
 // evidência veio de um arquivo, o ponteiro que a torna clicável. `document_id` é
 // nulo para evidência do read model — um marco não é um arquivo e não tem o que
 // abrir.
-type Citation = { label: string; document_id?: string | null };
+// `date` (ADR 0038) é a data da fonte em ISO, ou nula quando a fonte não data o
+// fato — marco e status não datam. Ela **também** aparece dentro de `label`, que é
+// "o rótulo como foi exibido"; este campo existe para a tela poder tratá-la como
+// data em vez de texto, e é o que permite explicar o parêntese a quem o lê.
+type Citation = { label: string; document_id?: string | null; dated_at?: string | null };
+
+/** "Versão da fonte em 12 de março de 2026" — o que o parêntese do rótulo quer dizer. */
+function citationHint(citation: Citation): string | undefined {
+  if (!citation.dated_at) return undefined;
+  const parsed = new Date(`${citation.dated_at}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return `Versão da fonte em ${parsed.toLocaleDateString("pt-BR", { dateStyle: "long" })}`;
+}
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -823,12 +835,15 @@ export default function DashboardClient({
                           data-document-id={citation.document_id}
                           key={citation.label}
                           onClick={() => openDocument(citation.document_id!)}
+                          title={citationHint(citation)}
                           type="button"
                         >
                           <FileText size={12} /> {citation.label}
                         </button>
                       ) : (
-                        <span key={citation.label}><FileText size={12} /> {citation.label}</span>
+                        <span key={citation.label} title={citationHint(citation)}>
+                          <FileText size={12} /> {citation.label}
+                        </span>
                       ),
                     )}
                   </div>

@@ -28,6 +28,7 @@ from portal_api import (
 )
 from portal_api.ai import quota
 from portal_api.ai import service as chat_service
+from portal_api.ai.retrieval import Evidence
 from portal_api.auth import CurrentPrincipal
 from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_tenant, get_session
@@ -477,7 +478,13 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
             # (ADR 0017). Mesma forma do histórico, para a tela não ter dois
             # caminhos de renderização para a mesma coisa.
             "citations": [
-                {"label": item.citation, "document_id": item.document_id or None}
+                {
+                    "label": item.citation,
+                    "document_id": item.document_id or None,
+                    # A data da fonte, quando ela a declara (ADR 0038). `None` para
+                    # marco e status, que não têm data de fato — só de cópia.
+                    "dated_at": item.dated_at.isoformat() if item.dated_at else None,
+                }
                 for item in result.cited
             ],
             "confidence": result.confidence,
@@ -912,9 +919,23 @@ def read_notifications(payload: NotificationsReadIn, principal: CurrentPrincipal
 # --- conversas do chat (Fase 4, ADR 0015) ----------------------------------
 
 
-def _citation_label(source: str, location: str) -> str:
-    """O rótulo exibido, na mesma forma de ``Evidence.citation``."""
-    return f"{source} — {location}" if location else source
+def _citation_label(stored: dict) -> str:
+    """O rótulo exibido, remontado das partes gravadas do turno.
+
+    **Delega para `Evidence.citation` em vez de repetir a expressão**, e a mudança
+    é da ADR 0038: enquanto o rótulo era `fonte — local`, duas cópias concordavam
+    por sorte; com a data entrando na composição, elas passariam a divergir sem
+    nada ficar vermelho — o histórico mostrando um rótulo e o chat outro para a
+    mesma citação. É o argumento do `textfold.py`, na letra.
+    """
+    dated = stored.get("dated_at")
+    return Evidence(
+        id="",
+        source=stored["source"],
+        location=stored.get("location", ""),
+        text="",
+        dated_at=date.fromisoformat(dated) if dated else None,
+    ).citation
 
 
 def _message_payload(message: ConversationMessage) -> dict:
@@ -926,16 +947,17 @@ def _message_payload(message: ConversationMessage) -> dict:
         "confidence": message.confidence.value if message.confidence else None,
         # O rótulo exibido é remontado das partes gravadas para o histórico
         # mostrar exatamente o que a resposta mostrou na hora.
-        "sources": [
-            _citation_label(item["source"], item.get("location", "")) for item in stored
-        ],
+        "sources": [_citation_label(item) for item in stored],
         # A mesma lista, com o ponteiro para o arquivo quando há um (ADR 0017).
         # `sources` continua existindo como projeção de exibição: quem só quer
         # imprimir o rótulo não precisa saber o que é clicável.
         "citations": [
             {
-                "label": _citation_label(item["source"], item.get("location", "")),
+                "label": _citation_label(item),
                 "document_id": item.get("document_id"),
+                # A data **como foi exibida**, e não a do documento de hoje: o
+                # turno guardado é o registro do que a resposta mostrou (ADR 0038).
+                "dated_at": item.get("dated_at"),
             }
             for item in stored
         ],

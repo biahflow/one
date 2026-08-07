@@ -69,15 +69,39 @@ class Evidence:
     #: e não tem o que abrir. É o que permite à citação virar link em vez de
     #: pedir que o cliente confie no rótulo.
     document_id: str = ""
+    #: **Quando a fonte data o fato**, e só aí (ADR 0038). O documento sabe quando
+    #: mudou (`source_updated_at`) e a pendência sabe quando foi aberta, porque as
+    #: duas datas vêm do Biahflow ou do Drive. O marco e o status ficam ``None`` de
+    #: propósito: a linha do marco é **apagada e recriada a cada sincronização**, de
+    #: modo que o `created_at` dela diz quando o portal copiou, não quando o fato
+    #: aconteceu — carimbar isso como data da evidência seria a falsa precisão que
+    #: `results.py` recusa quando falta premissa. Quem não tem data declara a lacuna
+    #: pela ausência, e o prompt leva a data da sincronização à parte.
+    dated_at: date | None = None
 
     @property
     def citation(self) -> str:
-        return f"{self.source} — {self.location}" if self.location else self.source
+        """O rótulo como o cliente o vê, com a data da fonte quando existe.
+
+        Sem `dated_at` o rótulo sai byte a byte como saía antes da ADR 0038 — é o
+        que mantém verdes as asserções de rótulo que já existiam, e é a forma de
+        não fingir data para quem não tem.
+        """
+        label = f"{self.source} — {self.location}" if self.location else self.source
+        return f"{label} ({self.dated_at:%d/%m/%Y})" if self.dated_at else label
 
 
 def collect_evidence(session: Session, ctx: TenantContext, project: Project) -> list[Evidence]:
     """Gather the project's citable facts (project, milestones, open pendings) for ``ctx``."""
     status_label = PROJECT_STATUS_LABELS.get(project.status, project.status.value)
+    # A data da sincronização entra no **texto** desta evidência, e não no `dated_at`
+    # dela (ADR 0038). O `dated_at` é "quando a fonte data o fato", e o status não
+    # tem essa data: o que existe é "quando copiamos o estado". Dizer isso na frase
+    # deixa o modelo saber de quando é o retrato sem que o rótulo da citação passe a
+    # significar duas coisas diferentes conforme a espécie da evidência. É também a
+    # razão de não haver parâmetro novo no `Responder`: o "estado em" pertence a
+    # esta evidência, que já é a frase que o portal escreve sobre o projeto inteiro.
+    synced = f" Estado sincronizado em {project.updated_at:%d/%m/%Y}." if project.updated_at else ""
     evidence: list[Evidence] = [
         Evidence(
             id="project",
@@ -85,7 +109,7 @@ def collect_evidence(session: Session, ctx: TenantContext, project: Project) -> 
             location=f"{project.completion_percent}% concluído",
             text=(
                 f"O projeto '{project.name}' está {status_label} e "
-                f"{project.completion_percent}% concluído."
+                f"{project.completion_percent}% concluído.{synced}"
             ),
         )
     ]
@@ -117,6 +141,10 @@ def collect_evidence(session: Session, ctx: TenantContext, project: Project) -> 
                 source=f"Pendência: {pending.title}",
                 location="",
                 text=f"Há uma pendência aberta: '{pending.title}'{owner}.",
+                # Quando foi **aberta**, e é data de fonte de verdade: `sync_snapshot`
+                # carimba o `created_at` desta linha com o `opened_at` do Biahflow em
+                # vez de deixá-lo com a hora da cópia (ADR 0038).
+                dated_at=pending.created_at.date() if pending.created_at else None,
             )
         )
 
@@ -159,22 +187,30 @@ def collect_document_evidence(
         vector, limit=settings.rag_top_k, max_distance=embedder.max_distance
     )
     documents = DocumentRepository(session, ctx)
-    titles: dict[str, str] = {}
+    #: Título **e** data por documento, resolvidos uma vez por linha e não por trecho.
+    seen: dict[str, tuple[str, date | None]] = {}
     evidence: list[Evidence] = []
     for chunk, _distance in matches:
         key = str(chunk.document_id)
-        if key not in titles:
+        if key not in seen:
             document = documents.get(chunk.document_id)
             if document is None:
                 continue
-            titles[key] = document.title
+            # `source_updated_at` é o que a **fonte** diz (o `modifiedTime` do Drive,
+            # a data do upload); `indexed_at` é o que este lado sabe, e serve de
+            # segunda escolha porque um documento indexado sem data de origem ainda
+            # tem um "desde quando este texto está citável" (ADR 0038).
+            stamp = document.source_updated_at or document.indexed_at
+            seen[key] = (document.title, stamp.date() if stamp else None)
+        title, dated_at = seen[key]
         evidence.append(
             Evidence(
                 id=f"chunk-{chunk.id}",
-                source=f"Documento: {titles[key]}",
+                source=f"Documento: {title}",
                 location=chunk.location,
                 text=chunk.text,
                 document_id=key,
+                dated_at=dated_at,
             )
         )
     return evidence

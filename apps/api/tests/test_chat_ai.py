@@ -13,6 +13,7 @@ import logging
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -234,10 +235,21 @@ def test_eval_evidence_is_isolated_to_the_project(db_session: Session) -> None:
 # certa, só do próprio projeto, e trata o conteúdo como dado.
 
 
-def _index_document(session: Session, ctx: TenantContext, title: str, pages: list[tuple[int, str]]) -> None:
+def _index_document(
+    session: Session,
+    ctx: TenantContext,
+    title: str,
+    pages: list[tuple[int, str]],
+    source_updated_at: datetime | None = None,
+) -> None:
     embedder = OfflineEmbedder(EMBEDDING_DIMENSIONS, SETTINGS.rag_offline_max_distance)
     document = DocumentRepository(session, ctx).add(
-        Document(title=title, source=DocumentSource.upload, origin=DocumentOrigin.portal)
+        Document(
+            title=title,
+            source=DocumentSource.upload,
+            origin=DocumentOrigin.portal,
+            source_updated_at=source_updated_at,
+        )
     )
     chunks = chunk_pages([ExtractedPage(number=number, text=text) for number, text in pages])
     vectors = embedder.embed_documents([chunk.text for chunk in chunks])
@@ -282,6 +294,61 @@ def test_eval_a_document_excerpt_is_cited_with_the_page_it_came_from(db_session:
     assert result.confidence == "grounded"
     assert "Documento: Contrato de suporte — página 3" in result.sources
     assert "página 1" not in " ".join(result.sources)
+
+
+@pytest.mark.integration
+def test_eval_a_document_citation_names_the_date_of_the_source(db_session: Session) -> None:
+    """A citação diz **de quando** é a versão que a sustenta (ADR 0038).
+
+    O `context-contract.md` prometia "fonte, localização e data" desde a Fase 3, e a data
+    nunca existiu. Ela importa porque o ponteiro da citação (ADR 0017) abre o documento de
+    **hoje**: o sync do Drive reindexa a mesma linha quando o arquivo muda, então sem a data
+    uma resposta de março e o arquivo de agosto usam rótulo idêntico.
+    """
+    project = biahflow.sync_snapshot(db_session, _snapshot(
+        biahflow_project_id=71, client_id=67, milestones=[_milestone(1, "Kickoff", "done")],
+    ))
+    ctx = TenantContext(project.organization_id, project.id)
+    _index_document(
+        db_session,
+        ctx,
+        "Contrato de suporte",
+        [(3, "O prazo de suporte contratado é de 12 meses após a entrega.")],
+        source_updated_at=datetime(2026, 3, 12, tzinfo=timezone.utc),
+    )
+
+    result = chat_service.answer_question(
+        db_session, ctx, project, "Qual o prazo de suporte contratado?", SETTINGS
+    )
+
+    assert result.confidence == "grounded"
+    assert "Documento: Contrato de suporte — página 3 (12/03/2026)" in result.sources
+
+
+@pytest.mark.integration
+def test_eval_a_milestone_citation_invents_no_date(db_session: Session) -> None:
+    """Quem não tem data de fonte não ganha data nenhuma (ADR 0038).
+
+    A linha do marco é **apagada e recriada a cada sincronização**, então o `created_at` dela
+    diz quando o portal copiou, não quando o fato aconteceu. Carimbar isso como data da
+    evidência seria a falsa precisão que `results.py` recusa quando falta premissa — e o
+    cliente leria "12/08" como se o marco fosse daquele dia.
+    """
+    project = biahflow.sync_snapshot(db_session, _snapshot(
+        biahflow_project_id=72, client_id=68,
+        milestones=[_milestone(1, "Entrada em produção", "todo", "2026-09-30")],
+    ))
+    ctx = TenantContext(project.organization_id, project.id)
+
+    result = chat_service.answer_question(
+        db_session, ctx, project, "Quando entraremos em produção?", SETTINGS
+    )
+
+    assert result.confidence == "grounded"
+    citado = " ".join(result.sources)
+    assert "Marco: Entrada em produção" in citado
+    # Nenhum parêntese de data em citação de marco — o formato é `(DD/MM/AAAA)`.
+    assert not re.search(r"\(\d{2}/\d{2}/\d{4}\)", citado)
 
 
 @pytest.mark.integration

@@ -644,7 +644,7 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       é o estado do recurso. **Esta linha faltou por um dia**, e é a única vez em que uma fatia não
       atualizou este arquivo desde que ele existe.)*
 
-- [x] **O que o Biahflow não conta ao portal.** *(ADR 0037, FDD 020, mais emenda na ADR 0003 de
+- [x] **O que o Biahflow não conta ao portal.** *(ADR 0037, FDD 023, mais emenda na ADR 0003 de
       lá. Oitava repetição, e a promessa quebrada estava escrita **no outro repositório e em
       negrito**: "o que entra no snapshot precisa de emissor, sob pena de o portal exibir um estado
       que já mudou". `digital_employees` entrava no snapshot e não tinha emissor nenhum — cadastrar,
@@ -670,7 +670,7 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       citação já dada, e apagar tenant é decisão de pessoa executada pelo worker (ADR 0017), com um
       webhook não sendo exceção a isso.)*
 
-- [x] **A citação sem data.** *(ADR 0038, FDD 021. Nona repetição do padrão, num documento de
+- [x] **A citação sem data.** *(ADR 0038, FDD 024. Nona repetição do padrão, num documento de
       **três linhas** que nenhuma fatia jamais visitara: o `context-contract.md` prometia desde a
       Fase 3 que "toda citação aponta para fonte, localização e **data**", e nenhuma citação tinha
       data — `Evidence.citation` era `fonte — local` e `CitationOut` tinha `label` e `document_id`.

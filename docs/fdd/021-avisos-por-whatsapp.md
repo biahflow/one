@@ -104,3 +104,11 @@ adversariais existentes — e ainda assim com revisão, porque a mensagem sai do
 **Teto de frequência por pessoa**, compartilhado com os demais avisos e com a pesquisa da FDD
 022. Um canal de abertura quase total é o mais fácil de queimar: cada contato entrega algo —
 informação, valor, solução — ou não acontece.
+
+*Entregue em 07/08/2026, **antes** desta FDD e em fatia própria (ADR 0042). O combinado era
+sair junto da FDD 022, e não sobreviveu ao calendário: aquela FDD está bloqueada por uma
+condição que não é código — o laço de ação do funil — e esta não tem bloqueio nenhum, de modo
+que manter o acordo entregaria o canal **sem teto** ou o prenderia atrás de uma condição que
+não é dele. `portal_api.contact_budget.claim()` é a porta: uma chamada que decide **e**
+registra, porque separar em "posso?" e "gastei" criaria a fresta em que um remetente pergunta e
+esquece o segundo passo.*

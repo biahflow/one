@@ -59,6 +59,19 @@ vira spam se todo micro-evento pedir nota, e pesquisa demais derruba a taxa de r
 sobrar só quem estava com raiva o bastante para clicar — o pior viés possível. A régua está
 no próprio repositório: a ADR 0030 contou **143 respostas do assistente e 6 avaliadas**.
 
+*O teto foi entregue em 07/08/2026, em fatia própria e antes desta FDD (ADR 0042) — o
+combinado era sair junto daqui, e não sobrevivia ao fato de esta FDD estar bloqueada e a
+FDD 021 não. Ele mora em `portal_api.contact_budget`, e quando o convite existir bastará
+acrescentar `survey_invite` ao `ContactKind` — que hoje tem uma espécie só, pela regra de não
+declarar espécie sem produtor.*
+
+***E a fatia mediu uma coisa que esta FDD não sabia, que muda o critério (2) abaixo:** o teto
+global **não** o satisfaz sozinho. "Um segundo evento na mesma semana não gera segundo convite"
+é uma afirmação sobre **a espécie**, e o orçamento é sobre o volume total — com teto de três
+por semana e nenhum outro contato, dois convites passam. Falta um **intervalo mínimo por
+espécie**, e ele entra junto de `survey_invite`, no mesmo módulo. Fica escrito aqui em vez de
+virar dívida que alguém redescobre no meio da implementação.*
+
 **Poucos momentos, escolhidos.** Fase concluída e entregável aceito bastam para começar.
 
 ## Estados de erro e segurança

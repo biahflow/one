@@ -284,6 +284,29 @@ class Settings(BaseSettings):
     #: execução, que é o que o health score e o risco de atraso já fazem.
     onboarding_alert_deliverable_days: int = 30
 
+    # O teto de frequência de contato (Fase 7, FDD 021 e FDD 022, ADR 0042).
+    #
+    # Dois números e não um mapa por canal: o orçamento é **da pessoa**, e ela não
+    # deve nada ao portal por a mensagem ter vindo de um canal ou de outro. Quem
+    # recebeu três mensagens recebeu três mensagens.
+    #
+    #: Uma semana, que é a unidade em que a FDD 022 escreve o próprio critério
+    #: ("um segundo evento na mesma semana não gera segundo convite").
+    contact_window_days: int = 7
+    #: Três por semana. Não há medição que o justifique — a primeira dela virá do
+    #: `contact.suppressed` — e por isso ele é setting e não constante de módulo, ao
+    #: contrário do `INSTRUMENTED_SINCE` do funil, que é fato sobre o código. O que
+    #: manda no número é o argumento da FDD 021: cada contato entrega algo —
+    #: informação, valor, solução — ou não acontece. Errar para baixo atrasa um
+    #: aviso que continua no sino; errar para cima queima o canal, e canal queimado
+    #: não se recupera baixando o teto depois.
+    contact_cap_per_window: int = 3
+    #
+    # **Sem janela de retenção própria**, de propósito: a poda do contato usa a da
+    # notificação (`retention_notification_days`, já sobrescritível por organização).
+    # O contato e o aviso são o mesmo fato visto de dois lados, e dois relógios sobre
+    # um fato só divergem no primeiro que alguém editar.
+
     # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
     # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.
     # Sem isso, quem segue o `cp .env.example .env` do README não consegue rodar

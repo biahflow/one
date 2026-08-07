@@ -720,3 +720,97 @@ def test_the_purge_reaches_the_funnel_by_the_date_of_the_fact(
             )
         ).scalars().all()
     assert [row.step for row in restante] == [OnboardingStepName.first_chat_turn]
+
+
+@pytest.mark.integration
+def test_the_erasure_removes_the_contact_history_too(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """A **terceira** exclusão escrita à mão (ADR 0042).
+
+    Mesma armadilha do funil e sem desculpa nenhuma desta vez, porque a regra já
+    estava escrita quando esta tabela nasceu: escopada por organização, sem
+    ``project_id``, e a linha ``organization`` fica — então o CASCADE do projeto não
+    a alcança por caminho nenhum. É o mesmo tipo de dado do funil: com quem falamos,
+    quantas vezes e quando.
+    """
+    from portal_api.models import ContactEvent, ContactKind
+
+    with Session(migrated_engine) as session:
+        session.add(
+            ContactEvent(
+                organization_id=tenants["acme_org"],
+                user_id=tenants["acme_user"],
+                kind=ContactKind.whatsapp_notice,
+                dedupe_key="aviso:expurgo",
+            )
+        )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.run_erasure(session, tenants["acme_org"])
+        session.commit()
+
+    assert outcome.removed["contact_event"] == 1
+    with Session(migrated_engine) as session:
+        assert (
+            session.execute(
+                select(ContactEvent).where(
+                    ContactEvent.organization_id == tenants["acme_org"]
+                )
+            ).scalars().all()
+            == []
+        )
+
+
+@pytest.mark.integration
+def test_the_purge_reaches_the_contact_by_the_notification_window(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """E é a janela **da notificação**, não uma própria (ADR 0042).
+
+    O contato e o aviso são o mesmo fato visto de dois lados — um do lado de dentro,
+    outro do lado de fora. Dar a cada um o seu relógio produziria a divergência no
+    primeiro que alguém editasse, e o modo de falha seria o pior: o registro de que
+    falamos com a pessoa sobrevivendo ao aviso que o originou.
+
+    A janela do **teto** é outra coisa e muito mais curta: esta decide por quanto
+    tempo a linha sobrevive, não por quanto tempo ela conta.
+    """
+    from portal_api.models import ContactEvent, ContactKind
+
+    settings = Settings()
+    velho = retention.now() - timedelta(days=settings.retention_notification_days + 1)
+    with Session(migrated_engine) as session:
+        session.add_all(
+            [
+                ContactEvent(
+                    organization_id=tenants["acme_org"],
+                    user_id=tenants["acme_user"],
+                    kind=ContactKind.whatsapp_notice,
+                    dedupe_key="aviso:velho",
+                    created_at=velho,
+                ),
+                ContactEvent(
+                    organization_id=tenants["acme_org"],
+                    user_id=tenants["acme_user"],
+                    kind=ContactKind.whatsapp_notice,
+                    dedupe_key="aviso:novo",
+                    created_at=retention.now(),
+                ),
+            ]
+        )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.purge_expired(session, tenants["acme_org"], settings)
+        session.commit()
+
+    assert outcome.removed["contact_event"] == 1
+    with Session(migrated_engine) as session:
+        restante = session.execute(
+            select(ContactEvent).where(
+                ContactEvent.organization_id == tenants["acme_org"]
+            )
+        ).scalars().all()
+    assert [row.dedupe_key for row in restante] == ["aviso:novo"]

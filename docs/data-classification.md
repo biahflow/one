@@ -20,7 +20,12 @@
   exposto" do `portal.py` de lá foi qualificada em emenda na ADR 0003 daquele repositório em vez de
   contornada: nenhuma das três coisas que ela nomeia (Opportunity, PipelineStage, valores) sai. O
   carimbo deste lado herda o `user_id` nulo do degrau do entregável, porque o fato é do outro
-  sistema e não há pessoa daqui a nomear.)*
+  sistema e não há pessoa daqui a nomear.)* *(E desde a ADR 0042 esta classe tem um **segundo**
+  membro, que é a mesma pergunta pelo avesso: o funil registra o que a pessoa fez, e o
+  `contact_event` registra o que **nós fizemos com ela** — com quem falamos, por qual canal e
+  quando. Os controles são os mesmos por serem o mesmo risco: nenhuma rota de cliente, nenhuma
+  leitura pelo papel de requisição — aqui por uma policy que diz `USING (false)`, e não pela
+  omissão das outras —, e o log com o tenant, a espécie e o motivo, nunca a pessoa.)*
 
 Desde a ADR 0016 há um segredo **em repouso no banco**: o refresh token do Google Drive, um por projeto. Ele é cifrado com AES-256-GCM sob uma chave que vive só no ambiente — nunca no banco que ela protege — e amarrado à organização e ao projeto pelo dado associado, de modo que um ciphertext movido de linha não abre. É o único segredo do portal que precisa voltar em claro; todos os outros são verificados por hash e nunca recuperados.
 
@@ -30,4 +35,7 @@ inclusive os objetos do storage, pelo prefixo `org/<id>/`. O documento nunca sai
 evidência que sustenta uma citação já dada.)* *(E desde a ADR 0039 o funil tem prazo próprio,
 mais longo que os outros — a régua só significa algo comparada com a de coortes anteriores — e é a
 segunda exclusão escrita à mão no apagamento por decisão: escopado por organização, ele não vem no
-CASCADE do projeto.)*
+CASCADE do projeto.)* *(O `contact_event` é a **terceira**, pela mesma regra e sem susto — ela já
+existia escrita quando a tabela nasceu. A poda dele, ao contrário, **não** ganhou prazo próprio: usa
+o da notificação, porque o contato e o aviso são o mesmo fato visto de dois lados e dois relógios
+sobre um fato só divergem no primeiro que alguém editar. ADR 0042.)*

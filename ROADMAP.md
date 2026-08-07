@@ -779,6 +779,36 @@ que ele respeita.
       esforço — e separar "travou no cliente" de "travou em nós", que agora é estrutura da tela
       (dois painéis, três contadores, nenhum total) e não convenção. A IA vigia e escreve o
       sinal ao time; **não conversa**.*
+- [x] **Teto de frequência de contato — a primitiva que as duas features pediam pelo nome**
+      *(FDD 021, FDD 022, ADR 0042)*: entregue em **fatia própria**, e o combinado era outro —
+      ele sairia junto da FDD 022. O acordo não sobreviveu ao calendário: a FDD 022 está
+      bloqueada por uma condição que **não é código** (o laço de ação do funil), e a FDD 021 não
+      tem bloqueio nenhum, de modo que mantê-lo entregaria o canal **sem teto** — justamente o
+      que as duas FDDs chamam de "o mais fácil de queimar" — ou prenderia o canal atrás de uma
+      condição que não é dele. Pôr o teto *dentro* da FDD 021 parecia o barato e é o caro: um
+      teto que mora num consumidor não é compartilhado, é o teto daquele consumidor com um nome
+      maior, e nasceria com a forma de "aviso" enquanto a pesquisa dispara por evento de jornada.
+      **Razão e não contador**, contra o precedente mais próximo e pelo argumento que o próprio
+      `chat_limit.py` já tinha escrito: um contador subconta sob concorrência, o que no chat
+      deixa passar uma pergunta a mais num limite de abuso e aqui deixa passar **uma mensagem a
+      mais para uma pessoa** — o dano exato que o teto existe para impedir. O preço está pago,
+      não contornado: a razão guarda comportamento de pessoa identificada, então carrega tenant,
+      tem policy, é podada e é a **terceira** exclusão escrita à mão no apagamento — desta vez
+      sem susto, porque a regra da ADR 0039 já existia quando a tabela nasceu. Duas decisões
+      carregam o resto. A **chave de dedupe** não é higiene: sem ela a task de envio, que retenta
+      sobre `whatsapp_sent_at IS NULL`, encontraria na segunda passagem o orçamento gasto **por
+      ela mesma** na primeira, e uma indisponibilidade de minutos do fornecedor viraria silêncio
+      **permanente** naquele canal, sem deixar rastro. E a **policy nega por escrito**
+      (`USING (false)`) em vez de negar por omissão como as três tabelas anteriores sem leitor:
+      a omissão reprovaria o meta-teste de RLS, e a saída fácil — conceder `SELECT` ao admin
+      "para a tela que virá" — é o defeito da ADR 0033 escrito ao contrário. **De quebra, o que a
+      fatia mediu e a FDD 022 não sabia:** o teto global **não** satisfaz sozinho o critério de
+      aceite (2) de lá — "um segundo evento na mesma semana não gera segundo convite" é
+      afirmação sobre a **espécie**, não sobre o volume, e com três por semana dois convites
+      passam. Falta intervalo mínimo por espécie, que entra junto de `survey_invite`; ficou
+      escrito na emenda daquela FDD em vez de virar dívida redescoberta no meio da implementação.
+      *O valor padrão não tem medição por trás — a primeira virá do próprio `contact.suppressed`
+      —, e é por isso que ele é setting e não constante de módulo. **Aberto:** teto de horário.*
 - [ ] **Canal de WhatsApp.** *(RFC 002, FDD 021.)* Aviso 1:1 por template ao lado do sino e do
       digest, no ponto de extensão que a ADR 0012 já descreve, com opt-in revogável como
       coluna da pessoa. **Nunca grupo**: a razão de existir de um grupo é conversa de muitos

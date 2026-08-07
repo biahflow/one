@@ -9,6 +9,7 @@ from portal_api.models.ai_usage import AiModelPrice, AiUsageEvent, OrganizationA
 from portal_api.models.agent_key import SCOPE_EVENTS_WRITE, AgentApiKey
 from portal_api.models.audit import AuditLog
 from portal_api.models.chat_rate_window import ChatRateWindow
+from portal_api.models.contact import ContactEvent, ContactKind
 from portal_api.models.conversation import (
     Conversation,
     ConversationMessage,
@@ -73,6 +74,8 @@ __all__ = [
     "AiUsageEvent",
     "AuditLog",
     "ChatRateWindow",
+    "ContactEvent",
+    "ContactKind",
     "Conversation",
     "ConversationMessage",
     "ConversationRole",

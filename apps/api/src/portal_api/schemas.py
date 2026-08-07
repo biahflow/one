@@ -315,6 +315,11 @@ class DashboardOut(Out):
     #: e tipar como `datetime` faria o Pydantic reserializar o byte que a fatia prometeu não
     #: mudar. Preenchido, a tela marca "Projeto encerrado" e as escritas respondem 409.
     archived_at: str | None
+    #: Quando o Biahflow apagou o projeto de vez (ADR 0037). Mesma regra de tipo, e ao lado de
+    #: ``archived_at`` porque as duas datas contam fatos diferentes — um projeto pode ter sido
+    #: encerrado antes de ser apagado. Ao contrário do arquivamento, não tem volta: a fonte não
+    #: tem mais o que declarar sobre este projeto.
+    source_deleted_at: str | None
     health: ProjectHealthOut | None
     journey: JourneyOut
     digital_employees: list[DigitalEmployeeOut]

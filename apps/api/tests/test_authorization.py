@@ -970,13 +970,19 @@ def test_a_member_without_the_role_is_a_different_reason(world: World, authentic
 
 
 @contextmanager
-def _archived(migrated_engine: Engine, project_id: uuid.UUID) -> Iterator[None]:
-    """Arquiva o projeto e restaura, porque `world` é de sessão inteira."""
+def _read_only(
+    migrated_engine: Engine, project_id: uuid.UUID, column: str = "archived_at"
+) -> Iterator[None]:
+    """Põe o projeto em modo de consulta e desfaz, porque `world` é de sessão inteira.
+
+    `column` escolhe o motivo — `archived_at` (ADR 0036) ou `source_deleted_at` (ADR 0037).
+    Os dois fecham a escrita com 409, e o teste abaixo cobra que fechem pelo motivo certo.
+    """
     with Session(migrated_engine) as session:
         session.execute(
             update(Project)
             .where(Project.id == project_id)
-            .values(archived_at=datetime.now(timezone.utc))
+            .values(**{column: datetime.now(timezone.utc)})
         )
         session.commit()
     try:
@@ -984,7 +990,7 @@ def _archived(migrated_engine: Engine, project_id: uuid.UUID) -> Iterator[None]:
     finally:
         with Session(migrated_engine) as session:
             session.execute(
-                update(Project).where(Project.id == project_id).values(archived_at=None)
+                update(Project).where(Project.id == project_id).values(**{column: None})
             )
             session.commit()
 
@@ -1001,7 +1007,7 @@ def test_o_projeto_encerrado_recusa_escrita_com_409_e_nao_com_404(
     """
     authenticated(world.acme.client)
 
-    with _archived(migrated_engine, world.acme.project_id):
+    with _read_only(migrated_engine, world.acme.project_id):
         recusado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
         assert recusado.status_code == 409
 
@@ -1012,6 +1018,50 @@ def test_o_projeto_encerrado_recusa_escrita_com_409_e_nao_com_404(
 
     # E restaurado, volta a responder — a interface do Biahflow arquiva e desarquiva por item.
     assert client.get("/api/v1/me/dashboard").json()["archived_at"] is None
+
+
+def test_o_projeto_apagado_na_origem_recusa_escrita_e_diz_qual_motivo(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """Apagado no Biahflow fecha a escrita como encerrado, mas não é a mesma coisa (ADR 0037).
+
+    Mesmo código — 409, pelo mesmo argumento da ADR 0036 —, e `detail` diferente, porque quem
+    lê o corpo é a tela e as duas frases que ela mostra ao cliente não são intercambiáveis:
+    encerrado tem volta pela interface do Biahflow, apagado não tem nenhuma.
+
+    A leitura segue aberta pela razão de sempre: o histórico é a evidência das respostas já
+    dadas, e este lado não apaga nada por conta de um webhook (ADR 0017).
+    """
+    authenticated(world.acme.client)
+
+    with _read_only(migrated_engine, world.acme.project_id, "source_deleted_at"):
+        recusado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
+        assert recusado.status_code == 409
+        assert recusado.json()["detail"] == "Project deleted at source"
+
+        dashboard = client.get("/api/v1/me/dashboard")
+        assert dashboard.status_code == 200
+        assert dashboard.json()["source_deleted_at"] is not None
+        # E o encerramento continua nulo: são colunas diferentes porque são fatos diferentes.
+        assert dashboard.json()["archived_at"] is None
+
+
+def test_encerrado_e_apagado_juntos_recusam_pelo_motivo_mais_forte(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """Um projeto pode ser arquivado e depois apagado, e aí as duas datas existem.
+
+    A ordem em `_refuse_when_read_only` é o que decide o que o cliente lê, e a tela usa a
+    mesma — se as duas divergirem, o portal passa a dizer "encerrado" na barra e "removido"
+    no chat sobre o mesmo projeto.
+    """
+    authenticated(world.acme.client)
+
+    with _read_only(migrated_engine, world.acme.project_id):
+        with _read_only(migrated_engine, world.acme.project_id, "source_deleted_at"):
+            recusado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
+            assert recusado.status_code == 409
+            assert recusado.json()["detail"] == "Project deleted at source"
 
 
 def test_quem_nao_tem_vinculo_leva_404_mesmo_no_projeto_encerrado(
@@ -1029,9 +1079,15 @@ def test_quem_nao_tem_vinculo_leva_404_mesmo_no_projeto_encerrado(
     )
     authenticated(stranger)
 
-    with _archived(migrated_engine, world.acme.project_id):
+    with _read_only(migrated_engine, world.acme.project_id):
         recusado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
         assert recusado.status_code == 404
+
+    # E vale igual para o projeto apagado na origem, que é o motivo mais forte (ADR 0037):
+    # sem o 404 vindo primeiro, o 409 contaria a um estranho que o projeto um dia existiu.
+    with _read_only(migrated_engine, world.acme.project_id, "source_deleted_at"):
+        apagado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
+        assert apagado.status_code == 404
 
 
 # --- a regra 6, derivada do contrato (ADR 0035) -----------------------------

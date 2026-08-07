@@ -954,6 +954,17 @@
           "roi": {
             "$ref": "#/components/schemas/RoiOut"
           },
+          "source_deleted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Deleted At"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -964,6 +975,7 @@
           "status",
           "completion",
           "archived_at",
+          "source_deleted_at",
           "health",
           "journey",
           "digital_employees",
@@ -2134,6 +2146,17 @@
           "roi": {
             "$ref": "#/components/schemas/RoiOut"
           },
+          "source_deleted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Deleted At"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -2144,6 +2167,7 @@
           "status",
           "completion",
           "archived_at",
+          "source_deleted_at",
           "health",
           "journey",
           "digital_employees",
@@ -5239,7 +5263,7 @@
                 }
               }
             },
-            "description": "O projeto foi encerrado no Biahflow e está em modo de consulta. A leitura continua aberta — o histórico é a evidência das respostas já dadas —, mas nada novo é escrito nele."
+            "description": "O projeto foi encerrado ou apagado no Biahflow e está em modo de consulta. A leitura continua aberta — o histórico é a evidência das respostas já dadas —, mas nada novo é escrito nele."
           },
           "422": {
             "content": {
@@ -5926,7 +5950,7 @@
                 }
               }
             },
-            "description": "O projeto foi encerrado no Biahflow e está em modo de consulta. A leitura continua aberta — o histórico é a evidência das respostas já dadas —, mas nada novo é escrito nele."
+            "description": "O projeto foi encerrado ou apagado no Biahflow e está em modo de consulta. A leitura continua aberta — o histórico é a evidência das respostas já dadas —, mas nada novo é escrito nele."
           },
           "422": {
             "content": {

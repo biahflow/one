@@ -224,6 +224,43 @@ export type JourneyPhase = {
   targetDate: string;
   deliverables: JourneyDeliverable[];
 };
+/**
+ * Por que a tela está em modo de consulta, ou `null` quando não está (ADR 0036/0037).
+ *
+ * Uma função com as três frases juntas, e não dois booleanos espalhados: os dois motivos fecham as
+ * mesmas escritas e mudam o que o cliente lê, então mantê-los num lugar só é o que impede a tela de
+ * dizer "encerrado" num canto e "removido" noutro. A exclusão vem primeiro porque é o estado mais
+ * forte — um projeto pode ter sido encerrado antes de ser apagado —, e é a mesma ordem de
+ * `_refuse_when_read_only` na API, de propósito.
+ */
+type ReadOnlyReason = { pill: string; chat: string; comments: string } | null;
+
+function readOnlyReason(overview: Overview): ReadOnlyReason {
+  if (overview.sourceDeletedAt !== null) {
+    return {
+      pill: "Projeto removido na origem",
+      chat:
+        "Este projeto foi removido no Biahflow. O histórico continua disponível para consulta, " +
+        "mas não é possível fazer novas perguntas.",
+      comments:
+        "O projeto foi removido no Biahflow: os comentários ficam para consulta e não é " +
+        "possível escrever novos.",
+    };
+  }
+  if (overview.archivedAt !== null) {
+    return {
+      pill: "Projeto encerrado",
+      chat:
+        "Este projeto foi encerrado. O histórico continua disponível para consulta, mas não é " +
+        "possível fazer novas perguntas.",
+      comments:
+        "O projeto foi encerrado: os comentários ficam para consulta e não é possível escrever " +
+        "novos.",
+    };
+  }
+  return null;
+}
+
 export type Overview = {
   project: string;
   organization: string;
@@ -233,6 +270,9 @@ export type Overview = {
   /** Quando o Biahflow encerrou o projeto, ou `null` se segue ativo (ADR 0036). Preenchido, a
    *  tela entra em modo de consulta: o histórico continua inteiro e as escritas fecham. */
   archivedAt: string | null;
+  /** Quando o Biahflow apagou o projeto de vez, ou `null` (ADR 0037). Mesmo modo de consulta,
+   *  motivo diferente — e este não tem volta, porque a fonte não tem mais o que declarar. */
+  sourceDeletedAt: string | null;
   nextDelivery: { title: string; detail: string } | null;
   milestones: OverviewMilestone[];
   journey: { currentPhase: string | null; phases: JourneyPhase[] };
@@ -315,9 +355,9 @@ export default function DashboardClient({
   notifications?: NotificationCenter;
 }) {
   const router = useRouter();
-  // Projeto encerrado no Biahflow: a tela vira consulta (ADR 0036). Derivado do overview e não
-  // guardado em estado, porque quem decide isto é a fonte da verdade a cada carregamento.
-  const projectArchived = overview.archivedAt !== null;
+  // Projeto sem escrita no Biahflow: a tela vira consulta (ADR 0036/0037). Derivado do overview e
+  // não guardado em estado, porque quem decide isto é a fonte da verdade a cada carregamento.
+  const projectReadOnly = readOnlyReason(overview);
   const [activeNav, setActiveNav] = useState("Visão geral");
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -819,14 +859,11 @@ export default function DashboardClient({
             ))}
           </div>
           {downloadError && <p className="chat-notice" role="status">{downloadError}</p>}
-          {/* Projeto encerrado é consulta, não conversa (ADR 0036). O histórico acima continua
-              inteiro — é a evidência das respostas já dadas —, e a API recusaria com 409 de
-              qualquer forma: desabilitar aqui é dizer o motivo antes de a pessoa digitar. */}
-          {projectArchived ? (
-            <p className="chat-notice" role="status">
-              Este projeto foi encerrado. O histórico continua disponível para consulta, mas não é
-              possível fazer novas perguntas.
-            </p>
+          {/* Projeto encerrado ou removido é consulta, não conversa (ADR 0036/0037). O histórico
+              acima continua inteiro — é a evidência das respostas já dadas —, e a API recusaria
+              com 409 de qualquer forma: fechar aqui é dizer o motivo antes de a pessoa digitar. */}
+          {projectReadOnly ? (
+            <p className="chat-notice" role="status">{projectReadOnly.chat}</p>
           ) : (
             <>
               <div className="chat-suggestions">{suggestedQuestions.map((item) => <button key={item} onClick={() => sendQuestion(undefined, item)}>{item}</button>)}</div>
@@ -1120,6 +1157,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
   const timeline = overview.milestones;
   const open = openPendings(overview);
   const roi = roiValue(overview.roi);
+  const readOnly = readOnlyReason(overview);
   // Conhecimento do projeto: documentos e reuniões mais recentes, na mesma lista.
   const updates = [
     ...overview.documents.map((document) => ({ type: "Documento", title: document.title, detail: document.updated, link: document.link })),
@@ -1139,7 +1177,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
           <div><p>Status do projeto</p><h2>{overview.status}</h2></div>
           {/* Ao lado da saúde, não no lugar dela: o andamento continua sendo o que era quando
               o projeto foi encerrado, e as duas informações respondem perguntas diferentes. */}
-          {overview.archivedAt && <span className="health-pill health-pill--archived">Projeto encerrado</span>}
+          {readOnly && <span className="health-pill health-pill--archived">{readOnly.pill}</span>}
           {overview.health && <span className={`health-pill health-pill--${overview.health.level}`}>{overview.health.label}</span>}
         </div>
         {/* A casca de demonstração não carimba data: "Atualizado há 2 dias" era
@@ -1446,14 +1484,14 @@ function PendingView({ onAsk, overview, onOpenTurn }: { onAsk: () => void; overv
                   : "Nenhuma pendência aberta com esta prioridade."}
               </p>
             )}
-            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread archived={overview.archivedAt !== null} />)}
+            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread readOnly={readOnlyReason(overview)} />)}
           </div>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Resolvidas <span>{resolved.length}</span></h2></div></div>
           <div className="pending-list">
             {resolved.length === 0 && <p className="empty-state">Nenhuma pendência resolvida ainda.</p>}
-            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread archived={overview.archivedAt !== null} />)}
+            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread readOnly={readOnlyReason(overview)} />)}
           </div>
         </article>
       </section>
@@ -1892,7 +1930,7 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
  * viram mural, e a contagem no botão é o que diz se vale abrir. Carrega ao abrir
  * e não no render da aba — a maioria das visitas não comenta nada.
  */
-function PendingThread({ item, archived }: { item: PendingItemView; archived: boolean }) {
+function PendingThread({ item, readOnly }: { item: PendingItemView; readOnly: ReadOnlyReason }) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<PendingComment[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -1955,7 +1993,7 @@ function PendingThread({ item, archived }: { item: PendingItemView; archived: bo
           )}
           {comments?.length === 0 && !failed && (
             <p className="empty-note">
-              {archived ? "Ninguém comentou nesta pendência." : "Ninguém comentou ainda. Escreva o primeiro."}
+              {readOnly ? "Ninguém comentou nesta pendência." : "Ninguém comentou ainda. Escreva o primeiro."}
             </p>
           )}
           {comments?.map((comment) => (
@@ -1969,13 +2007,10 @@ function PendingThread({ item, archived }: { item: PendingItemView; archived: bo
               <small>{new Date(comment.created_at).toLocaleString("pt-BR")}</small>
             </div>
           ))}
-          {/* Projeto encerrado fecha a escrita e mantém a leitura (ADR 0036) — a API responde
-              409 aqui, então o formulário sai em vez de falhar depois de a pessoa digitar. */}
-          {archived ? (
-            <p className="empty-note">
-              O projeto foi encerrado: os comentários ficam para consulta e não é possível
-              escrever novos.
-            </p>
+          {/* Projeto sem escrita mantém a leitura (ADR 0036/0037) — a API responde 409 aqui,
+              então o formulário sai em vez de falhar depois de a pessoa digitar. */}
+          {readOnly ? (
+            <p className="empty-note">{readOnly.comments}</p>
           ) : (
             <form className="comment-form" onSubmit={submit}>
               <input
@@ -2004,14 +2039,14 @@ function PendingItem({
   item,
   onOpenTurn,
   withThread = false,
-  archived = false,
+  readOnly = null,
 }: {
   item: PendingItemView;
   onOpenTurn?: (messageId: string, conversationId: string | null) => void;
   /** O resumo da Visão geral mostra quatro linhas; abrir fio ali é outra tela. */
   withThread?: boolean;
-  /** Projeto encerrado: o fio abre para leitura, sem campo de escrita (ADR 0036). */
-  archived?: boolean;
+  /** Projeto encerrado ou removido: o fio abre para leitura, sem campo de escrita (ADR 0036/0037). */
+  readOnly?: ReadOnlyReason;
 }) {
   const tone = pendingTone[item.state] ?? "amber";
   const owner = item.owner ?? "Sem responsável definido";
@@ -2045,7 +2080,7 @@ function PendingItem({
       </div>
       {/* O fio fica **fora** da `.pending-row`, que é um flex de uma linha: pôr
           uma lista dentro dela desalinharia o avatar e o selo (ADR 0032). */}
-      {withThread && <PendingThread item={item} archived={archived} />}
+      {withThread && <PendingThread item={item} readOnly={readOnly} />}
     </div>
   );
 }

@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 import httpx
@@ -202,6 +202,10 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     # depois de o arquivamento ser desfeito.
     archived_at = project_data.get("archived_at")
     project.archived_at = datetime.fromisoformat(archived_at) if archived_at else None
+    # `source_deleted_at` **não** entra aqui, e a ausência é a decisão (ADR 0037): um projeto
+    # apagado no Biahflow não tem snapshot, então chegar até esta função já significaria que o id
+    # voltou a existir — outro projeto reusando o número, que é problema diferente e não uma
+    # restauração. Reescrever a coluna aqui apagaria o fato que só o webhook consegue contar.
     session.flush()
 
     # Read model: milestones are fully replaced from the snapshot so removals propagate.
@@ -348,6 +352,38 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
 
     notifications.emit_changes(session, project, before)
     return project
+
+
+def mark_project_deleted(session: Session, biahflow_project_id: int) -> list[Project]:
+    """Carimba o fato de o Biahflow ter apagado o projeto de vez (ADR 0037).
+
+    Mora aqui, ao lado de `sync_snapshot`, porque é a mesma porta: o Biahflow contando um fato
+    sobre o projeto. O que muda é que este fato **não cabe num snapshot** — depois da exclusão a
+    rota de leitura de lá responde 404, e um 404 não distingue "foi apagado" de "id de outra
+    base" (ADR 0036). Por isso o aviso vem no corpo do webhook e é a única coisa que temos.
+
+    Nada é apagado deste lado, e é decisão: documento é a evidência de uma citação já dada, e
+    apagar tenant é decisão de pessoa registrada numa linha, executada pelo worker (ADR 0017).
+    O projeto fica visível, marcado e sem escrita.
+
+    A busca é **só pelo slug**, sem organização, porque o webhook de exclusão não carrega o
+    cliente — e devolve lista porque mover um projeto de cliente no Biahflow deixa duas linhas
+    com este slug (o `sync_snapshot` casa por organização + slug e cria a segunda). Ambas
+    afirmam ser o projeto que morreu, então ambas são carimbadas.
+
+    Idempotente: um webhook reentregue não move a data. A primeira observação é a verdadeira, e
+    ela é do portal — o Biahflow não manda quando apagou, porque quem apaga não deixa linha.
+    """
+    projects = list(
+        session.execute(
+            select(Project).where(Project.slug == project_slug(biahflow_project_id))
+        ).scalars()
+    )
+    for project in projects:
+        if project.source_deleted_at is None:
+            project.source_deleted_at = datetime.now(timezone.utc)
+    session.flush()
+    return projects
 
 
 def ensure_demo_client(session: Session, project: Project, email: str, name: str) -> User:
@@ -511,6 +547,11 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         # Ao lado de `status`, não dentro dele (ADR 0036): o andamento continua sendo o que era
         # quando o projeto foi encerrado, e é a tela que decide o que fazer com os dois juntos.
         "archived_at": project.archived_at.isoformat() if project.archived_at else None,
+        # E ao lado de `archived_at` pelo mesmo motivo (ADR 0037): um projeto pode ter sido
+        # encerrado antes de ser apagado, e as duas datas contam coisas diferentes.
+        "source_deleted_at": (
+            project.source_deleted_at.isoformat() if project.source_deleted_at else None
+        ),
         "health": (
             {"label": project.health_label, "level": project.health_level}
             if project.health_level

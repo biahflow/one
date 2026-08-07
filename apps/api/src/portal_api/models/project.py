@@ -138,6 +138,14 @@ class Project(Base, TenantMixin, TimestampMixin):
     # coluna faria perder um dos dois. É reversível: a interface do Biahflow restaura por item,
     # e o sync devolve isto a `None` quando ela o faz (ADR 0036).
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Quando o Biahflow apagou o projeto de vez. Separada de `archived_at` porque as duas chegam
+    # por portas diferentes e uma delas não tem volta: arquivamento vem **no snapshot** e o sync o
+    # reescreve a cada sincronização (é assim que restaurar funciona); exclusão chega **só pelo
+    # webhook**, porque depois dela não existe snapshot para consultar. Uma coluna só faria o sync
+    # apagar este fato (ADR 0037).
+    source_deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Milestone(Base, _ProjectChildMixin, TimestampMixin):

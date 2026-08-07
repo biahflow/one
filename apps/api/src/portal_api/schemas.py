@@ -407,6 +407,17 @@ class CitationOut(Out):
 
     label: str
     document_id: str | None
+    #: A data da fonte, ``YYYY-MM-DD``, ou ``None`` quando ela não data o fato
+    #: (ADR 0038). `str` e não `date` pela regra deste módulo: o produtor já
+    #: entregou texto. Vem repetida dentro de ``label``, e é deliberado — o rótulo
+    #: é para ler, este campo é para a tela poder tratá-la como data.
+    #:
+    #: **Chama-se ``dated_at`` e não ``date``, e isso foi medido**: a guarda de
+    #: consumo da ADR 0033 casa nome de campo por substring, e ``date`` aparece em
+    #: ``new Date``, ``dateStyle`` e ``due_date`` — com o campo chamado ``date`` ela
+    #: ficava verde mesmo sem consumidor nenhum, que é o caso do ``.priority`` que
+    #: aquela ADR mediu. Nome específico é o que torna o elo verificável.
+    dated_at: str | None
 
 
 class ChatOut(Out):

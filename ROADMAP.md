@@ -670,6 +670,29 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       citação já dada, e apagar tenant é decisão de pessoa executada pelo worker (ADR 0017), com um
       webhook não sendo exceção a isso.)*
 
+- [x] **A citação sem data.** *(ADR 0038, FDD 021. Nona repetição do padrão, num documento de
+      **três linhas** que nenhuma fatia jamais visitara: o `context-contract.md` prometia desde a
+      Fase 3 que "toda citação aponta para fonte, localização e **data**", e nenhuma citação tinha
+      data — `Evidence.citation` era `fonte — local` e `CitationOut` tinha `label` e `document_id`.
+      A evidência já estava no banco sem consumidor: `Document.source_updated_at` (o `modifiedTime`
+      do Drive), `indexed_at`, e o `PendingItem.created_at` que o sync carimba com o `opened_at` do
+      Biahflow. **A ponta afiada é o turno guardado:** o `drive_sync` reindexa a **mesma linha**
+      quando o arquivo muda, enquanto `conversation_message.citations` congela o rótulo — de modo
+      que a citação clicável que a ADR 0017 criou *justamente para o cliente conferir* abre, meses
+      depois, uma versão diferente daquela em que a resposta se apoiou, com rótulo idêntico. **E a
+      medição impôs um limite à promessa:** marco e status **não** ganham data, porque a linha do
+      marco é apagada e recriada a cada sincronização e o `created_at` dela diz quando o portal
+      copiou, não quando o fato aconteceu — falsa precisão, que é o que `results.py` recusa quando
+      falta premissa. O documento foi corrigido para dizer isso, com a retificação registrada. De
+      quebra, **dois portões nasceram cegos e foram medidos**: o `template_sha256` do
+      `prompt-registry.json` **não mudou** ao acrescentar a data à linha da evidência, porque a
+      sentinela do digest não tinha data e percorria só o ramo antigo — a cobertura de um portão é
+      a dos ramos que a amostra percorre, e a amostra é parte do portão; e o campo, chamado `date`,
+      passava verde na guarda de consumo da ADR 0033 **sem consumidor nenhum**, porque aquela
+      guarda casa nome por substring e `date` aparece em `new Date`, `dateStyle` e `due_date` — é o
+      `.priority` daquela ADR outra vez, e renomear para `dated_at` foi o que tornou o elo
+      verificável.)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`

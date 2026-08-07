@@ -668,6 +668,17 @@
         "additionalProperties": false,
         "description": "A citação como foi exibida, com o ponteiro para o arquivo quando há um.\n\n``document_id`` vazio é o caso normal: um marco não é um arquivo e não tem\no que abrir. Quando há, a citação vira link (ADR 0017).",
         "properties": {
+          "dated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dated At"
+          },
           "document_id": {
             "anyOf": [
               {
@@ -686,7 +697,8 @@
         },
         "required": [
           "label",
-          "document_id"
+          "document_id",
+          "dated_at"
         ],
         "title": "CitationOut",
         "type": "object"

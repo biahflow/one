@@ -65,6 +65,13 @@ def _citations_of(result: ChatResult) -> list[dict] | None:
     do histórico. Fica ausente quando a evidência veio do read model, e continua
     sendo só um ponteiro: se o documento for apagado depois, o rótulo gravado
     segue contando o que a resposta mostrou, e é o link que deixa de abrir.
+
+    ``dated_at`` (ADR 0038) é a data **daquela** versão da fonte, e é o campo que
+    torna o parágrafo acima verificável em vez de só verdadeiro. O ponteiro abre o
+    documento de hoje, e o sync do Drive reindexa a mesma linha quando o arquivo
+    muda: sem a data, uma resposta de março e o arquivo de agosto usam rótulo
+    idêntico. Ausente para quem não tem data de fonte, pela mesma razão de
+    :class:`~portal_api.ai.retrieval.Evidence`.
     """
     if not result.cited:
         return None
@@ -74,6 +81,7 @@ def _citations_of(result: ChatResult) -> list[dict] | None:
             "source": evidence.source,
             "location": evidence.location,
             **({"document_id": evidence.document_id} if evidence.document_id else {}),
+            **({"dated_at": evidence.dated_at.isoformat()} if evidence.dated_at else {}),
         }
         for evidence in result.cited
     ]

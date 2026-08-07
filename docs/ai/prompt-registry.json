@@ -5,5 +5,12 @@
     "schema_sha256": "a0e68083cf217d9afb05a6636083ca42af62da7f60b69a7dda1a54a8da9b5673",
     "template_sha256": "2a28670bc0eae5e7999636c17674a9752bb51af64feef63e847fb2e9582ce038",
     "recorded_at": "2026-08-05T14:52:35Z"
+  },
+  {
+    "version": "chat-2026-08-07",
+    "system_sha256": "4a2f963a7289fbc24d3d6b9862994a398ee38fad1a015d13d27ab451b8ec651d",
+    "schema_sha256": "a0e68083cf217d9afb05a6636083ca42af62da7f60b69a7dda1a54a8da9b5673",
+    "template_sha256": "4fce9d5a993ced2eb06a1f710598f80678677e46191727c03cddd6130bbd2b3d",
+    "recorded_at": "2026-08-07T12:03:30Z"
   }
 ]

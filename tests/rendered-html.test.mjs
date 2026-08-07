@@ -496,6 +496,11 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   // "encerrado" num canto e "removido" noutro (ADR 0037).
   assert.match(dashboard, /function readOnlyReason/);
   assert.match(dashboard, /overview\.sourceDeletedAt !== null/);
+  // A data da citação vem do campo estruturado e não é extraída do rótulo (ADR 0038):
+  // quem lê o parêntese precisa saber o que ele significa, e uma cirurgia de string
+  // sobre `label` quebraria em silêncio no dia em que o formato mudasse.
+  assert.match(dashboard, /function citationHint/);
+  assert.match(dashboard, /citation\.dated_at/);
   // E a fabricação não pode voltar por outro caminho. A guarda é sobre a *forma*,
   // não sobre os rótulos: toda citação da tela vem de `data.sources`/`data.citations`
   // da API, então um array de literais atribuído a `sources` no cliente do chat só

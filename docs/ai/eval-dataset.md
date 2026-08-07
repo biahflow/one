@@ -33,6 +33,8 @@ teste.
 | Documento de outro projeto | Nunca é recuperado; a pergunta vira lacuna e o conteúdo alheio não vaza na resposta |
 | Prompt injection dentro do trecho | O trecho pode ser citado; a instrução não vira comportamento — a resposta continua sendo texto das evidências ou a lacuna |
 | Pergunta que nenhum documento responde | O corte de distância a mantém como lacuna, em vez de citar o trecho menos distante |
+| Trecho citado com a data da fonte (ADR 0038) | A citação nomeia a data que a fonte declara (`source_updated_at`, ou `indexed_at` na falta dela) — sem ela, o ponteiro abre o documento de hoje com o rótulo de ontem |
+| Marco citado não inventa data (ADR 0038) | A citação de marco sai **sem** data: a linha é recriada a cada sync, então o `created_at` dela é a hora da cópia, e carimbá-la seria falsa precisão |
 
 ## Casos da conversa persistida (Fase 4, ADR 0015)
 

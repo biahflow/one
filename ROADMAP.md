@@ -676,6 +676,50 @@ não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e
 digita, clica e cai na aba, e sobe um documento com termo inédito para achá-lo **dentro** do
 texto.*
 
+## Fase 7 — Saber se o cliente engaja, e puxá-lo de volta (proposta)
+
+Adicionada em 07/08/2026. As seis fases anteriores construíram o que o cliente **encontra**
+quando abre o portal. Esta é sobre o que ele **não** faz: hoje o produto sabe se um projeto
+está no prazo e **não sabe se o cliente está engajando**. Um projeto verde cujo cliente parou
+de logar é churn silencioso, e só se descobre quando ele reclama ou some.
+
+São três sinais que respondem perguntas diferentes sobre o mesmo cliente: ele **usa** (funil),
+ele **ganha** (saúde e ROI, que já existem), ele **gosta** (satisfação). O princípio que rege
+os três é **medir para agir, não para reportar** — se a medição não dispara ação, ela não
+entra, e um painel sem dono é dívida, não ativo.
+
+**A ordem é parte do conteúdo.** Um sinal de cada vez, com o laço de ação fechado de verdade
+antes do seguinte. O gargalo nunca foi construir sinal: é a capacidade do time de responder a
+ele, e três radares tocando para um time que não dá conta de agir em um é pior que um radar
+que ele respeita.
+
+- [ ] **Funil de onboarding medido.** *(RFC 001, FDD 020.)* Degraus de valor com carimbo de
+      tempo por organização, e alerta de quem travou. A régua é o **time-to-first-value**: do
+      ganho até a primeira aprovação e até o primeiro ROI visto — número que prediz retenção
+      melhor que qualquer health de projeto. O dado já ocorre; falta registrar **quando**.
+      Duas travas: instrumentar **degraus de valor, não vaidade** ("logou doze vezes" pode ser
+      um cliente perdido procurando o que devia estar óbvio), e separar "travou no cliente" de
+      "travou em nós". A IA vigia e escreve o sinal ao time; **não conversa**.
+- [ ] **Canal de WhatsApp.** *(RFC 002, FDD 021.)* Aviso 1:1 por template ao lado do sino e do
+      digest, no ponto de extensão que a ADR 0012 já descreve, com opt-in revogável como
+      coluna da pessoa. **Nunca grupo**: a razão de existir de um grupo é conversa de muitos
+      para muitos, que é justamente o que não se quer fora do portal — e o canal de menor
+      atrito vence sempre, então pôr os dois para fazer o mesmo trabalho esvazia o eixo. O
+      aviso leva o fato e um link que cai na coisa exata. Spoke, nunca hub.
+- [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
+      laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
+      entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já
+      existe: a ADR 0015 grava nota e comentário com GRANT de coluna, e a ADR 0030 lê o sinal
+      **sem a pergunta do cliente**. Nota baixa vira alerta na hora; a IA lê o texto aberto e
+      prioriza detratores. E a regressão que a ADR 0033 deixou de herança: **painel só nasce
+      depois do escritor**.
+
+**Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
+compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar
+e o time levar seis horas onde o WhatsApp levaria seis minutos, ele volta para o WhatsApp. E
+**sinal traz de volta, valor retém**: se ao voltar não houver algo que importa, nenhum alerta
+salva.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.
@@ -684,3 +728,5 @@ texto.*
 4. Fase 5 continuamente, com fechamento antes do lançamento externo.
 5. Fase 6 pode andar junto da Fase 1/2, pois destrava a experiência de maior valor do
    cliente e depende sobretudo do snapshot ampliado no Biahflow.
+6. Fase 7 depois da 6, e **um sinal por vez**: o funil primeiro, porque é onde se perde
+   cliente cedo e barato; a satisfação só quando o time estiver respondendo ao primeiro.

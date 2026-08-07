@@ -1,0 +1,117 @@
+# Deploy de HML.
+#
+# **Deploy de aplicação não roda `terraform apply`.** Trocar a imagem de um serviço
+# e mudar a forma da infraestrutura são atos diferentes, com raios de dano
+# diferentes: o primeiro acontece a cada push na `main`, o segundo quando alguém
+# decide. Misturá-los faria um deploy de rotina poder derrubar rede, e é por isso
+# que o Terraform tem workflow próprio (`infra-hml.yml`).
+#
+# Autentica por Workload Identity Federation: nenhuma chave de conta de serviço
+# existe, o que é ao mesmo tempo a postura certa e a única disponível — a
+# organização proíbe criá-las (a política que a ADR 0016 do Biahflow encontrou).
+name: deploy-hml
+
+on:
+  push:
+    branches: [main]
+    # Documento não vira imagem. Sem isto, corrigir uma vírgula num ADR
+    # redeployaria o portal inteiro.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  # Dois deploys ao mesmo tempo põem revisões fora de ordem: a segunda a terminar
+  # vence, e não é necessariamente a mais nova. `cancel-in-progress: false` porque
+  # cancelar no meio pode deixar o `migrate` aplicado e a revisão antiga servindo.
+  group: deploy-hml
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # o token OIDC que o WIF troca por credencial
+  packages: write   # o espelho no GHCR
+
+env:
+  PROJETO: biahflow-hml
+  REGIAO: us-east1
+  REGISTRO: us-east1-docker.pkg.dev/biahflow-hml/hml
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: biahflow-hml
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: hml-deploy@biahflow-hml.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Autoriza os dois registros
+        run: |
+          gcloud auth configure-docker "$REGIAO-docker.pkg.dev" --quiet
+          echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # Tag pelo SHA e **nunca `latest`**: é o que permite voltar apontando a
+      # revisão anterior, e o que faz duas revisões serem distinguíveis. O espelho
+      # no GHCR existe para o Artifact Registry não virar âncora de saída.
+      - name: Constrói e publica
+        run: |
+          set -euo pipefail
+          publica() {
+            local nome="$1" contexto="$2" dockerfile="$3"
+            docker build -t "$REGISTRO/$nome:$GITHUB_SHA" \
+                         -t "ghcr.io/${{ github.repository }}/$nome:$GITHUB_SHA" \
+                         -f "$dockerfile" "$contexto"
+            docker push "$REGISTRO/$nome:$GITHUB_SHA"
+            docker push "ghcr.io/${{ github.repository }}/$nome:$GITHUB_SHA"
+          }
+          publica portal-api apps/api apps/api/Dockerfile
+          publica portal-web . Dockerfile
+
+      # **O deploy para aqui se a migração falhar.** Subir código novo contra um
+      # schema velho é a forma mais barata de transformar um deploy em incidente,
+      # e o `set -e` deste passo é o que impede a revisão de sair.
+      - name: Migra o banco
+        run: |
+          gcloud run jobs update portal-migrate \
+            --image "$REGISTRO/portal-api:$GITHUB_SHA" \
+            --region "$REGIAO" --quiet
+          gcloud run jobs execute portal-migrate --region "$REGIAO" --wait
+
+      - name: Publica as revisões
+        run: |
+          for s in portal-api portal-web; do
+            gcloud run services update "$s" \
+              --image "$REGISTRO/$s:$GITHUB_SHA" \
+              --region "$REGIAO" --quiet
+          done
+
+      # O worker e o beat vivem na VM da fila (ver `infra/terraform/modulos/
+      # maquina-fila`): não são Cloud Run porque o Celery não escuta HTTP.
+      # Reiniciar as unidades é o que os faz pegar a imagem nova.
+      - name: Atualiza os processos longos
+        run: |
+          gcloud compute ssh hml-fila --zone "${REGIAO}-b" --tunnel-through-iap --quiet \
+            --command "sudo systemctl restart portal-worker portal-beat"
+
+      # Fumaça, e ela é o que separa "o deploy terminou" de "o deploy funcionou".
+      # A API é de ingress interno, então quem responde de fora é o BFF — e é
+      # justamente ele que prova que a ligação BFF→API está de pé.
+      - name: Fumaça
+        run: |
+          set -euo pipefail
+          url=$(gcloud run services describe portal-web --region "$REGIAO" --format='value(status.url)')
+          for tentativa in 1 2 3 4 5; do
+            if curl -sf --max-time 10 "$url/login" > /dev/null; then
+              echo "portal-web responde em $url"; exit 0
+            fi
+            echo "tentativa $tentativa falhou; esperando"; sleep 10
+          done
+          echo "::error::o portal não respondeu depois do deploy"; exit 1

@@ -1,0 +1,64 @@
+# O Terraform de HML, em workflow próprio.
+#
+# Separado do `deploy-hml.yml` de propósito: mudar a forma da infraestrutura e
+# trocar a imagem de um serviço têm raios de dano diferentes. Um `apply` pode
+# recriar rede, VM e conector; um deploy troca uma revisão. Se o deploy rodasse
+# `apply`, um push de rotina passaria a poder derrubar a rede.
+#
+# Por isso: `plan` automático em PR que toca a infraestrutura, `apply` só quando
+# uma pessoa manda.
+name: infra-hml
+
+on:
+  pull_request:
+    paths: ["infra/terraform/**"]
+  workflow_dispatch:
+    inputs:
+      aplicar:
+        description: "Aplicar de verdade (senão só planeja)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  DIRETORIO: infra/terraform/ambientes/hml
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: biahflow-hml
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: hml-deploy@biahflow-hml.iam.gserviceaccount.com
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.3
+
+      - name: Formato
+        run: terraform -chdir=$DIRETORIO fmt -check -recursive ../..
+
+      - run: terraform -chdir=$DIRETORIO init -input=false
+
+      - run: terraform -chdir=$DIRETORIO validate
+
+      # `tag_imagem` é obrigatória mas irrelevante aqui: o módulo do Cloud Run
+      # ignora mudança de imagem (`lifecycle.ignore_changes`), justamente para que
+      # um apply de infraestrutura não reverta o último deploy.
+      - name: Plano
+        run: |
+          terraform -chdir=$DIRETORIO plan -input=false -lock-timeout=5m \
+            -var "tag_imagem=ignorado-pelo-lifecycle" -out=plano.tfplan
+
+      - name: Aplica
+        if: github.event_name == 'workflow_dispatch' && inputs.aplicar
+        run: terraform -chdir=$DIRETORIO apply -input=false -lock-timeout=5m plano.tfplan

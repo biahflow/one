@@ -8,7 +8,8 @@ Os dois lados já implementam o contrato (ADR 0006 aqui, ADR 0003 lá) — o que
 configuração e um passo de acesso. **Percorrido de ponta a ponta em 05/08/2026 e de novo em
 06/08/2026** contra as duas pilhas locais; os tropeços abaixo são os que apareceram nas execuções,
 não hipóteses. A segunda passagem corrigiu o tropeço (c), que já não era verdade, e acrescentou o
-(d).
+(d). Em 07/08/2026 os tropeços (d) e (f) foram **consertados** (ADR 0037), e o (f) encolheu ao ser
+medido: exclusão de filho não é alcançável pelo produto, ao contrário do que ele afirmava.
 
 ## Como a corrente funciona
 
@@ -109,12 +110,18 @@ dispararia dezenas de webhooks, cada um provocando um snapshot inteiro — todos
 > projeto nenhum, logo não há `project_id` para emitir. Quem carrega o estado no projeto é
 > `ProjectDeliverable`, e é esse que tem receiver.*
 
-**d) O funcionário digital não dispara webhook.** Não há receiver de `post_save` para
-`DigitalEmployee` em `signals.py` — é a forma exata do que o (c) descrevia. Cadastrar um
-funcionário digital **não avisa o portal**: medido, zero webhooks. O dado não se perde — o próximo
-save de qualquer um dos outros traz o time digital inteiro no snapshot seguinte —, mas o bloco
-"Seu Time Digital" fica vazio na tela do cliente por tempo indeterminado, e nada fica vermelho.
-Corrigir é do lado do Biahflow: um receiver, na forma dos que já existem.
+**d) O funcionário digital não disparava webhook — resolvido na ADR 0037.** Não havia receiver de
+`post_save` para `DigitalEmployee` em `signals.py` — a forma exata do que o (c) descrevia.
+Cadastrar um funcionário digital **não avisava o portal**: medido, zero webhooks. O dado não se
+perdia — o próximo save de qualquer um dos outros trazia o time digital inteiro no snapshot
+seguinte —, mas o bloco "Seu Time Digital" ficava desatualizado na tela do cliente por tempo
+indeterminado, e nada ficava vermelho.
+
+> *Ampliado em 07/08/2026, ao consertar. Este item falava só em **cadastrar**, e o caso pior era
+> outro: **arquivar**. `archive()` tira a linha do snapshot, então o funcionário digital arquivado
+> continuava no roster do cliente — o portal exibindo alguém que a fonte da verdade já tinha
+> tirado, que é mais errado do que exibir de menos. Os três caminhos (criar, editar KPI, arquivar)
+> emitem desde a ADR 0037.*
 
 **e) Arquivar o *projeto* travava o portal — resolvido na ADR 0036, e vale saber o que era.**
 Arquivar emite (o `archive()` de lá é um `save()`), mas a rota de snapshot filtrava
@@ -133,11 +140,28 @@ marco, reunião, pendência) sempre funcionou, nos dois sentidos, porque o sync 
 inteiras a cada webhook; e **desarquivar o projeto sempre destravou sozinho**, porque o
 `unarchive` também é um `save()` e o snapshot volta a existir.
 
-**f) Exclusão definitiva não avisa ninguém, e isto continua aberto.** Não há receiver de
-`post_delete` nem de `pre_delete` em `signals.py` — os quinze são `post_save`. Onde o Biahflow
-apaga de verdade (`retention.py`, e qualquer cascata de `queryset.delete()`), o portal não fica
-sabendo: o item some do snapshot mas nenhum webhook sai, e o read model só se corrige no próximo
-save de outra coisa naquele projeto. Não confunda com o arquivamento, que é `save()` e emite.
+**f) Exclusão definitiva do projeto não avisava ninguém — resolvido na ADR 0037, e o diagnóstico
+encolheu ao ser medido.** Não havia receiver de `post_delete` nem de `pre_delete` em `signals.py`
+— os quinze eram `post_save`.
+
+> *Corrigido em 07/08/2026, ao percorrer o outro lado. Este item dizia que "onde o Biahflow apaga
+> de verdade (`retention.py`, e qualquer cascata de `queryset.delete()`), o portal não fica
+> sabendo", e a parte alarmante não se sustenta: `retention.executar()` só alcança linha **já
+> arquivada** (`archived_at` + N dias), e arquivada ela já saiu do snapshot e já foi propagada pelo
+> webhook do arquivamento. Quando a retenção apaga de vez, o portal já removeu. Some-se a isso que
+> o `DELETE` da API de lá **arquiva** (os nove viewsets são `ArchiveModelViewSet`) e que o Django
+> admin registra só `User` e `ScheduledJobRun`: exclusão de filho não é alcançável pelo produto.*
+
+O que sobrava era o **projeto**, apagado por shell ou migração de dados — e aí o prejuízo era total
+e permanente: nenhum webhook saía, não haveria evento seguinte daquele projeto porque não há mais
+projeto, e o portal seguia mostrando ao cliente um projeto morto **como ativo**. Hoje o Biahflow
+emite `("deleted", "project", id)` — o único `post_delete` de lá —, o portal marca a linha, mostra
+"Projeto removido na origem", mantém o histórico e recusa escrita com 409. O evento daqui é
+`biahflow.project_deleted`.
+
+**Exclusão de filho continua sem aviso, agora de propósito.** Se um dia a interface de lá passar a
+apagar marco ou documento de verdade, isto volta a ser defeito — e a correção precisa de dedupe por
+transação, senão uma cascata vira dezenas de buscas de snapshot. O argumento está na ADR 0037.
 
 ## 3. Prove que o caminho está aberto, antes de esperar mágica
 
@@ -224,6 +248,9 @@ Mailpit **do portal** (`:8025`), não no do Biahflow (`:19025`).
 | 200 no webhook e nada muda na tela | o projeto sincronizou noutra organização — confira os slugs e o bootstrap |
 | O time digital não aparece | tropeço (d): `DigitalEmployee` não emite; salve outra coisa para forçar |
 | `biahflow.snapshot_missing` no log daqui | o Biahflow respondeu 404 no snapshot: id de outra instância, quase sempre `BIAHFLOW_BASE_URL` |
-| Arquivei/apaguei algo e continua na tela | se foi **arquivar**, é bug — veja (e); se foi apagar de vez, é (f), e nenhum webhook saiu |
-| O projeto encerrado aparece como ativo | o portal não recebeu o `archived_at`: confira se aquele Biahflow já tem a mudança da ADR 0036 |
+| Arquivei o projeto e continua na tela como ativo | o portal não recebeu o `archived_at`: confira se aquele Biahflow já tem a mudança da ADR 0036 |
+| Apaguei o projeto e continua na tela como ativo | o `deleted` se perdeu (entrega é best-effort e sem retentativa) — não virá outro; marque a linha à mão |
+| Apaguei um **item** e continua na tela | é (f), e é esperado: só o projeto emite na exclusão. Arquive em vez de apagar, que emite |
+| Cadastrei/arquivei funcionário digital e nada mudou | era (d), resolvido na ADR 0037; se persistir, aquele Biahflow ainda não tem a mudança |
+| `biahflow.project_deleted` no log daqui | o Biahflow apagou o projeto de vez. Não é falha — veja a linha em `alerts.md` antes de agir |
 | Login, sessão, "sem projeto atribuído" | `auth-failure.md` |

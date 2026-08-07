@@ -478,6 +478,105 @@ def test_webhook_syncs_new_object_types(
 
 
 @pytest.mark.integration
+def test_o_webhook_de_exclusao_marca_o_projeto_sem_buscar_snapshot(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`event: "deleted"` é o primeiro leitor que aquele campo teve (ADR 0037).
+
+    O Biahflow manda `event` e `object_type` em todo webhook desde a ADR 0006, e este lado
+    nunca olhou nenhum dos dois — sempre buscou o snapshot. Para a exclusão isso não serve:
+    **não há snapshot depois dela**, e o 404 que a busca traria não distingue "foi apagado"
+    de "id de outra base". O `fetch_snapshot` que estoura aqui é a asserção principal.
+    """
+    biahflow_project_id = 61
+    snap = _snapshot(biahflow_project_id=biahflow_project_id, client_id=57)
+    biahflow.sync_snapshot(db_session, snap)
+    monkeypatch.setattr(main.settings, "biahflow_webhook_secret", "s3cr3t")
+    monkeypatch.setattr(main, "get_session", lambda *args, **kwargs: _session_scope(db_session))
+
+    def _nunca(*args: object, **kwargs: object) -> dict:
+        raise AssertionError("a exclusão não pode buscar snapshot: não existe mais nenhum")
+
+    monkeypatch.setattr(main.biahflow, "fetch_snapshot", _nunca)
+
+    body = json.dumps(
+        {"event": "deleted", "object_type": "project", "project_id": biahflow_project_id}
+    ).encode()
+    signature = hmac.new(b"s3cr3t", body, hashlib.sha256).hexdigest()
+    response = client.post(
+        "/api/v1/integrations/biahflow/webhook",
+        content=body,
+        headers={"X-Biahflow-Signature": f"sha256={signature}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "deleted"
+    project = db_session.execute(
+        select(Project).where(Project.slug == biahflow.project_slug(biahflow_project_id))
+    ).scalars().one()
+    db_session.refresh(project)
+    assert project.source_deleted_at is not None
+    # Nada foi apagado deste lado: o histórico é a evidência das citações já dadas (ADR 0017).
+    assert len(biahflow.build_dashboard(db_session, project)["milestones"]) == 2
+    assert biahflow.build_dashboard(db_session, project)["source_deleted_at"] is not None
+
+    # Reentrega não move a data: a primeira observação é a verdadeira.
+    primeira = project.source_deleted_at
+    client.post(
+        "/api/v1/integrations/biahflow/webhook",
+        content=body,
+        headers={"X-Biahflow-Signature": f"sha256={signature}"},
+    )
+    db_session.refresh(project)
+    assert project.source_deleted_at == primeira
+
+
+@pytest.mark.integration
+def test_o_webhook_de_exclusao_de_projeto_desconhecido_nao_cria_nada(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Um id que este portal nunca viu não vira tenant novo — nem no aviso de morte."""
+    monkeypatch.setattr(main.settings, "biahflow_webhook_secret", "s3cr3t")
+    monkeypatch.setattr(main, "get_session", lambda *args, **kwargs: _session_scope(db_session))
+
+    body = json.dumps(
+        {"event": "deleted", "object_type": "project", "project_id": 999_777}
+    ).encode()
+    signature = hmac.new(b"s3cr3t", body, hashlib.sha256).hexdigest()
+    response = client.post(
+        "/api/v1/integrations/biahflow/webhook",
+        content=body,
+        headers={"X-Biahflow-Signature": f"sha256={signature}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "unknown_project", "project_id": None}
+    assert db_session.execute(
+        select(Project).where(Project.slug == biahflow.project_slug(999_777))
+    ).scalars().first() is None
+
+
+@pytest.mark.integration
+def test_o_sync_nao_desfaz_a_exclusao(db_session: Session) -> None:
+    """`source_deleted_at` fica fora do `sync_snapshot`, ao contrário de `archived_at`.
+
+    Arquivamento é reversível e vem no snapshot, então o sync o reescreve a cada passagem —
+    é assim que restaurar funciona. Exclusão chega só pelo webhook, e um snapshot que voltasse
+    a existir para este id significaria outro projeto reusando o número, não uma restauração.
+    Se o sync limpasse a coluna, bastaria um webhook atrasado para o projeto morto voltar a
+    parecer vivo na tela do cliente.
+    """
+    snap = _snapshot(biahflow_project_id=62, client_id=58)
+    project = biahflow.sync_snapshot(db_session, snap)
+    biahflow.mark_project_deleted(db_session, 62)
+    assert project.source_deleted_at is not None
+
+    project = biahflow.sync_snapshot(db_session, snap)
+
+    assert project.source_deleted_at is not None
+
+
+@pytest.mark.integration
 def test_the_dashboard_says_which_turn_opened_an_ai_pending(db_session: Session) -> None:
     """O FK existia desde a ADR 0015 e era lido só como booleano (ADR 0031).
 

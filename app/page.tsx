@@ -160,6 +160,7 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
     completion: (data.completion as number) ?? 0,
     source: "live",
     archivedAt: (data.archived_at as string | null) ?? null,
+    sourceDeletedAt: (data.source_deleted_at as string | null) ?? null,
     nextDelivery: next ? { title: next.title, detail: shortDate(next.due_date) } : null,
     milestones: apiMilestones.map((milestone) => ({
       title: milestone.title,

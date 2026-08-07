@@ -323,9 +323,10 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.match(html, /aria-label="Notificações \(2 não lidas\)"/);
   assert.doesNotMatch(html, /Your site is taking shape/);
   assert.doesNotMatch(html, /codex-preview/);
-  // Projeto ativo não mostra o selo — sem isto, a asserção do teste seguinte
-  // passaria mesmo com o selo aparecendo sempre.
+  // Projeto ativo não mostra selo nenhum — sem isto, as asserções dos dois testes
+  // seguintes passariam mesmo com o selo aparecendo sempre.
   assert.doesNotMatch(html, /Projeto encerrado/);
+  assert.doesNotMatch(html, /Projeto removido na origem/);
 });
 
 test("o projeto encerrado é marcado na tela e fecha a pergunta", async () => {
@@ -347,6 +348,44 @@ test("o projeto encerrado é marcado na tela e fecha a pergunta", async () => {
     // O fechamento das escritas não é assertável aqui: o painel de chat só entra no DOM
     // depois de aberto, e o fio de comentário depois de expandido. Quem cobre a forma é a
     // varredura de fonte abaixo; quem cobre o comportamento é o e2e.
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("o projeto removido na origem é marcado com o próprio motivo", async () => {
+  // Apagar o projeto no Biahflow chega até aqui desde a ADR 0037 — por webhook, porque
+  // depois da exclusão não há snapshot que possa declarar coisa alguma. Sem o aviso, o
+  // portal mantinha um projeto morto na tela do cliente marcado como ativo, para sempre.
+  dashboardOverride = { ...DASHBOARD, source_deleted_at: "2026-08-07T10:11:12.000000+00:00" };
+  try {
+    const response = await render("/", { headers: { cookie: await sessionCookie() } });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+
+    assert.match(html, /Projeto removido na origem/);
+    assert.match(html, /health-pill--archived/);
+    // E **não** diz encerrado: são fatos diferentes, e a tela não pode trocar um pelo outro.
+    assert.doesNotMatch(html, /Projeto encerrado/);
+    // O histórico continua inteiro, que é a razão de o portal não apagar nada (ADR 0017).
+    assert.match(html, /Plano de implantação v3\.pdf/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("encerrado e removido juntos mostram o motivo mais forte", async () => {
+  // O Biahflow permite arquivar e depois apagar, e aí as duas datas existem. A frase útil
+  // ao cliente é a segunda — e é a mesma ordem de `_refuse_when_read_only` na API.
+  dashboardOverride = {
+    ...DASHBOARD,
+    archived_at: "2026-08-06T22:23:24.171853+00:00",
+    source_deleted_at: "2026-08-07T10:11:12.000000+00:00",
+  };
+  try {
+    const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+    assert.match(html, /Projeto removido na origem/);
+    assert.doesNotMatch(html, /Projeto encerrado/);
   } finally {
     dashboardOverride = null;
   }
@@ -446,13 +485,17 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   // backup que pulavam em silêncio. Um chat que falhou agora diz que falhou.
   assert.doesNotMatch(dashboard, /function answerFor/);
   assert.match(dashboard, /Pendência criada para Portal Labs/);
-  // Projeto encerrado fecha as duas escritas do cliente (ADR 0036). É guarda de forma,
-  // como a de citação abaixo: o formulário de pergunta e o de comentário têm de estar
-  // atrás da condição, e não apenas escondidos por CSS ou desabilitados no submit — a API
-  // responde 409, e uma tela que só falha depois de a pessoa digitar é pior que nenhuma.
-  assert.match(dashboard, /projectArchived \? \(/);
-  assert.match(dashboard, /archived \? \(/);
+  // Projeto sem escrita fecha as duas do cliente (ADR 0036/0037). É guarda de forma, como
+  // a de citação abaixo: o formulário de pergunta e o de comentário têm de estar atrás da
+  // condição, e não apenas escondidos por CSS ou desabilitados no submit — a API responde
+  // 409, e uma tela que só falha depois de a pessoa digitar é pior que nenhuma.
+  assert.match(dashboard, /projectReadOnly \? \(/);
+  assert.match(dashboard, /readOnly \? \(/);
   assert.match(dashboard, /fazer novas perguntas/);
+  // E os dois motivos moram na mesma função, que é o que impede a tela de dizer
+  // "encerrado" num canto e "removido" noutro (ADR 0037).
+  assert.match(dashboard, /function readOnlyReason/);
+  assert.match(dashboard, /overview\.sourceDeletedAt !== null/);
   // E a fabricação não pode voltar por outro caminho. A guarda é sobre a *forma*,
   // não sobre os rótulos: toda citação da tela vem de `data.sources`/`data.citations`
   // da API, então um array de literais atribuído a `sources` no cliente do chat só

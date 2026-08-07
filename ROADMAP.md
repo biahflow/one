@@ -625,6 +625,51 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       `test_main.py`. **A regra 4 fica declaradamente sem guarda**, e é a única: "migração aditiva"
       não é verificável por `alembic check` e "exige ADR/RFC" é julgamento.)*
 
+- [x] **O projeto encerrado, e o 404 que não distingue.** *(ADR 0036, FDD 019. Sétima repetição do
+      padrão, e a primeira achada por **alguém usando o produto** em vez de por uma varredura: o
+      tropeço (e) do `integracao-biahflow.md`. Arquivar um projeto no Biahflow emite webhook — o
+      `archive()` de lá é um `save()` —, mas a rota de snapshot filtrava `archived_at__isnull=True`,
+      então o portal vinha buscar o estado novo e levava **404**, que ele não tem como distinguir
+      de "este id nunca existiu". O webhook respondia 500, nada era gravado, e a tela do cliente
+      seguia mostrando como **ativo** um projeto encerrado, por todo o tempo que o arquivamento
+      durasse — cada webhook seguinte batia no mesmo 404. Agora a fonte declara o fato
+      (`archived_at` no snapshot, com 200), o portal tem **coluna própria** e não um valor de
+      `ProjectStatus` (encerrado e "em implementação" são ortogonais: um projeto encerrado tinha um
+      andamento quando acabou, e pôr os dois na mesma coluna perderia um deles ao restaurar), a
+      tela marca "Projeto encerrado" ao lado da saúde — um projeto pode terminar No prazo — com o
+      histórico inteiro, e `POST /chat` e `POST /me/pendings/{id}/comments` respondem **409**. Não
+      404: neste contrato ele significa uma coisa só, é a única resposta que a regra 6 verifica em
+      toda rota escopada, e corrompê-lo faria um cliente legítimo receber a mesma resposta de um
+      estranho. O precedente é o 429 da quota (ADR 0022) — o código sai do motivo, e o motivo aqui
+      é o estado do recurso. **Esta linha faltou por um dia**, e é a única vez em que uma fatia não
+      atualizou este arquivo desde que ele existe.)*
+
+- [x] **O que o Biahflow não conta ao portal.** *(ADR 0037, FDD 020, mais emenda na ADR 0003 de
+      lá. Oitava repetição, e a promessa quebrada estava escrita **no outro repositório e em
+      negrito**: "o que entra no snapshot precisa de emissor, sob pena de o portal exibir um estado
+      que já mudou". `digital_employees` entrava no snapshot e não tinha emissor nenhum — cadastrar,
+      mexer no KPI e **arquivar** um funcionário digital não avisavam ninguém, e arquivar era o
+      pior dos três, porque tira a linha do snapshot: o roster do cliente exibia alguém que a fonte
+      da verdade já tinha tirado. O roster é, pelo docstring do próprio modelo, o produto central.
+      **A medição corrigiu o diagnóstico que a ADR 0036 deixou:** ela escreveu que "`retention.py`
+      apaga documentos de vez, e exclusões em cascata idem", e a parte alarmante não se sustenta —
+      o `DELETE` da API de lá **arquiva** (os nove viewsets são `ArchiveModelViewSet`), o Django
+      admin não registra entidade de projeto nenhuma, e a retenção só alcança linha já arquivada,
+      que a essa altura já saiu do snapshot e já foi propagada. Sobrava **um** caminho real, e ele
+      é total: `Project.delete()` por shell, com o portal ficando com um projeto morto marcado como
+      ativo **para sempre**, porque nenhum evento sai e não haverá evento seguinte daquele projeto.
+      Agora há `post_delete` de `Project` — o único do repositório de lá, e a cascata inteira sai
+      como **um** aviso, porque um por filho agendaria dezenas de buscas de snapshot (todas 404)
+      antes do aviso que interessa. Deste lado, `event` ganhou **o primeiro leitor que já teve**:
+      o Biahflow manda `event` e `object_type` desde a ADR 0006 e o portal nunca olhou nenhum dos
+      dois — é a forma da guarda da ADR 0033 na direção de **entrada**, onde não há guarda porque o
+      produtor mora noutro repositório. `source_deleted_at` é coluna separada de `archived_at`
+      porque as duas chegam por portas diferentes: arquivamento vem no snapshot e o sync o reescreve
+      a cada passagem (é assim que restaurar funciona), exclusão chega só pelo webhook, e numa
+      coluna só o sync apagaria o fato. O portal **não apaga nada** — documento é evidência de
+      citação já dada, e apagar tenant é decisão de pessoa executada pelo worker (ADR 0017), com um
+      webhook não sendo exceção a isso.)*
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`

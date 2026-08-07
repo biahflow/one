@@ -29,6 +29,9 @@ export const DASHBOARD = {
   organization: "Acme Brasil",
   status: "in_implementation",
   completion: 68,
+  // `null` é projeto ativo (ADR 0036). O caso preenchido é exercitado por
+  // `archivedDashboard()` em `rendered-html.test.mjs`, sobre esta mesma base.
+  archived_at: null,
   milestones: [
     { title: "Validação de integrações", state: "in_progress", due_date: "2026-09-09", owner_label: "Acme Brasil" },
     { title: "Treinamento da operação", state: "planned", due_date: "2026-09-18", owner_label: "Portal Labs" },

@@ -16,12 +16,13 @@ import pathlib
 import re
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from portal_api import openapi
@@ -963,6 +964,74 @@ def test_a_member_without_the_role_is_a_different_reason(world: World, authentic
     assert refused.status_code == 404
     denied = [r for r in records if r.getMessage() == "authz.denied"]
     assert [r.reason for r in denied] == ["role_insufficient"]
+
+
+# --- o projeto encerrado no Biahflow (Fase 6, ADR 0036) ----------------------
+
+
+@contextmanager
+def _archived(migrated_engine: Engine, project_id: uuid.UUID) -> Iterator[None]:
+    """Arquiva o projeto e restaura, porque `world` é de sessão inteira."""
+    with Session(migrated_engine) as session:
+        session.execute(
+            update(Project)
+            .where(Project.id == project_id)
+            .values(archived_at=datetime.now(timezone.utc))
+        )
+        session.commit()
+    try:
+        yield
+    finally:
+        with Session(migrated_engine) as session:
+            session.execute(
+                update(Project).where(Project.id == project_id).values(archived_at=None)
+            )
+            session.commit()
+
+
+def test_o_projeto_encerrado_recusa_escrita_com_409_e_nao_com_404(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """Projeto encerrado fecha a escrita e mantém a leitura (ADR 0036).
+
+    O código importa mais do que parece. 404 neste contrato significa **uma coisa só** — o
+    chamador não tem vínculo —, e é a única resposta que a regra 6 verifica em toda rota
+    escopada. Usá-lo aqui tornaria "você não tem acesso" indistinguível de "este projeto
+    acabou", e um cliente legítimo passaria a receber a mesma resposta de um invasor.
+    """
+    authenticated(world.acme.client)
+
+    with _archived(migrated_engine, world.acme.project_id):
+        recusado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
+        assert recusado.status_code == 409
+
+        # A leitura continua aberta: o histórico é a evidência das respostas já dadas.
+        dashboard = client.get("/api/v1/me/dashboard")
+        assert dashboard.status_code == 200
+        assert dashboard.json()["archived_at"] is not None
+
+    # E restaurado, volta a responder — a interface do Biahflow arquiva e desarquiva por item.
+    assert client.get("/api/v1/me/dashboard").json()["archived_at"] is None
+
+
+def test_quem_nao_tem_vinculo_leva_404_mesmo_no_projeto_encerrado(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """As duas negações não podem se confundir, e esta é a metade que erra em silêncio.
+
+    Se o 409 fosse levantado antes de resolver o vínculo, ele contaria a um estranho que o
+    projeto existe — exatamente o que "404, nunca 403" existe para impedir.
+    """
+    stranger = Actor(
+        subject=f"sub-sem-projeto-{uuid.uuid4().hex[:8]}",
+        email=f"sem-projeto-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="Sem Projeto",
+    )
+    authenticated(stranger)
+
+    with _archived(migrated_engine, world.acme.project_id):
+        recusado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
+        assert recusado.status_code == 404
 
 
 # --- a regra 6, derivada do contrato (ADR 0035) -----------------------------

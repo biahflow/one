@@ -29,6 +29,7 @@ export const DEMO_OVERVIEW: Overview = {
   status: "Em implementação",
   completion: 68,
   source: "demo",
+  archivedAt: null,
   nextDelivery: { title: "Treinamento da operação", detail: "18 de setembro • Em 12 dias" },
   milestones: [
     { title: "Validação de integrações", owner: "Time Acme", state: "Em andamento", date: "09 set" },

@@ -284,6 +284,24 @@ class Settings(BaseSettings):
     #: execução, que é o que o health score e o risco de atraso já fazem.
     onboarding_alert_deliverable_days: int = 30
 
+    # O canal de WhatsApp (Fase 7, FDD 021, ADR 0043). Desligado por padrão pelo
+    # argumento do `drive_sync_enabled`: uma stack local sem credencial não deve
+    # acordar para falhar contra um fornecedor. Aqui há uma razão a mais e ela é
+    # maior — este é o único canal do produto que alcança o **bolso** de alguém, e
+    # um default ligado transformaria um erro de configuração em mensagem enviada.
+    whatsapp_enabled: bool = False
+    #: Separado da flag para o estado da integração poder dizer "ligado e sem
+    #: credencial", que é o caso que mais confunde quem opera.
+    whatsapp_api_base: str = "https://graph.facebook.com/v21.0"
+    whatsapp_phone_number_id: str = ""
+    whatsapp_api_token: str = ""
+    #: O template mora no fornecedor — mensagem iniciada pelo negócio exige texto
+    #: aprovado antes. Daqui saem só as duas variáveis: o fato e o link.
+    whatsapp_template_name: str = "portal_aviso"
+    whatsapp_template_language: str = "pt_BR"
+    #: HMAC do corpo cru no webhook de entrada, na forma do `biahflow_webhook_secret`.
+    whatsapp_webhook_secret: str = ""
+
     # O teto de frequência de contato (Fase 7, FDD 021 e FDD 022, ADR 0042).
     #
     # Dois números e não um mapa por canal: o orçamento é **da pessoa**, e ela não

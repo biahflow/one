@@ -49,7 +49,10 @@ import {
   listPendingCommentsAction,
   markNotificationsReadAction,
   type PendingComment,
+  type ChannelPreferences,
   setEmailPreferenceAction,
+  setPhoneAction,
+  setWhatsappPreferenceAction,
   signOutAction,
 } from "./actions";
 
@@ -187,7 +190,7 @@ const SEARCH_MIN_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 250;
 
 /** Quem está logado, projetado de `GET /api/v1/me` — a membership é a autoridade. */
-export type PortalUser = { name: string; initials: string; email: string; role: string; org: string; isInternal: boolean; notifyByEmail: boolean };
+export type PortalUser = { name: string; initials: string; email: string; role: string; org: string; isInternal: boolean; notifyByEmail: boolean; notifyByWhatsapp: boolean; phoneHint: string };
 export type NotificationView = { id: string; kind: string; title: string; detail: string | null; link: string | null; age: string; read: boolean };
 /** A caixa do projeto atual, vinda de `GET /api/v1/me/notifications`. */
 export type NotificationCenter = { unreadCount: number; items: NotificationView[] };
@@ -365,17 +368,31 @@ export default function DashboardClient({
   user,
   projects,
   notifications = { unreadCount: 0, items: [] },
+  initialTab,
 }: {
   overview: Overview;
   user: PortalUser;
   projects: ProjectSummary[];
   notifications?: NotificationCenter;
+  /**
+   * A aba que o `?tab=` da URL pediu (FDD 021, ADR 0043). É o que faz o link de um
+   * aviso cair no assunto em vez da home — até aqui a navegação era só estado, e
+   * nenhuma URL alcançava uma aba, de modo que `Notification.link` não teria para
+   * onde apontar mesmo depois de ganhar escritor.
+   *
+   * Validada contra `navItems`, e não confiada: o valor vem da barra de endereço.
+   * Um rótulo desconhecido cai na visão geral, que é o mesmo desfecho de não
+   * mandar nada — nunca uma tela em branco.
+   */
+  initialTab?: string;
 }) {
   const router = useRouter();
   // Projeto sem escrita no Biahflow: a tela vira consulta (ADR 0036/0037). Derivado do overview e
   // não guardado em estado, porque quem decide isto é a fonte da verdade a cada carregamento.
   const projectReadOnly = readOnlyReason(overview);
-  const [activeNav, setActiveNav] = useState("Visão geral");
+  const [activeNav, setActiveNav] = useState(
+    navItems.some((item) => item.label === initialTab) ? initialTab! : "Visão geral",
+  );
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -1837,9 +1854,13 @@ function NotificationsView({ onAsk, notifications }: { onAsk: () => void; notifi
 }
 
 function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) {
-  // Uma preferência, e ela é real. As outras duas que existiam aqui eram
+  // Duas preferências, e as duas são reais. As que existiam aqui antes eram
   // decorativas — um interruptor que não liga nada é pior do que não ter.
   const [emailOn, setEmailOn] = useState(user.notifyByEmail);
+  const [whatsappOn, setWhatsappOn] = useState(user.notifyByWhatsapp);
+  const [phoneHint, setPhoneHint] = useState(user.phoneHint);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
   function toggleEmail() {
@@ -1848,6 +1869,46 @@ function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) 
     startSaving(async () => {
       const ok = await setEmailPreferenceAction(next);
       if (!ok) setEmailOn(!next);
+    });
+  }
+
+  // A tela adota o que o servidor **guardou**, e não o que ela mandou: o telefone
+  // é normalizado do outro lado e o `phoneHint` é derivado de lá. Calcular o hint
+  // aqui reimplementaria `_phone_hint`, e as duas divergiriam no primeiro formato
+  // que alguém colasse.
+  function adopt(saved: ChannelPreferences) {
+    setWhatsappOn(saved.notifyByWhatsapp);
+    setPhoneHint(saved.phoneHint);
+  }
+
+  function toggleWhatsapp() {
+    const next = !whatsappOn;
+    setWhatsappOn(next);
+    setPhoneError(null);
+    startSaving(async () => {
+      const saved = await setWhatsappPreferenceAction(next);
+      // A API recusa ligar o canal sem número (422). Voltar o interruptor e dizer
+      // o motivo é o oposto de deixá-lo ligado sobre coisa nenhuma.
+      if (!saved) {
+        setWhatsappOn(!next);
+        if (next) setPhoneError("Cadastre um telefone antes de ligar o canal.");
+        return;
+      }
+      adopt(saved);
+    });
+  }
+
+  function savePhone() {
+    const value = phone.trim();
+    setPhoneError(null);
+    startSaving(async () => {
+      const saved = await setPhoneAction(value);
+      if (!saved) {
+        setPhoneError("Número inválido. Use DDI, DDD e o número — 10 a 15 dígitos.");
+        return;
+      }
+      adopt(saved);
+      setPhone("");
     });
   }
 
@@ -1873,6 +1934,51 @@ function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) 
               >
                 <i />
               </button>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Avisos por WhatsApp</strong>
+                <span>
+                  {phoneHint
+                    ? `Uma mensagem curta com o link do assunto, no número ${phoneHint}`
+                    : "Cadastre um telefone abaixo para poder ligar este canal"}
+                </span>
+              </div>
+              <button
+                className={`switch ${whatsappOn ? "switch--on" : ""}`}
+                role="switch"
+                aria-checked={whatsappOn}
+                aria-label="Avisos por WhatsApp"
+                disabled={saving}
+                onClick={toggleWhatsapp}
+              >
+                <i />
+              </button>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Telefone</strong>
+                <span>
+                  {phoneHint
+                    ? `Cadastrado: ${phoneHint}. Envie vazio para apagar.`
+                    : "Com DDI e DDD, por exemplo 5511987654321"}
+                </span>
+                {phoneError && <span role="alert">{phoneError}</span>}
+              </div>
+              <span className="setting-field">
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  aria-label="Telefone para avisos"
+                  placeholder={phoneHint || "5511987654321"}
+                  value={phone}
+                  disabled={saving}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
+                <button type="button" disabled={saving} onClick={savePhone}>
+                  Salvar
+                </button>
+              </span>
             </div>
             <div className="setting-row">
               <div>

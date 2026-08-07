@@ -37,6 +37,12 @@ from dataclasses import dataclass
 from sqlalchemy import ColumnElement, func, or_
 from sqlalchemy.orm import Session
 
+from portal_api.tabs import (
+    TAB_DOCUMENTS,
+    TAB_MEETINGS,
+    TAB_PENDINGS,
+    TAB_SCHEDULE,
+)
 from portal_api.models import (
     Document,
     DocumentChunk,
@@ -69,10 +75,11 @@ TOTAL_LIMIT = 20
 #: `app/DashboardClient.tsx` — a tela navega por rótulo desde a Fase 2, então
 #: mandar o rótulo pronto evita um segundo mapa do lado do navegador que
 #: envelheceria sozinho.
-TAB_SCHEDULE = "Cronograma"
-TAB_DOCUMENTS = "Documentos"
-TAB_MEETINGS = "Reuniões"
-TAB_PENDINGS = "Pendências"
+#:
+#: *Mudaram de casa na ADR 0043, e não de valor* — agora vêm de
+#: :mod:`portal_api.tabs`, importado no topo. O link do aviso passou a precisar dos
+#: mesmos rótulos, e três cópias de um literal que **tem** de ser idêntico é o modo
+#: de falha do ``textfold.py``: divergem sem nada ficar vermelho.
 
 
 @dataclass(frozen=True)

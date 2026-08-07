@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
 from time import perf_counter
 from uuid import UUID
@@ -12,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from portal_api import (
     access,
@@ -20,6 +21,7 @@ from portal_api import (
     agent_auth,
     chat_limit,
     conversations,
+    notifications,
     onboarding,
     pending_comments,
     results,
@@ -35,15 +37,18 @@ from portal_api.config import get_settings
 from portal_api.db.session import DbRole, bind_tenant, get_session
 from portal_api.identity import resolve_user
 from portal_api.integrations import biahflow
+from portal_api.integrations import whatsapp
 from portal_api.models import (
     AgentEvent,
     AgentEventOutcome,
     AuditLog,
     ConversationMessage,
     Document,
+    NotificationKind,
     OnboardingStepName,
     Organization,
     Project,
+    User,
 )
 from portal_api.preflight import preflight
 from portal_api.repositories import (
@@ -143,6 +148,17 @@ _WEBHOOK_SCHEME = APIKeyHeader(
     scheme_name="BiahflowSignature",
     auto_error=False,
     description="HMAC do corpo, com o segredo compartilhado (ADR 0006).",
+)
+
+#: O mesmo, para o canal de WhatsApp (ADR 0043). Esquema **próprio** e não o de
+#: cima reusado: são segredos diferentes, de fornecedores diferentes, e um esquema
+#: compartilhado diria no contrato publicado que a mesma credencial abre as duas
+#: rotas — que é justamente o que não se quer que alguém acredite.
+_WHATSAPP_WEBHOOK_SCHEME = APIKeyHeader(
+    name="X-Hub-Signature-256",
+    scheme_name="WhatsappSignature",
+    auto_error=False,
+    description="HMAC do corpo cru, com o segredo do canal (FDD 021).",
 )
 
 #: As duas recusas que toda rota de cliente pode dar, escritas uma vez só.
@@ -260,8 +276,50 @@ class NotificationsReadIn(BaseModel):
     ids: list[UUID] | None = None
 
 
+#: E.164 sem o `+`: dígitos, no máximo quinze, e nunca menos que dez. O teto é do
+#: padrão; o piso é o que separa um número de um engano de digitação, e recusar cedo
+#: é melhor que descobrir no fornecedor — lá a recusa vira `whatsapp.send_failed`,
+#: que o runbook manda diagnosticar como token ou template.
+_PHONE_DIGITS = re.compile(r"\D+")
+_PHONE_MIN, _PHONE_MAX = 10, 15
+
+
+def _normalized_phone(raw: str) -> str | None:
+    """Guarda só os dígitos. ``None`` apaga o número; entrada inválida é 422.
+
+    Normalizar na entrada e não na saída é o que faz o `phone_hint` e o envio
+    lerem a mesma coisa — um número guardado como a pessoa digitou obrigaria os
+    dois a repetir esta limpeza, e um deles a esqueceria.
+    """
+    digits = _PHONE_DIGITS.sub("", raw)
+    if not digits:
+        return None
+    if not _PHONE_MIN <= len(digits) <= _PHONE_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            # Sem ecoar o que foi digitado: um 422 que devolve o número o põe no log
+            # de quem quer que registre respostas de erro. É o defeito que a ADR 0023
+            # achou no FastAPI ecoando o corpo da requisição.
+            detail="Phone number must have between 10 and 15 digits",
+        )
+    return digits
+
+
+def _phone_hint(phone: str | None) -> str:
+    """Os quatro últimos dígitos, que é o bastante para a pessoa se reconhecer."""
+    if not phone:
+        return ""
+    return f"••••{phone[-4:]}"
+
+
 class PreferencesIn(BaseModel):
     notify_by_email: bool | None = None
+    #: O consentimento do canal de WhatsApp (FDD 021, ADR 0043).
+    notify_by_whatsapp: bool | None = None
+    #: O telefone. String vazia **apaga** o número, e é o caminho de "não quero mais
+    #: que vocês tenham isto" — que não é a mesma coisa que revogar o consentimento,
+    #: embora apagar o número implique não haver envio.
+    phone: str | None = None
 
 
 @app.get("/health", response_model=schemas.HealthOut)
@@ -604,6 +662,95 @@ async def biahflow_webhook(request: Request) -> dict:
     return {"status": "synced", "project_id": project_id}
 
 
+@app.post(
+    "/api/v1/integrations/whatsapp/webhook",
+    response_model=schemas.WebhookReceivedOut,
+    dependencies=[Depends(_WHATSAPP_WEBHOOK_SCHEME)],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": schemas.ErrorOut,
+            "description": "Assinatura ausente ou que não confere com o corpo.",
+        },
+    },
+)
+async def whatsapp_webhook(request: Request) -> dict:
+    """Recibo de entrega e resposta do cliente pelo canal (FDD 021, ADR 0043).
+
+    **Resposta vira aviso do time, nunca thread no canal.** É a regra que impede o
+    WhatsApp de virar o lugar onde o projeto acontece: quem responde volta ao
+    portal, onde a resposta fica ao lado do assunto e do histórico. O canal é
+    *spoke*, e um spoke que começa a hospedar conversa vira hub sem ninguém decidir.
+
+    Idempotente pela chave de dedupe do aviso, que carrega o id do evento no
+    fornecedor — reentrega não vira segundo aviso. É a mesma memória que a ADR 0040
+    reusou, e o motivo de não haver tabela de entrada.
+    """
+    body = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256")
+    if not whatsapp.verify_signature(
+        settings.whatsapp_webhook_secret, body, signature
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature"
+        )
+
+    inbound = whatsapp.parse_inbound(json.loads(body or b"{}"))
+    if inbound is None:
+        # Espécie de evento que este produto não usa. Sair calado é a decisão: o
+        # fornecedor manda várias, e transformar cada uma em erro encheria o log de
+        # linhas que descrevem o funcionamento normal.
+        return {"status": "ignored"}
+
+    if inbound.kind != "message":
+        if inbound.kind == "failed":
+            # O único recibo que merece linha: a mensagem **não** chegou, e o
+            # `whatsapp_sent_at` já está carimbado, então o laço de envio não tentará
+            # de novo. Quem age é uma pessoa — o aviso continua no sino do cliente.
+            logger.warning(
+                "whatsapp.delivery_failed", extra={"external_id": inbound.external_id}
+            )
+        return {"status": "receipt"}
+
+    with get_session(role=DbRole.system) as session:
+        sender = session.execute(
+            select(User).where(User.phone == inbound.phone)
+        ).scalars().first()
+        if sender is None:
+            # Alguém escreveu para o número do negócio sem ser destinatário conhecido.
+            # Não é erro e não vira linha de cliente: sem `user` não há tenant, e
+            # inventar um seria criar projeto a partir de uma mensagem de fora.
+            logger.warning("whatsapp.reply_unmatched")
+            return {"status": "unknown_sender"}
+
+        project = notifications.reply_target(session, sender)
+        if project is None:
+            logger.warning("whatsapp.reply_unmatched")
+            return {"status": "unknown_sender"}
+
+        notifications.fan_out(
+            session,
+            project,
+            [
+                notifications.Change(
+                    kind=NotificationKind.whatsapp_reply,
+                    title=f"{sender.full_name} respondeu pelo WhatsApp",
+                    # O texto do cliente **vai** para o `detail`, e é a direção
+                    # oposta à do envio: para fora o campo livre é o que não pode
+                    # sair, para dentro ele é a mensagem inteira. O destino é o sino
+                    # do time, dentro do tenant dele.
+                    detail=inbound.text[:300],
+                    dedupe_key=f"whatsapp:inbound:{inbound.external_id}",
+                )
+            ],
+            # O remetente não recebe o aviso do que ele mesmo escreveu — e ele nem
+            # está na audiência interna, então isto é cinto e suspensório de uma
+            # conta que legitimamente seja interna e cliente ao mesmo tempo.
+            exclude_user_id=sender.id,
+        )
+
+    return {"status": "recorded"}
+
+
 @app.get(
     "/api/v1/me",
     response_model=schemas.MeOut,
@@ -636,6 +783,8 @@ def me(principal: CurrentPrincipal) -> dict:
             "full_name": user.full_name,
             "is_internal": user.is_internal,
             "notify_by_email": user.notify_by_email,
+            "notify_by_whatsapp": user.notify_by_whatsapp,
+            "phone_hint": _phone_hint(user.phone),
             "organization": organization,
             "projects": [
                 {
@@ -1220,15 +1369,41 @@ def rate_answer(message_id: UUID, payload: FeedbackIn, principal: CurrentPrincip
     },
 )
 def update_preferences(payload: PreferencesIn, principal: CurrentPrincipal) -> dict:
-    """Preferências da própria conta. Hoje só o e-mail das notificações.
+    """Preferências da própria conta: o e-mail, e desde a ADR 0043 o canal.
 
-    Escreve na própria linha de ``user`` — a policy ``user_self_link`` da
-    migração 0007 já cobre isso, e é o único UPDATE que o caminho de requisição
-    fazia antes das notificações existirem.
+    Escreve na própria linha de ``user`` — a policy ``user_self_preferences`` da
+    migração 0009 cobre a linha, e o GRANT **de coluna** cobre o resto: uma policy
+    decide quais linhas, nunca quais colunas, e é o grant que impede "mudar minha
+    preferência" de virar "promover-me a interno". A 0029 acrescentou ``phone`` e
+    ``notify_by_whatsapp`` àquela lista, e nada mais.
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
         if payload.notify_by_email is not None:
             user.notify_by_email = payload.notify_by_email
+        if payload.phone is not None:
+            user.phone = _normalized_phone(payload.phone)
+            if user.phone is None:
+                # Apagar o número **revoga** o consentimento, e é o espelho exato do
+                # 422 logo abaixo: se ligar o canal sem número é recusado, deixá-lo
+                # ligado depois de o número sumir seria o mesmo estado impossível
+                # chegando pela outra porta — com a tela mostrando um interruptor
+                # ligado e o envio calando-se em silêncio a cada passagem.
+                user.notify_by_whatsapp = False
+        if payload.notify_by_whatsapp is not None:
+            # Consentir sem número seria consentir com nada: o envio simplesmente
+            # não aconteceria, e a tela mostraria o canal ligado. É recusa explícita
+            # em vez de silêncio, pela razão que a ADR 0033 deixou — um controle
+            # ligado sobre coisa nenhuma é pior que um controle ausente.
+            if payload.notify_by_whatsapp and not user.phone:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="A phone number is required to enable WhatsApp notices",
+                )
+            user.notify_by_whatsapp = payload.notify_by_whatsapp
         session.flush()
-        return {"notify_by_email": user.notify_by_email}
+        return {
+            "notify_by_email": user.notify_by_email,
+            "notify_by_whatsapp": user.notify_by_whatsapp,
+            "phone_hint": _phone_hint(user.phone),
+        }

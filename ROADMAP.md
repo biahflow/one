@@ -809,12 +809,47 @@ que ele respeita.
       escrito na emenda daquela FDD em vez de virar dívida redescoberta no meio da implementação.
       *O valor padrão não tem medição por trás — a primeira virá do próprio `contact.suppressed`
       —, e é por isso que ele é setting e não constante de módulo. **Aberto:** teto de horário.*
-- [ ] **Canal de WhatsApp.** *(RFC 002, FDD 021.)* Aviso 1:1 por template ao lado do sino e do
-      digest, no ponto de extensão que a ADR 0012 já descreve, com opt-in revogável como
-      coluna da pessoa. **Nunca grupo**: a razão de existir de um grupo é conversa de muitos
-      para muitos, que é justamente o que não se quer fora do portal — e o canal de menor
-      atrito vence sempre, então pôr os dois para fazer o mesmo trabalho esvazia o eixo. O
-      aviso leva o fato e um link que cai na coisa exata. Spoke, nunca hub.
+- [x] **Canal de WhatsApp — e o link que não existia** *(RFC 002, FDD 021, ADR 0043)*: aviso
+      1:1 por template ao lado do sino e do digest, no ponto de extensão que a ADR 0012 já
+      descreve, com opt-in revogável como coluna da pessoa. **Nunca grupo** e **nunca IA**: o
+      corpo é um template de dois parâmetros, e a razão de existir de um grupo é conversa de
+      muitos para muitos, que é o que não se quer fora do portal.
+      **Metade da fatia não era o canal, e isso só apareceu ao construir.** O critério de
+      aceite (4) exige que o link caia "na coisa exata, nunca na home", e **não havia link
+      nem URL que o suportasse**. `Notification.link` existe desde a Fase 2 e o sino o
+      renderiza como `<a>` quando preenchido — e as dez ramificações do `diff` **nunca o
+      preencheram**, de modo que todo aviso de cliente chegava sem link desde então: a
+      ADR 0033 outra vez, na direção que ninguém tinha olhado, porque lá era um painel sobre
+      campo sem escritor e aqui é um **controle** sobre campo sem escritor (a guarda de
+      consumo não o pega — ela pergunta se há consumidor, e há; faltava produtor). E a
+      navegação por abas era estado de React, sem URL que a alcançasse, então nem havia o que
+      escrever. As duas coisas vieram primeiro, e **o sino ganhou links de carona**.
+      O rótulo da aba virou identificador em três arquivos e por isso virou módulo
+      (`tabs.py`, a forma do `textfold.py`), com guarda que lê o TSX e compara — a divergência
+      ali não deixa nada vermelho: o cliente clica na mensagem e chega no lugar errado.
+      Três decisões carregam o resto. **A mensagem não tem campo livre**: `send_notice` recebe
+      título e URL e monta o corpo sozinho, e o `detail` do aviso — o campo de texto livre do
+      modelo — não entra, o que faz "nenhum trecho de documento sai" ser estrutural em vez de
+      disciplina; o teste semeia uma cláusula e um valor de propósito e afirma sobre **o corpo
+      enviado**. **O consentimento é conferido no envio**, não no formulário, e é isso que faz
+      a revogação alcançar o que já está na fila sem varrer fila nenhuma — nasce desligado, ao
+      contrário do e-mail, porque um canal que chega no bolso da pessoa exige que ela diga sim,
+      e ligá-lo sem número é 422 em vez de um interruptor sobre coisa nenhuma. E **duas colunas
+      de carimbo**, não uma: num carimbo só o SMTP fora do ar cancelaria o WhatsApp.
+      A resposta do cliente vira aviso do **time** com link para as pendências, nunca thread no
+      canal: spoke, e um spoke que hospeda conversa vira hub sem ninguém decidir. Sem tabela de
+      entrada — a idempotência é o `dedupe_key` carregando o id do evento do fornecedor.
+      **De quebra, três guardas cobraram e as três estavam certas:** o `phone_hint` reprovou na
+      guarda de contrato por ter nome de segredo (a resposta foi a allowlist, como o
+      `key_prefix` — renomear passaria pela guarda sem mudar o dado); a guarda de consumo
+      mostrou que a tela **recalculava** o `phone_hint` em vez de ler o do servidor, duplicando
+      a normalização; e a de allowlist obsoleta cobrou a linha que dizia que aquele campo era
+      "eco que a tela já sabe", frase que deixou de ser verdade no mesmo commit.
+      *A retentativa depois de uma queda do fornecedor **não** gasta uma segunda unidade do
+      teto, porque a reserva é pela chave do aviso — sem isso, uma indisponibilidade de minutos
+      viraria silêncio permanente naquele canal, e sem rastro. Está em regressão.*
+      **Aberto:** teto de horário, e o link em granularidade de item (hoje cai na aba, a mesma
+      resolução que a busca estabeleceu).
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

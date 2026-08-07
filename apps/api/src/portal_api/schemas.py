@@ -103,6 +103,13 @@ class MeOut(Out):
     full_name: str
     is_internal: bool
     notify_by_email: bool
+    #: O consentimento do canal e os quatro últimos dígitos do número, para a tela
+    #: de Configurações nascer com o estado certo (FDD 021, ADR 0043). O ``hint``
+    #: entra aqui e não numa segunda chamada porque *ver o telefone cadastrado* é
+    #: parte do consentimento ser informado — sem ele a tela mostra um interruptor
+    #: ligado e não diz para onde.
+    notify_by_whatsapp: bool
+    phone_hint: str
     organization: str | None
     projects: list[MeProjectOut]
     #: Papéis vindos da `membership`, nunca do realm — um papel de realm não
@@ -393,6 +400,15 @@ class NotificationsReadOut(Out):
 
 class PreferencesOut(Out):
     notify_by_email: bool
+    #: O consentimento do canal de WhatsApp (FDD 021, ADR 0043).
+    notify_by_whatsapp: bool
+    #: **O telefone volta mascarado, sempre.** A pessoa precisa reconhecer qual
+    #: número está cadastrado — senão não há como saber se o que ela digitou meses
+    #: atrás ainda é o dela —, e para isso os quatro últimos dígitos bastam. Devolver
+    #: o número inteiro faria uma resposta de API carregar dado pessoal que a própria
+    #: FDD manda tratar como segredo para efeito de log; guardá-lo escondido faria a
+    #: tela mentir sobre o que está gravado. Vazio quando não há telefone.
+    phone_hint: str
 
 
 # --- chat e conversa (ADR 0007/0015/0017) -----------------------------------
@@ -511,6 +527,18 @@ class WebhookSyncedOut(Out):
     #: ``None`` quando o Biahflow não conhece o projeto que o webhook nomeou — não
     #: há o que reconciliar, e a rota diz isso em vez de estourar (ADR 0036).
     project_id: str | None
+
+
+class WebhookReceivedOut(Out):
+    """O que a rota do canal fez com o evento (FDD 021, ADR 0043).
+
+    ``status`` é um vocabulário fechado e curto — ``ignored``, ``receipt``,
+    ``unknown_sender``, ``recorded`` — e **nenhum deles é erro**: o fornecedor
+    retenta o que não recebeu 2xx, e transformar "espécie de evento que não uso" em
+    4xx faria o canal reentregar para sempre um evento que ninguém quer.
+    """
+
+    status: str
 
 
 class DocumentDownloadOut(Out):

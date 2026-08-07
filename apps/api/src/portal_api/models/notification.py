@@ -48,6 +48,12 @@ class NotificationKind(str, enum.Enum):
     #: medido (FDD 020), e é por isso que o ``AUDIENCE`` de ``notifications.py`` ganhou uma
     #: guarda de completude no mesmo commit — o padrão daquele ``.get`` é o cliente.
     onboarding_stuck = "onboarding_stuck"
+    #: O cliente respondeu a um aviso pelo WhatsApp (FDD 021, ADR 0043). Também só
+    #: para o time, e por um motivo diferente do anterior: o cliente **acabou de
+    #: escrever** a mensagem, e devolvê-la a ele seria contar-lhe o que ele digitou.
+    #: A resposta vira aviso aqui dentro justamente para não virar conversa lá fora —
+    #: "spoke, nunca hub" é o que impede o canal de esvaziar o portal.
+    whatsapp_reply = "whatsapp_reply"
 
 
 class Notification(Base, _ProjectChildMixin, TimestampMixin):
@@ -80,5 +86,13 @@ class Notification(Base, _ProjectChildMixin, TimestampMixin):
     # Carimbo do envio — é o que impede o digest de sair duas vezes se o broker
     # reentregar a task.
     emailed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: O mesmo carimbo para o canal de WhatsApp (FDD 021), e **coluna separada** de
+    #: propósito. São duas entregas do mesmo aviso e uma pode falhar sem a outra:
+    #: num carimbo só, o SMTP fora do ar cancelaria o WhatsApp — o oposto do que a
+    #: FDD 021 se propõe, que é o aviso sobreviver à queda de qualquer canal porque
+    #: ele já está no sino. Cada canal retenta sobre o próprio nulo.
+    whatsapp_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

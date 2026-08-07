@@ -13,6 +13,7 @@ from celery.signals import before_task_publish, setup_logging, task_postrun, tas
 from sqlalchemy import and_, or_, select, text, update
 
 from portal_api import (
+    contact_budget,
     crypto,
     drive_sync,
     ingestion,
@@ -28,7 +29,9 @@ from portal_api.config import get_settings
 from portal_api.db.session import DbRole, get_session
 from portal_api.integrations import biahflow
 from portal_api.integrations import google_drive as drive
+from portal_api.integrations import whatsapp
 from portal_api.models import (
+    ContactKind,
     DataErasureRequest,
     Document,
     DocumentChunk,
@@ -848,6 +851,115 @@ def send_project_digests(project_id: str) -> dict[str, int]:
     return {"sent": sent, "notifications": len(pending)}
 
 
+@celery_app.task(name="portal_api.send_whatsapp_notices")
+def send_whatsapp_notices(project_id: str) -> dict[str, int]:
+    """Um aviso 1:1 por WhatsApp para quem optou pelo canal (FDD 021, ADR 0043).
+
+    Irmão do :func:`send_project_digests` e deliberadamente **não** unificado com
+    ele. São dois canais com regras diferentes — um agrega o que mudou num e-mail
+    só, o outro manda uma mensagem por fato com um link —, carimbam colunas
+    diferentes, e um gasta o teto de contato enquanto o outro não. Fundi-los faria
+    "o que sai por qual canal" deixar de caber num arquivo, e é a mesma razão pela
+    qual as duas colunas de carimbo existem em vez de uma.
+
+    Trabalha sobre ``whatsapp_sent_at IS NULL`` pelo mesmo argumento do digest: a
+    repetição vira no-op e a perda vira atraso.
+    """
+    current = get_settings()
+    if not whatsapp.is_enabled(current):
+        return {"sent": 0, "suppressed": 0, "notifications": 0}
+
+    sent = 0
+    suppressed = 0
+    with get_session(role=DbRole.system) as session:
+        pending = list(
+            session.execute(
+                select(Notification)
+                .where(
+                    Notification.project_id == uuid.UUID(project_id),
+                    Notification.whatsapp_sent_at.is_(None),
+                )
+                .order_by(Notification.occurred_at)
+            ).scalars()
+        )
+        if not pending:
+            return {"sent": 0, "suppressed": 0, "notifications": 0}
+
+        now = datetime.now(timezone.utc)
+        for item in pending:
+            user = session.get(User, item.user_id)
+            if user is None:
+                continue
+
+            # **O consentimento é conferido aqui, e não no formulário.** É o que faz
+            # a revogação alcançar o que já está na fila sem precisar varrer fila
+            # nenhuma — critério de aceite (2) da FDD 021. E o carimbo sai mesmo sem
+            # envio, na decisão que o digest já tinha tomado: quem religa a
+            # preferência amanhã não deve receber semanas de avisos de uma vez.
+            if not user.notify_by_whatsapp or not user.phone:
+                item.whatsapp_sent_at = now
+                continue
+
+            # Sem link não há "coisa exata" a abrir, e a FDD proíbe cair na home.
+            # Hoje todo aviso tem link (`notifications.deep_link`); a guarda existe
+            # para o dia em que alguém acrescentar uma espécie sem entrada no
+            # `LINK_TAB` — e aí o aviso fica no sino, em vez de o canal levar
+            # alguém a lugar nenhum.
+            if not item.link:
+                item.whatsapp_sent_at = now
+                logger.info(
+                    "whatsapp.skipped_without_link", extra={"kind": item.kind.value}
+                )
+                continue
+
+            if not contact_budget.claim(
+                session,
+                user_id=user.id,
+                organization_id=item.organization_id,
+                kind=ContactKind.whatsapp_notice,
+                # A chave do contato é a do aviso: é o que faz a retentativa deste
+                # laço não gastar uma segunda unidade do teto (ADR 0042).
+                dedupe_key=item.dedupe_key,
+                settings=current,
+            ):
+                # O teto é terminal para **este** contato. Não carimbar o deixaria
+                # sair dias depois, quando a janela rolasse — um aviso velho num
+                # canal de urgência, sobre um fato que o sino já mostrou.
+                item.whatsapp_sent_at = now
+                suppressed += 1
+                continue
+
+            try:
+                whatsapp.send_notice(
+                    current,
+                    to=user.phone,
+                    # Só título e link. O `detail` **não** vai: é o campo de texto
+                    # livre do modelo, e é por onde um trecho de documento ou um
+                    # valor comercial passariam a viajar sem ninguém decidir isso.
+                    title=item.title,
+                    url=f"{current.portal_web_url.rstrip('/')}{item.link}",
+                    client=whatsapp.session_client(),
+                )
+            except whatsapp.WhatsappDisabled:
+                logger.info("whatsapp.disabled")
+                break
+            except whatsapp.WhatsappError:
+                # **Pausa em vez de insistir**, o tratamento que o conector de Drive
+                # dá a uma falha no Google: sai do laço em vez de atirar os demais
+                # avisos contra um fornecedor que acabou de recusar. Sem carimbo, e
+                # o orçamento já gasto não se perde — a chave de dedupe faz a
+                # próxima passagem reusá-lo.
+                logger.warning(
+                    "whatsapp.send_failed", extra={"notification_id": str(item.id)}
+                )
+                break
+
+            item.whatsapp_sent_at = now
+            sent += 1
+
+    return {"sent": sent, "suppressed": suppressed, "notifications": len(pending)}
+
+
 @celery_app.task(name="portal_api.notify_pending_created")
 def notify_pending_created(project_id: str, pending_id: str) -> dict[str, int]:
     """Avisa o time da pendência que a IA abriu por falta de contexto (ADR 0007).
@@ -941,6 +1053,16 @@ def queue_project_digests(project_id: str) -> None:
         logger.warning(
             "queue.unavailable",
             extra={"task": "send_project_digests", "project_id": project_id},
+        )
+    # O canal vai junto e num `try` **próprio**: um broker que engoliu o digest não
+    # deve levar o WhatsApp junto no mesmo `except`, e o contrário também não. São
+    # duas entregas independentes desde a coluna de carimbo (ADR 0043).
+    try:
+        send_whatsapp_notices.delay(project_id)
+    except Exception:  # broker fora do ar
+        logger.warning(
+            "queue.unavailable",
+            extra={"task": "send_whatsapp_notices", "project_id": project_id},
         )
 
 

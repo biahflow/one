@@ -1770,6 +1770,10 @@
             "title": "Notify By Email",
             "type": "boolean"
           },
+          "notify_by_whatsapp": {
+            "title": "Notify By Whatsapp",
+            "type": "boolean"
+          },
           "organization": {
             "anyOf": [
               {
@@ -1780,6 +1784,10 @@
               }
             ],
             "title": "Organization"
+          },
+          "phone_hint": {
+            "title": "Phone Hint",
+            "type": "string"
           },
           "projects": {
             "items": {
@@ -1801,6 +1809,8 @@
           "full_name",
           "is_internal",
           "notify_by_email",
+          "notify_by_whatsapp",
+          "phone_hint",
           "organization",
           "projects",
           "roles"
@@ -2705,6 +2715,28 @@
               }
             ],
             "title": "Notify By Email"
+          },
+          "notify_by_whatsapp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify By Whatsapp"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
           }
         },
         "title": "PreferencesIn",
@@ -2716,10 +2748,20 @@
           "notify_by_email": {
             "title": "Notify By Email",
             "type": "boolean"
+          },
+          "notify_by_whatsapp": {
+            "title": "Notify By Whatsapp",
+            "type": "boolean"
+          },
+          "phone_hint": {
+            "title": "Phone Hint",
+            "type": "string"
           }
         },
         "required": [
-          "notify_by_email"
+          "notify_by_email",
+          "notify_by_whatsapp",
+          "phone_hint"
         ],
         "title": "PreferencesOut",
         "type": "object"
@@ -3262,6 +3304,21 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WebhookReceivedOut": {
+        "additionalProperties": false,
+        "description": "O que a rota do canal fez com o evento (FDD 021, ADR 0043).\n\n``status`` é um vocabulário fechado e curto — ``ignored``, ``receipt``,\n``unknown_sender``, ``recorded`` — e **nenhum deles é erro**: o fornecedor\nretenta o que não recebeu 2xx, e transformar \"espécie de evento que não uso\" em\n4xx faria o canal reentregar para sempre um evento que ninguém quer.",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "WebhookReceivedOut",
+        "type": "object"
+      },
       "WebhookSyncedOut": {
         "additionalProperties": false,
         "properties": {
@@ -3306,6 +3363,12 @@
         "description": "Access token do OIDC, encaminhado pelo BFF (ADR 0010).",
         "scheme": "bearer",
         "type": "http"
+      },
+      "WhatsappSignature": {
+        "description": "HMAC do corpo cru, com o segredo do canal (FDD 021).",
+        "in": "header",
+        "name": "X-Hub-Signature-256",
+        "type": "apiKey"
       }
     }
   },
@@ -5537,6 +5600,40 @@
         "summary": "Biahflow Webhook"
       }
     },
+    "/api/v1/integrations/whatsapp/webhook": {
+      "post": {
+        "description": "Recibo de entrega e resposta do cliente pelo canal (FDD 021, ADR 0043).\n\n**Resposta vira aviso do time, nunca thread no canal.** É a regra que impede o\nWhatsApp de virar o lugar onde o projeto acontece: quem responde volta ao\nportal, onde a resposta fica ao lado do assunto e do histórico. O canal é\n*spoke*, e um spoke que começa a hospedar conversa vira hub sem ninguém decidir.\n\nIdempotente pela chave de dedupe do aviso, que carrega o id do evento no\nfornecedor — reentrega não vira segundo aviso. É a mesma memória que a ADR 0040\nreusou, e o motivo de não haver tabela de entrada.",
+        "operationId": "whatsapp_webhook_api_v1_integrations_whatsapp_webhook_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceivedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Assinatura ausente ou que não confere com o corpo."
+          }
+        },
+        "security": [
+          {
+            "WhatsappSignature": []
+          }
+        ],
+        "summary": "Whatsapp Webhook"
+      }
+    },
     "/api/v1/me": {
       "get": {
         "description": "Who the caller is and what they can reach — the BFF renders the chrome from this.\n\nReturns 200 with an empty ``projects`` for an authenticated user who holds no\nmembership: authentication is not authorization, and the portal has to be able\nto say \"you have no project yet\" instead of pretending the user is unknown.",
@@ -6179,7 +6276,7 @@
     },
     "/api/v1/me/preferences": {
       "patch": {
-        "description": "Preferências da própria conta. Hoje só o e-mail das notificações.\n\nEscreve na própria linha de ``user`` — a policy ``user_self_link`` da\nmigração 0007 já cobre isso, e é o único UPDATE que o caminho de requisição\nfazia antes das notificações existirem.",
+        "description": "Preferências da própria conta: o e-mail, e desde a ADR 0043 o canal.\n\nEscreve na própria linha de ``user`` — a policy ``user_self_preferences`` da\nmigração 0009 cobre a linha, e o GRANT **de coluna** cobre o resto: uma policy\ndecide quais linhas, nunca quais colunas, e é o grant que impede \"mudar minha\npreferência\" de virar \"promover-me a interno\". A 0029 acrescentou ``phone`` e\n``notify_by_whatsapp`` àquela lista, e nada mais.",
         "operationId": "update_preferences_api_v1_me_preferences_patch",
         "requestBody": {
           "content": {

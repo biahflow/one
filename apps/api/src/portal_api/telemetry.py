@@ -84,7 +84,22 @@ _STANDARD_RECORD_FIELDS = frozenset(
 #: Fragmentos que denunciam um valor que não pode ser impresso. Cumpre a regra 5
 #: do `AGENTS.md` ("não inclua segredos em ... logs") no código, e não só na
 #: prosa: quem escrever `extra={"access_token": ...}` amanhã não vaza nada.
-_SECRET_HINTS = ("token", "secret", "password", "passwd", "authorization", "cookie", "key")
+#: `phone` entrou com o canal de WhatsApp (FDD 021, ADR 0043), e é o primeiro
+#: elemento desta lista que não é credencial: é **dado pessoal**, e a FDD o declara
+#: campo de segredo "para efeito de redação de log" com todas as letras. A regra
+#: aqui pergunta pelo nome do campo, e o nome basta — `phone`, `phone_number`,
+#: `to_phone`. O `whatsapp_phone_number_id` do fornecedor cai junto e não é perda:
+#: ele é configuração, não diagnóstico, e quem opera o lê no `.env`.
+_SECRET_HINTS = (
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "authorization",
+    "cookie",
+    "key",
+    "phone",
+)
 
 #: A exceção da regra acima, e ela é obrigatória: o runbook da API de eventos
 #: manda ler o `key_prefix` para saber *qual* chave foi recusada. O prefixo é a
@@ -95,8 +110,22 @@ _SECRET_HINTS = ("token", "secret", "password", "passwd", "authorization", "cook
 #: contagem que o provedor devolve em `usage`. Sem esta linha, o indicador de
 #: custo de IA que `docs/observability.md` promete sairia `[redacted]` em toda
 #: linha de log, e o defeito só apareceria a quem fosse ler o log meses depois.
+#: `phone_hint` entrou com o canal (ADR 0043) e é o `key_prefix` outra vez, na
+#: mesma forma e pelo mesmo argumento: é **a parte pública** de um campo cujo nome
+#: inteiro é segredo — quatro dígitos mascarados, o bastante para a pessoa
+#: reconhecer o próprio número e insuficiente para discá-lo. A guarda de contrato
+#: reusa esta lista, então foi ela que cobrou primeiro, e a resposta certa era esta
+#: linha e não renomear o campo: renomear passaria pela guarda sem mudar o dado, que
+#: é a definição de derrotá-la.
 _SECRET_ALLOWLIST = frozenset(
-    {"key_prefix", "public_key", "key_id", "input_tokens", "output_tokens"}
+    {
+        "key_prefix",
+        "public_key",
+        "key_id",
+        "input_tokens",
+        "output_tokens",
+        "phone_hint",
+    }
 )
 
 _REDACTED = "[redacted]"

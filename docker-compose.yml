@@ -182,6 +182,12 @@ services:
       BIAHFLOW_BASE_URL: ${BIAHFLOW_BASE_URL:-http://localhost:19000/api/v1}
       BIAHFLOW_READ_TOKEN: ${BIAHFLOW_READ_TOKEN:-}
       BIAHFLOW_WEBHOOK_SECRET: ${BIAHFLOW_WEBHOOK_SECRET:-}
+      # Canal de WhatsApp (FDD 021, ADR 0043). Desligado por padrão: este é o
+      # único canal do produto que alcança o bolso de alguém, e um default ligado
+      # transformaria um erro de configuração em mensagem enviada. Aqui a API só
+      # precisa do segredo do webhook de entrada — quem envia é o worker.
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:-}
       # API de eventos dos agentes (ADR 0013). O pepper entra no HMAC que
       # substitui a chave no banco; vazio significa "nenhuma chave autentica",
       # então o local traz um valor óbvio e produção precisa do seu.
@@ -282,6 +288,19 @@ services:
       RETENTION_NOTIFICATION_DAYS: ${RETENTION_NOTIFICATION_DAYS:-180}
       RETENTION_AGENT_EVENT_DAYS: ${RETENTION_AGENT_EVENT_DAYS:-730}
       RETENTION_CONVERSATION_DAYS: ${RETENTION_CONVERSATION_DAYS:-365}
+      # Canal de WhatsApp (FDD 021, ADR 0043): quem envia é este serviço. Sem
+      # token e sem phone number id, `is_enabled` responde não e a task sai sem
+      # fazer nada — a flag sozinha não liga o canal, de propósito.
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+      WHATSAPP_API_BASE: ${WHATSAPP_API_BASE:-https://graph.facebook.com/v21.0}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN:-}
+      WHATSAPP_TEMPLATE_NAME: ${WHATSAPP_TEMPLATE_NAME:-portal_aviso}
+      WHATSAPP_TEMPLATE_LANGUAGE: ${WHATSAPP_TEMPLATE_LANGUAGE:-pt_BR}
+      # Teto de frequência de contato (ADR 0042), compartilhado por todo canal
+      # que sai — hoje o WhatsApp, amanhã a pesquisa da FDD 022.
+      CONTACT_WINDOW_DAYS: ${CONTACT_WINDOW_DAYS:-7}
+      CONTACT_CAP_PER_WINDOW: ${CONTACT_CAP_PER_WINDOW:-3}
       # Ingestão dos documentos (ADR 0014): é aqui que o arquivo vira texto,
       # chunk e embedding. Sem VOYAGE_API_KEY o embedder é o offline
       # determinístico, e a stack local indexa sem chave nenhuma.

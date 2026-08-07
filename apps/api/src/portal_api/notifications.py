@@ -24,11 +24,13 @@ import hashlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from portal_api import tabs
 from portal_api.models import (
     DeliverableState,
     Document,
@@ -45,6 +47,7 @@ from portal_api.models import (
     PhaseState,
     Project,
     ProjectPhase,
+    User,
 )
 
 # Quem recebe o quê. O cliente recebe tudo — é dele o projeto e é essa a razão de
@@ -74,9 +77,66 @@ AUDIENCE: dict[NotificationKind, frozenset[MemberRole]] = {
     # esquecer esta linha faria o `.get(kind, _CLIENT_ONLY)` de `recipients` contar a ele
     # que ele está travado, que é o defeito mais caro que esta fatia podia introduzir.
     NotificationKind.onboarding_stuck: _INTERNAL_ONLY,
+    # O segundo aviso só do time (ADR 0043), e por um motivo diferente do primeiro:
+    # lá o cliente não deve saber que está sendo medido; aqui ele **escreveu** a
+    # mensagem, e devolvê-la seria contar-lhe o que acabou de digitar.
+    NotificationKind.whatsapp_reply: _INTERNAL_ONLY,
 }
 
 _MAX_DEDUPE_KEY = 255
+
+#: Que aba do portal cada aviso abre (FDD 021, ADR 0043).
+#:
+#: **Existe porque o campo tinha consumidor e não tinha escritor.** ``link`` está no
+#: modelo desde a Fase 2 e o sino o renderiza como ``<a>`` quando ele vem preenchido
+#: — e as dez ramificações do :func:`diff` nunca o preencheram, de modo que todo
+#: aviso de cliente chegava sem link desde então. Era o defeito da ADR 0033 na
+#: direção que ninguém tinha olhado: lá um painel sobre campo sem escritor, aqui um
+#: **controle** sobre campo sem escritor. Quem o encontrou foi o critério de aceite
+#: (4) da FDD 021, que exige que o aviso do canal caia "na coisa exata, nunca na
+#: home" — e não havia o que carregar.
+#:
+#: **Mora aqui e não no `diff`** por dois motivos. O `diff` compara dois estados e
+#: não conhece o projeto, que é metade da URL; e um mapa por espécie responde "que
+#: tela este aviso abre?" numa tabela legível, em vez de espalhar a resposta por dez
+#: construções onde ela divergiria uma a uma. Quem passa ``link`` explícito — o
+#: alerta do funil, que aponta para ``/admin/funil`` — continua vencendo.
+LINK_TAB: dict[NotificationKind, str] = {
+    NotificationKind.project_status_changed: tabs.TAB_OVERVIEW,
+    # A jornada com o "Você está aqui" e os entregáveis desbloqueados moram na
+    # visão geral, não no cronograma — o cronograma é dos marcos.
+    NotificationKind.phase_advanced: tabs.TAB_OVERVIEW,
+    NotificationKind.deliverable_delivered: tabs.TAB_OVERVIEW,
+    NotificationKind.milestone_done: tabs.TAB_SCHEDULE,
+    NotificationKind.document_added: tabs.TAB_DOCUMENTS,
+    NotificationKind.meeting_scheduled: tabs.TAB_MEETINGS,
+    NotificationKind.transcript_ready: tabs.TAB_MEETINGS,
+    NotificationKind.pending_opened: tabs.TAB_PENDINGS,
+    NotificationKind.pending_resolved: tabs.TAB_PENDINGS,
+    NotificationKind.pending_commented: tabs.TAB_PENDINGS,
+    # A resposta do cliente abre as pendências, que é onde o time responde **dentro
+    # do portal** — que é a razão de ela virar aviso aqui em vez de thread lá fora.
+    NotificationKind.whatsapp_reply: tabs.TAB_PENDINGS,
+    # `onboarding_stuck` **não** entra: é interno, não abre aba de cliente nenhuma,
+    # e já traz `link` próprio. Uma linha aqui o mandaria para a tela do cliente.
+}
+
+
+def deep_link(project_id: uuid.UUID, kind: NotificationKind) -> str | None:
+    """A URL relativa que abre o assunto deste aviso. ``None`` quando não há aba.
+
+    O projeto entra porque o portal é uma tela só com troca de projeto por
+    ``?project=``, e a aba porque a tela navega **por rótulo** desde a Fase 2 — a
+    decisão que a busca já tinha tomado (ADR 0024), reusada em vez de duplicada.
+
+    ``None`` é uma resposta legítima e o remetente do canal a respeita: sem aba, não
+    há "coisa exata" a abrir, e a FDD 021 proíbe cair na home. O aviso continua no
+    sino, que é onde ele sempre esteve.
+    """
+    tab = LINK_TAB.get(kind)
+    if tab is None:
+        return None
+    return f"/?project={project_id}&tab={quote(tab)}"
 
 
 @dataclass(frozen=True)
@@ -315,6 +375,40 @@ def recipients(
     return list({user_id: None for user_id, role in rows if role in allowed})
 
 
+def reply_target(session: Session, user: User) -> Project | None:
+    """O projeto em que a resposta desta pessoa deve aparecer (ADR 0043).
+
+    A resposta chega pelo canal com **um telefone e nada mais** — sem projeto, sem
+    tenant, sem contexto. O destino é o projeto vivo mais recente em que a pessoa
+    tem vínculo: é onde o assunto provavelmente está, e é o único que ela e o time
+    com certeza compartilham.
+
+    ``None`` quando não há nenhum, e a rota respeita: sem projeto vivo não há sino
+    onde pôr o aviso, nem tenant a que a linha pertença. Inventar um seria criar
+    projeto a partir de uma mensagem de fora.
+
+    Empate desfeito pelo ``id`` pela razão escrita em ``onboarding._anchor_project``:
+    ``created_at`` é ``server_default now()``, e no Postgres ``now()`` é o instante de
+    início da transação — dois projetos criados pelo mesmo sync têm o mesmo carimbo,
+    e ordenar só por data não é ordem total.
+    """
+    return session.execute(
+        select(Project)
+        .join(
+            Membership,
+            (Membership.organization_id == Project.organization_id)
+            & ((Membership.project_id == Project.id) | (Membership.project_id.is_(None))),
+        )
+        .where(
+            Membership.user_id == user.id,
+            Project.archived_at.is_(None),
+            Project.source_deleted_at.is_(None),
+        )
+        .order_by(Project.created_at.desc(), Project.id.desc())
+        .limit(1)
+    ).scalars().first()
+
+
 def fan_out(
     session: Session,
     project: Project,
@@ -352,7 +446,9 @@ def fan_out(
             "kind": change.kind,
             "title": change.title,
             "detail": change.detail,
-            "link": change.link,
+            # O explícito vence: o alerta do funil aponta para `/admin/funil`, que
+            # não é aba de cliente e não sairia de `deep_link`.
+            "link": change.link or deep_link(project.id, change.kind),
             "occurred_at": when,
             "dedupe_key": change.dedupe_key,
         }

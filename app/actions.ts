@@ -78,6 +78,103 @@ export async function setEmailPreferenceAction(enabled: boolean): Promise<boolea
 }
 
 /**
+ * O estado das preferências como o **servidor** o guardou (FDD 021, ADR 0043).
+ *
+ * As ações do canal devolvem isto em vez de um booleano, e a diferença não é
+ * cosmética: o telefone é normalizado do outro lado (só dígitos) e o `phone_hint`
+ * é derivado de lá. Uma tela que calculasse o próprio "••••1234" a partir do que
+ * foi digitado estaria reimplementando `_phone_hint`, e as duas divergiriam no
+ * primeiro formato que alguém colar — foi a guarda de consumo do contrato que
+ * cobrou, e ela estava certa.
+ */
+/**
+ * `callApi` que devolve o corpo, não só o `ok`.
+ *
+ * Existe porque `readApi` (abaixo) é `GET` sem `init` e `callApi` descarta a
+ * resposta — e aqui a resposta **é** o resultado: o servidor devolve o que
+ * guardou. Uma terceira porta em vez de alargar uma das duas, pela razão de sempre
+ * neste arquivo: "o que a tela escreve" e "o que a tela lê" são perguntas
+ * diferentes, e um helper que faz as duas responde mal às duas.
+ */
+async function callApiJson<T>(path: string, init: RequestInit): Promise<T | null> {
+  const base = process.env.API_BASE_URL;
+  const authorization = await authorizationHeader();
+  if (!base || !authorization) return null;
+
+  try {
+    const response = await fetch(`${base}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...authorization },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      logWarn("api.rejected", {
+        trace_id: await traceId(),
+        path,
+        status: response.status,
+      });
+      return null;
+    }
+    return (await response.json()) as T;
+  } catch (error) {
+    logWarn("api.unreachable", {
+      trace_id: await traceId(),
+      path,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+export type ChannelPreferences = {
+  notifyByEmail: boolean;
+  notifyByWhatsapp: boolean;
+  phoneHint: string;
+};
+
+async function patchPreferences(body: object): Promise<ChannelPreferences | null> {
+  const data = await callApiJson<{
+    notify_by_email: boolean;
+    notify_by_whatsapp: boolean;
+    phone_hint: string;
+  }>("/api/v1/me/preferences", { method: "PATCH", body: JSON.stringify(body) });
+  if (!data) return null;
+  revalidatePath("/");
+  return {
+    notifyByEmail: data.notify_by_email,
+    notifyByWhatsapp: data.notify_by_whatsapp,
+    phoneHint: data.phone_hint,
+  };
+}
+
+/**
+ * O consentimento do canal de WhatsApp.
+ *
+ * Ação separada da do e-mail e **não** um parâmetro a mais dela: são dois
+ * interruptores independentes na tela, e um PATCH que mandasse os dois faria o
+ * clique num deles reescrever o outro com o que a tela achava que ele era.
+ *
+ * `null` inclui o 422 de ligar o canal sem número cadastrado, que é recusa
+ * deliberada — a tela volta o interruptor e diz o motivo.
+ */
+export async function setWhatsappPreferenceAction(
+  enabled: boolean,
+): Promise<ChannelPreferences | null> {
+  return patchPreferences({ notify_by_whatsapp: enabled });
+}
+
+/**
+ * O telefone do canal. String vazia apaga o número.
+ *
+ * A API valida (dez a quinze dígitos) e responde 422 ao que não passa, então um
+ * `null` aqui é "não guardei" e a tela mantém o que estava — nunca um número
+ * meio gravado.
+ */
+export async function setPhoneAction(phone: string): Promise<ChannelPreferences | null> {
+  return patchPreferences({ phone });
+}
+
+/**
  * Comentários na pendência (ADR 0032).
  *
  * A leitura é uma Server Action e não um proxy de rota como o do chat: o fio abre

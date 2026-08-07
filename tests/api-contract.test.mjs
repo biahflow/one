@@ -294,9 +294,12 @@ const NOT_CONSUMED = {
   "PendingCommentsOut.pending_item_id": {
     reason: "eco do id que o BFF acabou de mandar no caminho da rota; o chamador já o tem em mãos.",
   },
-  "PreferencesOut.notify_by_email": {
-    reason: "eco do valor que a tela acabou de mandar no corpo; ela já sabe o que gravou.",
-  },
+  // `PreferencesOut.notify_by_email` estava aqui como "eco do valor que a tela
+  // acabou de mandar; ela já sabe o que gravou", e a ADR 0043 tornou a frase falsa:
+  // a tela passou a **adotar** o que o servidor devolve, porque o telefone é
+  // normalizado lá e o `phone_hint` é derivado de lá. A linha saiu porque o campo
+  // é lido de verdade agora — e foi a guarda de allowlist obsoleta que a cobrou,
+  // que é o segundo lado dela funcionando.
   "AssistantSignalOut.project_id": {
     reason: "eco do projeto que a tela escolheu para montar a URL — é ela quem o pôs lá.",
   },
@@ -327,6 +330,11 @@ const NOT_CALLED = {
   },
   "/api/v1/integrations/biahflow/webhook": {
     reason: "quem chama é o Biahflow, não o navegador (ADR 0006).",
+  },
+  "/api/v1/integrations/whatsapp/webhook": {
+    reason:
+      "quem chama é o fornecedor do canal, com recibo de entrega e resposta do cliente — " +
+      "não o navegador (FDD 021, ADR 0043). Mesma isenção do webhook acima, e pelo mesmo motivo.",
   },
   "/api/v1/projects/{project_id}/results": {
     reason:

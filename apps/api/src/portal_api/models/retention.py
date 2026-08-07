@@ -60,6 +60,10 @@ class OrganizationRetentionPolicy(Base, TenantMixin, TimestampMixin):
     notification_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     agent_event_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     conversation_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Comportamento de pessoa identificada (RFC 001, ADR 0039). Entra aqui porque é a
+    #: classe de dado que mais custa guardar em risco — e não porque cresce sem teto, que
+    #: é o argumento das três acima: são no máximo seis linhas por organização.
+    onboarding_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Quem definiu o prazo. É registro de decisão, não de acesso — por isso na
     #: linha e não só no `audit_log`.
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

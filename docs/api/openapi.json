@@ -2937,6 +2937,19 @@
               }
             ],
             "title": "Notification Days"
+          },
+          "onboarding_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onboarding Days"
           }
         },
         "title": "RetentionPolicyIn",
@@ -2984,6 +2997,17 @@
             ],
             "title": "Notification Days"
           },
+          "onboarding_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onboarding Days"
+          },
           "organization_id": {
             "format": "uuid",
             "title": "Organization Id",
@@ -2995,6 +3019,7 @@
           "notification_days",
           "agent_event_days",
           "conversation_days",
+          "onboarding_days",
           "effective"
         ],
         "title": "RetentionPolicyOut",

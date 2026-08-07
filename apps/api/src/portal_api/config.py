@@ -246,6 +246,10 @@ class Settings(BaseSettings):
     retention_notification_days: int = 180
     retention_agent_event_days: int = 730
     retention_conversation_days: int = 365
+    #: Mais longo que os outros de propósito: o *time-to-first-value* só significa alguma
+    #: coisa comparado com o de coortes anteriores, e uma janela curta apagaria a
+    #: comparação junto com o dado (RFC 001).
+    retention_onboarding_days: int = 1095
     #: Teto de linhas removidas por tabela em cada passagem. A poda é feita em
     #: lotes para um acervo antigo não virar uma transação de horas segurando
     #: lock; o que sobra sai na passagem seguinte.

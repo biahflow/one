@@ -1117,3 +1117,78 @@ def test_the_app_role_writes_a_comment_but_cannot_rewrite_it(
             delete(PendingItemComment).where(PendingItemComment.id == mine)
         )
     assert "permission denied" in str(no_delete.value).lower()
+
+
+# 8 — o funil de onboarding (Fase 7, RFC 001, ADR 0039) --------------------------
+#
+# Mesmo desenho de `agent_api_key` e `project_drive_connection`: nenhuma policy
+# `TO portal_app`. Aqui isso guarda uma coisa específica — **um caminho de
+# requisição capaz de escrever o próprio degrau é um caminho capaz de falsear o
+# próprio engajamento**, e o funil é a métrica que decide quem recebe telefonema.
+
+
+@pytest.fixture
+def onboarding_steps(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    from portal_api.models import OnboardingStep, OnboardingStepName
+
+    tenant_a, tenant_b = tenants
+    ids: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in (tenant_a, tenant_b):
+            record = OnboardingStep(
+                organization_id=tenant.organization_id,
+                step=OnboardingStepName.first_login,
+                reached_at=datetime.now(timezone.utc),
+            )
+            session.add(record)
+            session.flush()
+            ids[tenant.organization_id] = record.id
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        session.execute(delete(OnboardingStep).where(OnboardingStep.id.in_(ids.values())))
+        session.commit()
+
+
+def test_the_app_role_never_reads_the_funnel(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    onboarding_steps: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Nem o da própria organização: a regra não é sobre o papel de requisição.
+
+    O cliente não deve saber que está sendo medido em funil, e não há nada que ele
+    possa fazer com essa informação — a FDD 020 diz isso na seção de jornada. A
+    leitura volta vazia porque nenhuma policy é ``TO portal_app``, e não porque
+    alguém lembrou de filtrar.
+    """
+    from portal_api.models import OnboardingStep
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    assert rls_session.execute(select(OnboardingStep)).scalars().all() == []
+
+
+def test_the_app_role_cannot_stamp_its_own_step(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Sem GRANT de INSERT: quem carimba é o sistema, em transação própria.
+
+    É a diferença entre medir engajamento e deixar o medido escrever a medição.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text(
+                "INSERT INTO onboarding_step"
+                " (id, organization_id, step, reached_at)"
+                " VALUES (gen_random_uuid(), :org, 'first_login', now())"
+            ),
+            {"org": tenant_a.organization_id},
+        )

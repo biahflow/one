@@ -37,6 +37,7 @@ from portal_api.models import (
     Document,
     Membership,
     Notification,
+    OnboardingStep,
     Organization,
     OrganizationRetentionPolicy,
     Project,
@@ -57,6 +58,7 @@ class Windows:
     notification_days: int
     agent_event_days: int
     conversation_days: int
+    onboarding_days: int
 
 
 def windows_for(
@@ -77,6 +79,11 @@ def windows_for(
             policy.agent_event_days
             if policy is not None and policy.agent_event_days is not None
             else settings.retention_agent_event_days
+        ),
+        onboarding_days=(
+            policy.onboarding_days
+            if policy is not None and policy.onboarding_days is not None
+            else settings.retention_onboarding_days
         ),
         conversation_days=(
             policy.conversation_days
@@ -135,6 +142,15 @@ def purge_expired(
         Notification,
         Notification.organization_id == organization_id,
         Notification.created_at < reference - timedelta(days=limits.notification_days),
+        limit=batch,
+    )
+    # Pelo `reached_at`, que é a data do **fato**, e não pelo `created_at` da linha: o degrau
+    # do entregável chega pelo sync e pode ser carimbado depois de ter acontecido (ADR 0039).
+    outcome.removed["onboarding_step"] = _delete_batch(
+        session,
+        OnboardingStep,
+        OnboardingStep.organization_id == organization_id,
+        OnboardingStep.reached_at < reference - timedelta(days=limits.onboarding_days),
         limit=batch,
     )
     # Pela data do fato, não pela da ingestão: um evento reenviado meses depois
@@ -201,8 +217,17 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
       do Drive e as linhas de ``audit_log`` daquele projeto.
     - **Sai** a ``membership``, que é o que ligava pessoas a esta organização —
       inclusive a de escopo organizacional, que tem ``project_id`` nulo e por
-      isso **não** vem no CASCADE do projeto. É a única exclusão que precisa ser
-      escrita à mão, e por isso está escrita.
+      isso **não** vem no CASCADE do projeto.
+    - **Sai** o ``onboarding_step`` (ADR 0039), pelo mesmo motivo e com uma armadilha
+      a mais: ele é escopado por **organização**, e a linha ``organization`` fica —
+      então o CASCADE não o alcança por nenhum caminho. Um funil que sobrevivesse ao
+      apagamento do tenant reintroduziria exatamente o defeito que esta função fecha,
+      e com o dado mais sensível que o portal guarda: comportamento de pessoa
+      identificada.
+
+      São as **duas** exclusões escritas à mão, e a regra que as une é essa: o que é
+      escopado por organização não vem no CASCADE do projeto. Toda tabela nova com
+      ``organization_id`` e sem ``project_id`` precisa de uma linha aqui.
     - **Fica** a linha ``organization``, porque ela é a âncora do tenant e o
       próximo snapshot do Biahflow a recriaria de qualquer forma — apagá-la só
       levaria junto o registro do próprio expurgo, que é o que torna o
@@ -236,4 +261,9 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
         delete(Membership).where(Membership.organization_id == organization_id)
     )
     outcome.removed["membership"] = int(membership.rowcount or 0)
+
+    funnel = session.execute(
+        delete(OnboardingStep).where(OnboardingStep.organization_id == organization_id)
+    )
+    outcome.removed["onboarding_step"] = int(funnel.rowcount or 0)
     return outcome

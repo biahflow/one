@@ -20,6 +20,7 @@ type ApiRetention = {
   notification_days: number | null;
   agent_event_days: number | null;
   conversation_days: number | null;
+  onboarding_days: number | null;
   effective: Record<string, number>;
 };
 
@@ -125,6 +126,7 @@ export default async function OrganizationAdminPage({
     notificationDays: apiRetention.notification_days,
     agentEventDays: apiRetention.agent_event_days,
     conversationDays: apiRetention.conversation_days,
+    onboardingDays: apiRetention.onboarding_days,
     effective: apiRetention.effective,
   };
 

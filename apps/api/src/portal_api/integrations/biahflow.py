@@ -32,6 +32,7 @@ from portal_api.models import (
     MemberRole,
     Membership,
     Milestone,
+    OnboardingStepName,
     MilestoneState,
     Organization,
     PendingItem,
@@ -224,6 +225,10 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             )
         )
 
+    # O degrau do funil que **nasce no Biahflow** (RFC 001): o primeiro entregável fora de
+    # `pending`. Só sai de afirmação do snapshot — ausência não é negação, e um sync
+    # truncado não pode virar degrau falso.
+    delivered_seen = False
     # Journey phases + deliverables are also fully replaced (deliverables first, FK order).
     journey = snapshot.get("journey") or {}
     session.execute(delete(PhaseDeliverable).where(PhaseDeliverable.project_id == project.id))
@@ -256,6 +261,11 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
                     link=deliverable.get("link"),
                 )
             )
+            if (
+                DELIVERABLE_STATE_MAP.get(deliverable["status"], DeliverableState.pending)
+                is DeliverableState.delivered
+            ):
+                delivered_seen = True
 
     # Funcionários Digitais também são totalmente substituídos pelo snapshot.
     session.execute(delete(DigitalEmployee).where(DigitalEmployee.project_id == project.id))
@@ -351,6 +361,15 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     session.flush()
 
     notifications.emit_changes(session, project, before)
+    if delivered_seen:
+        # Sem `user_id`: o fato é do Biahflow, e não há pessoa deste lado a nomear.
+        # Importado aqui, e não no topo, porque `onboarding` abre transação própria sob
+        # `portal_system` e este módulo é importado pelo worker e pelo seed.
+        from portal_api import onboarding
+
+        onboarding.stamp(
+            organization.id, OnboardingStepName.first_deliverable_delivered
+        )
     return project
 
 

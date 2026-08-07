@@ -1377,6 +1377,8 @@ class RetentionPolicyIn(BaseModel):
     notification_days: int | None = Field(default=None, ge=1, le=3650)
     agent_event_days: int | None = Field(default=None, ge=1, le=3650)
     conversation_days: int | None = Field(default=None, ge=1, le=3650)
+    #: O funil de onboarding (ADR 0039): comportamento de pessoa identificada.
+    onboarding_days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class RetentionPolicyOut(BaseModel):
@@ -1385,6 +1387,7 @@ class RetentionPolicyOut(BaseModel):
     notification_days: int | None
     agent_event_days: int | None
     conversation_days: int | None
+    onboarding_days: int | None
     #: E os mesmos prazos já resolvidos contra o padrão. Os dois, de propósito: a
     #: tela precisa mostrar o que vale **e** poder distinguir "escolhido" de
     #: "herdado", senão editar o formulário fixaria o padrão sem querer.
@@ -1485,10 +1488,12 @@ def _policy_out(
         notification_days=record.notification_days if record else None,
         agent_event_days=record.agent_event_days if record else None,
         conversation_days=record.conversation_days if record else None,
+        onboarding_days=record.onboarding_days if record else None,
         effective={
             "notification_days": limits.notification_days,
             "agent_event_days": limits.agent_event_days,
             "conversation_days": limits.conversation_days,
+            "onboarding_days": limits.onboarding_days,
         },
     )
 
@@ -1539,6 +1544,7 @@ def set_retention_policy(
         record.notification_days = payload.notification_days
         record.agent_event_days = payload.agent_event_days
         record.conversation_days = payload.conversation_days
+        record.onboarding_days = payload.onboarding_days
         record.updated_by_user_id = actor.id
         session.flush()
 
@@ -1553,6 +1559,7 @@ def set_retention_policy(
                     notification_days=payload.notification_days,
                     agent_event_days=payload.agent_event_days,
                     conversation_days=payload.conversation_days,
+                    onboarding_days=payload.onboarding_days,
                 ),
             )
         )

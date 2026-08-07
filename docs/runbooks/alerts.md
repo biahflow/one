@@ -85,6 +85,16 @@ ignorar o painel:
 - `agent_key.rejected` — credencial de agente recusada: chave revogada,
   expirada, ou de outro projeto. Isolado é rotina de rotação. Como taxa é
   sondagem, e aí o `key_prefix` diz qual chave (`agent-events-failure.md`).
+- `onboarding.step_reached` — um degrau do funil foi alcançado pela **primeira** vez
+  (RFC 001). É um fato bom, não um chamado: quem precisa agir é quem olha o cliente
+  **travado**, e esse alerta é o passo 3 da RFC — não existe ainda, de propósito, porque
+  esta fatia carimba sem expor. Sai uma vez por organização e por degrau, nunca a cada
+  download ou pergunta, e não carrega conteúdo: só o tenant e o nome do degrau.
+- `onboarding.stamp_failed` — o carimbo do funil falhou e a requisição **seguiu normal**,
+  que é a decisão declarada na ADR 0039: medir engajamento não pode derrubar o download ou
+  o dashboard do cliente. Isolado é ruído de indisponibilidade momentânea do banco. Como
+  **taxa** vira sinal de que o funil parou de encher — e ninguém repara na falta de uma
+  linha, por isso o evento sai com traceback.
 - `preflight.refused` — o processo **não subiu**, de propósito (ADR 0022). Não
   precisa de alerta próprio porque o alerta é o serviço não existir; a linha diz
   qual setting está com valor de exemplo.

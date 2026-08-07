@@ -65,6 +65,20 @@ def test_a_null_column_falls_back_column_by_column() -> None:
     assert limits.agent_event_days == Settings().retention_agent_event_days
 
 
+def test_the_funnel_window_is_the_longest_default() -> None:
+    """E é decisão, não descuido (ADR 0039).
+
+    O *time-to-first-value* só significa alguma coisa comparado com o de coortes
+    anteriores; uma janela curta apagaria a comparação junto com o dado. Este teste
+    existe para a escolha não ser "simplificada" para o mesmo prazo dos outros.
+    """
+    limits = retention.windows_for(None, Settings())
+
+    assert limits.onboarding_days == Settings().retention_onboarding_days
+    assert limits.onboarding_days > limits.conversation_days
+    assert limits.onboarding_days > limits.notification_days
+
+
 # --- a poda e o expurgo (com banco) ----------------------------------------
 
 
@@ -622,3 +636,87 @@ def test_the_erasure_takes_the_pending_comments(
             ).first()
             is None
         )
+
+
+@pytest.mark.integration
+def test_the_erasure_removes_the_funnel_too(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """O funil é a **segunda** exclusão escrita à mão, e escaparia sem ela (ADR 0039).
+
+    Ele é escopado por organização e a linha ``organization`` fica de propósito — então
+    o CASCADE do projeto não o alcança por caminho nenhum. Um funil que sobrevivesse ao
+    apagamento do tenant reintroduziria o defeito que a ADR 0017 fechou, e com o dado
+    mais sensível que o portal guarda: comportamento de pessoa identificada.
+    """
+    from portal_api.models import OnboardingStep, OnboardingStepName
+
+    with Session(migrated_engine) as session:
+        session.add(
+            OnboardingStep(
+                organization_id=tenants["acme_org"],
+                step=OnboardingStepName.first_login,
+                reached_at=retention.now(),
+            )
+        )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.run_erasure(session, tenants["acme_org"])
+        session.commit()
+
+    assert outcome.removed["onboarding_step"] == 1
+    with Session(migrated_engine) as session:
+        assert (
+            session.execute(
+                select(OnboardingStep).where(
+                    OnboardingStep.organization_id == tenants["acme_org"]
+                )
+            ).scalars().all()
+            == []
+        )
+
+
+@pytest.mark.integration
+def test_the_purge_reaches_the_funnel_by_the_date_of_the_fact(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """Pelo ``reached_at``, e não pelo ``created_at`` da linha.
+
+    O degrau do entregável chega pelo sync e pode ser carimbado muito depois de ter
+    acontecido; podar pela data da linha guardaria um degrau antigo só porque o
+    portal demorou a saber dele.
+    """
+    from portal_api.models import OnboardingStep, OnboardingStepName
+
+    settings = Settings()
+    velho = retention.now() - timedelta(days=settings.retention_onboarding_days + 1)
+    with Session(migrated_engine) as session:
+        session.add_all(
+            [
+                OnboardingStep(
+                    organization_id=tenants["acme_org"],
+                    step=OnboardingStepName.first_login,
+                    reached_at=velho,
+                ),
+                OnboardingStep(
+                    organization_id=tenants["acme_org"],
+                    step=OnboardingStepName.first_chat_turn,
+                    reached_at=retention.now(),
+                ),
+            ]
+        )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.purge_expired(session, tenants["acme_org"], settings)
+        session.commit()
+
+    assert outcome.removed["onboarding_step"] == 1
+    with Session(migrated_engine) as session:
+        restante = session.execute(
+            select(OnboardingStep).where(
+                OnboardingStep.organization_id == tenants["acme_org"]
+            )
+        ).scalars().all()
+    assert [row.step for row in restante] == [OnboardingStepName.first_chat_turn]

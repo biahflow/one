@@ -68,6 +68,12 @@ AUDIENCE: dict[NotificationKind, frozenset[MemberRole]] = {
     NotificationKind.pending_opened: _EVERYONE,
     # Comentário também, e por definição: ele é escrito **para** o outro lado.
     NotificationKind.pending_commented: _EVERYONE,
+    # O primeiro aviso que é **só** do time, e o que finalmente usa o `_INTERNAL_ONLY`
+    # definido na ADR 0012 e órfão desde então (ADR 0040). O cliente não deve saber que
+    # está sendo medido em funil, e não há nada que ele possa fazer com a informação —
+    # esquecer esta linha faria o `.get(kind, _CLIENT_ONLY)` de `recipients` contar a ele
+    # que ele está travado, que é o defeito mais caro que esta fatia podia introduzir.
+    NotificationKind.onboarding_stuck: _INTERNAL_ONLY,
 }
 
 _MAX_DEDUPE_KEY = 255

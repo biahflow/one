@@ -18,6 +18,7 @@ from portal_api import (
     ingestion,
     mailer,
     notifications,
+    onboarding,
     retention,
     scanner,
     storage,
@@ -87,6 +88,16 @@ if settings.retention_enabled:
     celery_app.conf.beat_schedule["erasure-requests"] = {
         "task": "portal_api.run_erasure_requests",
         "schedule": timedelta(seconds=settings.retention_interval_seconds),
+    }
+# O alerta de cliente travado (Fase 7, RFC 001 passo 3, ADR 0040). Ligado por
+# padrão pelo mesmo argumento da poda, e com a mesma consequência declarada: como
+# nenhum compose passa `ONBOARDING_ALERT_ENABLED`, desligá-lo exige editar o
+# compose. É a postura certa — um radar que nasce desligado é um radar que ninguém
+# liga.
+if settings.onboarding_alert_enabled:
+    celery_app.conf.beat_schedule["onboarding-stuck"] = {
+        "task": "portal_api.alert_stuck_onboarding",
+        "schedule": timedelta(seconds=settings.onboarding_alert_interval_seconds),
     }
 
 
@@ -580,6 +591,45 @@ def purge_expired_data() -> dict[str, object]:
         for table, count in outcome.removed.items():
             totals[table] = totals.get(table, 0) + count
     return {"organizations": len(organizations), **totals}
+
+
+@celery_app.task(name="portal_api.alert_stuck_onboarding")
+def alert_stuck_onboarding() -> dict[str, object]:
+    """O tick do alerta de cliente travado (Fase 7, RFC 001 passo 3, ADR 0040).
+
+    Uma organização por transação, na forma de ``purge_expired_data`` logo acima e
+    pelo mesmo motivo: é trabalho de banco local, e uma task por organização
+    multiplicaria mensagens sem encurtar transação nenhuma.
+
+    Quem decide se o aviso sai — e se o evento é emitido — é
+    ``onboarding.raise_alert``, porque é lá que mora a resposta a "é a primeira
+    vez?". Aqui só sobra o laço, o ``except`` por organização e o enfileiramento do
+    digest, que sai **fora** da transação porque a task de e-mail lê as linhas do
+    banco.
+    """
+    current = get_settings()
+    with get_session(role=DbRole.system) as session:
+        organizations = onboarding.organizations_to_watch(session)
+
+    alerted = 0
+    digests: list[str] = []
+    for organization_id in organizations:
+        try:
+            with get_session(role=DbRole.system) as session:
+                outcome = onboarding.raise_alert(session, organization_id, current)
+        except Exception:
+            logger.exception(
+                "onboarding.stuck_scan_failed",
+                extra={"organization_id": str(organization_id)},
+            )
+            continue
+        if outcome is not None and outcome.notified and outcome.project_id is not None:
+            alerted += 1
+            digests.append(str(outcome.project_id))
+
+    for project_id in digests:
+        queue_project_digests(project_id)
+    return {"organizations": len(organizations), "alerted": alerted}
 
 
 @celery_app.task(name="portal_api.run_erasure_requests")

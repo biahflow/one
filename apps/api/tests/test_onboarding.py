@@ -12,13 +12,17 @@ O isolamento e a ausência de GRANT para o papel de requisição ficam em
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
+from conftest import captured
 from portal_api import onboarding
+from portal_api.config import Settings
 from portal_api.models import OnboardingStep, OnboardingStepName
 
 pytestmark = pytest.mark.integration
@@ -147,6 +151,565 @@ def test_the_dashboard_route_stamps_the_first_login(migrated_engine: Engine) -> 
         cleanup.execute(delete(Project).where(Project.id == project_id))
         cleanup.execute(delete(Organization).where(Organization.id == organization_id))
         cleanup.commit()
+
+
+# --------------------------------------------------------------------------------------
+# A leitura, o alerta e o tick (RFC 001 passo 3, ADR 0040).
+# --------------------------------------------------------------------------------------
+
+
+@dataclass
+class Cenario:
+    organization_id: uuid.UUID
+    project_id: uuid.UUID
+    internal_user_id: uuid.UUID
+    client_user_id: uuid.UUID | None
+
+
+@pytest.fixture
+def cenario(migrated_engine: Engine):
+    """Uma organização com projeto vivo, um interno e um cliente convidado.
+
+    Fixture própria pela razão que a do ``organization_id`` acima já dá, e uma a mais: a
+    leitura do funil consulta documento, pendência, ROI e teto de IA da organização, então
+    um cenário compartilhado faria o rótulo de um teste depender do que outro semeou.
+    """
+    from portal_api.models import MemberRole, Membership, Organization, Project, User
+
+    with Session(migrated_engine) as session:
+        organization = Organization(
+            name="Funil Alerta Ltda", slug=f"alerta-{uuid.uuid4().hex[:8]}"
+        )
+        session.add(organization)
+        session.flush()
+        project = Project(
+            organization_id=organization.id,
+            name="Automação",
+            slug=f"automacao-{uuid.uuid4().hex[:8]}",
+        )
+        interno = User(
+            email=f"interno-{uuid.uuid4().hex[:8]}@labs.test",
+            full_name="Pessoa Interna",
+            is_internal=True,
+        )
+        cliente = User(
+            email=f"cliente-{uuid.uuid4().hex[:8]}@acme.test", full_name="Pessoa Cliente"
+        )
+        session.add_all([project, interno, cliente])
+        session.flush()
+        session.add_all(
+            [
+                # Vínculo **organizacional** (`project_id IS NULL`), que é a forma do
+                # bootstrap da ADR 0025 — e o ramo de `recipients` que faz o time interno
+                # ser alcançado sem vínculo direto com o projeto.
+                Membership(
+                    organization_id=organization.id,
+                    project_id=None,
+                    user_id=interno.id,
+                    role=MemberRole.internal_admin,
+                ),
+                Membership(
+                    organization_id=organization.id,
+                    project_id=project.id,
+                    user_id=cliente.id,
+                    role=MemberRole.client_member,
+                ),
+            ]
+        )
+        session.commit()
+        built = Cenario(
+            organization_id=organization.id,
+            project_id=project.id,
+            internal_user_id=interno.id,
+            client_user_id=cliente.id,
+        )
+
+    yield built
+
+    with Session(migrated_engine) as cleanup:
+        from portal_api.models import Notification
+
+        cleanup.execute(
+            delete(Notification).where(Notification.organization_id == built.organization_id)
+        )
+        cleanup.execute(
+            delete(OnboardingStep).where(
+                OnboardingStep.organization_id == built.organization_id
+            )
+        )
+        cleanup.execute(
+            delete(Membership).where(Membership.organization_id == built.organization_id)
+        )
+        cleanup.execute(delete(Project).where(Project.id == built.project_id))
+        cleanup.execute(delete(Organization).where(Organization.id == built.organization_id))
+        cleanup.execute(
+            delete(User).where(User.id.in_([built.internal_user_id, built.client_user_id]))
+        )
+        cleanup.commit()
+
+
+def _invited_days_ago(engine: Engine, organization_id: uuid.UUID, days: int) -> None:
+    """Recua o convite do cliente. É a âncora quando não há carimbo nenhum."""
+    from portal_api.models import MemberRole, Membership
+
+    with Session(engine) as session:
+        session.execute(
+            update(Membership)
+            .where(
+                Membership.organization_id == organization_id,
+                Membership.role == MemberRole.client_member,
+            )
+            .values(created_at=datetime.now(timezone.utc) - timedelta(days=days))
+        )
+        session.commit()
+
+
+def _read(engine: Engine, organization_id: uuid.UUID):
+    with Session(engine) as session:
+        return onboarding.read_funnel(session, organization_id, Settings())
+
+
+def test_the_current_step_is_the_lowest_rung_without_a_stamp(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """O degrau atual é o mais baixo em aberto — e **não** o mais alto alcançado mais um.
+
+    O caso que força a regra existe de verdade: ``stamp`` aceita ``reached_at`` justamente
+    para o degrau do Biahflow, que chega pelo sync com a data do fato. Um cliente pode então
+    ter ``first_deliverable_delivered`` carimbado com data anterior a um ``first_login`` que
+    nunca aconteceu. "Mais alto alcançado" diria que ele completou o funil; a verdade é que
+    entregamos alguma coisa que ele nunca viu.
+    """
+    _invited_days_ago(migrated_engine, cenario.organization_id, 20)
+    onboarding.stamp(
+        cenario.organization_id,
+        OnboardingStepName.first_deliverable_delivered,
+        reached_at=datetime.now(timezone.utc) - timedelta(days=15),
+    )
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_login
+
+
+def test_the_days_are_counted_from_the_last_rung_reached(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """"Há quantos dias este cliente não recebe nada" — e não desde o degrau abaixo.
+
+    Um cliente que conversou com o assistente anteontem mas está travado em
+    ``first_pending_answered`` desde o mês passado **não** está parado há um mês.
+    """
+    _invited_days_ago(migrated_engine, cenario.organization_id, 60)
+    onboarding.stamp(
+        cenario.organization_id,
+        OnboardingStepName.first_login,
+        reached_at=datetime.now(timezone.utc) - timedelta(days=30),
+    )
+    onboarding.stamp(
+        cenario.organization_id,
+        OnboardingStepName.first_document_opened,
+        reached_at=datetime.now(timezone.utc) - timedelta(days=2),
+    )
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_pending_answered
+    assert leitura.days_stuck == 2
+    assert leitura.anchor_source == "step"
+
+
+def test_a_client_invited_and_never_seen_shows_up_with_the_right_day_count(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """O critério de aceite (1) da FDD 020, e o caso que justifica a fatia inteira.
+
+    "Ganho há nove dias, convite enviado, nunca logou": hoje invisível, e aos nove dias
+    ainda recuperável com um telefonema. A âncora é o convite e não a criação da
+    organização, que o sync cria quando o projeto chega do Biahflow — possivelmente dias
+    antes de alguém ter porta.
+    """
+    _invited_days_ago(migrated_engine, cenario.organization_id, 9)
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_login
+    assert leitura.days_stuck == 9
+    assert leitura.anchor_source == "membership"
+    assert leitura.blame is onboarding.Blame.client
+    # Nove dias contra um limiar de sete: travado, e é este booleano que a tela e o alerta
+    # leem — nunca `days_stuck > threshold_days` reimplementado do outro lado.
+    assert leitura.threshold_days == 7
+    assert leitura.stuck is True
+
+
+def test_a_client_who_was_never_invited_is_stuck_on_us(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """Sem ninguém do cliente com porta, a espera é **nossa** — e a lacuna é declarada.
+
+    A âncora cai para a criação da organização, e o número passa a dizer "há quantos dias o
+    tenant existe e ninguém foi convidado", que é uma frase sobre a equipe.
+    """
+    from portal_api.models import MemberRole, Membership
+
+    with Session(migrated_engine) as session:
+        session.execute(
+            delete(Membership).where(
+                Membership.organization_id == cenario.organization_id,
+                Membership.role == MemberRole.client_member,
+            )
+        )
+        session.commit()
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_login
+    assert leitura.blame is onboarding.Blame.us
+    assert leitura.anchor_source == "organization"
+    assert "no_client_member" in leitura.gaps
+
+
+def test_a_deliverable_that_never_left_pending_is_stuck_on_us(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """O critério de aceite (4) da FDD 020: o degrau que depende de entrega não realizada.
+
+    ``first_deliverable_delivered`` é afirmação do Biahflow, e o portal não origina status
+    (ADR 0006/0008). Não há nada que o cliente possa fazer, então este degrau é **sempre**
+    nosso — e com o limiar mais longo dos três, para o radar de engajamento não virar um
+    relatório de execução.
+    """
+    _invited_days_ago(migrated_engine, cenario.organization_id, 40)
+    for step in onboarding.LADDER[:-1]:
+        onboarding.stamp(
+            cenario.organization_id,
+            step,
+            reached_at=datetime.now(timezone.utc) - timedelta(days=40),
+        )
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_deliverable_delivered
+    assert leitura.blame is onboarding.Blame.us
+    assert leitura.threshold_days == 30
+    assert leitura.stuck is True
+
+
+def test_a_missing_rung_before_the_instrumentation_declares_the_gap_instead_of_zero(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """Degrau ausente **não** é degrau zerado (FDD 020).
+
+    Numa organização anterior a 07/08/2026, um degrau sem carimbo pode não ter sido
+    alcançado **ou** ter sido alcançado antes de existir medição — e as duas coisas não
+    podem sair iguais. A lacuna é declarada e a linha **não** conta como travada: ninguém
+    deve ser chamado por um degrau que talvez já esteja cumprido.
+
+    O que a contagem nunca faz é fabricar um zero, e é isso que a FDD proíbe: a âncora é
+    sempre uma data real — o último carimbo, o convite ou a criação da organização —, nunca
+    a data da instrumentação.
+    """
+    from portal_api.models import Organization
+
+    idade = (datetime.now(timezone.utc) - onboarding.INSTRUMENTED_SINCE).days + 30
+    _invited_days_ago(migrated_engine, cenario.organization_id, idade)
+    with Session(migrated_engine) as session:
+        session.execute(
+            update(Organization)
+            .where(Organization.id == cenario.organization_id)
+            .values(created_at=datetime.now(timezone.utc) - timedelta(days=idade))
+        )
+        session.commit()
+    # Com o login já carimbado, o degrau atual passa a ser um dos que **não** têm
+    # corroboração fora do funil — que é onde a incerteza mora.
+    onboarding.stamp(
+        cenario.organization_id,
+        OnboardingStepName.first_login,
+        reached_at=datetime.now(timezone.utc) - timedelta(days=idade),
+    )
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_document_opened
+    assert "before_instrumentation" in leitura.gaps
+    assert leitura.stuck is False
+    # E a contagem que aparece é de uma data real, não um zero fabricado.
+    assert leitura.days_stuck == idade
+
+
+def test_a_login_that_predates_the_instrumentation_is_not_reported_as_never_logged_in(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """A medição não nasce cega, e este é o defeito que a primeira execução revelou.
+
+    Sem consultar ``user.external_subject`` — que deixa de ser nulo no primeiro login e não
+    depende do funil —, no primeiro dia da instrumentação **toda** organização existente
+    apareceria travada em "nunca entrou no portal". Seria o alerta mais caro possível: manda
+    ligar justamente para o cliente que está usando o produto.
+    """
+    from portal_api.models import Organization, User
+
+    idade = (datetime.now(timezone.utc) - onboarding.INSTRUMENTED_SINCE).days + 30
+    _invited_days_ago(migrated_engine, cenario.organization_id, idade)
+    with Session(migrated_engine) as session:
+        session.execute(
+            update(Organization)
+            .where(Organization.id == cenario.organization_id)
+            .values(created_at=datetime.now(timezone.utc) - timedelta(days=idade))
+        )
+        session.execute(
+            update(User)
+            .where(User.id == cenario.client_user_id)
+            .values(external_subject=f"sub-{uuid.uuid4().hex[:8]}")
+        )
+        session.commit()
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is not OnboardingStepName.first_login
+    assert "login_before_instrumentation" in leitura.gaps
+
+
+def test_a_document_that_cannot_be_downloaded_does_not_count_as_ours_being_done(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """A prova é a condição da rota que **carimba** o degrau, e ela é o download.
+
+    Um documento indexado sem ``storage_key`` é a linha espelhada do Biahflow — metadado e
+    link — e não é baixável. Usar ``ingest_state`` produziria "travou no cliente" sobre um
+    cliente que não tinha o que abrir.
+    """
+    from portal_api.models import Document, DocumentIngestState, DocumentSource
+
+    _invited_days_ago(migrated_engine, cenario.organization_id, 30)
+    onboarding.stamp(
+        cenario.organization_id,
+        OnboardingStepName.first_login,
+        reached_at=datetime.now(timezone.utc) - timedelta(days=30),
+    )
+    with Session(migrated_engine) as session:
+        session.add(
+            Document(
+                organization_id=cenario.organization_id,
+                project_id=cenario.project_id,
+                title="Contrato espelhado",
+                source=DocumentSource.upload,
+                ingest_state=DocumentIngestState.indexed,
+                storage_key=None,
+            )
+        )
+        session.commit()
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_document_opened
+    assert leitura.blame is onboarding.Blame.us
+
+
+def test_the_roi_gap_comes_from_the_snapshot_and_not_from_the_assumption(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """"ROI visto" depende de ``project.roi_net``, que é o que o dashboard projeta.
+
+    A premissa financeira e os eventos dos agentes alimentam a **apuração**, que é outro
+    número e não porteia degrau nenhum: o carimbo é condicionado ao `roi` de
+    ``build_dashboard``, e esse sai da coluna do snapshot.
+    """
+    from portal_api.models import Project
+
+    _invited_days_ago(migrated_engine, cenario.organization_id, 30)
+    for step in onboarding.LADDER[:4]:
+        onboarding.stamp(
+            cenario.organization_id,
+            step,
+            reached_at=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+
+    sem_roi = _read(migrated_engine, cenario.organization_id)
+    assert sem_roi is not None
+    assert sem_roi.current_step is OnboardingStepName.first_roi_seen
+    assert sem_roi.blame is onboarding.Blame.us
+
+    with Session(migrated_engine) as session:
+        session.execute(
+            update(Project)
+            .where(Project.id == cenario.project_id)
+            .values(roi_net=Decimal("1234.00"))
+        )
+        session.commit()
+
+    com_roi = _read(migrated_engine, cenario.organization_id)
+    assert com_roi is not None
+    assert com_roi.blame is onboarding.Blame.client
+
+
+def test_the_alert_rings_once_for_the_same_rung(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """O sino toca **uma vez** por organização e degrau, e o evento sai junto dele.
+
+    A memória de "já avisei" não é tabela nova: é o ``dedupe_key`` da notificação, com
+    ``ON CONFLICT DO NOTHING``. ``fan_out`` devolve só os ids que nasceram, e lista vazia
+    significa que o sino já tem — que é como a segunda passagem fica muda sem precisar de um
+    ``UPDATE`` que nenhum papel desta tabela tem.
+    """
+    _invited_days_ago(migrated_engine, cenario.organization_id, 9)
+
+    with captured("portal_api.onboarding") as linhas:
+        with Session(migrated_engine) as session:
+            primeiro = onboarding.raise_alert(
+                session, cenario.organization_id, Settings()
+            )
+            session.commit()
+        with Session(migrated_engine) as session:
+            segundo = onboarding.raise_alert(
+                session, cenario.organization_id, Settings()
+            )
+            session.commit()
+
+    assert primeiro is not None and primeiro.notified == 1
+    assert segundo is not None and segundo.notified == 0
+
+    eventos = [linha.getMessage() for linha in linhas]
+    assert eventos.count("onboarding.client_stuck") == 1
+
+    aviso = next(linha for linha in linhas if linha.getMessage() == "onboarding.client_stuck")
+    assert aviso.step == OnboardingStepName.first_login.value
+    assert aviso.blocked_by == "client"
+    assert aviso.days_stuck == 9
+
+
+def test_the_alert_reaches_only_the_internal_team(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """O cliente **não** é avisado de que está sendo medido (FDD 020).
+
+    É o primeiro aviso do repositório cuja audiência é ``_INTERNAL_ONLY`` — a constante que
+    a ADR 0012 definiu e nunca usou. E o destinatário aqui chega pelo vínculo
+    **organizacional**, que é a forma do bootstrap da ADR 0025.
+    """
+    from portal_api.models import Notification
+
+    _invited_days_ago(migrated_engine, cenario.organization_id, 9)
+    with Session(migrated_engine) as session:
+        onboarding.raise_alert(session, cenario.organization_id, Settings())
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        destinatarios = set(
+            session.execute(
+                select(Notification.user_id).where(
+                    Notification.organization_id == cenario.organization_id
+                )
+            ).scalars()
+        )
+
+    assert destinatarios == {cenario.internal_user_id}
+
+
+def test_an_organization_with_nobody_internal_says_the_alert_had_nowhere_to_go(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """Sem ninguém a quem avisar, o alerta **diz isso** em vez de sumir.
+
+    Sem esta linha o desenho teria um ponto cego real: ``fan_out`` devolveria vazio, o
+    evento não sairia por ser "repetido", e um tenant sem administrador ficaria travado em
+    silêncio absoluto — o único desfecho pior que o alerta não existir.
+    """
+    from portal_api.models import MemberRole, Membership
+
+    _invited_days_ago(migrated_engine, cenario.organization_id, 9)
+    with Session(migrated_engine) as session:
+        session.execute(
+            delete(Membership).where(
+                Membership.organization_id == cenario.organization_id,
+                Membership.role == MemberRole.internal_admin,
+            )
+        )
+        session.commit()
+
+    with captured("portal_api.onboarding") as linhas:
+        with Session(migrated_engine) as session:
+            resultado = onboarding.raise_alert(
+                session, cenario.organization_id, Settings()
+            )
+            session.commit()
+
+    assert resultado is not None and resultado.notified == 0
+    eventos = [linha.getMessage() for linha in linhas]
+    assert "onboarding.alert_undeliverable" in eventos
+    assert "onboarding.client_stuck" not in eventos
+
+
+def test_an_organization_with_no_live_project_is_not_watched(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """O fantasma pós-expurgo, e o projeto que o Biahflow apagou.
+
+    ``run_erasure`` apaga os projetos e a ``membership`` e **mantém** a linha
+    ``organization``, de propósito: é assim que "o que aconteceu com aquele tenant" continua
+    tendo resposta (ADR 0017). Sem este filtro, todo tenant apagado viraria uma linha
+    perpétua "ninguém foi convidado" com um alerta diário atrás.
+    """
+    from portal_api.models import Project
+
+    with Session(migrated_engine) as session:
+        vigiadas = onboarding.organizations_to_watch(session)
+        assert cenario.organization_id in vigiadas
+
+        session.execute(
+            update(Project)
+            .where(Project.id == cenario.project_id)
+            .values(source_deleted_at=datetime.now(timezone.utc))
+        )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        assert cenario.organization_id not in onboarding.organizations_to_watch(session)
+
+
+def test_the_tick_keeps_going_when_one_organization_blows_up(
+    migrated_engine: Engine, cenario: Cenario, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uma organização que estoura não impede as outras, e a falha vira evento nomeado.
+
+    É a forma de ``purge_expired_data``, e o limiar em ``alerts.md`` conta com ela: um erro
+    isolado é recuperado no tick seguinte por construção, e o que merece alerta é a taxa.
+    """
+    from portal_api import worker
+
+    explodiu: list[uuid.UUID] = []
+    original = onboarding.raise_alert
+
+    def falha_na_primeira(session, organization_id, settings):
+        if organization_id != cenario.organization_id:
+            explodiu.append(organization_id)
+            raise RuntimeError("banco fora do ar")
+        return original(session, organization_id, settings)
+
+    _invited_days_ago(migrated_engine, cenario.organization_id, 9)
+    monkeypatch.setattr(worker.onboarding, "raise_alert", falha_na_primeira)
+    enfileirados: list[str] = []
+    monkeypatch.setattr(worker, "queue_project_digests", enfileirados.append)
+
+    with captured("portal_api.worker") as linhas:
+        resultado = worker.alert_stuck_onboarding()
+
+    assert resultado["alerted"] == 1
+    assert enfileirados == [str(cenario.project_id)]
+    if explodiu:
+        assert "onboarding.stuck_scan_failed" in [
+            linha.getMessage() for linha in linhas
+        ]
 
 
 def _snapshot(*, biahflow_project_id: int, client_id: int) -> dict:

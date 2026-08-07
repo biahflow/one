@@ -1,13 +1,15 @@
 # FDD 020 — Funil de onboarding
 
-**Status:** **parcialmente implementado** — 07/08/2026 (ADR 0039). Recorte construível da
-**RFC 001**.
+**Status:** **parcialmente implementado** — 07/08/2026 (ADR 0039, ADR 0040). Recorte
+construível da **RFC 001**.
 
-> *O passo 1 da RFC — "carimbar sem expor" — está de pé: a tabela, as policies, os seis
-> degraus escritos pelas rotas de verdade, e a purga e o apagamento alcançando-os. **Não**
-> estão de pé a lista interna de clientes travados, a distinção "travou no cliente" × "travou
-> em nós" e a vigília da IA; eles são os passos 3 e 4 da RFC, e a ordem é deliberada. Os
-> critérios de aceite abaixo estão marcados um a um.*
+> *Os passos 1 e 3 da RFC estão de pé. O 1 — "carimbar sem expor" — trouxe a tabela, as
+> policies, os seis degraus escritos pelas rotas de verdade e a purga/apagamento
+> alcançando-os. O 3 trouxe a leitura, a lista interna em `/admin/funil` com a distinção
+> "travou no cliente" × "travou em nós", e o alerta em dois canais: evento nomeado com
+> limiar em `alerts.md` e notificação interna no sino e no digest. **Falta o passo 4**, a
+> vigília da IA, que só vem quando houver histórico para priorizar. Os critérios de aceite
+> abaixo estão marcados um a um.*
 
 ## Objetivo e não objetivos
 
@@ -88,19 +90,32 @@ Eventos com runbook correspondente, porque a guarda é bidirecional (ADR 0034): 
 carimbado, cliente entrando em estado travado, alerta emitido. Nenhum deles carrega conteúdo
 — só identificadores e o nome do degrau.
 
-**Aceite.** (1) ~~Um cliente novo, convidado e sem login, aparece na lista interna com o
-degrau "convite aceito" pendente e a contagem de dias correta.~~ **Passo 3** — não há lista.
+**Aceite.** (1) **Feito:** um cliente convidado e sem login aparece na lista com o degrau
+pendente e a contagem de dias correta
+(`test_a_client_invited_and_never_seen_shows_up_with_the_right_day_count`).
 (2) **Feito:** o primeiro login carimba a data uma vez, e um segundo login não altera o
 carimbo (`test_the_stamp_is_immutable`). (3) **Adiado, e não esquecido:** o snapshot do
 Biahflow não carrega artefato nenhum, então o degrau `artifact_accepted` **não existe** no
 enum — declará-lo sem produtor seria o painel sem escritor de novo. O degrau do Biahflow que
 existe é o primeiro entregável fora de `pending`, carimbado pelo sync e nunca antes.
-(4) ~~Um cliente cujo degrau depende de entrega não realizada aparece rotulado como travado
-**em nós**.~~ **Passo 3.** (5) **Feito:** o apagamento leva os degraus junto, e precisou de
-exclusão escrita à mão — escopado por organização, o funil não vem no CASCADE do projeto
-(`test_the_erasure_removes_the_funnel_too`). (6) **Feito:** nenhuma rota de cliente devolve o
-funil, e o papel de requisição não tem policy sobre a tabela
-(`test_the_app_role_never_reads_the_funnel`).
+(4) **Feito:** um cliente cujo degrau depende de entrega não realizada é rotulado como travado
+**em nós** (`test_a_deliverable_that_never_left_pending_is_stuck_on_us`), e a tela põe os dois
+lados em painéis separados — nunca uma soma. (5) **Feito:** o apagamento leva os degraus
+junto, e precisou de exclusão escrita à mão — escopado por organização, o funil não vem no
+CASCADE do projeto (`test_the_erasure_removes_the_funnel_too`). (6) **Feito:** nenhuma rota de
+cliente devolve o funil, e o papel de requisição não tem policy sobre a tabela
+(`test_the_app_role_never_reads_the_funnel`); a rota interna é `internal_admin` e nega com 404
+(`test_a_client_cannot_read_the_onboarding_funnel`).
+
+**A lacuna ganhou um limite que a medição impôs (ADR 0040).** "Degrau ausente não é degrau
+zerado" continua valendo, e o que a execução mostrou é que ele quase fez a medição nascer
+cega: no primeiro dia da instrumentação *toda* organização é anterior a ela, e o degrau
+incerto de todas seria o primeiro login — a tela mandaria ligar para todo cliente do produto
+dizendo que ele nunca entrou. O primeiro degrau passou a ter corroboração fora do funil
+(`user.external_subject`, que é o sinal que a RFC original apontava); os demais seguem
+incertos em organização velha, e uma linha incerta **não conta como travada**. A contagem de
+dias, por sua vez, sai sempre de uma data real — o que a regra proíbe é o zero fabricado, e
+ele só apareceria se a âncora fosse a data da instrumentação.
 
 ## Testes e avaliações de IA
 
@@ -108,8 +123,9 @@ Teste de isolamento entre organizações no funil, junto do meta-teste existente
 imutabilidade do carimbo. Teste de que a purga por idade e o apagamento por decisão alcançam
 os degraus. Teste de que o papel de aplicação não consegue inserir degrau.
 
-**Sem IA nesta fatia.** A vigília que prioriza quem empacou e escreve o sinal em linguagem de
-ação vem depois, quando houver histórico para priorizar — e quando vier, lê o **agregado**
+**Sem IA até aqui.** A vigília que prioriza quem empacou e escreve o sinal em linguagem de
+ação vem depois, quando houver histórico para priorizar — e o `NEXT_ACTION` da ADR 0040, um
+mapa estático de degrau × lado, é exatamente o que ela substitui — e quando vier, lê o **agregado**
 (quem travou, onde, há quanto tempo), nunca o conteúdo das conversas ou documentos do
 cliente, herdando o prompt versionado, as avaliações adversariais e a quota por organização
 que já existem.

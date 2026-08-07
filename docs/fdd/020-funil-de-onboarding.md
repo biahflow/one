@@ -1,15 +1,17 @@
 # FDD 020 — Funil de onboarding
 
-**Status:** **parcialmente implementado** — 07/08/2026 (ADR 0039, ADR 0040). Recorte
-construível da **RFC 001**.
+**Status:** **parcialmente implementado** — 07/08/2026 (ADR 0039, ADR 0040, ADR 0041).
+Recorte construível da **RFC 001**.
 
-> *Os passos 1 e 3 da RFC estão de pé. O 1 — "carimbar sem expor" — trouxe a tabela, as
-> policies, os seis degraus escritos pelas rotas de verdade e a purga/apagamento
-> alcançando-os. O 3 trouxe a leitura, a lista interna em `/admin/funil` com a distinção
-> "travou no cliente" × "travou em nós", e o alerta em dois canais: evento nomeado com
-> limiar em `alerts.md` e notificação interna no sino e no digest. **Falta o passo 4**, a
-> vigília da IA, que só vem quando houver histórico para priorizar. Os critérios de aceite
-> abaixo estão marcados um a um.*
+> *Os passos 1 e 3 da RFC estão de pé, e os **sete** degraus existem. O 1 — "carimbar sem
+> expor" — trouxe a tabela, as policies, os seis degraus que tinham produtor e a
+> purga/apagamento alcançando-os. O 3 trouxe a leitura, a lista interna em `/admin/funil` com
+> a distinção "travou no cliente" × "travou em nós", e o alerta em dois canais: evento nomeado
+> com limiar em `alerts.md` e notificação interna no sino e no digest. A ADR 0041 fechou o
+> sétimo degrau, `artifact_accepted`, quando o Biahflow passou a afirmá-lo (FDD 031 de lá) —
+> e com ele a régua, porque a âncora do funil passou a poder começar no **ganho**. **Falta o
+> passo 4**, a vigília da IA, que só vem quando houver histórico para priorizar. Os critérios
+> de aceite abaixo estão marcados um a um.*
 
 ## Objetivo e não objetivos
 
@@ -94,10 +96,16 @@ carimbado, cliente entrando em estado travado, alerta emitido. Nenhum deles carr
 pendente e a contagem de dias correta
 (`test_a_client_invited_and_never_seen_shows_up_with_the_right_day_count`).
 (2) **Feito:** o primeiro login carimba a data uma vez, e um segundo login não altera o
-carimbo (`test_the_stamp_is_immutable`). (3) **Adiado, e não esquecido:** o snapshot do
-Biahflow não carrega artefato nenhum, então o degrau `artifact_accepted` **não existe** no
-enum — declará-lo sem produtor seria o painel sem escritor de novo. O degrau do Biahflow que
-existe é o primeiro entregável fora de `pending`, carimbado pelo sync e nunca antes.
+carimbo (`test_the_stamp_is_immutable`). (3) **Feito em 07/08/2026 (ADR 0041), e o adiamento
+era condicional:** este critério dizia que `artifact_accepted` **não existia** no enum porque
+"o snapshot do Biahflow não carrega artefato nenhum" e declarar degrau sem produtor seria o
+painel sem escritor de novo. A condição estava escrita — *"ele entra quando o outro lado o
+afirmar"* — e o outro lado afirmou: a FDD 031 de lá pôs `artifact_accepted_at` no snapshot,
+com emissor, levando **só a data**. O sync carimba com a data da decisão
+(`test_the_snapshot_stamps_the_approval_with_the_date_of_the_decision`), e um Biahflow
+anterior àquela fatia não carimba nada (`test_a_snapshot_without_the_field_stamps_nothing`).
+São **dois** os degraus que nascem lá agora — a aprovação e o primeiro entregável fora de
+`pending` —, e nenhum é carimbado antes de o snapshot o afirmar.
 (4) **Feito:** um cliente cujo degrau depende de entrega não realizada é rotulado como travado
 **em nós** (`test_a_deliverable_that_never_left_pending_is_stuck_on_us`), e a tela põe os dois
 lados em painéis separados — nunca uma soma. (5) **Feito:** o apagamento leva os degraus
@@ -117,13 +125,45 @@ incertos em organização velha, e uma linha incerta **não conta como travada**
 dias, por sua vez, sai sempre de uma data real — o que a regra proíbe é o zero fabricado, e
 ele só apareceria se a âncora fosse a data da instrumentação.
 
+**E o mesmo limite valeu para o sétimo degrau (ADR 0041), previsto em vez de descoberto.**
+Sendo o primeiro da escada, `artifact_accepted` sem carimbo seria o degrau atual de toda
+organização anterior à FDD 031 do Biahflow — a tela mandaria registrar o contrato de clientes
+que estão em produção há meses. A corroboração é estrutural: **projeto vivo no Biahflow
+significa negócio fechado**, então a existência da linha reconhece o degrau, declara
+`artifact_not_reported` e **não escreve carimbo** — por isso a âncora daquela organização
+continua saindo do convite, que é honesto. Na prática o degrau só fica em aberto para quem não
+tem projeto vivo, e aí ele é a verdade. *"Não registraram o artefato" com projeto vivo é
+higiene de cadastro, não desengajamento*, e um radar que telefona por isso é um radar que o
+time aprende a ignorar.
+
+**A régua ganhou o ponto de partida que lhe faltava.** O `_anchor` da ADR 0040 nunca teve o
+**ganho**: sua cadeia era último carimbo → convite → criação da organização. Um cliente ganho
+em 12/06 e convidado em 30/07 contava a partir de 30/07, de modo que dezoito dias de demora
+**nossa** encurtavam o número em vez de aparecer nele — o funil escondendo justamente o atraso
+que existe para tornar visível. Com o carimbo da aprovação, a contagem começa no ganho
+(`test_the_approval_anchors_the_ruler_on_the_win_and_not_on_the_invite`).
+
 ## Testes e avaliações de IA
 
 Teste de isolamento entre organizações no funil, junto do meta-teste existente. Teste de
 imutabilidade do carimbo. Teste de que a purga por idade e o apagamento por decisão alcançam
 os degraus. Teste de que o papel de aplicação não consegue inserir degrau.
 
-**Sem IA até aqui.** A vigília que prioriza quem empacou e escreve o sinal em linguagem de
+**Mais o defeito que a ADR 0041 mediu, e ele era da ADR 0039** — os dois testes que o seguram
+no lugar. `sync_snapshot` **cria** a organização e chamava um `stamp` de sessão própria: no
+primeiro snapshot de um cliente novo a linha `organization` ainda não estava comitada, a
+chave estrangeira barrava o `INSERT` e o carimbo se perdia em silêncio, saindo como
+`onboarding.stamp_failed` — que o `alerts.md` diagnostica como indisponibilidade do banco.
+Era raro com o entregável e é o caso **central** com a aprovação. `stamp_within` carimba
+dentro da transação que já é do sistema, com `SAVEPOINT`, e há teste para os dois lados: o
+primeiro snapshot de um cliente novo já carimba
+(`test_the_first_snapshot_of_a_brand_new_client_already_stamps`), e um degrau impossível de
+gravar não derruba a transação que o continha
+(`test_a_failed_stamp_inside_the_sync_does_not_take_the_transaction_down`).
+
+**Sem IA até aqui**, e o passo 4 continua condicionado ao que três documentos escrevem: a
+instrumentação tem um dia e o time ainda não agiu sobre um alerta. A vigília que prioriza quem
+empacou e escreve o sinal em linguagem de
 ação vem depois, quando houver histórico para priorizar — e o `NEXT_ACTION` da ADR 0040, um
 mapa estático de degrau × lado, é exatamente o que ela substitui — e quando vier, lê o **agregado**
 (quem travou, onde, há quanto tempo), nunca o conteúdo das conversas ou documentos do

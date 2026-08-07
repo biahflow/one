@@ -31,6 +31,7 @@ type ApiFunnel = {
  * degrau que nenhuma coluna da tela lê.
  */
 const STEP_ORDER = [
+  "artifact_accepted",
   "first_login",
   "first_document_opened",
   "first_pending_answered",

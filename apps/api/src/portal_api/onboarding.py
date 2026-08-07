@@ -4,7 +4,7 @@ Fase 7, RFC 001. O carimbo veio na ADR 0039; a leitura, o alerta de cliente trav
 lista interna vieram na ADR 0040 — que é o passo 3 da RFC, e por isso mora **aqui** e não
 num módulo ao lado. Mesma forma de :mod:`portal_api.notifications`,
 :mod:`portal_api.conversations` e :mod:`portal_api.retention`, e pelo mesmo motivo: se "o
-que conta como degrau" estiver espalhado pelos seis caminhos que o produzem, a pergunta que
+que conta como degrau" estiver espalhado pelos sete caminhos que o produzem, a pergunta que
 a RFC 001 quer responder — *quanto o cliente demora do ganho até o primeiro valor* — deixa
 de caber num arquivo, e é justamente essa a pergunta de quem calibra o alerta.
 
@@ -75,10 +75,61 @@ def stamp(
 
     ``reached_at`` existe para o degrau que **não** nasce agora: o do entregável chega pelo
     sync, e a data que interessa é a do fato afirmado pelo Biahflow, não a da linha.
+
+    Esta é a porta de quem **não** tem transação de sistema em mãos — as cinco rotas que
+    rodam sob ``portal_app``. Quem já está numa (o sync) usa :func:`stamp_within`, e o
+    porquê está lá.
+    """
+    try:
+        with get_session(role=DbRole.system) as session:
+            return stamp_within(
+                session, organization_id, step, user_id=user_id, reached_at=reached_at
+            )
+    except Exception:  # noqa: BLE001 - ver o docstring do módulo: falha em silêncio
+        # Sobra o que `stamp_within` não consegue engolir: abrir a conexão, e o `COMMIT` da
+        # saída do `with`. O `except` de lá cobre o `INSERT`.
+        logger.exception(
+            "onboarding.stamp_failed",
+            extra={
+                "organization_id": str(organization_id),
+                "step": getattr(step, "value", str(step)),
+            },
+        )
+        return False
+
+
+def stamp_within(
+    session: Session,
+    organization_id: uuid.UUID,
+    step: OnboardingStepName,
+    *,
+    user_id: uuid.UUID | None = None,
+    reached_at: datetime | None = None,
+) -> bool:
+    """O mesmo carimbo, **dentro** de uma transação de sistema que o chamador já abriu.
+
+    Existe por um defeito medido, e ele era da ADR 0039: o sync chamava :func:`stamp`, que
+    abre sessão **própria**, de dentro da transação que **cria a organização**. No primeiro
+    snapshot de um cliente novo a linha ``organization`` ainda não estava comitada, então o
+    ``INSERT`` batia na chave estrangeira, o ``except`` engolia e saía
+    ``onboarding.stamp_failed`` — que o ``alerts.md`` descreve como "ruído de
+    indisponibilidade momentânea do banco", diagnóstico falso. O degrau só era carimbado no
+    snapshot **seguinte** daquele projeto, e para um cliente com um projeto só isso podia
+    demorar semanas. O sétimo degrau (ADR 0041) tornou o caso central em vez de raro: a
+    aceitação do artefato é justamente o fato que chega no primeiro snapshot.
+
+    A sessão separada nunca comprou nada aqui: ``sync_snapshot`` **já** roda sob
+    ``portal_system``, que é o papel que escreve o funil. O que ela comprava era isolamento
+    de falha, e isso o ``SAVEPOINT`` dá sem trocar a ordem — o carimbo passa a ser atômico
+    com o fato que o justifica, e uma falha nele desfaz só a si mesma.
     """
     now = reached_at or datetime.now(timezone.utc)
     try:
-        with get_session(role=DbRole.system) as session:
+        # `begin_nested` e não um `try` seco: um `IntegrityError` deixa a transação do
+        # Postgres em estado abortado, e sem o SAVEPOINT engolir a exceção derrubaria o
+        # snapshot inteiro no `COMMIT` seguinte — trocando um degrau perdido por um sync
+        # perdido, que é exatamente o que o docstring do módulo proíbe.
+        with session.begin_nested():
             result = session.execute(
                 pg_insert(OnboardingStep.__table__)
                 .values(
@@ -136,7 +187,12 @@ def stamp(
 #: ``first_login`` que nunca aconteceu. Qualquer regra de "mais alto alcançado" diria que
 #: esse cliente completou o funil; a regra do mais baixo em aberto diz que ele está travado
 #: no login, que é a verdade — entregamos algo que ele nunca viu.
+#:
+#: ``artifact_accepted`` entra **primeiro** (ADR 0041) porque a aprovação precede o projeto:
+#: aceitar o contrato é o que faz o projeto existir, e é dele que sai a data do **ganho** de
+#: que a régua da RFC 001 — o *time-to-first-value* — precisa para começar do lugar certo.
 LADDER: tuple[OnboardingStepName, ...] = (
+    OnboardingStepName.artifact_accepted,
     OnboardingStepName.first_login,
     OnboardingStepName.first_document_opened,
     OnboardingStepName.first_pending_answered,
@@ -177,7 +233,7 @@ class FunnelReading:
     """O estado do funil de uma organização, computado na leitura."""
 
     organization_id: uuid.UUID
-    #: O primeiro degrau sem carimbo, ou ``None`` quando os seis foram alcançados.
+    #: O primeiro degrau sem carimbo, ou ``None`` quando os sete foram alcançados.
     current_step: OnboardingStepName | None
     blame: Blame | None
     #: ``None`` é **lacuna**, jamais zero: ver :data:`INSTRUMENTED_SINCE` e ``gaps``.
@@ -210,6 +266,10 @@ class AlertOutcome:
 #: vier. Enquanto não vem, esta é a fatia inteira do valor: um alerta sem o que fazer é um
 #: relatório com um sino em cima.
 NEXT_ACTION: dict[tuple[OnboardingStepName, Blame], str] = {
+    (OnboardingStepName.artifact_accepted, Blame.us): (
+        "Nenhuma aprovação deste cliente está registrada no Biahflow. Registre o "
+        "artefato aceito lá — sem ele o funil conta os dias do convite, e não do ganho."
+    ),
     (OnboardingStepName.first_login, Blame.us): (
         "Ninguém do cliente foi convidado. Convide em /admin."
     ),
@@ -252,11 +312,12 @@ NEXT_ACTION: dict[tuple[OnboardingStepName, Blame], str] = {
 }
 
 #: O degrau completo, que não tem ação nem lado.
-_ALL_DONE = "Os seis degraus foram alcançados. Nada a fazer."
+_ALL_DONE = "Os sete degraus foram alcançados. Nada a fazer."
 
 #: O rótulo humano do degrau, para o título do aviso. Fica aqui e não na tela porque o sino
 #: também o mostra, e duas traduções do mesmo enum divergem na primeira que for editada.
 _STEP_LABEL: dict[OnboardingStepName, str] = {
+    OnboardingStepName.artifact_accepted: "nenhuma aprovação registrada",
     OnboardingStepName.first_login: "nunca entrou no portal",
     OnboardingStepName.first_document_opened: "nunca abriu um documento",
     OnboardingStepName.first_pending_answered: "nunca respondeu uma pendência",
@@ -269,7 +330,13 @@ _STEP_LABEL: dict[OnboardingStepName, str] = {
 def _threshold_days(step: OnboardingStepName, settings: Settings) -> int:
     if step is OnboardingStepName.first_login:
         return settings.onboarding_alert_login_days
-    if step is OnboardingStepName.first_deliverable_delivered:
+    if step in (
+        OnboardingStepName.first_deliverable_delivered,
+        # `artifact_accepted` acompanha o do entregável pelo argumento escrito no
+        # `config.py`: os dois são sempre nossos, e cobrá-los cedo transformaria o radar de
+        # engajamento num relatório de execução — que é o que a saúde do projeto já faz.
+        OnboardingStepName.artifact_accepted,
+    ):
         return settings.onboarding_alert_deliverable_days
     return settings.onboarding_alert_step_days
 
@@ -352,8 +419,10 @@ def _blame_for(
         ).scalar()
         return Blame.client if has_roi else Blame.us
 
-    # `first_deliverable_delivered` é afirmação do Biahflow, e o portal não origina status
-    # (ADR 0006/0008). Não há o que o cliente possa fazer: a entrega é sempre nossa.
+    # `first_deliverable_delivered` e `artifact_accepted` são afirmação do Biahflow, e o
+    # portal não origina status (ADR 0006/0008). Nos dois não há o que o cliente possa fazer
+    # **aqui**: a entrega é nossa, e a aprovação do artefato acontece do outro lado — o portal
+    # não a hospeda nem tem como coletá-la, então nada que ele faça nesta tela move o degrau.
     return Blame.us
 
 
@@ -373,6 +442,32 @@ def _client_has_authenticated(session: Session, organization_id: uuid.UUID) -> b
                     Membership.user_id == User.id,
                     User.is_internal.is_(False),
                     User.external_subject.is_not(None),
+                )
+            )
+        ).scalar()
+    )
+
+
+def _has_live_project(session: Session, organization_id: uuid.UUID) -> bool:
+    """Esta organização tem projeto vivo — e é a corroboração do degrau da aprovação.
+
+    **Projeto vivo no Biahflow significa negócio fechado.** Um projeto não nasce lá sem que
+    alguém tenha aceitado um artefato ou fechado o contrato por fora, então a existência da
+    linha é evidência de que o degrau foi cumprido, mesmo quando o Biahflow não reportou a
+    data. É o mesmo papel que :func:`_client_has_authenticated` faz para o login, e existe
+    pelo mesmo susto: sem ela **toda** organização anterior à FDD 031 apareceria travada em
+    "nenhuma aprovação registrada", e a tela mandaria cobrar um contrato assinado meses atrás.
+
+    O predicado é o mesmo de :func:`organizations_to_watch` e :func:`_anchor_project` —
+    arquivado e apagado na origem não contam.
+    """
+    return bool(
+        session.execute(
+            select(
+                exists().where(
+                    Project.organization_id == organization_id,
+                    Project.archived_at.is_(None),
+                    Project.source_deleted_at.is_(None),
                 )
             )
         ).scalar()
@@ -460,6 +555,23 @@ def read_funnel(
     ):
         reached.add(OnboardingStepName.first_login)
         gaps.append("login_before_instrumentation")
+
+    # **A evidência independente da aprovação** (ADR 0041), e ela é a mesma história um degrau
+    # abaixo. `artifact_accepted` só passou a ser reportado pela FDD 031 do Biahflow, então
+    # toda organização anterior a ela chega sem o carimbo — e, sendo o primeiro da escada,
+    # seria o degrau atual de **todas**. A tela nasceria mandando registrar o contrato de
+    # clientes que estão em produção há meses.
+    #
+    # A corroboração é estrutural: um projeto vivo só existe porque um negócio foi fechado.
+    # Ela declara a lacuna em vez de fabricar a data — o degrau conta como alcançado, mas
+    # `reached_at` continua sem existir, e é por isso que a âncora daquela organização segue
+    # saindo do convite. Quem não tem projeto vivo não recebe a corroboração e fica com o
+    # degrau em aberto, o que também é a verdade: não há nem projeto nem aprovação.
+    if OnboardingStepName.artifact_accepted not in reached and _has_live_project(
+        session, organization_id
+    ):
+        reached.add(OnboardingStepName.artifact_accepted)
+        gaps.append("artifact_not_reported")
 
     current_step = next((step for step in LADDER if step not in reached), None)
 

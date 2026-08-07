@@ -2424,8 +2424,9 @@
         "type": "object"
       },
       "OnboardingStepName": {
-        "description": "Os degraus, na ordem em que a jornada os alcança.\n\nCinco nascem aqui e um nasce no Biahflow — e a diferença importa na hora de separar\n\"travou no cliente\" de \"travou em nós\" (RFC 001), que é o passo seguinte.\n\n**``artifact_accepted`` não está aqui de propósito.** A RFC o lista, mas o snapshot do\nBiahflow não carrega nada de artefato: `grep artefato` em ``integrations/biahflow.py``\ndevolve zero. Declará-lo agora criaria um degrau que nada carimba — a forma exata do\npainel sem escritor que a ADR 0033 achou. Ele entra quando o outro lado o afirmar.",
+        "description": "Os degraus, na ordem em que a jornada os alcança.\n\nCinco nascem aqui e dois nascem no Biahflow — e a diferença importa na hora de separar\n\"travou no cliente\" de \"travou em nós\" (RFC 001).\n\n*Até 07/08/2026 este docstring dizia que ``artifact_accepted`` **não** estava aqui de\npropósito, porque \"o snapshot do Biahflow não carrega nada de artefato\" e declarar um\ndegrau que nada carimba seria o painel sem escritor da ADR 0033. A frase terminava com a\ncondição — \"ele entra quando o outro lado o afirmar\" —, e o outro lado afirmou: a FDD 031\nde lá pôs ``artifact_accepted_at`` no snapshot, com emissor. O registro fica porque é ele\nque explica por que o degrau chegou último, e não por que faltava (ADR 0041).*",
         "enum": [
+          "artifact_accepted",
           "first_login",
           "first_document_opened",
           "first_pending_answered",

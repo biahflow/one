@@ -527,7 +527,16 @@ def test_the_roi_gap_comes_from_the_snapshot_and_not_from_the_assumption(
     from portal_api.models import Project
 
     _invited_days_ago(migrated_engine, cenario.organization_id, 30)
-    for step in onboarding.LADDER[:4]:
+    # Nomeados, e **não** `LADDER[:n]`: a fatia por índice se desloca inteira quando a escada
+    # ganha um degrau na frente, e foi exatamente o que a ADR 0041 fez — o teste passou a
+    # afirmar sobre outro degrau sem que uma linha dele mudasse.
+    for step in (
+        OnboardingStepName.artifact_accepted,
+        OnboardingStepName.first_login,
+        OnboardingStepName.first_document_opened,
+        OnboardingStepName.first_pending_answered,
+        OnboardingStepName.first_chat_turn,
+    ):
         onboarding.stamp(
             cenario.organization_id,
             step,
@@ -712,8 +721,264 @@ def test_the_tick_keeps_going_when_one_organization_blows_up(
         ]
 
 
-def _snapshot(*, biahflow_project_id: int, client_id: int) -> dict:
-    return {
+# --------------------------------------------------------------------------------------
+# O sétimo degrau (ADR 0041) — a aprovação que o Biahflow passou a afirmar.
+# --------------------------------------------------------------------------------------
+
+
+def test_the_snapshot_stamps_the_approval_with_the_date_of_the_decision(
+    migrated_engine: Engine,
+) -> None:
+    """O critério (3) da FDD 020, que ficou "adiado e não esquecido" por falta de produtor.
+
+    A data carimbada é a da **decisão** no Biahflow, não a da passagem do sync — é para isso
+    que ``reached_at`` existe separado do ``created_at`` (ADR 0039). Se fosse a do sync, todo
+    cliente pareceria ter fechado hoje e a régua nasceria zerada.
+    """
+    from portal_api.integrations import biahflow
+    from portal_api.models import Membership, Organization, Project
+
+    decidido = datetime(2026, 6, 12, 14, 30, tzinfo=timezone.utc)
+    with Session(migrated_engine) as setup:
+        project = biahflow.sync_snapshot(
+            setup,
+            _snapshot(
+                biahflow_project_id=713,
+                client_id=713,
+                artifact_accepted_at=decidido.isoformat(),
+            ),
+        )
+        setup.commit()
+        organization_id = project.organization_id
+        project_id = project.id
+
+    carimbos = {row.step: row.reached_at for row in _steps(migrated_engine, organization_id)}
+    assert OnboardingStepName.artifact_accepted in carimbos
+    assert carimbos[OnboardingStepName.artifact_accepted] == decidido
+
+    with Session(migrated_engine) as cleanup:
+        cleanup.execute(
+            delete(OnboardingStep).where(OnboardingStep.organization_id == organization_id)
+        )
+        cleanup.execute(delete(Membership).where(Membership.organization_id == organization_id))
+        cleanup.execute(delete(Project).where(Project.id == project_id))
+        cleanup.execute(delete(Organization).where(Organization.id == organization_id))
+        cleanup.commit()
+
+
+def test_the_first_snapshot_of_a_brand_new_client_already_stamps(
+    migrated_engine: Engine,
+) -> None:
+    """O defeito da ADR 0039 que só apareceu ao construir o sétimo degrau.
+
+    ``sync_snapshot`` **cria** a organização, e chamava um ``stamp`` que abre sessão própria:
+    no primeiro snapshot de um cliente novo a linha ``organization`` ainda não estava
+    comitada, o ``INSERT`` batia na chave estrangeira e o carimbo se perdia em silêncio,
+    saindo como ``onboarding.stamp_failed`` — que o ``alerts.md`` diagnostica como
+    indisponibilidade do banco.
+
+    Era raro com o entregável, e vira o caso **central** com a aprovação: aceitar o artefato
+    é justamente o fato que chega no primeiro snapshot. Este teste cobre os dois degraus de
+    uma vez, e reprova se alguém voltar a `stamp` aqui dentro.
+    """
+    from portal_api.integrations import biahflow
+    from portal_api.models import (
+        Membership,
+        Organization,
+        PhaseDeliverable,
+        Project,
+        ProjectPhase,
+    )
+
+    snapshot = _snapshot(
+        biahflow_project_id=715,
+        client_id=715,
+        artifact_accepted_at="2026-06-01T09:00:00+00:00",
+    )
+    snapshot["journey"] = {
+        "phases": [
+            {
+                "name": "Welcome",
+                "status": "active",
+                "position": 0,
+                "deliverables": [{"name": "Diagnóstico", "status": "delivered"}],
+            }
+        ]
+    }
+    with Session(migrated_engine) as setup:
+        project = biahflow.sync_snapshot(setup, snapshot)
+        setup.commit()
+        organization_id = project.organization_id
+        project_id = project.id
+
+    carimbados = {row.step for row in _steps(migrated_engine, organization_id)}
+    assert OnboardingStepName.artifact_accepted in carimbados
+    assert OnboardingStepName.first_deliverable_delivered in carimbados
+
+    with Session(migrated_engine) as cleanup:
+        cleanup.execute(
+            delete(OnboardingStep).where(OnboardingStep.organization_id == organization_id)
+        )
+        cleanup.execute(
+            delete(PhaseDeliverable).where(PhaseDeliverable.project_id == project_id)
+        )
+        cleanup.execute(delete(ProjectPhase).where(ProjectPhase.project_id == project_id))
+        cleanup.execute(delete(Membership).where(Membership.organization_id == organization_id))
+        cleanup.execute(delete(Project).where(Project.id == project_id))
+        cleanup.execute(delete(Organization).where(Organization.id == organization_id))
+        cleanup.commit()
+
+
+def test_a_failed_stamp_inside_the_sync_does_not_take_the_transaction_down(
+    migrated_engine: Engine,
+) -> None:
+    """O ``SAVEPOINT`` é o que faz "falha em silêncio" continuar verdade dentro do sync.
+
+    Um ``IntegrityError`` deixa a transação do Postgres em estado **abortado**: engolir a
+    exceção sem savepoint só adiaria a queda para o ``COMMIT``, trocando um degrau perdido
+    por um snapshot perdido — o inverso exato do que a ADR 0039 decidiu, e o desfecho que
+    "medir engajamento não pode derrubar o que o cliente veio fazer" existe para impedir.
+
+    O degrau impossível é uma organização que não existe, que é a mesma falha de chave
+    estrangeira do defeito medido acima.
+    """
+    from portal_api.models import Organization
+
+    with Session(migrated_engine) as session:
+        assert (
+            onboarding.stamp_within(
+                session, uuid.uuid4(), OnboardingStepName.artifact_accepted
+            )
+            is False
+        )
+        # A prova: a mesma transação segue utilizável depois da falha e comita.
+        organization = Organization(
+            name="Savepoint Ltda", slug=f"savepoint-{uuid.uuid4().hex[:8]}"
+        )
+        session.add(organization)
+        session.commit()
+        organization_id = organization.id
+
+    with Session(migrated_engine) as cleanup:
+        cleanup.execute(delete(Organization).where(Organization.id == organization_id))
+        cleanup.commit()
+
+
+def test_a_snapshot_without_the_field_stamps_nothing(migrated_engine: Engine) -> None:
+    """Um Biahflow anterior à FDD 031 manda um corpo sem a chave, e isso é **ausência**.
+
+    Ausência de afirmação não é negação nem confirmação (FDD 020) — o que não pode acontecer
+    é o sync inventar uma data para não deixar o campo vazio.
+    """
+    from portal_api.integrations import biahflow
+    from portal_api.models import Membership, Organization, Project
+
+    with Session(migrated_engine) as setup:
+        project = biahflow.sync_snapshot(
+            setup, _snapshot(biahflow_project_id=714, client_id=714)
+        )
+        setup.commit()
+        organization_id = project.organization_id
+        project_id = project.id
+
+    carimbados = {row.step for row in _steps(migrated_engine, organization_id)}
+    assert OnboardingStepName.artifact_accepted not in carimbados
+
+    with Session(migrated_engine) as cleanup:
+        cleanup.execute(delete(Membership).where(Membership.organization_id == organization_id))
+        cleanup.execute(delete(Project).where(Project.id == project_id))
+        cleanup.execute(delete(Organization).where(Organization.id == organization_id))
+        cleanup.commit()
+
+
+def test_the_approval_anchors_the_ruler_on_the_win_and_not_on_the_invite(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """O que a fatia inteira destrava, e não é um item a mais numa lista.
+
+    A régua da RFC 001 é o *time-to-first-value*: "quanto o cliente demora **do ganho** até a
+    primeira aprovação e até o primeiro ROI visto". Sem este degrau a âncora caía no convite,
+    que é quando **o portal** conheceu o cliente — de modo que um convite atrasado, que é
+    demora nossa, encurtava o número em vez de aparecer nele.
+
+    Aqui o cliente foi ganho há 20 dias e convidado há 9. O funil diz 20, e é a verdade.
+    """
+    _invited_days_ago(migrated_engine, cenario.organization_id, 9)
+    onboarding.stamp(
+        cenario.organization_id,
+        OnboardingStepName.artifact_accepted,
+        reached_at=datetime.now(timezone.utc) - timedelta(days=20),
+    )
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.anchor_source == "step"
+    assert leitura.days_stuck == 20
+    assert leitura.current_step is OnboardingStepName.first_login
+    assert "artifact_not_reported" not in leitura.gaps
+
+
+def test_a_live_project_corroborates_the_approval_instead_of_calling_everyone(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """A corroboração que impede a medição de nascer cega — de novo, um degrau abaixo.
+
+    ``artifact_accepted`` só passou a ser reportado pela FDD 031 do Biahflow, então toda
+    organização anterior a ela chega sem carimbo. Sendo o primeiro da escada, ele seria o
+    degrau atual de **todas**, e a tela mandaria registrar o contrato de clientes que estão em
+    produção há meses — a repetição exata do susto que a ADR 0040 mediu com o ``first_login``.
+
+    A evidência é estrutural: projeto vivo no Biahflow significa negócio fechado. A lacuna é
+    declarada, e nenhuma data é fabricada — por isso a âncora continua saindo do convite.
+    """
+    _invited_days_ago(migrated_engine, cenario.organization_id, 9)
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.first_login
+    assert "artifact_not_reported" in leitura.gaps
+    assert leitura.anchor_source == "membership"
+    assert leitura.days_stuck == 9
+    # O carimbo **não** nasceu: a corroboração reconhece o degrau, não o inventa na tabela.
+    carimbados = {row.step for row in _steps(migrated_engine, cenario.organization_id)}
+    assert OnboardingStepName.artifact_accepted not in carimbados
+
+
+def test_without_a_live_project_the_approval_stays_open_and_is_ours(
+    migrated_engine: Engine, cenario: Cenario
+) -> None:
+    """Sem projeto vivo não há corroboração, e o degrau em aberto é a verdade.
+
+    E ele é **sempre nosso**, como o do entregável: a aprovação acontece do outro lado, o
+    portal não a hospeda e não tem como coletá-la — nada que o cliente faça nesta tela move o
+    degrau.
+    """
+    from portal_api.models import Project
+
+    _invited_days_ago(migrated_engine, cenario.organization_id, 40)
+    with Session(migrated_engine) as session:
+        session.execute(
+            update(Project)
+            .where(Project.id == cenario.project_id)
+            .values(archived_at=datetime.now(timezone.utc))
+        )
+        session.commit()
+
+    leitura = _read(migrated_engine, cenario.organization_id)
+
+    assert leitura is not None
+    assert leitura.current_step is OnboardingStepName.artifact_accepted
+    assert leitura.blame is onboarding.Blame.us
+    assert leitura.threshold_days == 30
+    assert "artifact_not_reported" not in leitura.gaps
+
+
+def _snapshot(
+    *, biahflow_project_id: int, client_id: int, artifact_accepted_at: str | None = None
+) -> dict:
+    snapshot: dict = {
         "project": {
             "id": biahflow_project_id, "name": "Automação", "description": "",
             "status": "active", "start_date": "2026-08-01", "due_date": "2026-09-30",
@@ -723,3 +988,8 @@ def _snapshot(*, biahflow_project_id: int, client_id: int) -> dict:
         "milestones": [],
         "documents": [],
     }
+    # Só entra quando o teste o pede: a **ausência** da chave é o caso de um Biahflow
+    # anterior à FDD 031, e é um dos casos que precisam continuar cobertos.
+    if artifact_accepted_at is not None:
+        snapshot["artifact_accepted_at"] = artifact_accepted_at
+    return snapshot

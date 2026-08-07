@@ -1,6 +1,14 @@
 # RFC 001 — Funil de onboarding medido
 
-**Status:** proposta — 07/08/2026. Nada aqui está implementado.
+**Status:** **parcialmente implementada** — 07/08/2026. Passos 1, 2 e 3 do plano de rollout de
+pé (ADR 0039, ADR 0040); o passo 4, a vigília da IA, segue aberto pela condição que ele mesmo
+declara. O recorte construível é a **FDD 020**, que é quem carrega o estado item a item.
+
+*Corrigido em 07/08/2026 (ADR 0041): esta linha dizia `**Status:** proposta — 07/08/2026.
+Nada aqui está implementado.` e passou o dia inteiro sendo falsa — o funil foi carimbado pela
+manhã (ADR 0039) e ganhou leitor e alerta à tarde (ADR 0040). É pequena e é exatamente a
+espécie de frase que este repositório passou nove ADRs consertando: um documento afirmando um
+estado que já mudou. Fica registrada em vez de apagada, pelo motivo de sempre.*
 
 ## Contexto
 
@@ -40,7 +48,9 @@ deixando de ser nulo), primeiro documento aberto, primeira pendência respondida
 conversa com o assistente, primeiro ROI visto.
 
 **Degraus do Biahflow:** artefato aceito (`sent → accepted`) e primeiro entregável saindo de
-`pending`. Eles chegam pelo sync que já existe, e é aqui que a invariante da ADR 0006/0008
+`pending`. *Os dois estão de pé desde 07/08/2026 — o entregável na ADR 0039, o artefato na ADR
+0041, este último depois de a FDD 031 do Biahflow pôr a data no snapshot, porque ela não
+estava lá.* Eles chegam pelo sync que já existe, e é aqui que a invariante da ADR 0006/0008
 tem de valer sem exceção: **o portal não origina status**. O funil observa e carimba; não
 inventa progresso que o Biahflow não afirmou.
 

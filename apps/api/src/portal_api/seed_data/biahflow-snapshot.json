@@ -9,6 +9,7 @@
     "is_overdue": false,
     "client": { "id": 3, "name": "Acme Brasil" }
   },
+  "artifact_accepted_at": "2026-07-14T15:20:00+00:00",
   "completion": 68,
   "milestones": [
     {

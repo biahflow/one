@@ -62,14 +62,14 @@ $$;
 -- Dono do schema e das tabelas; roda `alembic upgrade`. Isento de RLS por ser
 -- dono (usamos ENABLE, não FORCE) — necessário para backfills em migrações.
 ALTER ROLE portal_migrator
-  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS
+  WITH LOGIN NOCREATEDB NOCREATEROLE NOBYPASSRLS
   PASSWORD :'migrator_password';
 
 -- Caminho de requisição da API e do worker. Sujeito à RLS.
 -- O NOBYPASSRLS/NOSUPERUSER é reafirmado a cada execução de propósito: é o
 -- invariante do qual toda a segurança de tenant depende.
 ALTER ROLE portal_app
-  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS
+  WITH LOGIN NOCREATEDB NOCREATEROLE NOBYPASSRLS
   PASSWORD :'app_password';
 
 -- Caminho de sistema: webhook do Biahflow, sync_biahflow_project e seed, que
@@ -77,7 +77,7 @@ ALTER ROLE portal_app
 -- ser barrados pela RLS. Privilégio visível na credencial, auditável por
 --   SELECT rolname FROM pg_roles WHERE rolbypassrls;
 ALTER ROLE portal_system
-  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS
+  WITH LOGIN NOCREATEDB NOCREATEROLE BYPASSRLS
   PASSWORD :'system_password';
 
 -- Caminho de administração de acesso: os endpoints /api/v1/admin, que convidam e
@@ -89,14 +89,65 @@ ALTER ROLE portal_system
 -- o grant no caminho de requisição, qualquer bug em qualquer endpoint poderia
 -- escrever controle de acesso, com só uma GUC no caminho. Sem o grant, não pode.
 ALTER ROLE portal_admin
-  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS
+  WITH LOGIN NOCREATEDB NOCREATEROLE NOBYPASSRLS
   PASSWORD :'admin_password';
+
+-- 2b. O NOSUPERUSER, reafirmado onde é possível reafirmá-lo -------------------
+--
+-- Ele saiu dos quatro ALTER acima e voltou aqui, sob guarda. **A intenção não
+-- mudou** — mudou o que o Postgres deixa fazer: só superusuário pode alterar o
+-- atributo de superusuário, **mesmo para reafirmá-lo com o valor que já está lá**.
+-- Num Postgres gerenciado (Neon, Cloud SQL) não existe superusuário para o portal
+-- usar, e sem esta guarda o bootstrap inteiro morria em `permission denied to
+-- alter role` numa linha que não muda nada, já que `CREATE ROLE` nasce
+-- `NOSUPERUSER`. Medido contra o Neon (PG 16.14): das sete cláusulas, **só esta**
+-- é recusada — inclusive `BYPASSRLS`, que é a que carrega o desenho, passa.
+--
+-- Por que reafirmar ainda vale onde dá: é defesa contra deriva. Se alguém
+-- promover `portal_app` a superusuário à mão, rodar o bootstrap desfaz. Onde não
+-- há superusuário, ninguém pode promover ninguém, então a defesa é desnecessária
+-- pelo mesmo motivo que é impossível.
+--
+-- O invariante continua guardado onde importa, e por teste e não por bootstrap:
+-- `test_rls_isolation.py` afirma `rolsuper` e `rolbypassrls` do papel de
+-- requisição, e o `restore.sh` os reafirma depois de restaurar.
+DO $$
+BEGIN
+  IF (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+    ALTER ROLE portal_migrator WITH NOSUPERUSER;
+    ALTER ROLE portal_app      WITH NOSUPERUSER;
+    ALTER ROLE portal_system   WITH NOSUPERUSER;
+    ALTER ROLE portal_admin    WITH NOSUPERUSER;
+  ELSE
+    RAISE NOTICE
+      'NOSUPERUSER não reafirmado: % não é superusuário. Esperado em Postgres gerenciado — nenhum papel pode ser promovido lá.',
+      current_user;
+  END IF;
+END
+$$;
 
 -- 3. Posse do schema e das tabelas já existentes ------------------------------
 -- Em volume novo o loop não encontra nada e as tabelas nascem do migrator. Em
 -- volume já existente (tabelas criadas por `portal` antes desta mudança) é este
 -- loop que transfere a posse — sem ele, `ALTER TABLE ... ENABLE ROW LEVEL
 -- SECURITY` na migração 0007 falharia por falta de permissão.
+
+-- Dar a posse exige **poder virar** o dono. Desde o PG 16, transferir um objeto
+-- para um papel requer que quem transfere seja membro dele com a opção SET — e
+-- num Postgres gerenciado o papel do bootstrap não é superusuário, então não
+-- ganha isso de graça. Sem esta linha, o script morre em `must be able to SET
+-- ROLE "portal_migrator"` logo abaixo (medido no Neon, PG 16.14).
+--
+-- Não afrouxa nada: quem roda este script já é o papel mais privilegiado do
+-- banco e poderia conceder a si mesmo de qualquer forma. E é só o `portal_migrator`
+-- — o `portal_system`, que é o do BYPASSRLS, não entra.
+DO $$
+BEGIN
+  IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+    EXECUTE format('GRANT portal_migrator TO %I', current_user);
+  END IF;
+END
+$$;
 
 ALTER SCHEMA portal OWNER TO portal_migrator;
 

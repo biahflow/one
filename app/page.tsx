@@ -121,6 +121,8 @@ type ApiMe = {
   full_name: string;
   is_internal: boolean;
   notify_by_email: boolean;
+  notify_by_whatsapp: boolean;
+  phone_hint: string;
   organization: string | null;
   projects: { id: string; name: string; slug: string; status: string }[];
   roles: string[];
@@ -285,6 +287,8 @@ function toUser(me: ApiMe): PortalUser {
     org: me.organization ?? "",
     isInternal: me.is_internal,
     notifyByEmail: me.notify_by_email,
+    notifyByWhatsapp: me.notify_by_whatsapp,
+    phoneHint: me.phone_hint,
   };
 }
 
@@ -341,7 +345,7 @@ async function apiFailure(url: string, status: number): Promise<Error> {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string }>;
+  searchParams: Promise<{ project?: string; tab?: string }>;
 }) {
   const base = process.env.API_BASE_URL;
 
@@ -359,7 +363,7 @@ export default async function Page({
   const authorization = await authorizationHeader();
   if (!session || session.error || !authorization) redirect("/login");
 
-  const { project: projectId } = await searchParams;
+  const { project: projectId, tab } = await searchParams;
   const dashboardUrl = projectId
     ? `${base}/api/v1/projects/${projectId}/dashboard`
     : `${base}/api/v1/me/dashboard`;
@@ -412,6 +416,7 @@ export default async function Page({
       user={user}
       projects={marked}
       notifications={notifications}
+      initialTab={tab}
     />
   );
 }

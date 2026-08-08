@@ -12,6 +12,10 @@ export const ME = {
   full_name: "Marina Farias",
   is_internal: false,
   notify_by_email: true,
+  // O canal nasce desligado e sem número (FDD 021, ADR 0043) — é o estado de toda
+  // conta no dia do deploy, e é o que a tela de Configurações tem de saber mostrar.
+  notify_by_whatsapp: false,
+  phone_hint: "",
   organization: "Acme Brasil",
   projects: [
     {

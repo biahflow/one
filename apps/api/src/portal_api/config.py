@@ -284,6 +284,47 @@ class Settings(BaseSettings):
     #: execução, que é o que o health score e o risco de atraso já fazem.
     onboarding_alert_deliverable_days: int = 30
 
+    # O canal de WhatsApp (Fase 7, FDD 021, ADR 0043). Desligado por padrão pelo
+    # argumento do `drive_sync_enabled`: uma stack local sem credencial não deve
+    # acordar para falhar contra um fornecedor. Aqui há uma razão a mais e ela é
+    # maior — este é o único canal do produto que alcança o **bolso** de alguém, e
+    # um default ligado transformaria um erro de configuração em mensagem enviada.
+    whatsapp_enabled: bool = False
+    #: Separado da flag para o estado da integração poder dizer "ligado e sem
+    #: credencial", que é o caso que mais confunde quem opera.
+    whatsapp_api_base: str = "https://graph.facebook.com/v21.0"
+    whatsapp_phone_number_id: str = ""
+    whatsapp_api_token: str = ""
+    #: O template mora no fornecedor — mensagem iniciada pelo negócio exige texto
+    #: aprovado antes. Daqui saem só as duas variáveis: o fato e o link.
+    whatsapp_template_name: str = "portal_aviso"
+    whatsapp_template_language: str = "pt_BR"
+    #: HMAC do corpo cru no webhook de entrada, na forma do `biahflow_webhook_secret`.
+    whatsapp_webhook_secret: str = ""
+
+    # O teto de frequência de contato (Fase 7, FDD 021 e FDD 022, ADR 0042).
+    #
+    # Dois números e não um mapa por canal: o orçamento é **da pessoa**, e ela não
+    # deve nada ao portal por a mensagem ter vindo de um canal ou de outro. Quem
+    # recebeu três mensagens recebeu três mensagens.
+    #
+    #: Uma semana, que é a unidade em que a FDD 022 escreve o próprio critério
+    #: ("um segundo evento na mesma semana não gera segundo convite").
+    contact_window_days: int = 7
+    #: Três por semana. Não há medição que o justifique — a primeira dela virá do
+    #: `contact.suppressed` — e por isso ele é setting e não constante de módulo, ao
+    #: contrário do `INSTRUMENTED_SINCE` do funil, que é fato sobre o código. O que
+    #: manda no número é o argumento da FDD 021: cada contato entrega algo —
+    #: informação, valor, solução — ou não acontece. Errar para baixo atrasa um
+    #: aviso que continua no sino; errar para cima queima o canal, e canal queimado
+    #: não se recupera baixando o teto depois.
+    contact_cap_per_window: int = 3
+    #
+    # **Sem janela de retenção própria**, de propósito: a poda do contato usa a da
+    # notificação (`retention_notification_days`, já sobrescritível por organização).
+    # O contato e o aviso são o mesmo fato visto de dois lados, e dois relógios sobre
+    # um fato só divergem no primeiro que alguém editar.
+
     # `extra="ignore"` porque o `.env` é compartilhado com o docker compose: ele
     # carrega POSTGRES_*, MINIO_* e KC_* que são do compose, não da aplicação.
     # Sem isso, quem segue o `cp .env.example .env` do README não consegue rodar

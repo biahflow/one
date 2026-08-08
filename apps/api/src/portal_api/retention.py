@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from portal_api.config import Settings
 from portal_api.models import (
     AgentEvent,
+    ContactEvent,
     Conversation,
     Document,
     Membership,
@@ -144,6 +145,19 @@ def purge_expired(
         Notification.created_at < reference - timedelta(days=limits.notification_days),
         limit=batch,
     )
+    # Pela janela **da notificação**, e não por uma própria (FDD 021, ADR 0042). O
+    # contato registrado e o aviso são o mesmo fato visto de dois lados — um do lado
+    # de dentro, outro do lado de fora —, e dar a cada um o seu relógio produziria a
+    # divergência no primeiro que alguém editasse. A janela do teto é outra coisa e
+    # é muito mais curta (`contact_window_days`): esta aqui decide por quanto tempo o
+    # registro sobrevive, não por quanto tempo ele conta.
+    outcome.removed["contact_event"] = _delete_batch(
+        session,
+        ContactEvent,
+        ContactEvent.organization_id == organization_id,
+        ContactEvent.created_at < reference - timedelta(days=limits.notification_days),
+        limit=batch,
+    )
     # Pelo `reached_at`, que é a data do **fato**, e não pelo `created_at` da linha: o degrau
     # do entregável chega pelo sync e pode ser carimbado depois de ter acontecido (ADR 0039).
     outcome.removed["onboarding_step"] = _delete_batch(
@@ -225,7 +239,11 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
       e com o dado mais sensível que o portal guarda: comportamento de pessoa
       identificada.
 
-      São as **duas** exclusões escritas à mão, e a regra que as une é essa: o que é
+    - **Sai** o ``contact_event`` (ADR 0042), pela regra abaixo e sem surpresa nenhuma:
+      ele nasceu depois de a regra existir e foi escrito já contando com ela. É o dado
+      da mesma classe que o funil — quantas vezes falamos com esta pessoa, e quando.
+
+      São as **três** exclusões escritas à mão, e a regra que as une é essa: o que é
       escopado por organização não vem no CASCADE do projeto. Toda tabela nova com
       ``organization_id`` e sem ``project_id`` precisa de uma linha aqui.
     - **Fica** a linha ``organization``, porque ela é a âncora do tenant e o
@@ -266,4 +284,9 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
         delete(OnboardingStep).where(OnboardingStep.organization_id == organization_id)
     )
     outcome.removed["onboarding_step"] = int(funnel.rowcount or 0)
+
+    contacts = session.execute(
+        delete(ContactEvent).where(ContactEvent.organization_id == organization_id)
+    )
+    outcome.removed["contact_event"] = int(contacts.rowcount or 0)
     return outcome

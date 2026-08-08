@@ -1192,3 +1192,84 @@ def test_the_app_role_cannot_stamp_its_own_step(
             ),
             {"org": tenant_a.organization_id},
         )
+
+
+# 9 — o teto de frequência de contato (Fase 7, FDD 021/022, ADR 0042) ------------
+#
+# Mesmo desfecho das tabelas acima e por um caminho diferente, que é o que estes
+# dois testes existem para fixar. As anteriores negam o papel de requisição
+# **omitindo** a policy; esta o nega com uma que diz `USING (false)`, porque a
+# omissão custaria reprovar o meta-teste (a tabela tem `organization_id`) e a saída
+# fácil — conceder leitura a uma tela que não existe — é o defeito da ADR 0033
+# escrito ao contrário. Se alguém trocar a regra por uma escopada ao ligar a tela da
+# FDD 022, é aqui que a troca aparece.
+
+
+@pytest.fixture
+def contact_events(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    from portal_api.models import ContactEvent, ContactKind
+
+    ids: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in tenants:
+            record = ContactEvent(
+                organization_id=tenant.organization_id,
+                user_id=tenant.user_id,
+                kind=ContactKind.whatsapp_notice,
+                dedupe_key=f"aviso:{tenant.organization_id}",
+            )
+            session.add(record)
+            session.flush()
+            ids[tenant.organization_id] = record.id
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        from portal_api.models import ContactEvent as _Contact
+
+        session.execute(delete(_Contact).where(_Contact.id.in_(list(ids.values()))))
+        session.commit()
+
+
+def test_the_app_role_never_reads_its_own_contact_history(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    contact_events: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Nem a linha que é sobre a própria pessoa autenticada.
+
+    Não é privacidade do cliente contra ele mesmo — é que não há leitor: nenhuma
+    tela mostra histórico de contato, e uma leitura aberta "por precaução" seria o
+    campo publicado sem consumidor da ADR 0033.
+    """
+    from portal_api.models import ContactEvent
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    assert rls_session.execute(select(ContactEvent)).scalars().all() == []
+
+
+def test_the_app_role_cannot_spend_or_forge_its_own_budget(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Escrever o próprio contato seria gastar — ou zerar — o próprio teto.
+
+    A simetria com o funil é exata: lá um caminho de requisição capaz de escrever o
+    degrau falseia o próprio engajamento; aqui um capaz de escrever o contato decide
+    quantas mensagens recebe. Quem escreve é o sistema, na transação do envio.
+    """
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        rls_session.execute(
+            text(
+                "INSERT INTO contact_event"
+                " (id, organization_id, user_id, kind, dedupe_key)"
+                " VALUES (gen_random_uuid(), :org, :user, 'whatsapp_notice', 'forjado')"
+            ),
+            {"org": tenant_a.organization_id, "user": tenant_a.user_id},
+        )

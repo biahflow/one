@@ -516,15 +516,67 @@ def test_a_client_only_sees_and_reads_their_own_notifications(
 
 
 def test_the_email_preference_belongs_to_the_caller(world: World, authenticated) -> None:
-    """Não recebe id de usuário: a preferência é sempre a de quem chamou."""
+    """Não recebe id de usuário: a preferência é sempre a de quem chamou.
+
+    A resposta cresceu na ADR 0043 e a igualdade exata **fica**: ela é o que garante
+    que a rota devolve o estado inteiro das preferências e não só o campo que o
+    chamador mexeu — que é justamente o que a tela passou a adotar, em vez de
+    recalcular do próprio lado.
+    """
     authenticated(world.acme.client)
 
     assert client.patch(
         "/api/v1/me/preferences", json={"notify_by_email": False}
-    ).json() == {"notify_by_email": False}
+    ).json() == {
+        "notify_by_email": False,
+        "notify_by_whatsapp": False,
+        "phone_hint": "",
+    }
     assert client.patch(
         "/api/v1/me/preferences", json={"notify_by_email": True}
-    ).json() == {"notify_by_email": True}
+    ).json() == {
+        "notify_by_email": True,
+        "notify_by_whatsapp": False,
+        "phone_hint": "",
+    }
+
+
+def test_the_channel_refuses_consent_without_a_number(world: World, authenticated) -> None:
+    """Ligar o canal sem telefone é 422, não um interruptor ligado sobre nada.
+
+    E o caminho feliz na sequência prova que a recusa é sobre o número e não sobre
+    o canal: com o telefone gravado, o mesmo PATCH passa — e o número volta
+    **mascarado**, porque a pessoa precisa reconhecer o que está cadastrado sem a
+    resposta carregar o número inteiro.
+    """
+    authenticated(world.acme.client)
+
+    refused = client.patch(
+        "/api/v1/me/preferences", json={"notify_by_whatsapp": True}
+    )
+    assert refused.status_code == 422
+
+    assert client.patch(
+        "/api/v1/me/preferences", json={"phone": "+55 (11) 98765-4321"}
+    ).json()["phone_hint"] == "••••4321"
+
+    granted = client.patch("/api/v1/me/preferences", json={"notify_by_whatsapp": True})
+    assert granted.status_code == 200
+    assert granted.json()["notify_by_whatsapp"] is True
+
+    # E o número inteiro não aparece em resposta nenhuma desta rota.
+    assert "98765" not in granted.text
+
+    # Apagar o número **revoga** o consentimento, que é o espelho do 422 acima: se
+    # ligar sem número é recusado, ficar ligado depois de o número sumir seria o
+    # mesmo estado impossível entrando pela outra porta. Isto também limpa o estado
+    # para o teste seguinte — o `world` é compartilhado.
+    erased = client.patch("/api/v1/me/preferences", json={"phone": ""})
+    assert erased.json() == {
+        "notify_by_email": True,
+        "notify_by_whatsapp": False,
+        "phone_hint": "",
+    }
 
 
 # --- URL temporária do documento (Fase 5, ADR 0017) -------------------------

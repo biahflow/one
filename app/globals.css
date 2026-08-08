@@ -489,6 +489,22 @@
   .setting-row:last-child { @apply border-b-0; }
   .setting-row strong { @apply block text-xs; }
   .setting-row span { @apply text-[10px] text-muted; }
+  /* O campo de telefone das preferências (FDD 021). `shrink-0` pelo mesmo motivo
+     do `.switch`: a linha é um `justify-between`, e sem isso o rótulo à esquerda
+     espreme o campo até ele sumir num idioma mais longo. */
+  .setting-field { @apply flex shrink-0 items-center gap-2; }
+  .setting-field input {
+    @apply w-40 rounded-lg border border-line bg-canvas px-2 py-1 text-[11px] text-ink;
+  }
+  .setting-field input:focus { @apply outline-none ring-2 ring-brand-300; }
+  .setting-field button {
+    @apply rounded-lg bg-brand-500 px-2.5 py-1 text-[10px] font-medium text-white;
+  }
+  .setting-field button:disabled { @apply opacity-60; }
+  /* O erro do campo herda `text-muted` da regra de `span` acima, e um erro cinza
+     não é um erro. Sobrescreve pelo papel, não pela posição. */
+  .setting-row span[role="alert"] { @apply mt-1 block text-danger-600; }
+
   .switch { @apply relative h-5 w-9 shrink-0 rounded-full bg-slate-200 transition-colors; }
   .switch i {
     @apply absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-[left];

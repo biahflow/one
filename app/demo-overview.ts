@@ -17,6 +17,8 @@ export const DEMO_USER: PortalUser = {
   org: "Acme Brasil",
   isInternal: false,
   notifyByEmail: true,
+  notifyByWhatsapp: false,
+  phoneHint: "",
 };
 
 export const DEMO_PROJECTS: ProjectSummary[] = [

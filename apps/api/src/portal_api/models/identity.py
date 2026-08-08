@@ -36,6 +36,17 @@ class User(Base, TimestampMixin):
     notify_by_email: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+    # O canal de WhatsApp (Fase 7, FDD 021, ADR 0043). O telefone é da pessoa e não
+    # do projeto, e é campo de **segredo para efeito de log** — `telemetry._redact`
+    # o cobre pelo nome.
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Desligado por padrão, ao contrário de `notify_by_email`, e a assimetria é o
+    # ponto: quem foi convidado para acompanhar um projeto quer saber quando ele
+    # anda, mas um canal que chega no bolso da pessoa exige que ela diga sim. Ligado
+    # por padrão, o deploy transformaria toda conta existente em destinatária.
+    notify_by_whatsapp: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class Membership(Base, TimestampMixin):

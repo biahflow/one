@@ -1,7 +1,16 @@
 # FDD 021 — Avisos por WhatsApp
 
-**Status:** proposta — 07/08/2026. Nada aqui está implementado. Recorte construível da
-**RFC 002**.
+**Status:** **implementada** — 07/08/2026 (ADR 0043). Recorte construível da **RFC 002**.
+
+> *Os seis critérios de aceite estão de pé e têm teste. O que a construção descobriu, e que
+> nenhum documento previa, foi que **metade da fatia não era o canal**: o critério (4) exige
+> que o link caia "na coisa exata, nunca na home", e não havia link nem URL que o suportasse.
+> `Notification.link` existe desde a Fase 2, o sino o renderiza como `<a>` quando preenchido, e
+> as dez ramificações do `diff` **nunca o preencheram** — a ADR 0033 outra vez, na direção que
+> ninguém tinha olhado: lá um painel sobre campo sem escritor, aqui um **controle** sobre campo
+> sem escritor. E a navegação por abas era estado de React, sem URL que a alcançasse, de modo
+> que nem havia o que escrever. As duas coisas foram construídas antes do canal, e o sino ganhou
+> links de carona.*
 
 ## Objetivo e não objetivos
 
@@ -104,3 +113,14 @@ adversariais existentes — e ainda assim com revisão, porque a mensagem sai do
 **Teto de frequência por pessoa**, compartilhado com os demais avisos e com a pesquisa da FDD
 022. Um canal de abertura quase total é o mais fácil de queimar: cada contato entrega algo —
 informação, valor, solução — ou não acontece.
+
+*Entregue em 07/08/2026, **antes** desta FDD e em fatia própria (ADR 0042). O combinado era
+sair junto da FDD 022, e não sobreviveu ao calendário: aquela FDD está bloqueada por uma
+condição que não é código — o laço de ação do funil — e esta não tem bloqueio nenhum, de modo
+que manter o acordo entregaria o canal **sem teto** ou o prenderia atrás de uma condição que
+não é dele. `portal_api.contact_budget.claim()` é a porta: uma chamada que decide **e**
+registra, porque separar em "posso?" e "gastei" criaria a fresta em que um remetente pergunta e
+esquece o segundo passo. O envio desta FDD a consome antes de falar com o provedor, e o
+`dedupe_key` que ele passa é o da própria notificação — é o que faz a retentativa sobre
+`whatsapp_sent_at IS NULL` não gastar uma segunda unidade e transformar um provedor fora do ar
+em silêncio permanente.*

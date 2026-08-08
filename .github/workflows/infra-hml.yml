@@ -34,11 +34,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # **Conta própria, diferente da do deploy.** A `hml-deploy` tem as quatro
+      # permissões de trocar revisão e publicar imagem, e nenhuma delas cria uma
+      # sub-rede, uma conta de serviço ou um pool de WIF — com ela este workflow
+      # falhava em `permission denied` no primeiro recurso. A `hml-infra` tem o
+      # que um `apply` exige, que é quase o projeto inteiro, e é justamente por ser
+      # tanto que ela não pode ser a conta que roda a cada push na `main`.
       - uses: google-github-actions/auth@v2
         with:
           project_id: biahflow-hml
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: hml-deploy@biahflow-hml.iam.gserviceaccount.com
+          service_account: hml-infra@biahflow-hml.iam.gserviceaccount.com
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -51,13 +57,15 @@ jobs:
 
       - run: terraform -chdir=$DIRETORIO validate
 
-      # `tag_imagem` é obrigatória mas irrelevante aqui: o módulo do Cloud Run
-      # ignora mudança de imagem (`lifecycle.ignore_changes`), justamente para que
-      # um apply de infraestrutura não reverta o último deploy.
+      # **Sem `-var tag_imagem`**, e a ausência é o conserto. O `ignore_changes` do
+      # módulo protege a imagem do último deploy — mas só em *update*: num serviço
+      # que ainda não existe, a tag literal é usada, e uma tag que não está no
+      # registro faz o Cloud Run recusar a revisão. `tag_imagem` vazia significa
+      # `imagem_bootstrap`, e é assim que o primeiro apply consegue criar o serviço
+      # que o `deploy-hml.yml` depois atualiza.
       - name: Plano
         run: |
-          terraform -chdir=$DIRETORIO plan -input=false -lock-timeout=5m \
-            -var "tag_imagem=ignorado-pelo-lifecycle" -out=plano.tfplan
+          terraform -chdir=$DIRETORIO plan -input=false -lock-timeout=5m -out=plano.tfplan
 
       - name: Aplica
         if: github.event_name == 'workflow_dispatch' && inputs.aplicar

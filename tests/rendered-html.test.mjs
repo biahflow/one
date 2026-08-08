@@ -19,6 +19,45 @@ let serverPromise;
 let apiStub;
 /** `X-Request-ID` de cada chamada que o BFF fez à API (ADR 0018). */
 const seenTraceIds = [];
+/** `X-Serverless-Authorization` de cada chamada, e quantas vezes o token foi cunhado (ADR 0046). */
+const seenServiceTokens = [];
+let metadataStub;
+let metadataHits = 0;
+
+/**
+ * O servidor de metadados do Cloud Run, de mentira.
+ *
+ * Ele existe porque a segunda barreira da `portal-api` — IAM invoker, além do
+ * ingress interno — não era exercida por chamador nenhum, e um 403 do Cloud Run
+ * acontece **antes** da aplicação: não apareceria em log nosso nem em teste que
+ * fale só com o stub da API. `GCE_METADATA_HOST` é o nome que as bibliotecas do
+ * Google já honram, e é por isso que o módulo o lê em vez de ganhar um parâmetro
+ * que só existiria para testar.
+ */
+function startMetadataStub() {
+  const server = createServer((request, response) => {
+    if (!request.url?.includes("/identity")) {
+      response.writeHead(404).end("");
+      return;
+    }
+    // O Cloud Run recusa a requisição sem este header, e recusar aqui é o que faz
+    // a asserção provar que o módulo o manda.
+    if (request.headers["metadata-flavor"] !== "Google") {
+      response.writeHead(403).end("");
+      return;
+    }
+    metadataHits += 1;
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    const parte = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    response
+      .writeHead(200, { "content-type": "text/plain" })
+      .end(`${parte({ alg: "RS256" })}.${parte({ exp, aud: "stub" })}.assinatura`);
+  });
+  const listening = new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => resolve(`127.0.0.1:${server.address().port}`));
+  });
+  return { server, listening };
+}
 
 /**
  * Substitui o dashboard servido pelo stub, para o caso em que ele difere do
@@ -33,6 +72,7 @@ let dashboardOverride = null;
 function startApiStub() {
   const server = createServer((request, response) => {
     seenTraceIds.push(request.headers["x-request-id"]);
+    seenServiceTokens.push(request.headers["x-serverless-authorization"]);
     const body = request.url?.startsWith("/api/v1/me/dashboard")
       ? (dashboardOverride ?? DASHBOARD)
       : request.url?.startsWith("/api/v1/me/notifications")
@@ -87,7 +127,9 @@ async function sessionCookie() {
 
 async function startServer() {
   apiStub ??= startApiStub();
+  metadataStub ??= startMetadataStub();
   const apiBaseUrl = await apiStub.listening;
+  const metadataHost = await metadataStub.listening;
 
   const port = 3100 + Math.floor(Math.random() * 800);
   const child = spawn("npx", ["next", "start", "-p", String(port)], {
@@ -109,6 +151,11 @@ async function startServer() {
       AUTH_SECRET,
       API_BASE_URL: apiBaseUrl,
       DEMO_MODE: "false",
+      // Finge que estamos no Cloud Run: é `K_SERVICE` que liga a identidade de
+      // serviço, e sem ele o módulo devolve `null` de propósito — rodar o portal
+      // na sua máquina não pode virar erro de servidor por falta de metadados.
+      K_SERVICE: "portal-web",
+      GCE_METADATA_HOST: metadataHost,
     },
   });
 
@@ -165,6 +212,7 @@ after(async () => {
     }
   }
   apiStub?.server.close();
+  metadataStub?.server.close();
 });
 
 /** Every source file we author, so guards survive files being split up. */
@@ -454,6 +502,42 @@ test("carries one trace id from the SSR to every API call", async () => {
 
   assert.ok(ids.length >= 3, `esperava ao menos 3 chamadas, vi ${ids.length}`);
   assert.equal(new Set(ids).size, 1, `esperava um id só, vi ${[...new Set(ids)].join(", ")}`);
+});
+
+test("apresenta a identidade do serviço à API, sem tirar a da pessoa", async () => {
+  // A `portal-api` sobe com ingress interno **e** sem `allUsers` no `run.invoker`,
+  // e o módulo do Cloud Run chama isso de duas barreiras. A segunda não era
+  // atravessada por ninguém: o BFF mandava só o token do Keycloak, que não diz nada
+  // ao Cloud Run — toda chamada interna levaria 403 **antes** da aplicação, então
+  // nem o log da API nem o stub deste arquivo veriam a falha (ADR 0046).
+  //
+  // O que este teste prende é o par: o header de serviço chega, e o `Authorization`
+  // continua sendo o da pessoa. Trocar um pelo outro — que é o erro fácil, porque o
+  // Cloud Run aceita ID token em `Authorization` — faria a API perder o principal e
+  // responder 401 a uma chamada autorizada.
+  seenServiceTokens.length = 0;
+  const antes = metadataHits;
+
+  const response = await render("/", { headers: { cookie: await sessionCookie() } });
+  assert.equal(response.status, 200);
+  // O corpo precisa ser consumido: o SSR é streamed, e as chamadas à API acontecem
+  // enquanto ele flui. Sem isto o teste lê os headers antes de haver o que ler — e
+  // passaria a medir a ordem em que o Node agenda, não o que o BFF manda.
+  await response.text();
+
+  const vistos = seenServiceTokens.filter(Boolean);
+  assert.ok(vistos.length >= 3, `esperava ao menos 3 chamadas com o header, vi ${vistos.length}`);
+  for (const valor of vistos) {
+    assert.match(valor, /^Bearer ey/, "o header de serviço tem que carregar um JWT");
+  }
+
+  // E o token é cunhado uma vez, não uma por `fetch`: o servidor de metadados fica
+  // no caminho quente de toda renderização, e três chamadas de rede por tela para
+  // buscar o mesmo token é custo que não aparece em teste nenhum de correção.
+  assert.ok(
+    metadataHits - antes <= 1,
+    `esperava no máximo uma cunhagem, houve ${metadataHits - antes}`,
+  );
 });
 
 test("honours a trace id supplied by whoever called the BFF", async () => {

@@ -3,11 +3,14 @@
 
 projeto = "biahflow-hml"
 regiao  = "us-east1"
-zona    = "us-east1-b"
 
-# Vazio = `nip.io` sobre o IP de saída. Quando houver domínio, preencha e aplique;
-# depois disso, ajuste `redirectUris` e o issuer no realm do Keycloak (runbook).
+# Vazio = `nip.io` sobre o IP de **entrada** do balanceador. Quando houver domínio,
+# preencha e aplique; depois disso, ajuste `redirectUris` e o issuer no realm do
+# Keycloak (runbook `hml-gcp.md`).
 dominio = ""
 
-# SHA do commit. O workflow de deploy passa por `-var`; nunca `latest`.
-tag_imagem = "PREENCHER"
+# **Deixe de fora no primeiro apply.** Vazio significa `imagem_bootstrap`, que é o
+# único jeito de criar um serviço antes de existir imagem nossa no registro. Depois
+# quem passa a tag é o `deploy-hml.yml`, com o SHA do commit — e o `ignore_changes`
+# de cada módulo impede que um apply de infraestrutura reverta o último deploy.
+# tag_imagem = "<sha>"

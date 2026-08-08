@@ -5,6 +5,8 @@ variable "projeto" { type = string }
 variable "regiao" { type = string }
 variable "nomes_de_segredo" { type = list(string) }
 variable "repositorios_github" { type = list(string) }
+variable "repositorio_infra" { type = string }
+variable "bucket_estado" { type = string }
 
 locals {
   apis = [
@@ -16,6 +18,18 @@ locals {
     "sts.googleapis.com",
     "dns.googleapis.com",
     "storage.googleapis.com",
+    # As três abaixo não estavam na lista, e são as de que o **próprio Terraform**
+    # depende: `serviceusage` para o `google_project_service` acima poder existir,
+    # `cloudresourcemanager` para os `google_project_iam_member`, `iam` para o pool
+    # de WIF e as contas de serviço. Num projeto novo elas costumam vir desligadas,
+    # e o apply falha na primeira dessas linhas — depois de já ter criado rede.
+    #
+    # Declará-las aqui **não** dispensa habilitá-las à mão antes do primeiro apply:
+    # é preciso a API de habilitar APIs para habilitar APIs. Elas estão aqui para
+    # que ninguém as desligue depois achando que não são usadas.
+    "serviceusage.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "iam.googleapis.com",
   ]
 }
 
@@ -67,6 +81,23 @@ resource "google_compute_router" "roteador" {
 resource "google_compute_address" "saida" {
   name   = "hml-saida"
   region = var.regiao
+}
+
+# O endereço de **entrada**, que é outra coisa e mora aqui pelo mesmo motivo que o
+# de saída: endereço é o que a nuvem entrega, e este módulo é onde isso é dito.
+#
+# Ele é global porque o balanceador da borda é global, e nasce **aqui** e não lá por
+# causa de um ciclo: sem domínio próprio, o nome de cada frente contém o IP
+# (`portal.<ip>.nip.io`), e o certificado da borda precisa dos nomes — um endereço
+# criado na borda faria o `servicos.tf` depender de uma saída daquele módulo para
+# produzir uma entrada dele.
+#
+# Confundir os dois foi o defeito que o módulo `borda` conserta: o `nip.io` era
+# montado sobre o de saída, que é por onde o Cloud Run *fala* com o Neon e o Upstash
+# e onde serviço nenhum escuta.
+resource "google_compute_global_address" "entrada" {
+  name       = "hml-entrada"
+  depends_on = [google_project_service.api]
 }
 
 resource "google_compute_router_nat" "nat" {
@@ -165,18 +196,24 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   oidc { issuer_uri = "https://token.actions.githubusercontent.com" }
 }
 
+# **Duas contas, e a divisão é a mesma dos dois workflows.** Trocar a imagem de um
+# serviço e mudar a forma da infraestrutura têm raios de dano diferentes — é o que
+# o cabeçalho do `deploy-hml.yml` argumenta —, e separar os workflows sem separar
+# as credenciais deixava o argumento pela metade: um `deploy-hml.yml` comprometido
+# usava a mesma conta que pode recriar a rede.
+#
+# Uma versão anterior tinha só a `hml-deploy`, com as quatro permissões de baixo, e
+# era ela que o `infra-hml.yml` usava para rodar `terraform apply`. Não funcionava:
+# nenhuma daquelas quatro cria uma sub-rede, uma conta de serviço ou um pool de WIF.
+
 resource "google_service_account" "deploy" {
   account_id   = "hml-deploy"
   display_name = "Deploy de HML pelo GitHub Actions"
 }
 
-resource "google_service_account_iam_member" "federacao" {
-  for_each           = toset(var.repositorios_github)
-  service_account_id = google_service_account.deploy.name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${each.value}"
-}
-
+# O que um deploy precisa e nada além: publicar imagem, trocar revisão, executar
+# job, e acrescentar versão de segredo. Não inclui **ler** segredo — quem lê é a
+# `hml-execucao`, em tempo de execução.
 resource "google_project_iam_member" "deploy" {
   for_each = toset([
     "roles/run.admin",
@@ -189,14 +226,76 @@ resource "google_project_iam_member" "deploy" {
   member  = "serviceAccount:${google_service_account.deploy.email}"
 }
 
+resource "google_service_account" "infra" {
+  account_id   = "hml-infra"
+  display_name = "Terraform de HML pelo GitHub Actions"
+}
+
+# O que um `apply` precisa. É muito, e é por isso que ela não é a conta do deploy:
+# esta lista é praticamente o projeto inteiro, e só o `infra-hml.yml` — que aplica
+# sob `workflow_dispatch` com `aplicar=true`, nunca em push — se autentica com ela.
+resource "google_project_iam_member" "infra" {
+  for_each = toset([
+    "roles/compute.networkAdmin",
+    "roles/compute.loadBalancerAdmin",
+    "roles/compute.securityAdmin",
+    "roles/run.admin",
+    "roles/artifactregistry.admin",
+    "roles/secretmanager.admin",
+    "roles/storage.admin",
+    "roles/iam.serviceAccountAdmin",
+    "roles/iam.workloadIdentityPoolAdmin",
+    "roles/resourcemanager.projectIamAdmin",
+    "roles/serviceusage.serviceUsageAdmin",
+  ])
+  project = var.projeto
+  role    = each.value
+  member  = "serviceAccount:${google_service_account.infra.email}"
+}
+
+# O estado. Sem esta linha o `terraform init` do CI falha antes de planejar
+# qualquer coisa, e o erro não menciona o bucket — diz só que a credencial não
+# serve. O bucket é criado à mão (ovo e galinha, ver `backend.tf`), então ele entra
+# por nome e não por referência.
+resource "google_storage_bucket_iam_member" "estado" {
+  bucket = var.bucket_estado
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.infra.email}"
+}
+
+# A federação, por conta e por repositório. A `hml-deploy` vale para os dois repos,
+# porque os dois publicam imagem; a `hml-infra` vale **só para o repo que contém o
+# Terraform** — dar a outro a conta que pode recriar a rede seria conceder um poder
+# que ele não tem como exercer e não tem por que ter.
+locals {
+  federacoes = merge(
+    { for repo in var.repositorios_github :
+      "deploy/${repo}" => { conta = google_service_account.deploy.name, repo = repo }
+    },
+    { "infra/${var.repositorio_infra}" = {
+      conta = google_service_account.infra.name, repo = var.repositorio_infra
+    } },
+  )
+}
+
+resource "google_service_account_iam_member" "federacao" {
+  for_each           = local.federacoes
+  service_account_id = each.value.conta
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${each.value.repo}"
+}
+
 # --- Saídas -----------------------------------------------------------------
 
 output "rede" { value = google_compute_network.rede.id }
 output "sub_rede" { value = google_compute_subnetwork.sub_rede.id }
 output "conta_execucao" { value = google_service_account.execucao.email }
 output "conta_deploy" { value = google_service_account.deploy.email }
+output "conta_infra" { value = google_service_account.infra.email }
 output "bucket_documentos" { value = google_storage_bucket.documentos.name }
 output "ip_saida" { value = google_compute_address.saida.address }
+output "ip_entrada" { value = google_compute_global_address.entrada.address }
+output "endereco_entrada" { value = google_compute_global_address.entrada.id }
 output "registro" {
   value = "${var.regiao}-docker.pkg.dev/${var.projeto}/${google_artifact_registry_repository.imagens.repository_id}"
 }

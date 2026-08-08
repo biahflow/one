@@ -110,4 +110,21 @@ resource "google_cloud_run_v2_service_iam_member" "publico" {
   member   = "allUsers"
 }
 
+# E a segunda barreira precisava de **alguém que a atravessasse**. Ela estava
+# descrita acima e não era exercida por ninguém: nenhum chamador apresentava
+# identidade ao Cloud Run, então toda chamada interna levaria 403 antes de a
+# aplicação existir na conversa — e o 403 do Cloud Run não aparece em log nosso
+# (ADR 0046).
+#
+# Quem invoca é a conta de execução, que é a mesma dos dois lados: o serviço que
+# chama roda com ela, e é ela que o `X-Serverless-Authorization` do BFF apresenta.
+# Concedida **só nos internos**, porque num público o `allUsers` acima já responde.
+resource "google_cloud_run_v2_service_iam_member" "invocacao_interna" {
+  count    = var.publico ? 0 : 1
+  name     = google_cloud_run_v2_service.servico.name
+  location = var.regiao
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.conta}"
+}
+
 output "url" { value = google_cloud_run_v2_service.servico.uri }

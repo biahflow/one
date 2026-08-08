@@ -5,11 +5,16 @@ trabalho de reescrever um diretório em vez de reescrever o produto.
 
 ```
 ambientes/hml/servicos.tf   ← camada portátil: o que a aplicação precisa, em termos neutros
-ambientes/hml/main.tf       ← a costura
-modulos/fundacao/           ← como a GCP entrega rede, registro, segredo, identidade
+ambientes/hml/main.tf       ← a costura, e os dois portões de segredo
+modulos/fundacao/           ← como a GCP entrega rede, endereço, registro, segredo, identidade
 modulos/servico-cloudrun/   ← como a GCP entrega "um serviço HTTP"
-modulos/maquina-fila/       ← como a GCP entrega "um processo longo + Redis"
+modulos/worker-pool/        ← como a GCP entrega "um processo longo sem HTTP"
+modulos/job/                ← como a GCP entrega "um trabalho que começa e termina"
+modulos/borda/              ← como a GCP entrega "este nome, com TLS, aponta para aquele serviço"
 ```
+
+`modulos/maquina-fila/` esteve listado aqui e **nunca existiu** depois da ADR 0045: era a VM que
+os worker pools substituíram, e a linha sobreviveu à remoção do diretório.
 
 `servicos.tf` descreve os serviços sem citar GCP: nome, imagem, porta, se é público, variáveis,
 segredos, quantas instâncias. Trocar de provedor é reescrever `modulos/` e manter aquele arquivo.
@@ -40,12 +45,40 @@ Isto foi medido antes de escolher, e é o que sustenta a promessa acima:
 
 ## O domínio
 
-Ainda não há um. `var.dominio` vazio faz tudo cair em **`nip.io`** sobre o IP de saída, que dá
-nome estável o bastante para o OIDC funcionar. Quando o domínio existir, é **uma variável**: o
-`terraform apply` refaz os mapeamentos e as URLs.
+Ainda não há um. `var.dominio` vazio faz tudo cair em **`nip.io`** sobre o IP de **entrada** do
+balanceador, que dá nome estável o bastante para o OIDC funcionar. Quando o domínio existir, é
+**uma variável**: o `terraform apply` reemite o certificado e refaz as regras de host.
+
+Duas coisas que esta seção afirmava e não eram verdade, e que o `modulos/borda/` conserta:
+
+- **O IP era o de saída**, do Cloud NAT — o endereço por onde o Cloud Run *fala* com o Neon e o
+  Upstash, e onde serviço nenhum escuta. O nome resolvia e não respondia, então o login OIDC não
+  fechava. Agora há um `hml-entrada` global, e é sobre ele que o `nip.io` é montado.
+- **Não havia mapeamento nenhum.** A frase "o `terraform apply` refaz os mapeamentos" descrevia
+  código que não existia: `servicos.tf` declarava uma chave `dominio` por serviço e a costura
+  nunca a lia. O caminho não podia ser `google_cloud_run_domain_mapping`, que exige verificação
+  de posse no Search Console e `nip.io` não é nosso; é balanceador HTTPS externo com NEGs sem
+  servidor, cujo certificado gerenciado se valida por resolução DNS até o IP — o que o `nip.io`
+  satisfaz por construção. O preço é uma regra de encaminhamento global, único custo fixo de HML.
 
 O que **não** é automático na troca: o realm do Keycloak guarda `redirectUris` e o `issuer`, e
 os dois `.env` guardam `KEYCLOAK_ISSUER` e `PORTAL_WEB_URL`. Está no runbook.
+
+## Os dois portões
+
+`ambientes/hml/main.tf` reprova o plano quando um segredo é referenciado por um serviço e não é
+criado, **e** quando um segredo é criado e nenhum serviço o lê. As duas direções já falharam:
+`ANTHROPIC_API_KEY` e `VOYAGE_API_KEY` existiam no cofre sem chegar a ninguém — o respondedor
+ficava offline em silêncio, que é o que a ADR 0022 existe para impedir — e o segredo do BFF era
+entregue com um nome que o `auth.ts` não lê. São `precondition` e não `check`: `check` só emite
+warning, e um portão que não reprova é decoração.
+
+## As identidades
+
+Duas contas, e a divisão é a dos dois workflows: `hml-deploy` publica imagem e troca revisão,
+`hml-infra` roda o `terraform apply`. Antes havia só a primeira, e era ela que o `infra-hml.yml`
+usava — com as quatro permissões de deploy, que não criam sub-rede, conta de serviço nem pool de
+WIF. Só o repositório que **contém** o Terraform federa a `hml-infra`.
 
 ## Estado
 
@@ -64,3 +97,17 @@ terraform plan
 Os segredos vão para o Secret Manager por fora (`gcloud secrets versions add`), e o Terraform só
 os **referencia**. O `preflight.py` recusa subir com segredo de exemplo (ADR 0022), então um
 segredo esquecido vira falha de boot e não vazamento.
+
+## O primeiro apply é local, e não é preferência
+
+O `infra-hml.yml` se autentica por Workload Identity Federation — e **o pool de WIF é criado por
+este Terraform**. Antes do primeiro apply não existe a credencial que o CI usaria para aplicar,
+então o primeiro apply sai de uma máquina, com credencial de pessoa. Só depois o `provedor_wif`
+existe para ir na variável `WIF_PROVIDER` dos dois repositórios, e o CI passa a se sustentar.
+
+Na mesma linha, `tag_imagem` vazia é o caso do primeiro apply: o Artifact Registry ainda está
+vazio, e um serviço criado apontando para tag inexistente tem a revisão recusada pelo Cloud Run.
+Vazio significa `imagem_bootstrap` (o `hello` da Google), e o `ignore_changes` de cada módulo
+garante que nenhum apply posterior a traga de volta por cima da imagem que o deploy publicou.
+
+A ordem inteira, com o que é manual e por quê, está em `docs/runbooks/hml-gcp.md`.

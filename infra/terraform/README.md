@@ -32,9 +32,11 @@ Isto foi medido antes de escolher, e é o que sustenta a promessa acima:
 | `web` (BFF Next.js) | Cloud Run, **público** | é o único que o navegador alcança |
 | `api` (FastAPI) | Cloud Run, **ingress interno** | o `Caddyfile` diz por extenso que a API não é pública: quem fala com ela é o BFF. Publicá-la daria à internet um caminho que o produto não usa |
 | `keycloak` | Cloud Run, público, `KC_PROXY=edge` | TLS termina na borda, e acreditar nisso é opt-in (ADR 0011) |
-| `worker` + `beat` + Redis | **uma VM** | o Celery não escuta HTTP, e um serviço Cloud Run **precisa** escutar em `$PORT` ou a revisão falha. Pôr os três na mesma VM também dispensa o Memorystore |
+| `worker` + `beat` | **Cloud Run worker pool** | a primitiva feita para carga longa sem HTTP — o container de um worker pool nem tem bloco `ports`. Uma versão anterior deste arquivo os mandava para uma VM, sobre a conclusão errada de que o Cloud Run não os aceitava (ADR 0045) |
+| Redis | **Upstash**, externo | cobrado por comando, então o `polling_interval` do Celery foi afrouxado para 5s — um worker ocioso a 1s gera ~86 mil comandos/dia sem trabalho nenhum |
 | documentos | Cloud Storage | S3-compatível por HMAC. Resolve de carona um ponto que o `Caddyfile` deixou em aberto: a URL assinada **cobre o host**, e o MinIO não era publicado |
-| Postgres | Neon (fora da GCP) | ver ADR 0044 — o `roles.sql` foi verificado lá |
+| Postgres | Neon, externo | ver ADR 0044 — o `roles.sql` foi verificado lá |
+| rede | VPC + **egress direto** + Cloud NAT | a VPC existe por um motivo só: fazer o `INGRESS_TRAFFIC_INTERNAL_ONLY` das APIs significar alguma coisa. Sem conector — ele é peça paga, e worker pool nem o aceita |
 
 ## O domínio
 

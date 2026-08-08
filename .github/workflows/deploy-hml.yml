@@ -93,13 +93,16 @@ jobs:
               --region "$REGIAO" --quiet
           done
 
-      # O worker e o beat vivem na VM da fila (ver `infra/terraform/modulos/
-      # maquina-fila`): não são Cloud Run porque o Celery não escuta HTTP.
-      # Reiniciar as unidades é o que os faz pegar a imagem nova.
+      # O worker e o beat são **worker pools**: Cloud Run sem HTTP. A imagem deles é
+      # a da `portal-api`, e de propósito — eles executam as tasks que a API
+      # enfileira, então precisam do mesmo código.
       - name: Atualiza os processos longos
         run: |
-          gcloud compute ssh hml-fila --zone "${REGIAO}-b" --tunnel-through-iap --quiet \
-            --command "sudo systemctl restart portal-worker portal-beat"
+          for w in portal-worker portal-beat; do
+            gcloud beta run worker-pools update "$w" \
+              --image "$REGISTRO/portal-api:$GITHUB_SHA" \
+              --region "$REGIAO" --quiet
+          done
 
       # Fumaça, e ela é o que separa "o deploy terminou" de "o deploy funcionou".
       # A API é de ingress interno, então quem responde de fora é o BFF — e é

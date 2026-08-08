@@ -74,6 +74,9 @@ locals {
         "BIAHFLOW_READ_TOKEN", "BIAHFLOW_WEBHOOK_SECRET",
         "AGENT_KEY_PEPPER", "DRIVE_TOKEN_ENCRYPTION_KEY",
         "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
+        # Upstash, `rediss://`. Externo e por segredo — não há Redis nosso para
+        # apontar, e é isso que dispensou a VM e o Memorystore.
+        "REDIS_URL",
       ]
     }
 
@@ -133,12 +136,43 @@ locals {
     }
   }
 
-  # Os processos longos que **não falam HTTP**, e é por isso que não são Cloud Run:
-  # `celery worker` e `celery beat` não escutam porta, e um serviço Cloud Run que
-  # não escuta em `$PORT` tem a revisão recusada. Vão para a VM, junto do Redis que
-  # eles consomem — o que também dispensa o Memorystore.
+  # Os processos longos que **não falam HTTP**. Vão para **worker pool**, que é a
+  # primitiva do Cloud Run feita para isso — o container de um worker pool nem tem
+  # bloco `ports`. (Uma versão anterior deste arquivo os mandava para uma VM,
+  # sobre a conclusão errada de que o Cloud Run não os aceitava; ver ADR 0045.)
+  #
+  # `instancias` é contagem **fixa**, e para o `beat` o número é 1 por definição:
+  # dois agendadores emitem a mesma tarefa duas vezes.
   processos_longos = {
-    portal-worker = "celery -A portal_api.worker.celery_app worker --loglevel=INFO"
-    portal-beat   = "celery -A portal_api.worker.celery_app beat --loglevel=INFO"
+    portal-worker = {
+      comando    = ["celery", "-A", "portal_api.worker.celery_app", "worker", "--loglevel=INFO"]
+      instancias = 1
+      cpu        = "1"
+      memoria    = "1Gi"
+    }
+    portal-beat = {
+      comando    = ["celery", "-A", "portal_api.worker.celery_app", "beat", "--loglevel=INFO"]
+      instancias = 1
+      cpu        = "1"
+      memoria    = "512Mi"
+    }
+  }
+
+  # Os trabalhos que começam e terminam. Existiam nos workflows de deploy e não
+  # existiam em lugar nenhum — um workflow que invoca recurso inexistente falha no
+  # primeiro deploy, que é tarde para descobrir.
+  trabalhos = {
+    portal-migrate = {
+      servico = "portal-api"
+      comando = ["alembic", "upgrade", "head"]
+    }
+    biahflow-migrate = {
+      servico = "biahflow-api"
+      comando = ["python", "manage.py", "migrate", "--noinput"]
+    }
+    biahflow-check = {
+      servico = "biahflow-api"
+      comando = ["python", "manage.py", "check_integrations", "--all"]
+    }
   }
 }

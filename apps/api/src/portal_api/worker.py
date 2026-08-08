@@ -66,6 +66,29 @@ configure_logging()
 preflight(settings)
 celery_app = Celery("portal_api", broker=settings.redis_url, backend=settings.redis_url)
 
+# **O laço ocioso tem preço quando o Redis é cobrado por comando.**
+#
+# No compose o Redis é nosso e um `BRPOP` a mais não custa nada. Em HML ele é
+# gerenciado (Upstash), a conta é por comando, e um worker parado consome cota sem
+# nenhum trabalho ter acontecido — que é o modo de falha em que a fila para no meio
+# do mês e ninguém liga uma coisa à outra.
+#
+# `polling_interval` é o intervalo entre visitas do Celery à fila quando ela está
+# vazia. O default (1s) dá ~86 mil comandos por dia por instância só para descobrir
+# que não há nada a fazer. Cinco segundos derrubam isso para ~17 mil e custam, no
+# pior caso, cinco segundos de latência numa fila cujo trabalho mais rápido é
+# mandar um e-mail.
+#
+# `visibility_timeout` precisa ser **maior que a tarefa mais longa**, senão o
+# Celery devolve para a fila uma tarefa que ainda está rodando e ela executa duas
+# vezes. A mais longa aqui é a ingestão de documento (varredura, extração,
+# embedding); uma hora é folga confortável.
+celery_app.conf.broker_transport_options = {
+    "polling_interval": 5.0,
+    "visibility_timeout": 3600,
+}
+celery_app.conf.result_expires = 3600
+
 # O primeiro agendador do projeto (ADR 0016). A ADR 0005 já reivindicava o sync do
 # Drive como job desde sempre; o que faltava era quem acordasse.
 #

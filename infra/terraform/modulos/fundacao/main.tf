@@ -12,7 +12,6 @@ locals {
     "artifactregistry.googleapis.com",
     "secretmanager.googleapis.com",
     "compute.googleapis.com",
-    "vpcaccess.googleapis.com",
     "iamcredentials.googleapis.com",
     "sts.googleapis.com",
     "dns.googleapis.com",
@@ -45,29 +44,20 @@ resource "google_compute_subnetwork" "sub_rede" {
   network       = google_compute_network.rede.id
 }
 
-# O conector é o que deixa o Cloud Run alcançar a VM da fila pela rede privada.
-# Sem ele, o Redis teria de ter IP público — que é a forma de expor um banco de
-# fila sem autenticação forte à internet.
-resource "google_vpc_access_connector" "conector" {
-  name   = "hml-conector"
-  region = var.regiao
-  subnet {
-    name = google_compute_subnetwork.conector.name
-  }
-  min_instances = 2
-  max_instances = 3
-  depends_on    = [google_project_service.api]
-}
+# **Não há conector de VPC**, e a ausência é decisão. O Cloud Run alcança a rede
+# por *egress direto* (`network_interfaces`), que dispensa as instâncias pagas do
+# conector — e um worker pool nem aceita conector: no schema dele, `vpc_access` só
+# tem `network_interfaces`.
+#
+# A VPC existe por um motivo só: **isolar as duas APIs**. Elas sobem com
+# `INGRESS_TRAFFIC_INTERNAL_ONLY`, e é a rede que faz esse "internal" significar
+# alguma coisa. Sem ela, a chamada do BFF sairia pela internet e bateria na porta
+# que o próprio ingress recusa.
 
-resource "google_compute_subnetwork" "conector" {
-  name          = "hml-conector-${var.regiao}"
-  ip_cidr_range = "10.20.1.0/28" # /28 é o que o conector exige
-  region        = var.regiao
-  network       = google_compute_network.rede.id
-}
-
-# Saída pela internet com IP estável — é dele que sai o nome `nip.io` enquanto
-# não há domínio, e é ele que se põe numa allowlist de terceiro se precisar.
+# Saída pela internet com IP estável. Aqui ele é obrigatório e não conveniência:
+# com `egress = ALL_TRAFFIC`, **toda** saída passa pela VPC, e sem NAT o Cloud Run
+# perderia o Neon, o Upstash e o Anthropic de uma vez. De carona, dá endereço fixo
+# para pôr na allowlist daqueles dois.
 resource "google_compute_router" "roteador" {
   name    = "hml"
   region  = var.regiao
@@ -192,7 +182,6 @@ resource "google_project_iam_member" "deploy" {
     "roles/run.admin",
     "roles/artifactregistry.writer",
     "roles/iam.serviceAccountUser",
-    "roles/compute.instanceAdmin.v1",
     "roles/secretmanager.secretVersionManager",
   ])
   project = var.projeto
@@ -204,7 +193,6 @@ resource "google_project_iam_member" "deploy" {
 
 output "rede" { value = google_compute_network.rede.id }
 output "sub_rede" { value = google_compute_subnetwork.sub_rede.id }
-output "conector_vpc" { value = google_vpc_access_connector.conector.id }
 output "conta_execucao" { value = google_service_account.execucao.email }
 output "conta_deploy" { value = google_service_account.deploy.email }
 output "bucket_documentos" { value = google_storage_bucket.documentos.name }

@@ -12,24 +12,6 @@ module "fundacao" {
   repositorios_github = var.repositorios_github
 }
 
-module "fila" {
-  source = "../../modulos/maquina-fila"
-
-  projeto   = var.projeto
-  regiao    = var.regiao
-  zona      = var.zona
-  tipo      = var.maquina_fila
-  rede      = module.fundacao.rede
-  sub_rede  = module.fundacao.sub_rede
-  conta     = module.fundacao.conta_execucao
-  imagem    = "${module.fundacao.registro}/portal-api:${var.tag_imagem}"
-  processos = local.processos_longos
-  # O worker precisa do mesmo ambiente da API: mesmo banco, mesmo storage, mesmo
-  # teto de contato. Ele executa as **tasks** que a API enfileira.
-  variaveis = local.servicos_http["portal-api"].variaveis
-  segredos  = local.servicos_http["portal-api"].segredos
-}
-
 module "servicos" {
   source   = "../../modulos/servico-cloudrun"
   for_each = local.servicos_http
@@ -45,11 +27,72 @@ module "servicos" {
   minimo   = each.value.min
   maximo   = each.value.max
   conta    = module.fundacao.conta_execucao
-  conector = module.fundacao.conector_vpc
+  rede     = module.fundacao.rede
+  sub_rede = module.fundacao.sub_rede
 
-  # O `REDIS_URL` só existe depois de a VM existir, e é por isso que ele entra
-  # aqui e não em `servicos.tf`: a camada portátil descreve *que* há uma fila, não
-  # onde ela mora.
-  variaveis = merge(each.value.variaveis, { REDIS_URL = module.fila.redis_url })
+  variaveis = each.value.variaveis
   segredos  = each.value.segredos
+}
+
+# O worker e o beat. **A imagem é a da `portal-api`**, e isso é proposital: eles
+# executam as tasks que a API enfileira, então precisam do mesmo código, do mesmo
+# banco e do mesmo storage. Duas imagens divergiriam no dia em que alguém
+# acrescentasse uma task e reconstruísse só uma delas.
+module "workers" {
+  source   = "../../modulos/worker-pool"
+  for_each = local.processos_longos
+
+  projeto    = var.projeto
+  regiao     = var.regiao
+  nome       = each.key
+  imagem     = "${module.fundacao.registro}/portal-api:${var.tag_imagem}"
+  comando    = each.value.comando
+  instancias = each.value.instancias
+  cpu        = each.value.cpu
+  memoria    = each.value.memoria
+  conta      = module.fundacao.conta_execucao
+  rede       = module.fundacao.rede
+  sub_rede   = module.fundacao.sub_rede
+
+  variaveis = local.servicos_http["portal-api"].variaveis
+  segredos  = local.servicos_http["portal-api"].segredos
+}
+
+# Os trabalhos que começam e terminam. Cada um herda o ambiente do serviço de que
+# é irmão — o `migrate` do portal precisa exatamente do que a `portal-api` tem, e
+# manter as duas listas separadas seria criar uma segunda verdade sobre a mesma
+# configuração.
+module "trabalhos" {
+  source   = "../../modulos/job"
+  for_each = local.trabalhos
+
+  projeto  = var.projeto
+  regiao   = var.regiao
+  nome     = each.key
+  imagem   = "${module.fundacao.registro}/${each.value.servico}:${var.tag_imagem}"
+  comando  = each.value.comando
+  conta    = module.fundacao.conta_execucao
+  rede     = module.fundacao.rede
+  sub_rede = module.fundacao.sub_rede
+
+  variaveis = local.servicos_http[each.value.servico].variaveis
+  # A migração escreve o schema, então ela usa a credencial do **migrator** — que
+  # é dona das tabelas e não é a do caminho de requisição (ADR 0010).
+  segredos = each.key == "portal-migrate" ? concat(
+    local.servicos_http[each.value.servico].segredos, ["DATABASE_MIGRATION_URL"]
+  ) : local.servicos_http[each.value.servico].segredos
+}
+
+output "urls" {
+  value = { for k, m in module.servicos : k => m.url }
+}
+
+output "ip_saida" {
+  description = "IP fixo de saída — para a allowlist do Neon e do Upstash."
+  value       = module.fundacao.ip_saida
+}
+
+output "provedor_wif" {
+  description = "Vai na variável de repositório WIF_PROVIDER dos dois repos."
+  value       = module.fundacao.provedor_wif
 }

@@ -14,7 +14,8 @@ variable "memoria" { type = string }
 variable "minimo" { type = number }
 variable "maximo" { type = number }
 variable "conta" { type = string }
-variable "conector" { type = string }
+variable "rede" { type = string }
+variable "sub_rede" { type = string }
 variable "variaveis" { type = map(string) }
 variable "segredos" { type = list(string) }
 
@@ -37,11 +38,18 @@ resource "google_cloud_run_v2_service" "servico" {
     }
 
     vpc_access {
-      connector = var.conector
-      # `PRIVATE_RANGES_ONLY` e não `ALL_TRAFFIC`: só o que vai para a rede
-      # privada passa pelo conector. Mandar a saída inteira por ele custaria
-      # banda e faria toda chamada a terceiro depender de uma peça a mais.
-      egress = "PRIVATE_RANGES_ONLY"
+      network_interfaces {
+        network    = var.rede
+        subnetwork = var.sub_rede
+      }
+      # `ALL_TRAFFIC`, e é ele que faz o ingress interno funcionar. Com
+      # `PRIVATE_RANGES_ONLY`, a chamada do BFF para a API sairia pela internet e
+      # bateria na porta que o `INGRESS_TRAFFIC_INTERNAL_ONLY` recusa — o serviço
+      # subiria, o `terraform plan` ficaria limpo, e a tela daria erro.
+      #
+      # O preço é que **toda** saída passa pela VPC, inclusive Neon, Upstash e
+      # Anthropic. Quem paga esse preço é o Cloud NAT da fundação.
+      egress = "ALL_TRAFFIC"
     }
 
     containers {

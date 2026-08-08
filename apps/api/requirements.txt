@@ -41,7 +41,7 @@ cryptography==50.0.0
 # em Python: a imagem da API não ganha dependência de sistema por causa disto.
 pypdf==6.15.0
 python-docx==1.2.0
-redis==6.2.0
+redis==8.1.0
 sqlalchemy==2.0.41
 uvicorn[standard]==0.34.3
 # Embeddings (ADR 0014). Import preguiçoso no adapter, como o `anthropic`: sem

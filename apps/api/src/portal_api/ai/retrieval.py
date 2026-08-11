@@ -23,6 +23,7 @@ from portal_api.ai.embeddings import get_embedder
 from portal_api.config import Settings
 from portal_api.models import (
     MilestoneState,
+    PendingOrigin,
     PendingState,
     Project,
     ProjectStatus,
@@ -133,6 +134,26 @@ def collect_evidence(session: Session, ctx: TenantContext, project: Project) -> 
 
     for pending in PendingItemRepository(session, ctx).list():
         if pending.state == PendingState.resolved:
+            continue
+        # **A lacuna de ontem não é a evidência de hoje.** Quando o assistente não
+        # acha resposta ele abre uma pendência cujo título carrega a pergunta
+        # (`ai/service.py`), e essa linha volta aqui como evidência com
+        # `source="Pendência: Responder dúvida do cliente: <pergunta>"`. O casador
+        # do `OfflineResponder` aceita qualquer evidência que compartilhe um token
+        # de quatro letras com a pergunta, então a pergunta seguinte casa a lacuna
+        # que a anterior gerou — e o turno sai `sufficient=True` citando o próprio
+        # fracasso, cada rodada deixando mais material para a próxima.
+        #
+        # É a regra 3 do `AGENTS.md` pelo avesso: a resposta cita fonte, e a fonte
+        # é o portal repetindo a pergunta do cliente. A mesma razão que faz
+        # `conversation_message` nunca ser fonte de recuperação (ADR 0015) vale
+        # aqui, porque o conteúdo é o mesmo — o que o cliente digitou.
+        #
+        # O recorte é por `origin` e não por texto: só dois sítios criam
+        # `PendingItem`, e o do chat é o único que cai no default `portal`, então
+        # a coluna responde exatamente à pergunta "isto veio da fonte?". É o mesmo
+        # discriminador que `sync_snapshot` já usa para não apagar as do chat.
+        if pending.origin is not PendingOrigin.biahflow:
             continue
         owner = f" (responsável: {pending.owner_label})" if pending.owner_label else ""
         evidence.append(

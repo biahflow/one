@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { ADMIN, CLIENTE, PROJETO_DO_SEED, projetoDoSeed, signIn } from "./atores";
+
 /**
  * O convite ponta a ponta — o único teste que prova o produto inteiro.
  *
@@ -10,26 +12,11 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
-const ADMIN = { username: "helena.dias", password: "portal_local_only" };
 const NEW_PASSWORD = "Convidado#2026";
 
 /** E-mail novo a cada execução: o realm guarda contas entre rodadas. */
 function freshEmail(): string {
   return `convidado.${Date.now().toString(36)}@cliente.com.br`;
-}
-
-async function signIn(page: Page, username: string, password: string) {
-  // Ver a mesma nota nos demais specs: limpar coladinho no `goto` fecha a janela
-  // em que uma requisição em voo reescreve o cookie e `/login` redireciona para
-  // `/`, deixando o teste esperando um botão que não existe naquela tela.
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Entrar com SSO/ }).click();
-  await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
-  await page.locator("#username").fill(username);
-  await page.locator("#password").fill(password);
-  await page.locator("#kc-login").click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
 /** O link de ação que o Keycloak mandou para este endereço.
@@ -67,9 +54,14 @@ test("administrador convida, a pessoa recebe o e-mail e entra vendo só o projet
 }) => {
   const email = freshEmail();
 
-  await signIn(page, ADMIN.username, ADMIN.password);
+  await signIn(page, ADMIN);
 
-  await page.goto("/admin");
+  // Com `?project=`: o convite é emitido contra o projeto que a página está
+  // administrando, e sem isto essa página é `me.projects[0]` — "o projeto mais
+  // recente", que num banco acumulado é outro. O convite funcionava; nascia
+  // endereçado ao tenant errado, e a asserção lá embaixo é que denunciava.
+  const projeto = await projetoDoSeed(page);
+  await page.goto(`/admin?project=${projeto}`);
   await expect(page.getByRole("heading", { name: /Quem enxerga/ })).toBeVisible();
 
   await page.getByLabel("Nome").fill("Convidado de Teste");
@@ -100,16 +92,20 @@ test("administrador convida, a pessoa recebe o e-mail e entra vendo só o projet
 
   await inviteePage.goto("/");
   if (inviteePage.url().includes("/login")) {
-    await signIn(inviteePage, email, NEW_PASSWORD);
+    await signIn(inviteePage, { username: email, password: NEW_PASSWORD });
   }
 
-  await expect(inviteePage.getByText("Automação Financeira").first()).toBeVisible();
+  // Aqui **não** entra `?project=`, e é de propósito: quem foi convidado tem
+  // vínculo direto num projeto só, então o padrão dele é determinístico — e a
+  // asserção é justamente que ele cai no projeto para o qual foi convidado, sem
+  // pedir. Passar o id aqui provaria só que a URL funciona.
+  await expect(inviteePage.getByText(PROJETO_DO_SEED).first()).toBeVisible();
   await expect(inviteePage.getByText("Bom dia, Convidado.")).toBeVisible();
   await invitee.close();
 });
 
 test("cliente não alcança a administração", async ({ page }) => {
-  await signIn(page, "marina.farias", "portal_local_only");
+  await signIn(page, CLIENTE);
 
   await page.goto("/admin");
 

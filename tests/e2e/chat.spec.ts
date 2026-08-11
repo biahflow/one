@@ -1,6 +1,13 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
+import {
+  ADMIN,
+  CLIENTE as CLIENT,
+  MEMBRO_INTERNO as INTERNAL,
+  projetoDoSeed,
+  signIn,
+} from "./atores";
 import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
 
 /**
@@ -13,29 +20,19 @@ import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
  * O F5 é o teste. Sem ele, um `useState` que nunca foi limpo passaria igual.
  */
 
-const CLIENT = { username: "marina.farias", password: "portal_local_only" };
-// Membro interno do mesmo projeto — quem *mais* teria motivo para ver a conversa
-// do cliente, e justamente por isso o caso que vale testar.
-const INTERNAL = { username: "rafael.costa", password: "portal_local_only" };
-
-async function signIn(page: Page, user: { username: string; password: string }) {
-  // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
-  // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
-  // sessão logo depois, e aí `/login` redireciona para `/` (ele faz isso quando
-  // há sessão) e o botão nunca aparece. O sintoma é um timeout esperando um
-  // botão numa página que é o dashboard.
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Entrar com SSO/ }).click();
-  await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
-  await page.locator("#username").fill(user.username);
-  await page.locator("#password").fill(user.password);
-  await page.locator("#kc-login").click();
-  await page.waitForURL(
-    (url) => !url.pathname.startsWith("/login") && !url.pathname.startsWith("/realms"),
-  );
-}
-
+/**
+ * Dois atores internos, e a distinção entre eles é o assunto de um dos testes
+ * abaixo. `INTERNAL` (`rafael.costa`) é `internal_member`: alcança o projeto e
+ * **não** alcança `/admin/*`, porque `admin.py:_authorized` exige
+ * `internal_admin` e responde 404. `ADMIN` (`helena.dias`) é quem alcança.
+ *
+ * O terceiro teste deste arquivo usava o Rafael para abrir `/admin/assistente` e
+ * por isso **nunca passou** — recebia o 404 do contrato e o media como se fosse
+ * ausência do comentário. Trocar a constante compartilhada teria consertado ele
+ * e estragado o segundo teste, onde o Rafael é o ator certo e insubstituível:
+ * ali o que se prova é que **nem quem tem acesso ao projeto** lê a conversa do
+ * cliente, e usar a administradora enfraqueceria a afirmação.
+ */
 async function ask(page: Page, question: string) {
   await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
   await page.getByLabel("Pergunta para IA").fill(question);
@@ -133,25 +130,52 @@ test("o comentário do cliente chega à tela do time interno", async ({ page, co
   const remark = `faltou-o-cronograma-${Date.now().toString(36)}`;
 
   await signIn(page, CLIENT);
-  await ask(page, "Qual é o status do projeto?");
-  const answer = () => page.locator(".message--assistant").last();
-  await expect(answer()).toBeVisible({ timeout: 30_000 });
+
+  // Índice fixo, e não `.last()` — pela razão que o primeiro teste deste arquivo
+  // já explica e que aqui morde mais fundo. A conversa sobrevive entre execuções
+  // (ADR 0015), então a thread já tem turnos, e `.last()` é **reavaliada a cada
+  // chamada**: entre preencher o campo e clicar em "Enviar" ela pode passar a
+  // apontar para outra mensagem, e o clique procura um botão que naquele turno
+  // está desabilitado, porque o comentário foi digitado no turno de antes.
+  // Contar e fixar o índice amarra as quatro interações ao turno que este teste
+  // criou.
+  const answers = page.locator(".message--assistant");
+  await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
+  await page.waitForLoadState("networkidle");
+  const before = await answers.count();
+
+  await page.getByLabel("Pergunta para IA").fill("Qual é o status do projeto?");
+  await page.getByRole("button", { name: "Enviar pergunta" }).click();
+  await expect(answers).toHaveCount(before + 1, { timeout: 30_000 });
+  const answer = answers.nth(before);
 
   // O campo só aparece depois do polegar: pedir texto antes torna o polegar
   // caro, e o polegar barato é o que faz existir algum sinal.
-  await answer().getByRole("button", { name: "Esta resposta não ajudou" }).click();
-  const comment = answer().getByRole("textbox", { name: "Comentário sobre esta resposta" });
+  await answer.getByRole("button", { name: "Esta resposta não ajudou" }).click();
+  const comment = answer.getByRole("textbox", { name: "Comentário sobre esta resposta" });
   await expect(comment).toBeVisible();
   await comment.fill(remark);
-  await answer().getByRole("button", { name: "Enviar" }).click();
+  await answer.getByRole("button", { name: "Enviar" }).click();
 
   await context.clearCookies();
-  await signIn(page, INTERNAL);
-  await page.goto("/admin/assistente");
+  // `ADMIN`, e não o membro interno: a tela é `internal_admin`-only por
+  // contrato. E com `?project=`, porque sem ele a página administra
+  // `me.projects[0]` — o projeto mais recente — enquanto o comentário foi
+  // escrito na conversa da Marina, e o painel viria vazio pelo motivo errado.
+  await signIn(page, ADMIN);
+  await page.goto(`/admin/assistente?project=${await projetoDoSeed(page)}`);
 
   // O comentário aparece; a pergunta do cliente, não — o GRANT de coluna da
   // ADR 0030 é quem garante a segunda metade, e ela é afirmada aqui de novo
   // porque é o que torna a primeira aceitável.
-  await expect(page.locator(".field-list")).toContainText(remark, { timeout: 30_000 });
+  //
+  // Escopado ao painel: `.field-list` é a lista de rótulo e valor do design
+  // system e a tela tem duas — a do agregado ("Avaliadas 14 (9%)") e esta. Um
+  // `.field-list` solto casa as duas e reprova por ambiguidade, o que este
+  // teste nunca chegou a mostrar porque antes ele parava no 404.
+  const avaliacoes = page
+    .locator("article.panel")
+    .filter({ has: page.getByRole("heading", { name: /O que os clientes disseram/ }) });
+  await expect(avaliacoes.locator(".field-list")).toContainText(remark, { timeout: 30_000 });
   await expect(page.locator("body")).not.toContainText("Qual é o status do projeto?");
 });

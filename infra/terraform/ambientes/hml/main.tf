@@ -65,6 +65,7 @@ output "numero_projeto" {
 }
 
 output "registro" { value = module.fundacao.registro }
+output "registro_espelho" { value = module.fundacao.registro_espelho }
 output "conta_execucao" { value = module.fundacao.conta_execucao }
 output "rede" { value = module.fundacao.rede }
 output "sub_rede" { value = module.fundacao.sub_rede }

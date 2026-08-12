@@ -31,8 +31,11 @@ locals {
 
   primeiro_apply = var.tag_imagem == ""
 
-  imagem = { for nome in keys(local.servicos_http) :
-    nome => local.primeiro_apply ? var.imagem_bootstrap : "${local.fundacao.registro}/${nome}:${var.tag_imagem}"
+  # Imagem declarada no serviço vence; para as nossas vale a regra de sempre.
+  imagem = { for nome, s in local.servicos_http :
+    nome => s.imagem != null ? s.imagem : (
+      local.primeiro_apply ? var.imagem_bootstrap : "${local.fundacao.registro}/${nome}:${var.tag_imagem}"
+    )
   }
 }
 
@@ -54,8 +57,9 @@ module "servicos" {
   rede     = local.fundacao.rede
   sub_rede = local.fundacao.sub_rede
 
-  variaveis = each.value.variaveis
-  segredos  = each.value.segredos
+  argumentos = each.value.argumentos
+  variaveis  = each.value.variaveis
+  segredos   = each.value.segredos
 }
 
 # Os processos longos. **A imagem é a do serviço de que cada um é irmão**, e isso é

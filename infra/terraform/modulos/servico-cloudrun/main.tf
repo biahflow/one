@@ -43,6 +43,22 @@ variable "maximo" { type = number }
 variable "conta" { type = string }
 variable "rede" { type = string }
 variable "sub_rede" { type = string }
+# Os **argumentos** do contêiner, e a palavra importa: no Cloud Run `command` substitui
+# o *entrypoint* e `args` é o que se passa a ele. Os módulos de job e de worker usam
+# `comando` porque lá a substituição é o ponto (`python manage.py migrate`); aqui não —
+# a imagem do Keycloak tem `kc.sh` como entrypoint, e `command = ["start"]` fez o Cloud
+# Run procurar um binário chamado `start`. É o `command:` do Docker Compose, que apesar
+# do nome vira `args`.
+#
+# Vazio para as nossas imagens, que trazem entrypoint e argumento próprios
+# — e é por isso que esta variável não existia. O primeiro serviço de terceiro do
+# ambiente mostrou a falta: a imagem do Keycloak tem `kc.sh` como entrypoint e **nenhum
+# comando padrão**, então ela sobe, imprime a ajuda e sai — e o Cloud Run relata
+# "failed to start and listen on the port", que fala de porta e não de comando.
+variable "argumentos" {
+  type    = list(string)
+  default = []
+}
 variable "variaveis" { type = map(string) }
 
 # **Mapa e não lista: a chave é a variável de ambiente, o valor é o nome do segredo.**
@@ -103,6 +119,9 @@ resource "google_cloud_run_v2_service" "servico" {
 
     containers {
       image = var.imagem
+      # `null` e não `[]`: lista vazia significaria "sem argumento" para a API, em vez
+      # de "não declare".
+      args = length(var.argumentos) > 0 ? var.argumentos : null
       ports { container_port = var.porta }
 
       resources {
@@ -155,6 +174,13 @@ resource "google_cloud_run_v2_service" "servico" {
     ignore_changes = [
       template[0].containers[0].image,
       scaling,
+      # `client` e `client_version` são carimbo de **quem tocou por último**, e quem
+      # toca a imagem é o `gcloud` do deploy, por desenho. Sem ignorá-los, todo deploy
+      # deixa o plano sujo e o `apply` seguinte os remove — para o deploy seguinte
+      # recolocar. É o mesmo desvio perpétuo da ADR 0051, pela mesma razão: um plano
+      # que nunca fica limpo deixa de distinguir mudança de rotina.
+      client,
+      client_version,
     ]
   }
 }

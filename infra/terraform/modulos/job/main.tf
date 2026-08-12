@@ -72,7 +72,16 @@ resource "google_cloud_run_v2_job" "job" {
 
   # O workflow aponta a imagem nova antes de executar.
   lifecycle {
-    ignore_changes = [template[0].template[0].containers[0].image]
+    ignore_changes = [
+      template[0].template[0].containers[0].image,
+      # `client` e `client_version` são carimbo de **quem tocou por último**, e quem
+      # toca a imagem é o `gcloud` do deploy, por desenho. Sem ignorá-los, todo deploy
+      # deixa o plano sujo e o `apply` seguinte os remove — para o deploy seguinte
+      # recolocar. É o mesmo desvio perpétuo da ADR 0051, pela mesma razão: um plano
+      # que nunca fica limpo deixa de distinguir mudança de rotina.
+      client,
+      client_version,
+    ]
   }
 }
 

@@ -83,10 +83,21 @@ celery_app = Celery("portal_api", broker=settings.redis_url, backend=settings.re
 # Celery devolve para a fila uma tarefa que ainda está rodando e ela executa duas
 # vezes. A mais longa aqui é a ingestão de documento (varredura, extração,
 # embedding); uma hora é folga confortável.
+#
+# `global_keyprefix` existe porque **em HML o Redis é dividido com o outro produto**, e
+# não por gosto: o plano contratado do Upstash tem um índice só — medido, o `SELECT 1`
+# responde `Only 0th database is supported!`. Sem prefixo, a fronteira entre os dois
+# seria a sorte de os nomes não se cruzarem: o Django de lá usa o Redis como cache e
+# escreve chaves `:1:<algo>`, o Celery daqui escreve `celery`, `_kombu.binding.*` e
+# `celery-task-meta-*`. Hoje não colidem — e "hoje não colidem" é a mesma garantia que a
+# ADR 0033 chama de campo sem guarda. Com prefixo, um `KEYS portal:*` responde o que é
+# nosso e um expurgo acidental do outro lado não alcança esta fila.
 celery_app.conf.broker_transport_options = {
     "polling_interval": 5.0,
     "visibility_timeout": 3600,
+    "global_keyprefix": "portal:",
 }
+celery_app.conf.result_backend_transport_options = {"global_keyprefix": "portal:"}
 celery_app.conf.result_expires = 3600
 
 # O primeiro agendador do projeto (ADR 0016). A ADR 0005 já reivindicava o sync do

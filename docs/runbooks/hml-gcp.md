@@ -190,10 +190,36 @@ versionado (`infra/keycloak/portal-local-realm.json`) é o **local** e não serv
 terraform output -json hosts   # o `keycloak` daqui é o issuer que a API valida
 ```
 
-O passo 2 do `deploy.md` descreve o que criar, item por item, e vale inteiro: o realm, o
-client confidencial `portal-web` com o `redirect_uri` e o **mapper de audiência** para
-`portal-api`, e o client `portal-admin` com service account mais `manage-users` e
-`view-users` em `realm-management`. Duas diferenças aqui:
+**Não é trabalho de console** (ADR 0052). Não haver provider de Terraform não significa
+que só reste a mão: a API de administração faz tudo, e o que se ganha é reprodutibilidade.
+O roteiro, na ordem, com `$KC` sendo o host do Keycloak:
+
+```bash
+ADM=$(gcloud secrets versions access latest --secret=KC_BOOTSTRAP_ADMIN_PASSWORD --project=biahflow-hml)
+T=$(curl -s -X POST "$KC/realms/master/protocol/openid-connect/token" \
+      -d client_id=admin-cli -d username=admin -d "password=$ADM" -d grant_type=password \
+    | python3 -c "import json,sys;print(json.load(sys.stdin)['access_token'])")
+
+# 1. o realm            POST $KC/admin/realms
+# 2. client portal-web  POST $KC/admin/realms/portal-homolog/clients
+#                       confidencial, redirectUris = <portal>/api/auth/callback/keycloak
+# 3. o mapper           POST .../clients/<id>/protocol-mappers/models
+#                       oidc-audience-mapper com included.custom.audience = portal-api
+# 4. client portal-admin  serviceAccountsEnabled, e os papéis manage-users/view-users
+#                         de `realm-management` no service-account-user dele
+# 5. os dois segredos   GET .../clients/<id>/client-secret  →  AUTH_KEYCLOAK_SECRET
+#                                                          →  KEYCLOAK_ADMIN_CLIENT_SECRET
+```
+
+> **O `/admin` do caminho é fácil de esquecer.** `POST $KC/realms/.../users` responde
+> **404** em vez de erro de método; o caminho de administração é `$KC/admin/realms/...`.
+
+> **O admin de bootstrap só nasce com o banco vazio.** Se o Keycloak já subiu uma vez sem
+> `KC_BOOTSTRAP_ADMIN_USERNAME`, ele se considera inicializado e a variável não tem mais
+> efeito — a única pista é `invalid_grant`. Com o schema ainda sem dado, o caminho é
+> `DROP SCHEMA keycloak CASCADE; CREATE SCHEMA keycloak;` e uma revisão nova.
+
+O passo 2 do `deploy.md` descreve o mesmo conteúdo item por item. Duas diferenças aqui:
 
 - o nome do realm é `portal-homolog`, e ele mora num lugar só (`servicos.tf`), com
   `issuer` e `jwks_url` derivados — três nomes para a mesma coisa foi o defeito #6 da ADR
@@ -372,12 +398,18 @@ depende deste número existir.
 
 Nomeado para não ser confundido com feito:
 
-- **A execução completa deste runbook.** Os passos 1 a 7 foram percorridos contra a GCP em
-  12/08/2026, e os três tropeços que apareceram estão em *Armadilhas medidas* e na ADR 0050.
-  **Os passos 8 a 11 não foram**: o realm, o `roles.sql` e o deploy do portal do cliente
-  seguem sem execução, porque aquela rodada subiu só o `biahflow-portal`. O
-  `biahflow-migrate` rodou contra o Neon e passou — é a única prova de que a saída pelo
-  Cloud NAT alcança o provedor gerenciado.
+- **A execução completa deste runbook aconteceu em 12/08/2026**, os onze passos, e os
+  tropeços entraram em *Armadilhas medidas*, na ADR 0050 e na ADR 0052. O que ela prova:
+  o login do portal do cliente fecha ponta a ponta — navegador, BFF, Keycloak, troca de
+  código no servidor, cookie do Auth.js, `portal-api` por dentro da VPC e Neon com RLS.
+  O que ela **não** prova está logo abaixo.
+- **O SMTP do realm**, que é o passo 8 e ficou por fazer. Sem ele o convite de acesso
+  falha em silêncio — quem manda aquele e-mail é o Keycloak, não a aplicação.
+- **O `sync_snapshot` do Biahflow.** Sem ele o portal entra e mostra "nenhum projeto
+  atribuído", que é o comportamento certo e não um defeito: o portal não origina projeto.
+- **O primeiro login de um usuário desconhecido é uma corrida** (ADR 0052, defeito 7). O
+  BFF busca `/me` e o dashboard em paralelo e o `resolve_user` não trata inserção
+  concorrente: a primeira tela dá 500 e recarregar resolve. Acerta todo usuário novo.
 - **Os dois passos finais do `deploy-hml.yml` do `biahflow-portal`.** `Atualiza o agendador`
   falha por componente `beta` ausente no runner, e `Sonda as integrações` executava um job que
   o deploy nunca atualizava — logo sempre na `imagem_bootstrap`, sempre falhando, e sempre em

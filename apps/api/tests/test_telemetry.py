@@ -445,6 +445,12 @@ NOT_AN_ALERT = {
     "auth.rejected": "tem seção própria em `alerts.md`, sob 'não são alerta'",
     "identity.linked": "primeiro login de quem já tinha linha; curso normal",
     "identity.provisioned": "primeiro login de quem não tinha; curso normal",
+    "identity.provision_race": (
+        "as duas requisições paralelas do primeiro login chegaram juntas e uma releu — "
+        "curso normal desde que o BFF busca `/me` e o dashboard ao mesmo tempo, e "
+        "**esperado em todo primeiro login** (ADR 0052). Fica no log como evidência de "
+        "que a recuperação rodou; alertar seria alertar sobre o desenho"
+    ),
     "preflight.ok": "diz que a subida passou; o que interessa é a recusa, e ela impede o boot",
 }
 

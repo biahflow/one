@@ -124,7 +124,10 @@ locals {
       # o nome da variável de ambiente (o módulo usa a mesma string dos dois lados), e
       # quem lê é o `auth.ts:58`. Com o nome antigo o BFF subia com `clientSecret`
       # vazio e o login morria na troca do código, sem nada ficar vermelho no apply.
-      segredos = ["AUTH_SECRET", "AUTH_KEYCLOAK_SECRET"]
+      segredos = {
+        AUTH_SECRET          = "AUTH_SECRET"
+        AUTH_KEYCLOAK_SECRET = "AUTH_KEYCLOAK_SECRET"
+      }
     }
 
     portal-api = {
@@ -175,30 +178,40 @@ locals {
         CONTACT_WINDOW_DAYS         = "7"
         CONTACT_CAP_PER_WINDOW      = "3"
       }
-      segredos = [
-        "DATABASE_URL", "DATABASE_SYSTEM_URL", "DATABASE_ADMIN_URL",
+      segredos = {
+        # **A chave é a variável que o código lê; o valor é o segredo de onde ela vem.**
+        # `DATABASE_URL` e `REDIS_URL` divergem porque os dois produtos leem esses dois
+        # nomes e precisam de valores diferentes — até aqui havia um segredo só para
+        # cada, montado nos dois, de modo que a `portal-api` e o Django do Biahflow
+        # recebiam a mesma DSN e o mesmo Redis. Ninguém decidiu isso; era o preço de a
+        # lista impor que os dois lados fossem a mesma string.
+        DATABASE_URL        = "PORTAL_DATABASE_URL"
+        REDIS_URL           = "PORTAL_REDIS_URL"
+        DATABASE_SYSTEM_URL = "DATABASE_SYSTEM_URL"
+        DATABASE_ADMIN_URL  = "DATABASE_ADMIN_URL"
         # **A API não usa esta DSN, e precisa dela para subir.** O `preflight` varre
         # o `model_dump()` inteiro, e `database_migration_url` tem default com
         # `local_only`: sem entregá-la, o processo reprova por uma credencial que só
         # o job de migração exerce. Entregar o segredo é mais honesto do que abrir
         # exceção no portão — a alternativa seria o portão parar de olhar um campo.
-        "DATABASE_MIGRATION_URL",
-        "BIAHFLOW_READ_TOKEN", "BIAHFLOW_WEBHOOK_SECRET",
-        "AGENT_KEY_PEPPER", "DRIVE_TOKEN_ENCRYPTION_KEY",
-        "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
+        DATABASE_MIGRATION_URL     = "DATABASE_MIGRATION_URL"
+        BIAHFLOW_READ_TOKEN        = "BIAHFLOW_READ_TOKEN"
+        BIAHFLOW_WEBHOOK_SECRET    = "BIAHFLOW_WEBHOOK_SECRET"
+        AGENT_KEY_PEPPER           = "AGENT_KEY_PEPPER"
+        DRIVE_TOKEN_ENCRYPTION_KEY = "DRIVE_TOKEN_ENCRYPTION_KEY"
+        STORAGE_ACCESS_KEY         = "STORAGE_ACCESS_KEY"
+        STORAGE_SECRET_KEY         = "STORAGE_SECRET_KEY"
         # Está em `_REQUIRED_SECRETS` (`preflight.py:78`): vazio, o cliente de admin
         # do Keycloak falha fechado e em silêncio, e o convite de acesso — que fecha
         # a Fase 1 — para de sair sem nada ficar vermelho.
-        "KEYCLOAK_ADMIN_CLIENT_SECRET",
+        KEYCLOAK_ADMIN_CLIENT_SECRET = "KEYCLOAK_ADMIN_CLIENT_SECRET"
         # Sem estas duas o respondedor cai no modo offline e o índice no projetor
         # determinístico: o chat continua respondendo, com outra qualidade e sem
         # avisar. É o silêncio que a ADR 0022 existe para impedir, e elas já eram
         # criadas no Secret Manager sem serem ligadas a serviço nenhum.
-        "ANTHROPIC_API_KEY", "VOYAGE_API_KEY",
-        # Upstash, `rediss://`. Externo e por segredo — não há Redis nosso para
-        # apontar, e é isso que dispensou a VM e o Memorystore.
-        "REDIS_URL",
-      ]
+        ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
+        VOYAGE_API_KEY    = "VOYAGE_API_KEY"
+      }
     }
 
     keycloak = {
@@ -218,7 +231,12 @@ locals {
         KC_HEALTH_ENABLED = "true"
         KC_HTTP_ENABLED   = "true"
       }
-      segredos = ["KC_DB_URL", "KC_DB_USERNAME", "KC_DB_PASSWORD", "KC_BOOTSTRAP_ADMIN_PASSWORD"]
+      segredos = {
+        KC_DB_URL                   = "KC_DB_URL"
+        KC_DB_USERNAME              = "KC_DB_USERNAME"
+        KC_DB_PASSWORD              = "KC_DB_PASSWORD"
+        KC_BOOTSTRAP_ADMIN_PASSWORD = "KC_BOOTSTRAP_ADMIN_PASSWORD"
+      }
     }
 
     biahflow-api = {
@@ -303,12 +321,21 @@ locals {
         # provisionar o bucket, e é a regra do topo deste arquivo.
         GCS_MEDIA_BUCKET = module.fundacao.bucket_midia
       }
-      segredos = [
-        "DJANGO_SECRET_KEY", "DATABASE_URL", "REDIS_URL",
-        "PORTAL_READ_TOKEN", "PORTAL_WEBHOOK_SECRET",
-        "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN",
-        "EMAIL_HOST_PASSWORD",
-      ]
+      segredos = {
+        # Os dois de baixo divergem da chave pela razão explicada na `portal-api`:
+        # cada produto tem o seu banco e o seu Redis, e o nome da variável é contrato
+        # com o código, não com o cofre.
+        DATABASE_URL = "BIAHFLOW_DATABASE_URL"
+        REDIS_URL    = "BIAHFLOW_REDIS_URL"
+
+        DJANGO_SECRET_KEY          = "DJANGO_SECRET_KEY"
+        PORTAL_READ_TOKEN          = "PORTAL_READ_TOKEN"
+        PORTAL_WEBHOOK_SECRET      = "PORTAL_WEBHOOK_SECRET"
+        GOOGLE_OAUTH_CLIENT_ID     = "GOOGLE_OAUTH_CLIENT_ID"
+        GOOGLE_OAUTH_CLIENT_SECRET = "GOOGLE_OAUTH_CLIENT_SECRET"
+        GOOGLE_OAUTH_REFRESH_TOKEN = "GOOGLE_OAUTH_REFRESH_TOKEN"
+        EMAIL_HOST_PASSWORD        = "EMAIL_HOST_PASSWORD"
+      }
     }
 
     biahflow-web = {
@@ -342,7 +369,7 @@ locals {
         # aqui. `169.254.169.254` é o servidor de metadados, que resolve nome público.
         DNS_RESOLVER = "169.254.169.254"
       }
-      segredos = []
+      segredos = {}
     }
   }
 

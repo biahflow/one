@@ -103,10 +103,16 @@ variable "nomes_de_segredo" {
     por fora (`gcloud secrets versions add`) e nunca por aqui — o repositório
     documenta os nomes e jamais os valores (ADR 0011 do Biahflow).
 
-    O nome de cada um é **o nome da variável de ambiente que a aplicação lê**: o
-    módulo do Cloud Run usa a mesma string dos dois lados (`secret_key_ref`), então
-    um segredo cujo nome não bate com o que o código procura é um segredo que existe,
-    tem valor, é montado e não chega em ninguém.
+    O nome de cada um era **o nome da variável de ambiente que a aplicação lê**, porque
+    o módulo do Cloud Run usava a mesma string dos dois lados. Continua sendo a regra
+    para a maioria, e por bom motivo: um segredo cujo nome não bate com o que o código
+    procura é um segredo que existe, tem valor, é montado e não chega em ninguém.
+
+    **A exceção existe desde que `segredos` virou mapa**: quando dois produtos leem a
+    mesma variável e precisam de valores diferentes, o nome do segredo ganha o prefixo
+    do dono e o mapa de `servicos.tf` faz a ligação. Hoje são quatro — as DSNs de banco
+    e de Redis dos dois portais —, e antes disso havia um `DATABASE_URL` só, com um
+    valor só, montado nos dois.
   TXT
   type        = list(string)
   default = [
@@ -117,12 +123,17 @@ variable "nomes_de_segredo" {
     # O par do `portal-admin`, que é outro client e outro segredo. Está em
     # `_REQUIRED_SECRETS` do `preflight.py`, então a API **recusa subir** sem ele.
     "KEYCLOAK_ADMIN_CLIENT_SECRET",
-    "DATABASE_URL", "DATABASE_SYSTEM_URL", "DATABASE_ADMIN_URL", "DATABASE_MIGRATION_URL",
+    # As quatro com prefixo de dono. `DATABASE_URL` e `REDIS_URL` sem prefixo deixaram
+    # de existir: eram um segredo só para dois leitores, e o valor de um era o do outro.
+    "PORTAL_DATABASE_URL", "BIAHFLOW_DATABASE_URL",
+    "PORTAL_REDIS_URL", "BIAHFLOW_REDIS_URL",
+    # Estas três já eram do portal do cliente pelo próprio nome, e não colidiam.
+    "DATABASE_SYSTEM_URL", "DATABASE_ADMIN_URL", "DATABASE_MIGRATION_URL",
     "BIAHFLOW_READ_TOKEN", "BIAHFLOW_WEBHOOK_SECRET",
     "AGENT_KEY_PEPPER", "DRIVE_TOKEN_ENCRYPTION_KEY",
     "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
     "KC_DB_URL", "KC_DB_USERNAME", "KC_DB_PASSWORD", "KC_BOOTSTRAP_ADMIN_PASSWORD",
-    "DJANGO_SECRET_KEY", "PORTAL_READ_TOKEN", "PORTAL_WEBHOOK_SECRET", "REDIS_URL",
+    "DJANGO_SECRET_KEY", "PORTAL_READ_TOKEN", "PORTAL_WEBHOOK_SECRET",
     "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN",
     # A senha de app do Gmail. É a única credencial de e-mail: o resto (host, porta,
     # TLS, usuário, remetente) é variável comum, porque nenhum deles é segredo e

@@ -12,8 +12,8 @@ ser verdadeiro nas três camadas que ele nomeia: API, banco **e busca**.
 ruído sem ela, e é o que o chat já faz — a diferença entre as duas superfícies é que uma
 responde e a outra aponta (ADR 0024, alternativas). **Busca entre projetos**: o topbar é do
 projeto corrente, e trocar de projeto é a URL desde a Fase 2. **Decisões nos resultados**: não
-há aba de decisões, e um hit que leva a lugar nenhum é a classe de defeito que a ADR 0017
-corrigiu. **Filtros nas abas**: item aberto da Fase 2, outro controle, outra fatia. **Histórico
+havia aba de decisões, e um hit que leva a lugar nenhum é a classe de defeito que a ADR 0017
+corrigiu — *entrou na ADR 0049, junto com a aba, casando também o racional*. **Filtros nas abas**: item aberto da Fase 2, outro controle, outra fatia. **Histórico
 de buscas**: o termo é a pergunta de alguém e não é guardado em lugar nenhum, nem no log.
 
 ## Jornada e interface

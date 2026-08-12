@@ -14,11 +14,14 @@ só para o nome dele.
 
 Três regras governam o que sai daqui:
 
-1. **Só entra o que o cliente já alcança por alguma aba.** ``Decision`` tem
-   modelo desde a Fase 1 e não é projetada em ``build_dashboard``: um hit dela
-   levaria a lugar nenhum, que é a mesma classe de defeito que a ADR 0017
-   corrigiu ao transformar a citação em link. Quando existir aba de decisões,
-   entra aqui junto.
+1. **Só entra o que o cliente já alcança por alguma aba.** Um hit que levasse a
+   lugar nenhum é a mesma classe de defeito que a ADR 0017 corrigiu ao
+   transformar a citação em link. Esta regra teve uma exceção nomeada por três
+   fases: ``Decision`` tinha modelo desde a Fase 1, não era projetada em
+   ``build_dashboard``, e a linha de cima dizia *"quando existir aba de decisões,
+   entra aqui junto"*. A ADR 0049 fechou isso — a aba existe, e a decisão entra
+   aqui pelo título **e pelo racional**, que é o campo pelo qual alguém
+   efetivamente a procura.
 2. **O trecho só existe se o documento passou pela varredura.** Hoje um
    documento não varrido não chega a ter chunk — o ``ingest_document`` recusa —,
    e a asserção fica escrita mesmo assim, porque "não tem como acontecer" é como
@@ -39,11 +42,13 @@ from sqlalchemy.orm import Session
 
 from portal_api.tabs import (
     TAB_DOCUMENTS,
+    TAB_DECISIONS,
     TAB_MEETINGS,
     TAB_PENDINGS,
     TAB_SCHEDULE,
 )
 from portal_api.models import (
+    Decision,
     Document,
     DocumentChunk,
     Meeting,
@@ -51,6 +56,7 @@ from portal_api.models import (
     PendingItem,
 )
 from portal_api.repositories import (
+    DecisionRepository,
     DocumentChunkRepository,
     DocumentRepository,
     MeetingRepository,
@@ -172,6 +178,29 @@ def search_project(session: Session, ctx: TenantContext, query: str) -> list[Hit
                 detail=meeting.status or "",
                 location="",
                 tab=TAB_MEETINGS,
+            )
+        )
+
+    # Decisões. É a linha que a regra 1 deste módulo prometia: elas ficavam de fora
+    # porque nenhuma aba as mostrava, e o docstring dizia "quando existir aba de
+    # decisões, entra aqui junto". A aba existe agora.
+    #
+    # `rationale` entra no casamento, e é o campo que faz a busca valer a pena aqui:
+    # quem procura decisão raramente lembra o título dela — lembra do assunto que a
+    # motivou, que é o que está no porquê.
+    decisions = DecisionRepository(session, ctx)
+    for decision in decisions.matching(
+        _matches(pattern, Decision.title, func.coalesce(Decision.rationale, "")),
+        order_by=(Decision.decided_on.desc().nulls_last(), Decision.title),
+        limit=PER_KIND_LIMIT,
+    ):
+        hits.append(
+            Hit(
+                kind="decision",
+                title=decision.title,
+                detail=decision.owner_label or "",
+                location="",
+                tab=TAB_DECISIONS,
             )
         )
 

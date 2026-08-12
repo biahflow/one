@@ -1,5 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import { CLIENTE, MEMBRO_INTERNO, signIn } from "./atores";
 import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
 
 /**
@@ -11,30 +12,18 @@ import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
  * de modo que toda pendência aparecia igual. `api-contract.test.mjs` pega o
  * descarte no código-fonte; aqui se vê o selo e o filtro funcionando com a
  * sessão real e o read model semeado.
+ *
+ * O `signIn` daqui era a cópia **antiga**, anterior ao laço de re-limpeza que a
+ * ADR 0047 criou para a corrida do `clearCookies` — este spec era o único que
+ * ainda a carregava depois de a corrida ter sido diagnosticada.
  */
-
-const CLIENT = { username: "marina.farias", password: "portal_local_only" };
-
-async function signIn(page: Page, user: { username: string; password: string }) {
-  // Limpa coladinho no `goto`, pelo motivo longo em `login.spec.ts`.
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Entrar com SSO/ }).click();
-  await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
-  await page.locator("#username").fill(user.username);
-  await page.locator("#password").fill(user.password);
-  await page.locator("#kc-login").click();
-  await page.waitForURL(
-    (url) => !url.pathname.startsWith("/login") && !url.pathname.startsWith("/realms"),
-  );
-}
 
 test.beforeEach(() => {
   test.skip(stackIsMissing(serviceIsUp("api")), STACK_REASON);
 });
 
 test("o filtro de prioridade encolhe a lista e o caminho de volta existe", async ({ page }) => {
-  await signIn(page, CLIENT);
+  await signIn(page, CLIENTE);
   // Sem `exact`: o item da navegação carrega a contagem de abertas num `<em>`,
   // então o nome acessível é "Pendências 3", não "Pendências".
   await page.getByRole("button", { name: /^Pendências/ }).click();
@@ -61,13 +50,43 @@ test("o filtro de prioridade encolhe a lista e o caminho de volta existe", async
 });
 
 test("a pendência aberta pela IA leva de volta à pergunta que a gerou", async ({ page }) => {
-  await signIn(page, CLIENT);
+  // **Este teste cria a pendência de que precisa, e é por isso que ele existe assim.**
+  // Pendência com `origin='portal'` não vem do snapshot — o seed traz só as do
+  // Biahflow —, ela nasce quando o chat não acha evidência e declara a lacuna
+  // (`ai/service.py`). Num banco acumulado sempre há uma sobrando de execução
+  // anterior, e era nela que este teste se apoiava; num banco novo, que é o do
+  // CI, não há nenhuma, e ele reprovava sem nada estar quebrado.
+  //
+  // Criar em vez de semear é o caminho honesto: o que o teste afirma é que **a
+  // lacuna vira pendência com caminho de volta ao turno**, e semear a linha
+  // pronta afirmaria sobre o efeito sem passar pela corrente que o produz.
+  const termo = `abrolhado${Date.now().toString(36)}`;
+
+  await signIn(page, CLIENTE);
+  await page.getByRole("button", { name: /Abrir chat com IA/ }).click();
+  // Uma pergunta sem token de quatro letras que case com evidência alguma: o
+  // `OfflineResponder` só declara lacuna quando **nada** é selecionado, e
+  // `_query_tokens` descarta o que tem menos de quatro caracteres — por isso "o
+  // que é o", que sozinho não casa nada, e um termo inventado como única palavra
+  // com sinal.
+  await page.getByLabel("Pergunta para IA").fill(`O que é o ${termo}?`);
+  await page.getByRole("button", { name: "Enviar pergunta" }).click();
+  await expect(page.locator(".chat-messages")).toContainText(/Registrei uma pendência/, {
+    timeout: 30_000,
+  });
+
+  // A aba lê o read model do servidor; o turno acabou de escrever nele.
+  await page.reload();
   await page.getByRole("button", { name: /^Pendências/ }).click();
 
+  // Casada pelo termo, e não por "aberta pela IA": o selo é o que se **afirma**,
+  // e usá-lo para escolher a linha faria o teste passar apontando para a
+  // pendência de outra execução.
+  const row = page.locator(".pending-row", { hasText: termo }).first();
+  await expect(row).toBeVisible();
   // As do Biahflow não vieram de conversa nenhuma; a da IA veio, e o FK que diz
   // qual turno era lido só como booleano até a ADR 0031.
-  const row = page.locator(".pending-row", { hasText: "aberta pela IA" }).first();
-  await expect(row).toBeVisible();
+  await expect(row).toContainText("aberta pela IA");
   await row.getByRole("button", { name: "Ver a pergunta" }).click();
 
   // O chat abre e o turno apontado é o que fica em destaque — não o último.
@@ -76,18 +95,16 @@ test("a pendência aberta pela IA leva de volta à pergunta que a gerou", async 
 });
 
 /**
- * O "outro lado" é o `internal_member`, e não a administradora, e a razão é do
- * ambiente: `helena.dias` tem vínculo org-wide em **duas** organizações nesta
- * máquina (o bootstrap da ADR 0025 rodou aqui), então o `default_project` dela é
- * o outro projeto e a caixa dela é a de outro tenant. `rafael.costa` pertence só
- * à organização semeada — e é ele quem, no produto, acompanha o projeto.
+ * O "outro lado" é o `internal_member` (`MEMBRO_INTERNO`), e não a
+ * administradora: `helena.dias` tem vínculo org-wide, e numa máquina com uma
+ * segunda organização — o passeio da ADR 0025 — o `default_project` dela é o
+ * outro projeto e a caixa dela é a de outro tenant. `rafael.costa` pertence só à
+ * organização semeada, e é ele quem, no produto, acompanha o projeto.
  */
-const STAFF = { username: "rafael.costa", password: "portal_local_only" };
-
 test("o comentário do cliente chega ao time, com aviso no sino", async ({ page }) => {
   const mark = `combinado-${Date.now().toString(36)}`;
 
-  await signIn(page, CLIENT);
+  await signIn(page, CLIENTE);
 
   /** A contagem do sino, ou 0 quando não há badge. */
   async function unread(): Promise<number> {
@@ -115,7 +132,7 @@ test("o comentário do cliente chega ao time, com aviso no sino", async ({ page 
   expect(await unread()).toBe(before);
 
   // E o outro lado vê o comentário e recebe o aviso.
-  await signIn(page, STAFF);
+  await signIn(page, MEMBRO_INTERNO);
   await expect(
     page.getByRole("button", { name: /Notificações \(\d+ não lidas\)/ }),
   ).toBeVisible();

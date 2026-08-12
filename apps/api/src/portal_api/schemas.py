@@ -269,6 +269,21 @@ class MeetingOut(Out):
     status: str | None
 
 
+class DecisionOut(Out):
+    """Uma decisão do projeto, espelhada do Biahflow (FDD 032 de lá).
+
+    `rationale` é o campo que justifica a aba existir: sem o porquê, uma decisão é um
+    título — e o porquê é o que o cliente não consegue reconstituir sozinho meses depois.
+    `meeting_title` é rótulo e não id, porque o uuid da reunião muda a cada sync.
+    """
+
+    title: str
+    rationale: str | None
+    decided_on: str | None
+    owner_label: str | None
+    meeting_title: str | None
+
+
 class PendingOut(Out):
     id: str
     title: str
@@ -335,6 +350,7 @@ class DashboardOut(Out):
     milestones: list[MilestoneOut]
     documents: list[DashboardDocumentOut]
     meetings: list[MeetingOut]
+    decisions: list[DecisionOut]
     pendings: list[PendingOut]
     results: MilestoneCountsOut
     measured: ResultsOut

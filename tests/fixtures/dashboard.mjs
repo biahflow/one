@@ -72,6 +72,12 @@ export const DASHBOARD = {
   meetings: [
     { title: "Comitê de projeto", date: "2026-08-28", recording_url: null, has_transcript: false, status: "scheduled" },
   ],
+  // Uma com proveniência e outra sem: é o corte que o filtro da aba oferece, e o
+  // `meeting_title` nulo é o caso real de uma reunião arquivada no Biahflow.
+  decisions: [
+    { title: "Adotar fila gerenciada", rationale: "O volume previsto não paga o Memorystore.", decided_on: "2026-08-06", owner_label: "Marina Farias", meeting_title: "Comitê de projeto" },
+    { title: "Adiar o piloto de cobrança", rationale: null, decided_on: null, owner_label: null, meeting_title: null },
+  ],
   // Três abertas com prioridades diferentes, e a alta é a **mais antiga** de
   // propósito: é o que torna a ordenação da ADR 0029 observável no HTML do SSR.
   // Ordenada por data, "Aprovar fluxo de exceções" viria por último.

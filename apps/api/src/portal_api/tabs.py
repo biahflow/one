@@ -25,6 +25,7 @@ TAB_SCHEDULE = "Cronograma"
 TAB_DOCUMENTS = "Documentos"
 TAB_MEETINGS = "Reuniões"
 TAB_PENDINGS = "Pendências"
+TAB_DECISIONS = "Decisões"
 TAB_RESULTS = "Resultados"
 
 #: Na ordem em que a barra lateral as mostra, que é a ordem do ``navItems``.
@@ -34,5 +35,6 @@ ALL: tuple[str, ...] = (
     TAB_DOCUMENTS,
     TAB_MEETINGS,
     TAB_PENDINGS,
+    TAB_DECISIONS,
     TAB_RESULTS,
 )

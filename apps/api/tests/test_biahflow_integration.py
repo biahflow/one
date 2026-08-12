@@ -11,7 +11,7 @@ import hmac
 import json
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from contextlib import contextmanager
 from typing import Any
 
@@ -25,11 +25,13 @@ from portal_api import main
 from portal_api.integrations import biahflow
 from portal_api.main import app
 from portal_api.models import (
+    Decision,
     Document,
     DocumentChunk,
     DocumentIngestState,
     DocumentOrigin,
     DocumentSource,
+    Meeting,
     Milestone,
     MilestoneState,
     Organization,
@@ -104,6 +106,15 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
             {"id": 4, "title": "Kickoff do projeto", "date": "2026-08-07",
              "recording_url": "https://rec.example/4", "has_transcript": True,
              "status": "held"},
+        ],
+        # A primeira aponta para a reunião 4; a segunda não aponta para nada, que é o
+        # caso real de uma reunião arquivada do outro lado.
+        "decisions": [
+            {"id": 91, "title": "Adotar fila gerenciada",
+             "rationale": "O volume previsto não paga o Memorystore.",
+             "decided_on": "2026-08-07", "decided_by": "Marina Farias", "meeting_id": 4},
+            {"id": 92, "title": "Adiar o piloto de cobrança", "rationale": "",
+             "decided_on": None, "decided_by": "", "meeting_id": None},
         ],
         # A primeira traz `priority`; a segunda **não**, de propósito: o campo é
         # opcional no snapshot e o teste abaixo cobra os dois caminhos.
@@ -642,3 +653,56 @@ def test_the_dashboard_says_which_turn_opened_an_ai_pending(db_session: Session)
     # A do Biahflow não veio de conversa nenhuma, e dizer o contrário seria
     # inventar procedência.
     assert pendings["Aprovar fluxo de exceções"]["opened_by_message_id"] is None
+
+
+def test_a_decision_keeps_its_provenance_after_two_syncs(db_session) -> None:
+    """A proveniência sobrevive ao segundo webhook, e é ele que reprova o desenho errado.
+
+    `Meeting` não guarda id externo e é recriada por inteiro a cada sync — o uuid dela muda
+    toda vez. Um vínculo montado só na primeira passagem apontaria, na segunda, para uma
+    reunião que não existe mais; e como o FK é `ON DELETE SET NULL`, o sintoma seria
+    `meeting_id` virando nulo **sem erro, sem log e sem exceção**.
+    """
+    biahflow.sync_snapshot(db_session, _snapshot())
+    db_session.commit()
+    biahflow.sync_snapshot(db_session, _snapshot())
+    db_session.commit()
+
+    project = db_session.execute(
+        select(Project).where(Project.slug == biahflow.project_slug(7))
+    ).scalar_one()
+    decisions = db_session.execute(
+        select(Decision).where(Decision.project_id == project.id).order_by(Decision.title)
+    ).scalars().all()
+
+    assert [d.title for d in decisions] == ["Adiar o piloto de cobrança", "Adotar fila gerenciada"]
+    # Substituição integral: dois syncs não duplicam.
+    assert len(decisions) == 2
+
+    adotar = decisions[1]
+    assert adotar.rationale == "O volume previsto não paga o Memorystore."
+    assert adotar.owner_label == "Marina Farias"
+    assert adotar.decided_on == date(2026, 8, 7)
+    # E o vínculo aponta para a reunião **desta** passagem, não para o uuid da anterior.
+    reuniao = db_session.get(Meeting, adotar.meeting_id)
+    assert reuniao is not None and reuniao.title == "Kickoff do projeto"
+
+    # A que veio sem reunião fica sem proveniência, e isso não é erro.
+    assert decisions[0].meeting_id is None
+
+
+def test_the_dashboard_projects_a_decision_with_its_meeting(db_session) -> None:
+    biahflow.sync_snapshot(db_session, _snapshot())
+    db_session.commit()
+    project = db_session.execute(
+        select(Project).where(Project.slug == biahflow.project_slug(7))
+    ).scalar_one()
+
+    decisions = {d["title"]: d for d in biahflow.build_dashboard(db_session, project)["decisions"]}
+
+    assert decisions["Adotar fila gerenciada"]["meeting_title"] == "Kickoff do projeto"
+    assert decisions["Adotar fila gerenciada"]["rationale"] == (
+        "O volume previsto não paga o Memorystore."
+    )
+    # Rótulo e não uuid: o id da reunião muda a cada sync e não serviria nem de link.
+    assert decisions["Adiar o piloto de cobrança"]["meeting_title"] is None

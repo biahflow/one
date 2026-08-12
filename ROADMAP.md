@@ -107,8 +107,10 @@ termo pela mesma rota.*
       preferência por conta. `dedupe_key` é o que faz o webhook reenviado não repetir aviso nem
       e-mail. ADR 0012, FDD 005.)*
 - [x] Implementar página de reuniões: título, data, link de gravação e indicação de transcrição,
-      espelhados do snapshot. *O texto da transcrição e as decisões extraídas dependem da
-      ingestão de texto da Fase 4.*
+      espelhados do snapshot. *O texto da transcrição não atravessa o snapshot, e
+      `transcript_text` nunca teve escritor: medido na ADR 0049, o portal nunca teve o texto.
+      As decisões extraídas nascem no Biahflow, onde a transcrição existe (FDD 032 de lá), e
+      chegam aqui publicadas.*
 - [x] Exibir detalhes e histórico em todas as abas do projeto — Cronograma (com responsável
       vindo do `party`), Documentos (tipo, autor e link), Reuniões e Pendências passam a ler
       `GET /api/v1/me/dashboard` no lugar dos dados de demonstração. *Filtros feitos em

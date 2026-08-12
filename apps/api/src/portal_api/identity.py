@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from portal_api.db.session import bind_user
@@ -59,7 +60,21 @@ def _claim_seeded_row(session: Session, principal: Principal) -> User | None:
     return user
 
 
-def _provision(session: Session, principal: Principal) -> User:
+def _provision(session: Session, principal: Principal) -> User | None:
+    """Insere a linha, ou devolve ``None`` se outra requisição chegou primeiro.
+
+    **O primeiro login é concorrente por desenho**, e isto não é defensividade: o BFF
+    busca ``/me`` e o dashboard em paralelo, então as duas requisições chegam aqui com o
+    mesmo ``sub`` e ambas passaram pelas buscas sem achar nada. Uma insere; a outra
+    encontrava ``uq_user_email`` e a tela dizia "não conseguimos carregar seu projeto".
+    Recarregar resolvia — o que fazia o defeito passar por instabilidade (ADR 0052).
+
+    ``begin_nested`` e não um ``try`` seco, pelo mesmo argumento de
+    ``onboarding.stamp_within`` (ADR 0041): um ``IntegrityError`` deixa a transação do
+    Postgres **abortada**, e sem o ``SAVEPOINT`` engolir a exceção trocaria um erro
+    visível por uma falha adiante, longe da causa — a releitura logo abaixo é a primeira
+    que morreria.
+    """
     user = User(
         email=principal.email,
         full_name=principal.full_name,
@@ -68,8 +83,17 @@ def _provision(session: Session, principal: Principal) -> User:
         # project* — that stays with membership.
         is_internal=principal.is_internal,
     )
-    session.add(user)
-    session.flush()
+    try:
+        with session.begin_nested():
+            session.add(user)
+            session.flush()
+    except IntegrityError:
+        logger.info(
+            "identity.provision_race",
+            extra={"subject": principal.subject},
+        )
+        return None
+
     logger.info(
         "identity.provisioned",
         extra={"user_id": str(user.id), "subject": principal.subject},
@@ -88,7 +112,18 @@ def resolve_user(session: Session, principal: Principal) -> User:
         session, principal
     )
     if user is None:
-        user = _provision(session, principal)
+        # Quem perdeu a corrida relê: a linha existe agora, e é a mesma para os dois.
+        # As duas buscas de novo, e não só a do `sub`, porque quem ganhou pode ter sido
+        # o passo 2 — reivindicando uma linha semeada que ainda não tinha `sub`.
+        user = _provision(session, principal) or _by_subject(
+            session, principal.subject
+        ) or _claim_seeded_row(session, principal)
+
+    if user is None:  # pragma: no cover — a linha existe; só um defeito novo cairia aqui
+        raise RuntimeError(
+            "resolve_user não achou nem criou a linha do usuário: a inserção foi "
+            "recusada por conflito e a releitura não encontrou nada."
+        )
 
     bind_user(session, user.id)
     return user

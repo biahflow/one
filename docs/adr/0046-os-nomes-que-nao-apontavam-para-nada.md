@@ -161,8 +161,17 @@ nenhum serviço o lê. São `precondition` e não `check`: medido, `check` emite
   ingress para `INTERNAL_LOAD_BALANCER` e rotear `/api|/admin|/static` do host `app.<base>` pelo
   balanceador, tirando o proxy do nginx do caminho: o `run.app` deixa de ser alcançável de fora e
   a borda passa a ser nossa. Isso muda o desenho de roteamento e não foi feito aqui.
+  *(**Feito na ADR 0048**, com duas retificações a este parágrafo. Os caminhos são **sete** e não
+  três — `/healthz` e `/readyz` precisam entrar, com e sem barra no fim, senão a sonda cai no
+  `try_files` do SPA e um balanceador lê `index.html` com 200 como "saudável". E o que a fatia
+  entrega são ingress **mais roteamento**, não duas barreiras: um NEG sem servidor não cunha ID
+  token, então atrás do balanceador o IAM fica aberto de propósito. A frase acima já dizia isso ao
+  recusar o IAM invoker; a ADR 0048 a mantém e nomeia o que faltaria — Cloud Armor.)*
 - **Fica aberto:** a medição de comando/hora do Upstash com fila vazia, que a ADR 0045 escreveu
   como condição para HML ser declarada pronta. Ela continua sendo, e agora há onde medir.
+  *(A ADR 0048 entregou o **instrumento** — `scripts/redis_rate.py` — e mostrou que a aritmética
+  daquela ADR estava incompleta. A leitura contra o Upstash continua aberta, e continua sendo a
+  condição.)*
 - **Fica aberto:** `dependency-review` não roda em repositório privado sem GitHub Advanced
   Security, e o `e2e` tem dois testes vermelhos que não têm relação com GCP. Os dois barram o
   merge e não são desta fatia.

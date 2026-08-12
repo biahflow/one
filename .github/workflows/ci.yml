@@ -168,6 +168,37 @@ jobs:
           "
       - run: PYTHONPATH=apps/api/src pytest apps/api/tests/test_backup_restore.py -v
 
+  # A infraestrutura como código, sem credencial (ADR 0048). O `infra-hml.yml`
+  # **fica**, e os dois não se sobrepõem — a mesma distinção que o
+  # `dependency-audit` e o `dependency-review` têm entre si (ADR 0023): lá se
+  # planeja contra o projeto real, aqui se prova que o HCL parseia e tipa.
+  #
+  # A razão de existir é concreta e não hipotética: o `ci.yml` não tocava
+  # Terraform, e o `infra-hml.yml` se autentica por `vars.WIF_PROVIDER` — que é
+  # criado **pelo próprio Terraform** (ADR 0046). Enquanto aquela variável não
+  # existir, uma mudança de infraestrutura entra num PR sem prova nenhuma de que
+  # sequer parseia. `-backend=false` é o que torna isto possível: instala os
+  # providers sem tocar no bucket de estado.
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.3
+
+      # Sobre a árvore inteira, como o `infra-hml.yml` faz: um módulo mal
+      # formatado reprova lá, e descobrir isso só no PR de infraestrutura é tarde.
+      - run: terraform -chdir=infra/terraform/ambientes/hml fmt -check -recursive ../..
+      - run: terraform -chdir=infra/terraform/ambientes/hml init -backend=false -input=false
+
+      # O que ele prova: que os módulos resolvem, que os tipos casam, e que uma
+      # `validation` de variável cujo valor é conhecido reprova aqui em vez de no
+      # apply. O que ele **não** prova está escrito no `hml-gcp.md`: valores de
+      # enum contra a API, org policy, e o diff.
+      - run: terraform -chdir=infra/terraform/ambientes/hml validate
+
   local-stack:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -272,6 +303,33 @@ jobs:
           # saber.
           assert report["is_homologation"] is False
           assert any("não é homologação" in note for note in report["notes"])
+          PY
+
+      # O instrumento de comando/hora, pelo mesmo argumento acima e com a mesma
+      # ressalva (ADR 0048): **não é a medição**. A da ADR 0045 é contra o Upstash,
+      # leva quinze minutos e depende do ambiente que veio medir; esta janela de 20 s
+      # contra o Redis do compose prova que a ferramenta ainda fala com um broker, lê
+      # o contador e monta o relatório. O que se afirma é justamente a honestidade
+      # dele: que ele **se declara** fora do alvo em vez de deixar o número passar
+      # por medição.
+      - name: o instrumento de comando/hora ainda roda ponta a ponta
+        env:
+          REDIS_RATE_URL: redis://localhost:6379/0
+        run: |
+          PYTHONPATH=apps/api/src python scripts/redis_rate.py \
+            --duration 20 --out /tmp/redis.json
+          python - <<'PY'
+          import json, sys
+          report = json.load(open("/tmp/redis.json"))
+          if not report["commands"]["info_available"]:
+              sys.exit("o instrumento não conseguiu ler INFO do Redis do compose")
+          if report["commands"]["per_hour"] is None:
+              sys.exit(f"nenhum número foi produzido: {report['commands']}")
+          assert report["is_upstash"] is False
+          assert any("não é a medição que a ADR 0045 pede" in n for n in report["notes"])
+          # A nota que impede o pior uso do relatório: dividir o número do compose
+          # por um fator qualquer e citá-lo como estimativa de HML.
+          assert any("não extrapola" in n for n in report["notes"])
           PY
       - if: failure()
         run: docker compose logs --tail 100

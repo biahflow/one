@@ -17,6 +17,7 @@ SHA-256, não a conversa com o S3 — essa quem prova é o e2e, contra o MinIO.
 from __future__ import annotations
 
 import io
+import itertools
 import os
 import shutil
 import subprocess
@@ -37,6 +38,37 @@ from portal_api.db.session import DbRole, get_engine
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = REPO_ROOT / "scripts"
 RESTORE_DB = "portal_backup_test"
+
+
+# --- a ajuda: sem banco e sem rede ------------------------------------------
+
+
+def test_the_help_prints_the_whole_header() -> None:
+    """O `--help` imprimia um intervalo de linhas escrito à mão (`sed -n '2,26p'`).
+
+    Crescer o cabeçalho truncava a ajuda **em silêncio**, e foi o que aconteceu ao
+    documentar o alvo gerenciado (ADR 0048): a parte sobre o branch do Neon e as duas
+    variáveis novas ficava fora da saída, num script cujo leitor é uma pessoa no
+    terminal decidindo onde restaurar. Hoje o intervalo é derivado — da linha 2 até a
+    primeira que não é comentário —, e este caso é o que impede a volta ao número
+    fixo: ele afirma sobre a **última** linha do cabeçalho, que é a que se perde.
+    """
+    fonte = (SCRIPTS / "restore.sh").read_text().splitlines()
+    cabecalho = list(itertools.takewhile(lambda l: l.startswith("#"), fonte[1:]))
+    assert cabecalho, "o cabeçalho do restore.sh sumiu"
+
+    ajuda = subprocess.run(
+        [str(SCRIPTS / "restore.sh"), "--help"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    assert ajuda.returncode == 0, ajuda.stderr
+
+    ultima = cabecalho[-1].removeprefix("# ").removeprefix("#")
+    assert ultima in ajuda.stdout, (
+        f"a última linha do cabeçalho não saiu no --help: {ultima!r}"
+    )
+    assert "POSTGRES_MAINTENANCE_DB" in ajuda.stdout
+    assert "RESTORE_ADMIN_URL" in ajuda.stdout
 
 
 # --- os objetos: sem banco e sem rede ---------------------------------------

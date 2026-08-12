@@ -23,6 +23,23 @@
 # ATENÇÃO: o passo 2 escreve papéis, que são do **cluster** inteiro — restaurar
 # num banco descartável do cluster de produção redefine a senha dos quatro
 # papéis nele. Restaure noutro cluster, ou passe as senhas em vigor.
+#
+# Num Postgres gerenciado a unidade não é o cluster (ADR 0044, ADR 0048). No Neon
+# os papéis pertencem ao **branch**, e cada branch tem os seus: `--database ensaio`
+# no mesmo branch redefine as senhas em vigor exatamente como o aviso acima
+# descreve, e **criar um branch é a saída barata** — ele nasce com os papéis
+# copiados e sai de graça.
+#
+# Duas variáveis existem para esse alvo, e as duas têm default que preserva o
+# comportamento do compose:
+#
+#   RESTORE_ADMIN_URL       — a DSN administrativa inteira. Sem ela, é montada a
+#                             partir de DATABASE_MIGRATION_URL trocando usuário e
+#                             senha por POSTGRES_USER/POSTGRES_PASSWORD. Num
+#                             gerenciado isso não alcança o alvo: o papel de maior
+#                             privilégio **e o endpoint** mudam por branch.
+#   POSTGRES_MAINTENANCE_DB — o banco de onde se emite `CREATE DATABASE`
+#                             (padrão `postgres`; no Neon costuma ser `neondb`).
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -35,7 +52,12 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --database) TARGET_DB="$2"; shift 2 ;;
     --with-objects) WITH_OBJECTS=1; shift ;;
-    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    # O intervalo é **derivado**, e não `sed -n '2,26p'` como era: com o número
+    # escrito à mão, crescer o cabeçalho truncava a ajuda em silêncio — e foi o que
+    # aconteceu ao documentar o alvo gerenciado. Imprime da linha 2 até a primeira
+    # linha que não é comentário. `test_backup_restore.py` afirma que a última linha
+    # do cabeçalho aparece na saída.
+    -h|--help) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; exit 0 ;;
     -*) die "argumento desconhecido: $1" ;;
     *) SOURCE="$1"; shift ;;
   esac
@@ -49,8 +71,16 @@ load_env
 
 : "${DATABASE_MIGRATION_URL:?DATABASE_MIGRATION_URL não definido}"
 : "${DATABASE_SYSTEM_URL:?DATABASE_SYSTEM_URL não definido}"
-: "${POSTGRES_USER:?POSTGRES_USER não definido}"
-: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD não definido}"
+
+# `POSTGRES_USER`/`POSTGRES_PASSWORD` só são exigidos quando a DSN administrativa
+# **não** foi dada inteira: com `RESTORE_ADMIN_URL` elas não descrevem nada, e
+# cobrá-las obrigaria a inventar um valor para passar pelo `:?` — que é o modo de
+# falha que o `preflight` existe para impedir, um nível acima.
+if [ -z "${RESTORE_ADMIN_URL:-}" ]; then
+  : "${POSTGRES_USER:?POSTGRES_USER não definido (ou passe RESTORE_ADMIN_URL, ver --help)}"
+  : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD não definido (ou passe RESTORE_ADMIN_URL, ver --help)}"
+fi
+MAINTENANCE_DB="${POSTGRES_MAINTENANCE_DB:-postgres}"
 
 require_cmd "$PSQL" "\`$PSQL\` não encontrado; ver PSQL no runbook"
 require_cmd "$PG_RESTORE" "\`$PG_RESTORE\` não encontrado; ver PG_RESTORE no runbook"
@@ -93,8 +123,17 @@ print("digests conferem")
 PY
 
 # 1. O banco alvo --------------------------------------------------------------
-SUPERUSER_URL="$(swap_url "$(libpq_url "$DATABASE_MIGRATION_URL")" \
-  --user "$POSTGRES_USER" --password "$POSTGRES_PASSWORD" --db postgres)"
+# A DSN administrativa. Dada inteira em `RESTORE_ADMIN_URL`, é usada como está (só o
+# banco é trocado); ausente, é montada a partir da do migrator trocando usuário e
+# senha, que é o que o compose sempre fez. **A diferença importa num gerenciado**: lá
+# o papel de maior privilégio e o *endpoint* mudam por branch, de modo que trocar
+# duas peças sobre a URL do migrator não descreve o alvo (ADR 0048).
+if [ -n "${RESTORE_ADMIN_URL:-}" ]; then
+  SUPERUSER_URL="$(swap_url "$(libpq_url "$RESTORE_ADMIN_URL")" --db "$MAINTENANCE_DB")"
+else
+  SUPERUSER_URL="$(swap_url "$(libpq_url "$DATABASE_MIGRATION_URL")" \
+    --user "$POSTGRES_USER" --password "$POSTGRES_PASSWORD" --db "$MAINTENANCE_DB")"
+fi
 TARGET_SUPER_URL="$(swap_url "$SUPERUSER_URL" --db "$TARGET_DB")"
 TARGET_SYSTEM_URL="$(swap_url "$(libpq_url "$DATABASE_SYSTEM_URL")" --db "$TARGET_DB")"
 
@@ -114,6 +153,19 @@ log "roles.sql (papéis do cluster + extensões do banco) em $TARGET_DB"
   -v migrator_password="${POSTGRES_MIGRATOR_PASSWORD:?POSTGRES_MIGRATOR_PASSWORD não definido}" \
   -v admin_password="${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD não definido}" \
   -f "$REPO_ROOT/infra/postgres/bootstrap/roles.sql" >/dev/null
+
+# 2b. A associação de que o passo 3 depende, e que ninguém tinha escrito ----------
+# O dump traz `ALTER ... OWNER TO portal_migrator` e ACLs, e desde o PG 16 transferir
+# posse exige **ser membro** do papel de destino. Num superusuário isso é gratuito;
+# fora dele, quem concede é o próprio `roles.sql` acima (`GRANT portal_migrator TO
+# current_user`, no ramo de não-superusuário da ADR 0044). É uma dependência de
+# ordem entre os passos 2 e 3 que nenhum comentário registrava — e cuja falha aparece
+# no meio do `pg_restore`, como erro de posse de um objeto, longe da causa.
+log "conferindo a associação a portal_migrator"
+if [ "$("$PSQL" "$TARGET_SUPER_URL" -At -v ON_ERROR_STOP=1 \
+      -c "SELECT pg_has_role(current_user, 'portal_migrator', 'MEMBER')")" != "t" ]; then
+  die "quem roda o restore não é membro de portal_migrator, e o --clean do passo 3 vai falhar ao derrubar objetos dele. O roles.sql concede essa associação quando não é superusuário (ADR 0044); se ela não está aqui, o passo 2 rodou com outra credencial."
+fi
 
 # 3. O dump --------------------------------------------------------------------
 log "pg_restore em $TARGET_DB"

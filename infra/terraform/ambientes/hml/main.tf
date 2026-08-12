@@ -42,7 +42,7 @@ module "servicos" {
   nome     = each.key
   imagem   = local.imagem[each.key]
   porta    = each.value.porta
-  publico  = each.value.publico
+  acesso   = each.value.acesso
   cpu      = each.value.cpu
   memoria  = each.value.memoria
   minimo   = each.value.min
@@ -88,12 +88,28 @@ module "borda" {
   regiao   = var.regiao
   endereco = module.fundacao.endereco_entrada
 
-  # Só as frentes públicas. Um serviço com `dominio = null` é de ingress interno, e
-  # dar nome público a ele desfaria a decisão do próprio módulo do Cloud Run.
-  servicos = {
-    for nome, s in local.servicos_http : nome => { host = s.dominio, servico = nome }
-    if s.publico && s.dominio != null
+  # Tudo que o balanceador alcança — **inclusive o que não tem nome**. A
+  # `biahflow-api` entra aqui e não em `rotas`: ela é destino de `path_rule` e não de
+  # `host_rule`, e é essa separação que mantém o `domains` do certificado com os três
+  # nomes de sempre (ADR 0048). Um serviço `interno` nunca entra: dar-lhe um backend
+  # service desfaria a decisão do próprio módulo do Cloud Run.
+  backends = {
+    for nome, s in local.servicos_http : nome => { servico = nome }
+    if s.acesso != "interno"
   }
+
+  # As frentes com nome. O filtro é só `dominio != null` — deixou de ser
+  # `publico && dominio != null` porque "tem nome público" e "é alcançável sem passar
+  # por nós" pararam de ser a mesma pergunta.
+  rotas = {
+    for nome, s in local.servicos_http : nome => {
+      host   = s.dominio
+      padrao = nome
+      regras = try(local.rotas_internas[nome], [])
+    }
+    if s.dominio != null
+  }
+
   servico_padrao = "portal-web"
 }
 
@@ -123,7 +139,7 @@ module "trabalhos" {
   segredos = local.servicos_http[each.value.servico].segredos
 }
 
-# --- Os dois portões deste diretório -------------------------------------------
+# --- Os três portões deste diretório --------------------------------------------
 # Escritos porque as duas direções já falharam de verdade, e nenhuma delas deixava
 # nada vermelho: `ANTHROPIC_API_KEY` e `VOYAGE_API_KEY` eram criadas no Secret
 # Manager e não chegavam a serviço nenhum (respondedor offline em silêncio, que é o
@@ -141,6 +157,13 @@ locals {
   segredos_sem_dono = setsubtract(local.segredos_lidos, toset(var.nomes_de_segredo))
   segredos_sem_leitor = setsubtract(
     toset(var.nomes_de_segredo), local.segredos_lidos
+  )
+
+  # O terceiro (ADR 0048). Uma rota cujo `destino` não é backend já reprova sozinha,
+  # com um `Invalid index` que fala de índice e não de rota; este portão diz o que é.
+  rotas_sem_backend = setsubtract(
+    toset(flatten([for regras in values(local.rotas_internas) : [for r in regras : r.destino]])),
+    toset([for nome, s in local.servicos_http : nome if s.acesso != "interno"]),
   )
 }
 
@@ -161,6 +184,14 @@ resource "terraform_data" "portoes_de_segredo" {
       error_message = format(
         "Segredo criado que nenhum serviço lê: %s. Alguém põe valor nele, o `gcloud secrets versions add` responde sucesso, e o controle que ele sustenta continua desligado.",
         join(", ", local.segredos_sem_leitor),
+      )
+    }
+
+    precondition {
+      condition = length(local.rotas_sem_backend) == 0
+      error_message = format(
+        "Rota da borda apontando para serviço sem backend: %s. Ou o nome está errado, ou o serviço é `interno` — e um serviço `interno` atrás de um `path_rule` responde 404 do balanceador a toda requisição do navegador, sem log nosso.",
+        join(", ", local.rotas_sem_backend),
       )
     }
   }

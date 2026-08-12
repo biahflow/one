@@ -10,14 +10,19 @@ modulos/fundacao/           ← como a GCP entrega rede, endereço, registro, se
 modulos/servico-cloudrun/   ← como a GCP entrega "um serviço HTTP"
 modulos/worker-pool/        ← como a GCP entrega "um processo longo sem HTTP"
 modulos/job/                ← como a GCP entrega "um trabalho que começa e termina"
-modulos/borda/              ← como a GCP entrega "este nome, com TLS, aponta para aquele serviço"
+modulos/borda/              ← como a GCP entrega "este nome, com TLS, aponta para aquele
+                              serviço — e estes caminhos dele, para aquele outro"
 ```
 
 `modulos/maquina-fila/` esteve listado aqui e **nunca existiu** depois da ADR 0045: era a VM que
 os worker pools substituíram, e a linha sobreviveu à remoção do diretório.
 
-`servicos.tf` descreve os serviços sem citar GCP: nome, imagem, porta, se é público, variáveis,
+`servicos.tf` descreve os serviços sem citar GCP: nome, imagem, porta, **quem alcança**, variáveis,
 segredos, quantas instâncias. Trocar de provedor é reescrever `modulos/` e manter aquele arquivo.
+
+"Quem alcança" é `acesso`, com três valores e não um booleano (ADR 0048): `publico`, `interno` e
+`balanceador`. O terceiro existe porque o segundo não serve a um serviço **cujo cliente é o
+navegador** — ver a linha da `biahflow-api` na tabela abaixo.
 
 ## Por que as aplicações já são portáteis
 
@@ -35,13 +40,15 @@ Isto foi medido antes de escolher, e é o que sustenta a promessa acima:
 | Peça | Onde | Por quê |
 |---|---|---|
 | `web` (BFF Next.js) | Cloud Run, **público** | é o único que o navegador alcança |
-| `api` (FastAPI) | Cloud Run, **ingress interno** | o `Caddyfile` diz por extenso que a API não é pública: quem fala com ela é o BFF. Publicá-la daria à internet um caminho que o produto não usa |
+| `portal-api` (FastAPI) | Cloud Run, **ingress interno** + IAM | o `Caddyfile` diz por extenso que a API não é pública: quem fala com ela é o BFF, que sabe apresentar identidade. Publicá-la daria à internet um caminho que o produto não usa |
 | `keycloak` | Cloud Run, público, `KC_PROXY=edge` | TLS termina na borda, e acreditar nisso é opt-in (ADR 0011) |
+| `biahflow-web` (SPA em nginx) | Cloud Run, público | serve o `index.html` e os `assets/` do outro produto em `app.<base>` |
+| `biahflow-api` (Django) | Cloud Run, **ingress de balanceador** | o cliente dela é **o navegador**, e para esse cliente IAM invoker não é barreira: nginx não emite ID token e um NEG sem servidor também não. A `run.app` deixa de ser alcançável de fora e `/api|/admin|/static|/healthz|/readyz` de `app.<base>` chegam pela nossa borda (ADR 0046, ADR 0048) |
 | `worker` + `beat` | **Cloud Run worker pool** | a primitiva feita para carga longa sem HTTP — o container de um worker pool nem tem bloco `ports`. Uma versão anterior deste arquivo os mandava para uma VM, sobre a conclusão errada de que o Cloud Run não os aceitava (ADR 0045) |
 | Redis | **Upstash**, externo | cobrado por comando, então o `polling_interval` do Celery foi afrouxado para 5s — um worker ocioso a 1s gera ~86 mil comandos/dia sem trabalho nenhum |
 | documentos | Cloud Storage | S3-compatível por HMAC. Resolve de carona um ponto que o `Caddyfile` deixou em aberto: a URL assinada **cobre o host**, e o MinIO não era publicado |
 | Postgres | Neon, externo | ver ADR 0044 — o `roles.sql` foi verificado lá |
-| rede | VPC + **egress direto** + Cloud NAT | a VPC existe por um motivo só: fazer o `INGRESS_TRAFFIC_INTERNAL_ONLY` das APIs significar alguma coisa. Sem conector — ele é peça paga, e worker pool nem o aceita |
+| rede | VPC + **egress direto** + Cloud NAT | a VPC existe por um motivo só: fazer o ingress interno das APIs significar alguma coisa. Vale para as duas — o `INTERNAL_LOAD_BALANCER` da `biahflow-api` é superconjunto do `INTERNAL_ONLY` e é por dentro da VPC que a `portal-api` a alcança. Sem conector — ele é peça paga, e worker pool nem o aceita |
 
 ## O domínio
 

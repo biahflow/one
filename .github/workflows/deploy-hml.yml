@@ -51,7 +51,20 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: hml-deploy@biahflow-hml.iam.gserviceaccount.com
 
+      # `beta` é declarado aqui e não instalado no passo que o usa: os worker pools só
+      # existem em `gcloud beta`, e o runner não traz esse componente. Sem esta linha o
+      # comando **pergunta** se pode instalá-lo — antes de olhar as flags, de modo que o
+      # `--quiet` que ele já tem não é lido —, e num shell não interativo isso é
+      # `exit 1` com uma mensagem que manda usar a flag que já está lá.
+      #
+      # O mesmo defeito existia no `biahflow-portal` e foi consertado lá primeiro (ADR
+      # 0050). Aqui ele sobreviveu mais tempo por um motivo que vale registrar: este
+      # workflow **nunca tinha chegado até este passo**, porque morria na autenticação
+      # por falta de `WIF_PROVIDER`. Um defeito atrás de outro não é dois defeitos —
+      # é um que esconde o outro.
       - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: beta
 
       - name: Autoriza os dois registros
         run: |

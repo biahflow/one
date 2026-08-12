@@ -42,13 +42,16 @@ locals {
   # `modulos/servico-cloudrun/`.
   servicos_http = {
     biahflow-api = {
-      acesso  = "balanceador"
-      porta   = 8000
-      cpu     = "1"
-      memoria = "1Gi"
-      min     = 1
-      max     = 4
-      dominio = null
+      # As duas imagens deste produto são nossas: o deploy as publica no registro.
+      imagem     = null
+      argumentos = []
+      acesso     = "balanceador"
+      porta      = 8000
+      cpu        = "1"
+      memoria    = "1Gi"
+      min        = 1
+      max        = 4
+      dominio    = null
       variaveis = {
         # `biahflow-api` é o nome pelo qual esta API é alcançada **dentro** da VPC, e
         # sem ele o Django responde 400 a toda chamada do portal — o tropeço já
@@ -142,13 +145,16 @@ locals {
 
 
     biahflow-web = {
-      acesso  = "publico"
-      porta   = 8080
-      cpu     = "1"
-      memoria = "256Mi"
-      min     = 0
-      max     = 3
-      dominio = local.host_biahflow
+      # As duas imagens deste produto são nossas: o deploy as publica no registro.
+      imagem     = null
+      argumentos = []
+      acesso     = "publico"
+      porta      = 8080
+      cpu        = "1"
+      memoria    = "256Mi"
+      min        = 0
+      max        = 3
+      dominio    = local.host_biahflow
       variaveis = {
         # **Estas duas ficaram sem cliente e continuam aqui de propósito** (ADR 0048).
         # Desde que a borda roteia `/api|/admin|/static|/healthz|/readyz` de

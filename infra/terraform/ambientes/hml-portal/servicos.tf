@@ -42,20 +42,36 @@ locals {
   # `modulos/servico-cloudrun/`.
   servicos_http = {
     portal-web = {
-      acesso  = "publico"
-      porta   = 3000
-      cpu     = "1"
-      memoria = "512Mi"
-      min     = 0
-      max     = 3
-      dominio = local.host_portal
+      # `imagem = null` significa "esta é nossa, o deploy publica no nosso registro".
+      # A chave existe nos três porque o `for_each` da costura só aceita o mapa se os
+      # valores tiverem atributos idênticos — é o mesmo motivo de `dominio = null`.
+      imagem     = null
+      argumentos = []
+      acesso     = "publico"
+      porta      = 3000
+      cpu        = "1"
+      memoria    = "512Mi"
+      min        = 0
+      max        = 3
+      dominio    = local.host_portal
       variaveis = {
         NODE_ENV = "production"
         # A URL do serviço, não o nome dele: o Cloud Run não tem DNS de nome curto.
-        API_BASE_URL          = local.url_interna["portal-api"]
-        PORTAL_WEB_URL        = local.url_portal
-        KEYCLOAK_ISSUER       = local.issuer
-        KEYCLOAK_INTERNAL_URL = local.url_keycloak
+        API_BASE_URL    = local.url_interna["portal-api"]
+        PORTAL_WEB_URL  = local.url_portal
+        KEYCLOAK_ISSUER = local.issuer
+        # **A base do realm, não a raiz do servidor** — e a distinção não é preciosismo:
+        # o `auth.ts:115` monta `${internal}/protocol/openid-connect/token`, então sem o
+        # `/realms/<realm>` a troca do código bate numa URL que não existe e o Keycloak
+        # responde `Unable to find matching target resource method`. O Auth.js traduz
+        # isso para uma tela genérica de "problema com a configuração do servidor", que
+        # não diz qual.
+        #
+        # **A mesma variável significa outra coisa na `portal-api`**, e o compose já
+        # tinha as duas formas: lá é a raiz (`http://keycloak:8080`), porque quem a lê é
+        # o cliente de administração, que fala com `/admin/realms/...`. Este Terraform
+        # passava o mesmo valor para os dois e acertava só um.
+        KEYCLOAK_INTERNAL_URL = "${local.url_keycloak}/realms/${local.realm}"
         # `AUTH_URL` decide o prefixo `__Secure-` do cookie de sessão
         # (`app/lib/session.ts`). Ausente, o cookie sai sem o prefixo num ambiente
         # que **é** https, o que é exatamente o contrário do que o esquema indica.
@@ -77,13 +93,15 @@ locals {
 
 
     portal-api = {
-      acesso  = "interno"
-      porta   = 8000
-      cpu     = "1"
-      memoria = "1Gi"
-      min     = 1 # o boot roda `preflight` e abre pool; zero daria 503 no primeiro acesso
-      max     = 4
-      dominio = null
+      imagem     = null
+      argumentos = []
+      acesso     = "interno"
+      porta      = 8000
+      cpu        = "1"
+      memoria    = "1Gi"
+      min        = 1 # o boot roda `preflight` e abre pool; zero daria 503 no primeiro acesso
+      max        = 4
+      dominio    = null
       variaveis = {
         ENVIRONMENT    = "homolog"
         PORTAL_WEB_URL = local.url_portal
@@ -162,21 +180,50 @@ locals {
 
 
     keycloak = {
-      acesso  = "publico"
-      porta   = 8080
-      cpu     = "1"
-      memoria = "1Gi"
+      # **A única imagem que não construímos.** Vai pelo espelho do quay.io porque o
+      # Cloud Run recusa registro de terceiro; a versão é fixa e explícita, e subir de
+      # versão é mudar esta linha — não um `latest` que muda sozinho no dia errado.
+      imagem = "${local.fundacao.registro_espelho}/keycloak/keycloak:26.1"
+      # `start` e não `start-dev`: o compose usa o modo de desenvolvimento, que é
+      # lenient de propósito e não serve a um ambiente com nome público e TLS. A
+      # imagem não traz comando padrão — sem esta linha ela imprime a ajuda e sai.
+      argumentos = ["start"]
+      acesso     = "publico"
+      porta      = 8080
+      cpu        = "1"
+      memoria    = "1Gi"
       # Um só, e nunca zero: o Keycloak leva dezenas de segundos para subir, e um
       # provedor de identidade que dorme faz todo login esperar por ele.
       min     = 1
       max     = 1
       dominio = local.host_keycloak
       variaveis = {
-        KC_PROXY          = "edge"
-        KC_HOSTNAME       = local.host_keycloak
+        # **`KC_PROXY` saiu, e `KC_PROXY_HEADERS` entrou.** A opção `proxy` foi removida
+        # no Keycloak 25/26; declarada, ela é ignorada em silêncio — e o efeito medido é
+        # que o servidor não confia no `X-Forwarded-Proto` da borda e passa a anunciar
+        # `"issuer":"http://auth.<base>/realms/..."`. A `portal-api` valida o `iss`
+        # contra `https://`, então todo token seria recusado com mensagem sobre
+        # assinatura, que é o defeito #6 da ADR 0046 chegando por outra porta.
+        KC_PROXY_HEADERS = "xforwarded"
+        # URL completa e não só o host: com esquema, o Keycloak fixa o `https` em tudo
+        # que ele gera — discovery, redirect e o próprio `issuer`.
+        KC_HOSTNAME       = local.url_keycloak
         KC_DB             = "postgres"
         KC_HEALTH_ENABLED = "true"
         KC_HTTP_ENABLED   = "true"
+        # **Faltava, e o compose já declarava.** O `roles.sql` cria dois schemas no
+        # mesmo banco — `portal` para a aplicação e `keycloak` para o IdP — e sem esta
+        # variável o Keycloak migra o próprio schema dentro de `public`: sobe, funciona,
+        # e deixa as tabelas dele no lugar onde ninguém as procura no dia do restore.
+        # O `pg_dump -n portal` do backup não as levaria, e a ausência só apareceria ao
+        # restaurar. Mesma classe do `NUM_PROXIES` da ADR 0050: variável que o compose
+        # tem e a infraestrutura esqueceu.
+        KC_DB_SCHEMA = "keycloak"
+        # **O usuário do admin de bootstrap, que faltava.** O Keycloak 26 só cria o
+        # administrador inicial se receber usuário **e** senha; com a senha sozinha ele
+        # sobe, não cria ninguém, e a única pista é o `invalid_grant` de quem tenta
+        # entrar. Não é segredo — é o nome de login, e o par dele está no cofre.
+        KC_BOOTSTRAP_ADMIN_USERNAME = "admin"
       }
       segredos = {
         KC_DB_URL                   = "KC_DB_URL"

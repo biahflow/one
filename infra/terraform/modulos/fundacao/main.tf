@@ -136,6 +136,38 @@ resource "google_storage_bucket" "documentos" {
   depends_on               = [google_project_service.api]
 }
 
+# --- O espelho de imagem de terceiro -----------------------------------------
+# O Cloud Run **só aceita imagem de `*.pkg.dev`, `gcr.io` ou `docker.io`** — medido,
+# e a mensagem de erro dele nomeia a saída: "set up an Artifact Registry remote
+# repository". O Keycloak vem do `quay.io`, e sem isto ele não tinha caminho nenhum
+# para a imagem real: o Terraform monta a imagem de todo serviço como
+# `<registro>/<nome>:<tag>`, e o `deploy-hml.yml` só constrói as duas que são nossas.
+# O IdP ficava na `imagem_bootstrap` para sempre, servindo a página do Cloud Run no
+# endereço que o `issuer` do realm declara.
+#
+# Espelho e não passo de mirror no workflow: um `docker pull && push` seria uma cópia
+# que alguém precisa lembrar de refazer a cada versão, e que só existe enquanto o
+# workflow roda. O repositório remoto é cache sob demanda — pede-se
+# `<espelho>/keycloak/keycloak:26.1` e ele busca no upstream na primeira vez.
+resource "google_artifact_registry_repository" "espelho" {
+  repository_id = "espelho-quay"
+  location      = var.regiao
+  format        = "DOCKER"
+  mode          = "REMOTE_REPOSITORY"
+  description   = "Espelho do quay.io — o Cloud Run não puxa de registro de terceiro"
+
+  remote_repository_config {
+    description = "quay.io"
+    docker_repository {
+      custom_repository {
+        uri = "https://quay.io"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.api]
+}
+
 # --- Mídia do Biahflow ------------------------------------------------------
 # Bucket **separado** do de documentos, e a separação não é zelo: aquele é do
 # portal do cliente e é acessado por API S3 com chave HMAC, com o objeto
@@ -340,6 +372,10 @@ output "bucket_midia" { value = google_storage_bucket.midia.name }
 output "ip_saida" { value = google_compute_address.saida.address }
 output "ip_entrada" { value = google_compute_global_address.entrada.address }
 output "endereco_entrada" { value = google_compute_global_address.entrada.id }
+output "registro_espelho" {
+  description = "Espelho do quay.io. O Cloud Run não puxa de registro de terceiro."
+  value       = "${var.regiao}-docker.pkg.dev/${var.projeto}/${google_artifact_registry_repository.espelho.repository_id}"
+}
 output "registro" {
   value = "${var.regiao}-docker.pkg.dev/${var.projeto}/${google_artifact_registry_repository.imagens.repository_id}"
 }

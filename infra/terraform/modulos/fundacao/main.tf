@@ -134,6 +134,38 @@ resource "google_storage_bucket" "documentos" {
   depends_on               = [google_project_service.api]
 }
 
+# --- Mídia do Biahflow ------------------------------------------------------
+# Bucket **separado** do de documentos, e a separação não é zelo: aquele é do
+# portal do cliente e é acessado por API S3 com chave HMAC, com o objeto
+# carregando o tenant na chave; este é do Django do Biahflow, escrito pelo
+# `FileField` via `django-storages`. Mesmo bucket significaria dois produtos
+# escrevendo prefixos no mesmo lugar sem nenhum dos dois saber do outro.
+#
+# Até aqui a mídia do Biahflow morava no sistema de arquivos do contêiner: com
+# `min = 1` e `max = 4`, o arquivo enviado ficava na instância que o recebeu,
+# invisível para as outras e perdido na revisão seguinte.
+
+resource "google_storage_bucket" "midia" {
+  name                        = "${var.projeto}-midia"
+  location                    = var.regiao
+  uniform_bucket_level_access = true
+  # Mesma razão do bucket ao lado, com um controle diferente: aqui não há URL
+  # assinada — o download é servido pela rota autenticada do Django, que passa
+  # por `check_object_permissions` (ADR 0002 / FDD 017 de lá). Um bucket público
+  # seria um segundo caminho para o arquivo, sem RBAC nenhum.
+  public_access_prevention = "enforced"
+  force_destroy            = true # HML: derrubar e recriar precisa ser barato
+
+  # O que substitui o `tar` de mídia do sidecar de backup, que não tem casa em
+  # HML. Versão anterior sobrevive a um `delete` acidental e ao expurgo de
+  # retenção que apagar o objeto errado.
+  versioning {
+    enabled = true
+  }
+
+  depends_on = [google_project_service.api]
+}
+
 # --- Segredos ---------------------------------------------------------------
 # Criados **vazios**. Os valores entram por `gcloud secrets versions add`, nunca
 # pelo Terraform — senão eles ficariam no estado, que é um arquivo num bucket.
@@ -163,6 +195,15 @@ resource "google_secret_manager_secret_iam_member" "leitura" {
 
 resource "google_storage_bucket_iam_member" "documentos" {
   bucket = google_storage_bucket.documentos.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.execucao.email}"
+}
+
+# O Django precisa criar, ler e apagar objeto — o expurgo de retenção apaga, e o
+# `document.file.delete()` também. `objectAdmin` e não `objectViewer`, pelo mesmo
+# motivo do bucket ao lado.
+resource "google_storage_bucket_iam_member" "midia" {
+  bucket = google_storage_bucket.midia.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.execucao.email}"
 }
@@ -293,6 +334,7 @@ output "conta_execucao" { value = google_service_account.execucao.email }
 output "conta_deploy" { value = google_service_account.deploy.email }
 output "conta_infra" { value = google_service_account.infra.email }
 output "bucket_documentos" { value = google_storage_bucket.documentos.name }
+output "bucket_midia" { value = google_storage_bucket.midia.name }
 output "ip_saida" { value = google_compute_address.saida.address }
 output "ip_entrada" { value = google_compute_global_address.entrada.address }
 output "endereco_entrada" { value = google_compute_global_address.entrada.id }

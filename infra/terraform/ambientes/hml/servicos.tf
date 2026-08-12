@@ -294,6 +294,14 @@ locals {
         # `noreply@biahflow.local`, e `.local` não é domínio entregável — o runbook de
         # homologação já registrava que relay sério o recusa.
         DEFAULT_FROM_EMAIL = "daniel@biahflow.ai"
+        # Onde os documentos passam a viver. Preenchida, o `settings.py` de lá troca
+        # o `STORAGES["default"]` para o GCS; vazia, ele mantém o sistema de
+        # arquivos — que é o que o compose continua usando, e é por isso que o teste
+        # de mesa do backup segue válido lá.
+        #
+        # Referência ao módulo e não literal: o nome só existe depois de a nuvem
+        # provisionar o bucket, e é a regra do topo deste arquivo.
+        GCS_MEDIA_BUCKET = module.fundacao.bucket_midia
       }
       segredos = [
         "DJANGO_SECRET_KEY", "DATABASE_URL", "REDIS_URL",

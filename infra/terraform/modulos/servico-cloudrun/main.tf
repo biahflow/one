@@ -142,8 +142,20 @@ resource "google_cloud_run_v2_service" "servico" {
   # A tag da imagem muda a cada deploy e é o Actions quem a aplica. Sem isto, um
   # `terraform apply` de infraestrutura reverteria o serviço para a tag do último
   # apply — desfazendo o deploy mais recente sem ninguém pedir.
+  #
+  # O segundo item é de outra espécie e vale a explicação, porque `ignore_changes` é
+  # uma forma barata de esconder desvio real. **`scaling` aqui é o de serviço, não o
+  # de `template`** — campo que o provider 6.x acrescentou e que a API devolve sempre
+  # preenchido com zeros, mesmo para quem nunca o declarou. Como não declaramos, todo
+  # `plan` propunha removê-lo, todo `apply` "removia", e o `plan` seguinte propunha de
+  # novo: desvio perpétuo, que faz um plano nunca ficar limpo e apaga a diferença entre
+  # "este PR não muda nada" e "este PR muda alguma coisa". Quem escalona este serviço é
+  # `template[0].scaling`, que continua declarado e continua sendo comparado.
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [
+      template[0].containers[0].image,
+      scaling,
+    ]
   }
 }
 

@@ -4,8 +4,11 @@ Terraform em **duas camadas**, e a separação não é estética: é o que torna
 trabalho de reescrever um diretório em vez de reescrever o produto.
 
 ```
-ambientes/hml/servicos.tf   ← camada portátil: o que a aplicação precisa, em termos neutros
-ambientes/hml/main.tf       ← a costura, e os dois portões de segredo
+ambientes/hml/              ← a fundação: o que é do projeto e não de um produto, mais a borda
+ambientes/hml-biahflow/     ← o portal operacional: serviços, jobs, agendador
+ambientes/hml-portal/       ← o portal do cliente: serviços, job, workers
+    <cada um>/servicos.tf   ← camada portátil: o que a aplicação precisa, em termos neutros
+    <cada um>/main.tf       ← a costura, e os portões
 modulos/fundacao/           ← como a GCP entrega rede, endereço, registro, segredo, identidade
 modulos/servico-cloudrun/   ← como a GCP entrega "um serviço HTTP"
 modulos/worker-pool/        ← como a GCP entrega "um processo longo sem HTTP"
@@ -16,6 +19,11 @@ modulos/borda/              ← como a GCP entrega "este nome, com TLS, aponta p
 
 `modulos/maquina-fila/` esteve listado aqui e **nunca existiu** depois da ADR 0045: era a VM que
 os worker pools substituíram, e a linha sobreviveu à remoção do diretório.
+
+**São três states desde a ADR 0051**, um por dono, em prefixos do mesmo bucket. A fundação não
+lê ninguém; cada produto lê **só as saídas** dela, e nunca o outro produto. É o que faz um `apply`
+de um portal não alcançar o outro — e o que forçou cada um a ter a própria DSN, porque dois states
+não podem ambos ser donos de um segredo chamado `DATABASE_URL`.
 
 `servicos.tf` descreve os serviços sem citar GCP: nome, imagem, porta, **quem alcança**, variáveis,
 segredos, quantas instâncias. Trocar de provedor é reescrever `modulos/` e manter aquele arquivo.
@@ -95,10 +103,12 @@ Bucket GCS com versionamento. O bucket **não** é criado por este Terraform —
 ## Uso
 
 ```bash
-cd ambientes/hml
-cp terraform.tfvars.example terraform.tfvars   # e preencha; nenhum segredo entra aqui
-terraform init
-terraform plan
+cd ambientes/hml                                # a fundação primeiro: os produtos leem as saídas dela
+cp terraform.tfvars.example terraform.tfvars    # e preencha; nenhum segredo entra aqui
+terraform init && terraform plan
+
+cd ../hml-biahflow && terraform init && terraform plan   # depois cada produto, em qualquer ordem
+cd ../hml-portal   && terraform init && terraform plan
 ```
 
 Os segredos vão para o Secret Manager por fora (`gcloud secrets versions add`), e o Terraform só
@@ -118,3 +128,9 @@ Vazio significa `imagem_bootstrap` (o `hello` da Google), e o `ignore_changes` d
 garante que nenhum apply posterior a traga de volta por cima da imagem que o deploy publicou.
 
 A ordem inteira, com o que é manual e por quê, está em `docs/runbooks/hml-gcp.md`.
+
+**Um plano limpo é sinal, e custou trabalho.** Até a ADR 0051 os planos nunca ficavam vazios: dois
+campos de escalonamento iam e voltavam a cada apply, por assimetria entre o que declaramos e o que
+a API devolve. Com dez mudanças de rotina em todo plano, ninguém distinguia "este PR não muda nada"
+de "este PR muda alguma coisa". Hoje os três saem `No changes` — se um deles não sair, é porque
+alguma coisa mudou de verdade.

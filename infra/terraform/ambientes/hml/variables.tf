@@ -65,80 +65,57 @@ variable "repositorio_infra" {
   default     = "dcamppos83/biahflow-portal-cliente"
 }
 
-variable "tag_imagem" {
+variable "segredos" {
   description = <<-TXT
-    A tag das imagens a implantar. **SHA do commit, nunca `latest`**: é o que
-    permite voltar apontando a revisão anterior, e o que faz duas revisões
-    diferentes serem distinguíveis.
+    Os segredos que o Terraform **cria vazios** no Secret Manager, e de que produto é
+    cada um. Os valores entram por fora (`gcloud secrets versions add`) e nunca por
+    aqui — o repositório documenta os nomes e jamais os valores.
 
-    Vazio é o caso do **primeiro apply**, e significa `imagem_bootstrap`. Ver lá
-    por que o default não pode ser uma tag do nosso próprio registro.
+    **A chave é o nome do segredo; o valor é o produto dono.** O dono existe porque os
+    dois portões de leitor moram nos states de produto desde a ADR 0051: cada um cobra
+    que todo segredo atribuído a ele seja lido por algum serviço seu. Sem o dono
+    declarado aqui, um segredo poderia nascer sem que portão nenhum perguntasse se ele
+    chega a alguém — que é exatamente como `ANTHROPIC_API_KEY` e `VOYAGE_API_KEY`
+    passaram meses no cofre sem leitor.
+
+    Na maioria dos casos o nome do segredo é o nome da variável de ambiente que a
+    aplicação lê. A exceção são as quatro DSNs: quando dois produtos leem a mesma
+    variável e precisam de valores diferentes, o segredo ganha o prefixo do dono e o
+    mapa `segredos` de cada produto faz a ligação.
   TXT
-  type        = string
-  default     = ""
-}
+  type        = map(string)
+  default = {
+    # --- Portal do cliente ---------------------------------------------------
+    AUTH_SECRET                  = "portal"
+    AUTH_KEYCLOAK_SECRET         = "portal"
+    KEYCLOAK_ADMIN_CLIENT_SECRET = "portal"
+    PORTAL_DATABASE_URL          = "portal"
+    PORTAL_REDIS_URL             = "portal"
+    DATABASE_SYSTEM_URL          = "portal"
+    DATABASE_ADMIN_URL           = "portal"
+    DATABASE_MIGRATION_URL       = "portal"
+    BIAHFLOW_READ_TOKEN          = "portal"
+    BIAHFLOW_WEBHOOK_SECRET      = "portal"
+    AGENT_KEY_PEPPER             = "portal"
+    DRIVE_TOKEN_ENCRYPTION_KEY   = "portal"
+    STORAGE_ACCESS_KEY           = "portal"
+    STORAGE_SECRET_KEY           = "portal"
+    ANTHROPIC_API_KEY            = "portal"
+    VOYAGE_API_KEY               = "portal"
+    KC_DB_URL                    = "portal"
+    KC_DB_USERNAME               = "portal"
+    KC_DB_PASSWORD               = "portal"
+    KC_BOOTSTRAP_ADMIN_PASSWORD  = "portal"
 
-variable "imagem_bootstrap" {
-  description = <<-TXT
-    A imagem com que um serviço **nasce**, antes de o primeiro deploy existir.
-
-    O `lifecycle.ignore_changes` dos módulos protege a tag do último deploy de um
-    apply de infraestrutura — mas `ignore_changes` só vale em *update*, nunca em
-    *create*. No primeiro apply o Cloud Run recebe a imagem literal, tenta baixá-la
-    de um Artifact Registry ainda vazio e recusa a revisão; e o `deploy-hml.yml` só
-    sabe fazer `gcloud run services update`, que exige o serviço já criado. Sem esta
-    variável não existe ordem válida entre os dois workflows: cada um espera o outro.
-
-    O `hello` da Google serve porque só precisa existir e subir. Ele fica no ar pelo
-    intervalo entre o apply e o primeiro deploy, e o `ignore_changes` garante que
-    nenhum apply posterior o traga de volta por cima da imagem real.
-  TXT
-  type        = string
-  default     = "us-docker.pkg.dev/cloudrun/container/hello"
-}
-
-variable "nomes_de_segredo" {
-  description = <<-TXT
-    Os segredos que o Terraform **cria vazios** no Secret Manager. Os valores entram
-    por fora (`gcloud secrets versions add`) e nunca por aqui — o repositório
-    documenta os nomes e jamais os valores (ADR 0011 do Biahflow).
-
-    O nome de cada um era **o nome da variável de ambiente que a aplicação lê**, porque
-    o módulo do Cloud Run usava a mesma string dos dois lados. Continua sendo a regra
-    para a maioria, e por bom motivo: um segredo cujo nome não bate com o que o código
-    procura é um segredo que existe, tem valor, é montado e não chega em ninguém.
-
-    **A exceção existe desde que `segredos` virou mapa**: quando dois produtos leem a
-    mesma variável e precisam de valores diferentes, o nome do segredo ganha o prefixo
-    do dono e o mapa de `servicos.tf` faz a ligação. Hoje são quatro — as DSNs de banco
-    e de Redis dos dois portais —, e antes disso havia um `DATABASE_URL` só, com um
-    valor só, montado nos dois.
-  TXT
-  type        = list(string)
-  default = [
-    # `AUTH_KEYCLOAK_SECRET` e não `KEYCLOAK_CLIENT_SECRET`: quem lê é o `auth.ts`,
-    # e o nome dele vem do Auth.js. Enquanto era o outro, o BFF subia com o
-    # `clientSecret` vazio e todo login morria na troca do código.
-    "AUTH_SECRET", "AUTH_KEYCLOAK_SECRET",
-    # O par do `portal-admin`, que é outro client e outro segredo. Está em
-    # `_REQUIRED_SECRETS` do `preflight.py`, então a API **recusa subir** sem ele.
-    "KEYCLOAK_ADMIN_CLIENT_SECRET",
-    # As quatro com prefixo de dono. `DATABASE_URL` e `REDIS_URL` sem prefixo deixaram
-    # de existir: eram um segredo só para dois leitores, e o valor de um era o do outro.
-    "PORTAL_DATABASE_URL", "BIAHFLOW_DATABASE_URL",
-    "PORTAL_REDIS_URL", "BIAHFLOW_REDIS_URL",
-    # Estas três já eram do portal do cliente pelo próprio nome, e não colidiam.
-    "DATABASE_SYSTEM_URL", "DATABASE_ADMIN_URL", "DATABASE_MIGRATION_URL",
-    "BIAHFLOW_READ_TOKEN", "BIAHFLOW_WEBHOOK_SECRET",
-    "AGENT_KEY_PEPPER", "DRIVE_TOKEN_ENCRYPTION_KEY",
-    "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
-    "KC_DB_URL", "KC_DB_USERNAME", "KC_DB_PASSWORD", "KC_BOOTSTRAP_ADMIN_PASSWORD",
-    "DJANGO_SECRET_KEY", "PORTAL_READ_TOKEN", "PORTAL_WEBHOOK_SECRET",
-    "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN",
-    # A senha de app do Gmail. É a única credencial de e-mail: o resto (host, porta,
-    # TLS, usuário, remetente) é variável comum, porque nenhum deles é segredo e
-    # todos aparecem em `gcloud run services describe` sem prejuízo.
-    "EMAIL_HOST_PASSWORD",
-    "ANTHROPIC_API_KEY", "VOYAGE_API_KEY",
-  ]
+    # --- Biahflow ------------------------------------------------------------
+    DJANGO_SECRET_KEY          = "biahflow"
+    BIAHFLOW_DATABASE_URL      = "biahflow"
+    BIAHFLOW_REDIS_URL         = "biahflow"
+    PORTAL_READ_TOKEN          = "biahflow"
+    PORTAL_WEBHOOK_SECRET      = "biahflow"
+    GOOGLE_OAUTH_CLIENT_ID     = "biahflow"
+    GOOGLE_OAUTH_CLIENT_SECRET = "biahflow"
+    GOOGLE_OAUTH_REFRESH_TOKEN = "biahflow"
+    EMAIL_HOST_PASSWORD        = "biahflow"
+  }
 }

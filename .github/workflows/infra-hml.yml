@@ -7,6 +7,12 @@
 #
 # Por isso: `plan` automático em PR que toca a infraestrutura, `apply` só quando
 # uma pessoa manda.
+#
+# **Três states desde a ADR 0051**, e a matriz existe para que o `plan` de um produto
+# não dependa do outro. `fail-fast: false` porque um plano vermelho no portal do
+# cliente não torna menos útil ver o do Biahflow — e `max-parallel: 1` porque os três
+# compartilham o bucket de estado e a ordem de leitura importa: a fundação primeiro,
+# já que os produtos leem as saídas dela.
 name: infra-hml
 
 on:
@@ -24,13 +30,17 @@ permissions:
   id-token: write
   pull-requests: write
 
-env:
-  DIRETORIO: infra/terraform/ambientes/hml
-
 jobs:
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        ambiente: [hml, hml-biahflow, hml-portal]
+    env:
+      DIRETORIO: infra/terraform/ambientes/${{ matrix.ambiente }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +60,8 @@ jobs:
         with:
           terraform_version: 1.14.3
 
+      # `../..` a partir de qualquer um dos três alcança a árvore inteira — o formato
+      # é do repositório, não do ambiente, e conferi-lo três vezes é barato.
       - name: Formato
         run: terraform -chdir=$DIRETORIO fmt -check -recursive ../..
 

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { ADMIN, CLIENTE as CLIENT, projetoDoSeed, signIn } from "./atores";
 import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
 
 /**
@@ -16,25 +17,6 @@ import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
  * indexação e procura **dentro** do texto — que é a metade da promessa que um
  * casamento por título não alcança.
  */
-
-const ADMIN = { username: "helena.dias", password: "portal_local_only" };
-const CLIENT = { username: "marina.farias", password: "portal_local_only" };
-
-async function signIn(page: Page, user: { username: string; password: string }) {
-  // Limpa **aqui**, coladinho no `goto` — ver o comentário longo em
-  // `login.spec.ts`: limpar no chamador deixa uma janela em que a navegação
-  // anterior reescreve o cookie e `/login` já redireciona para `/`.
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Entrar com SSO/ }).click();
-  await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
-  await page.locator("#username").fill(user.username);
-  await page.locator("#password").fill(user.password);
-  await page.locator("#kc-login").click();
-  await page.waitForURL(
-    (url) => !url.pathname.startsWith("/login") && !url.pathname.startsWith("/realms"),
-  );
-}
 
 /** Abre a lupa e digita, devolvendo a lista de resultados. */
 async function search(page: Page, term: string) {
@@ -84,7 +66,10 @@ test("a busca acha o termo dentro do documento e oferece a página", async ({
   const title = `Aditivo ${codeword}`;
 
   await signIn(page, ADMIN);
-  await page.goto("/admin/conhecimento");
+  // Mesma razão de `documents.spec.ts`: o documento e a busca têm de acontecer
+  // no mesmo tenant, e sem `?project=` a tela de administração escolhe "o
+  // projeto mais recente", que não é necessariamente o do cliente que busca.
+  await page.goto(`/admin/conhecimento?project=${await projetoDoSeed(page)}`);
   await page.locator('input[name="file"]').setInputFiles({
     name: "aditivo.txt",
     mimeType: "text/plain",

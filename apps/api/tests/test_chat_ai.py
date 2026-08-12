@@ -36,6 +36,7 @@ from portal_api.models import (
     DocumentOrigin,
     DocumentSource,
     PendingItem,
+    PendingOrigin,
     PendingPriority,
     User,
 )
@@ -155,9 +156,15 @@ def test_eval_open_pendings_are_answered_with_citation(db_session: Session) -> N
         biahflow_project_id=42, client_id=52, milestones=[_milestone(1, "Kickoff", "done")],
     ))
     ctx = TenantContext(project.organization_id, project.id)
+    # `origin=biahflow` explícito, e não o default: a pendência que o assistente
+    # cita é a que **veio da fonte**, e é isso que este teste afirma. Sem o
+    # parâmetro a linha nascia `portal`, que é o valor das pendências que o
+    # próprio chat abre ao declarar lacuna — e o `collect_evidence` deixou de
+    # recolhê-las, para a lacuna de um turno não virar a citação do seguinte.
+    # É também o que o `sync_snapshot` grava de verdade.
     PendingItemRepository(db_session, ctx).add(
         PendingItem(title="Aprovar fluxo de exceções", owner_label="Mariana • Acme",
-                    priority=PendingPriority.high)
+                    priority=PendingPriority.high, origin=PendingOrigin.biahflow)
     )
 
     result = chat_service.answer_question(
@@ -165,6 +172,43 @@ def test_eval_open_pendings_are_answered_with_citation(db_session: Session) -> N
     )
     assert result.confidence == "grounded"
     assert any("pend" in source.lower() for source in result.sources)
+
+
+@pytest.mark.integration
+def test_eval_a_previous_gap_never_becomes_the_next_answer(db_session: Session) -> None:
+    """A pendência que o assistente abriu não pode responder a pergunta seguinte.
+
+    Ao declarar lacuna, o chat grava uma pendência cujo título carrega a pergunta
+    (`Responder dúvida do cliente: <pergunta>`). Ela voltava ao contexto como
+    evidência, e o casador do respondedor offline — que aceita qualquer evidência
+    compartilhando um token de quatro letras com a pergunta — servia essa linha
+    como resposta na vez seguinte, com `confidence="grounded"`.
+
+    É o irmão do caso da frase plantada num turno anterior: lá o cliente fabrica
+    evidência escrevendo no chat, aqui ele a fabrica **perguntando** — e o
+    portal escreve por ele.
+    """
+    # Par de ids próprio: `sync_snapshot` faz upsert por organização + slug, então
+    # dois testes com o mesmo par escrevem na **mesma** linha e um contamina o
+    # outro. Foi o que aconteceu ao estrear com `61/71`, que já era de outro teste
+    # deste arquivo — e o sintoma apareceu longe, num teste de notificações.
+    project = biahflow.sync_snapshot(db_session, _snapshot(
+        biahflow_project_id=93, client_id=93, milestones=[_milestone(1, "Kickoff", "done")],
+    ))
+    ctx = TenantContext(project.organization_id, project.id)
+    pergunta = "O que diz o procedimento zafrenil de suporte?"
+
+    primeiro = chat_service.answer_question(db_session, ctx, project, pergunta, SETTINGS)
+    assert primeiro.confidence == "insufficient_context"
+
+    # A pendência da lacuna existe e carrega a pergunta no título — é o material
+    # que envenenava a rodada seguinte.
+    pendencias = PendingItemRepository(db_session, ctx).list()
+    assert any("zafrenil" in item.title for item in pendencias)
+
+    segundo = chat_service.answer_question(db_session, ctx, project, pergunta, SETTINGS)
+    assert segundo.confidence == "insufficient_context"
+    assert segundo.sources == []
 
 
 @pytest.mark.integration

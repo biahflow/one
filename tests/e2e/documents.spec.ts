@@ -1,6 +1,7 @@
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import { ADMIN, CLIENTE as CLIENT, projetoDoSeed, signIn } from "./atores";
 import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
 
 /**
@@ -16,27 +17,6 @@ import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
  * citação só pode ter vindo do arquivo que este teste acabou de subir.
  */
 
-const ADMIN = { username: "helena.dias", password: "portal_local_only" };
-const CLIENT = { username: "marina.farias", password: "portal_local_only" };
-
-async function signIn(page: Page, user: { username: string; password: string }) {
-  // Limpa **aqui**, coladinho no `goto`. Limpar no chamador deixa uma janela: a
-  // navegação anterior pode ter uma requisição em voo que reescreve o cookie de
-  // sessão logo depois, e aí `/login` redireciona para `/` (ele faz isso quando
-  // há sessão) e o botão nunca aparece. O sintoma é um timeout esperando um
-  // botão numa página que é o dashboard.
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.getByRole("button", { name: /Entrar com SSO/ }).click();
-  await page.waitForURL(/\/realms\/portal-local\/protocol\/openid-connect\/auth/);
-  await page.locator("#username").fill(user.username);
-  await page.locator("#password").fill(user.password);
-  await page.locator("#kc-login").click();
-  await page.waitForURL(
-    (url) => !url.pathname.startsWith("/login") && !url.pathname.startsWith("/realms"),
-  );
-}
-
 test.beforeEach(() => {
   test.skip(stackIsMissing(serviceIsUp("api")), STACK_REASON);
 });
@@ -51,7 +31,12 @@ test("o documento enviado na administração vira citação no chat do cliente",
   const title = `Contrato ${codeword}`;
 
   await signIn(page, ADMIN);
-  await page.goto("/admin/conhecimento");
+  // O upload tem de cair **no projeto da Marina**, senão o documento é indexado
+  // num tenant e a pergunta roda em outro — e o assistente, corretamente,
+  // declara lacuna. Sem o `?project=` a tela usa `me.projects[0]`, que é "o
+  // projeto criado por último" e não tem relação com quem vai perguntar.
+  const projeto = await projetoDoSeed(page);
+  await page.goto(`/admin/conhecimento?project=${projeto}`);
   await expect(
     page.getByRole("heading", { name: /O que o assistente pode citar/ }),
   ).toBeVisible();
@@ -140,7 +125,11 @@ test("o arquivo com assinatura de malware é recusado e não vira índice", asyn
   const title = `Anexo suspeito ${Date.now().toString(36)}`;
 
   await signIn(page, ADMIN);
-  await page.goto("/admin/conhecimento");
+  // Este teste não depende de qual projeto, mas escrever num explícito importa
+  // por outro motivo: sem isso o destino é "o projeto criado por último", e o
+  // lixo das execuções passa a se acumular em qualquer organização que alguém
+  // tenha criado à mão. Os artefatos ficam onde o seed os espera.
+  await page.goto(`/admin/conhecimento?project=${await projetoDoSeed(page)}`);
 
   await page.locator('input[name="file"]').setInputFiles({
     name: "anexo.txt",

@@ -7,6 +7,7 @@ import { authorizationHeader } from "@/app/lib/session";
 import { traceId } from "@/app/lib/trace";
 import DashboardClient, {
   type JourneyPhase,
+  type DecisionView,
   type MeetingView,
   type NotificationCenter,
   type Overview,
@@ -80,6 +81,7 @@ function initialsOf(fullName: string): string {
 
 type ApiMilestone = { title: string; state: string; due_date: string | null; owner_label: string | null };
 type ApiDocument = { title: string; type: string | null; author: string | null; link: string | null; updated_at: string | null };
+type ApiDecision = { title: string; rationale: string | null; decided_on: string | null; owner_label: string | null; meeting_title: string | null };
 type ApiMeeting = { title: string; date: string | null; recording_url: string | null; has_transcript: boolean; status: string | null };
 type ApiPending = { id: string; title: string; description: string | null; owner_label: string | null; state: string; priority: string; origin: string; opened_by_message_id: string | null; opened_by_conversation_id: string | null; comment_count: number; created_at: string; resolved_at: string | null };
 type ApiResults = { milestones_total: number; milestones_done: number; overdue: number; on_time_percent: number };
@@ -210,6 +212,17 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
       status: meeting.status ? MEETING_STATUS_LABELS[meeting.status] ?? meeting.status : "",
       hasTranscript: meeting.has_transcript,
       recordingUrl: meeting.recording_url,
+    })),
+    // Cada campo é desreferenciado aqui de propósito: a guarda de consumo da ADR 0033
+    // gera um caso por esquema e reprova campo que a tela não lê — e ela enxerga este
+    // arquivo porque ninguém o importa nem o chama por URL, então o corpus dele é ele
+    // mesmo.
+    decisions: ((data.decisions as ApiDecision[]) ?? []).map<DecisionView>((decision) => ({
+      title: decision.title,
+      rationale: decision.rationale,
+      decidedOn: shortDate(decision.decided_on),
+      ownerLabel: decision.owner_label,
+      meetingTitle: decision.meeting_title,
     })),
     pendings: ((data.pendings as ApiPending[]) ?? []).map<PendingItemView>((pending) => ({
       id: pending.id,

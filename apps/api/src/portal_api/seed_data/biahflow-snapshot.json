@@ -172,6 +172,24 @@
       "status": "held"
     }
   ],
+  "decisions": [
+    {
+      "id": 91,
+      "title": "Adotar fila gerenciada em vez de instância própria",
+      "rationale": "O volume previsto não paga o custo fixo de uma instância, e a fila gerenciada escala a zero fora do horário comercial. Manter a instância foi considerado pela latência, e os 5 s de intervalo cabem no trabalho mais rápido da fila.",
+      "decided_on": "2026-08-21",
+      "decided_by": "Marina Farias",
+      "meeting_id": 4
+    },
+    {
+      "id": 92,
+      "title": "Adiar o piloto de cobrança para setembro",
+      "rationale": "A integração fiscal depende de um cadastro que ainda está em revisão do lado do cliente.",
+      "decided_on": "2026-08-07",
+      "decided_by": "Helena Dias",
+      "meeting_id": 3
+    }
+  ],
   "pendencias": [
     {
       "id": 71,

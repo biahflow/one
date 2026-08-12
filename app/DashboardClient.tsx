@@ -33,6 +33,7 @@ import {
   Target,
   ThumbsDown,
   ThumbsUp,
+  Scale,
   TrendingUp,
   User,
   UsersRound,
@@ -98,6 +99,7 @@ const navItems = [
   { label: "Documentos", icon: FolderOpen },
   { label: "Reuniões", icon: UsersRound },
   { label: "Pendências", icon: Inbox },
+  { label: "Decisões", icon: Scale },
   { label: "Resultados", icon: TrendingUp },
 ];
 
@@ -180,6 +182,7 @@ const searchKindLabel: Record<string, string> = {
   document: "Documento",
   meeting: "Reunião",
   pending: "Pendência",
+  decision: "Decisão",
   milestone: "Marco",
   chunk: "Trecho de documento",
 };
@@ -200,6 +203,7 @@ export type ProjectSummary = { id: string; name: string; status: string; current
 export type OverviewMilestone = { title: string; owner: string; state: string; date: string };
 export type ProjectDocument = { title: string; type: string | null; author: string | null; link: string | null; updated: string };
 export type MeetingView = { title: string; date: string; status: string; hasTranscript: boolean; recordingUrl: string | null };
+export type DecisionView = { title: string; rationale: string | null; decidedOn: string | null; ownerLabel: string | null; meetingTitle: string | null };
 export type PendingItemView = { id: string; title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; openedByMessageId: string | null; openedByConversationId: string | null; commentCount: number; age: string };
 export type ProjectResults = { milestonesTotal: number; milestonesDone: number; overdue: number; onTimePercent: number };
 export type MeasuredAssumption = {
@@ -302,6 +306,7 @@ export type Overview = {
   digitalEmployees: DigitalEmployeeView[];
   documents: ProjectDocument[];
   meetings: MeetingView[];
+  decisions: DecisionView[];
   pendings: PendingItemView[];
   results: ProjectResults | null;
   measured: MeasuredResults | null;
@@ -705,6 +710,8 @@ export default function DashboardClient({
         return <MeetingsView onAsk={askAi} overview={view} />;
       case "Pendências":
         return <PendingView onAsk={askAi} overview={view} onOpenTurn={openTurn} />;
+      case "Decisões":
+        return <DecisionsView onAsk={askAi} overview={view} />;
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
       case "Notificações":
@@ -1433,6 +1440,53 @@ function MeetingsView({ onAsk, overview }: { onAsk: () => void; overview: Overvi
                 </a>
               )}
               <span className={`state state--${meeting.status === "Realizada" ? "done" : "1"}`}>{meeting.status}</span>
+            </div>
+          ))}
+        </div>
+      </article>
+    </>
+  );
+}
+
+function DecisionsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+  const [only, setOnly] = useState<string | null>(null);
+  const fromMeeting = overview.decisions.filter((decision) => decision.meetingTitle !== null);
+  const decisions = only === "meeting" ? fromMeeting : overview.decisions;
+  return (
+    <>
+      <ViewHero eyebrow="DECISÕES" title="Decisões do projeto" subtitle="O que foi decidido, por quem e por quê." onAsk={onAsk} />
+      <article className="panel">
+        <div className="panel-heading"><div><p className="eyebrow">REGISTRO</p><h2>Decisões registradas <span>{decisions.length}</span></h2></div></div>
+        {/* A proveniência é o corte que alguém procura aqui: "isso saiu de qual
+            reunião?" é a pergunta seguinte a "quem decidiu isso?". */}
+        <FilterChips
+          label="Filtrar decisões"
+          active={only}
+          onPick={setOnly}
+          options={[
+            { value: null, label: "Todas", count: overview.decisions.length },
+            { value: "meeting", label: "De uma reunião", count: fromMeeting.length },
+          ]}
+        />
+        <div className="source-list">
+          {decisions.length === 0 && (
+            <p className="empty-state">
+              {overview.decisions.length === 0
+                ? "Nenhuma decisão registrada ainda."
+                : "Nenhuma decisão veio de uma reunião ainda."}
+            </p>
+          )}
+          {decisions.map((decision) => (
+            <div className="source-row" key={decision.title}>
+              <span className="file-icon"><Scale size={17} /></span>
+              <div>
+                <strong>{decision.title}</strong>
+                {/* O porquê é o que justifica esta aba existir: sem ele, uma decisão
+                    é um título — e é justamente o que o cliente não consegue
+                    reconstituir sozinho meses depois. */}
+                {decision.rationale && <span>{decision.rationale}</span>}
+                <span>{[decision.ownerLabel, decision.decidedOn, decision.meetingTitle].filter(Boolean).join(" • ") || "Sem autoria registrada"}</span>
+              </div>
             </div>
           ))}
         </div>

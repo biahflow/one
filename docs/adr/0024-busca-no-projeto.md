@@ -120,6 +120,12 @@ A busca não é uma segunda porta para o read model: é um atalho para o que já
 dia em que a aba de decisões existir, o teste que fixa esta decisão
 (`test_a_decision_is_not_reachable_because_no_tab_shows_one`) é o que muda junto.
 
+> **Retificação (ADR 0049, 12/08/2026).** Aquele dia chegou: a aba existe, e a decisão entra na
+> busca pelo título **e pelo racional** — quem procura uma decisão raramente lembra o título dela.
+> O teste nomeado acima foi reescrito, como esta seção previa. O que ela não previa é que o
+> escritor teria de nascer no **outro repositório** (FDD 032 do Biahflow), porque o portal não
+> origina status: a exceção durou três fases não por falta de tela, mas por falta de dado.
+
 E o hit carrega o **rótulo da aba**, resolvido na API. A tela navega por rótulo desde a Fase 2;
 um segundo mapa no navegador seria uma cópia que envelhece sozinha.
 

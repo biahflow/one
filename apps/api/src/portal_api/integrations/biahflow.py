@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from portal_api import notifications, pending_comments, results
 from portal_api.models import (
     ConversationMessage,
+    Decision,
     DeliverableState,
     DigitalEmployee,
     DigitalEmployeeStatus,
@@ -143,6 +144,13 @@ def _parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _parse_date(value: str | None) -> date | None:
+    """Data ISO do snapshot (sem hora). O `decided_on` de uma decisão é um dia, não um instante."""
+    if not value:
+        return None
+    return date.fromisoformat(value)
 
 
 def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
@@ -319,19 +327,59 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             )
         )
 
+    # **Decisões antes de reuniões, e a ordem é dependência.** `Decision.meeting_id` é
+    # FK com `ON DELETE SET NULL`: apagar as reuniões primeiro anularia a proveniência
+    # de qualquer decisão que sobrevivesse ao `DELETE` abaixo — sem erro, sem log e sem
+    # teste que percebesse. Hoje nenhuma sobrevive, porque a substituição é integral; a
+    # ordem existe para o dia em que alguém copiar o padrão da pendência.
+    #
+    # **E a substituição é integral de propósito**, ao contrário de documento e pendência
+    # logo acima: `Meeting` não guarda id externo e é recriada por inteiro a cada sync,
+    # então o uuid dela muda a cada webhook. O vínculo só se sustenta se for refeito na
+    # mesma transação — filtrar este `DELETE` por origem quebraria a proveniência de
+    # todas as decisões antigas na passagem seguinte.
+    session.execute(delete(Decision).where(Decision.project_id == project.id))
+
     # Reuniões: o texto da transcrição não atravessa — só o fato de existir.
     session.execute(delete(Meeting).where(Meeting.project_id == project.id))
+    reuniao_por_id: dict[str, Meeting] = {}
     for meeting in snapshot.get("meetings", []):
         held = meeting.get("date")
+        linha = Meeting(
+            organization_id=organization.id,
+            project_id=project.id,
+            title=meeting["title"],
+            held_at=_parse_datetime(f"{held}T00:00:00+00:00") if held else None,
+            recording_url=meeting.get("recording_url") or None,
+            status=meeting.get("status") or None,
+            has_transcript=bool(meeting.get("has_transcript")),
+        )
+        session.add(linha)
+        if meeting.get("id") is not None:
+            reuniao_por_id[str(meeting["id"])] = linha
+
+    # O `flush` é o que dá `id` às reuniões recém-inseridas, e sem ele o laço de decisões
+    # abaixo gravaria `meeting_id=None` em todas. Mesmo motivo do `flush` das fases mais
+    # acima, que existe "porque precisamos do phase.id para os entregáveis".
+    if reuniao_por_id:
+        session.flush()
+
+    # Decisões (FDD 032 do Biahflow). Só as publicadas chegam aqui — o rascunho, que é
+    # onde a extração por IA grava, não entra no snapshot de lá.
+    for decision in snapshot.get("decisions", []):
+        reuniao = reuniao_por_id.get(str(decision.get("meeting_id")))
         session.add(
-            Meeting(
+            Decision(
                 organization_id=organization.id,
                 project_id=project.id,
-                title=meeting["title"],
-                held_at=_parse_datetime(f"{held}T00:00:00+00:00") if held else None,
-                recording_url=meeting.get("recording_url") or None,
-                status=meeting.get("status") or None,
-                has_transcript=bool(meeting.get("has_transcript")),
+                title=decision["title"],
+                rationale=decision.get("rationale") or None,
+                decided_on=_parse_date(decision.get("decided_on")),
+                owner_label=decision.get("decided_by") or None,
+                # `None` quando a reunião não veio no snapshot (arquivada, por exemplo):
+                # perder a proveniência é melhor que perder a decisão, que é o mesmo
+                # argumento do `SET NULL` do outro lado.
+                meeting_id=reuniao.id if reuniao is not None else None,
             )
         )
 
@@ -580,6 +628,16 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         .where(PendingItem.project_id == project.id)
         .order_by(PendingItem.created_at.desc())
     ).scalars()
+    # A decisão mais recente primeiro, e `decided_on` antes de `created_at`: a data que
+    # importa é a do dia em que se decidiu, não a da linha — o sync recria as linhas.
+    # `outerjoin` e não um relationship com carga preguiçosa: a aba mostra de qual reunião
+    # cada decisão saiu, e uma consulta por linha seria N+1 num laço que já é do dashboard.
+    decisions = session.execute(
+        select(Decision, Meeting.title)
+        .outerjoin(Meeting, Decision.meeting_id == Meeting.id)
+        .where(Decision.project_id == project.id)
+        .order_by(Decision.decided_on.desc().nullslast(), Decision.title)
+    ).all()
     return {
         "project": project.name,
         "status": project.status.value,
@@ -663,6 +721,18 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
                 "status": meeting.status,
             }
             for meeting in meetings
+        ],
+        "decisions": [
+            {
+                "title": decision.title,
+                "rationale": decision.rationale,
+                "decided_on": decision.decided_on.isoformat() if decision.decided_on else None,
+                "owner_label": decision.owner_label,
+                # O título da reunião e não o id: a aba mostra "saiu de tal reunião", e um
+                # uuid que muda a cada sync não serviria nem de rótulo nem de link.
+                "meeting_title": meeting_title,
+            }
+            for decision, meeting_title in decisions
         ],
         "pendings": [
             {

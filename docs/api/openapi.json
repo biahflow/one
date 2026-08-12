@@ -904,6 +904,13 @@
             "title": "Completion",
             "type": "integer"
           },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionOut"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
           "digital_employees": {
             "items": {
               "$ref": "#/components/schemas/DigitalEmployeeOut"
@@ -1005,11 +1012,75 @@
           "milestones",
           "documents",
           "meetings",
+          "decisions",
           "pendings",
           "results",
           "measured"
         ],
         "title": "DashboardOut",
+        "type": "object"
+      },
+      "DecisionOut": {
+        "additionalProperties": false,
+        "description": "Uma decisão do projeto, espelhada do Biahflow (FDD 032 de lá).\n\n`rationale` é o campo que justifica a aba existir: sem o porquê, uma decisão é um\ntítulo — e o porquê é o que o cliente não consegue reconstituir sozinho meses depois.\n`meeting_title` é rótulo e não id, porque o uuid da reunião muda a cada sync.",
+        "properties": {
+          "decided_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided On"
+          },
+          "meeting_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meeting Title"
+          },
+          "owner_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Label"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "rationale",
+          "decided_on",
+          "owner_label",
+          "meeting_title"
+        ],
+        "title": "DecisionOut",
         "type": "object"
       },
       "DeliverableOut": {
@@ -2095,6 +2166,13 @@
             "title": "Completion",
             "type": "integer"
           },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionOut"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
           "digital_employees": {
             "items": {
               "$ref": "#/components/schemas/DigitalEmployeeOut"
@@ -2207,6 +2285,7 @@
           "milestones",
           "documents",
           "meetings",
+          "decisions",
           "pendings",
           "results",
           "measured",

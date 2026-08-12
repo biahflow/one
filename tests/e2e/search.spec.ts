@@ -110,3 +110,14 @@ test("a busca acha o termo dentro do documento e oferece a página", async ({
   await expect(excerpt).toContainText(title);
   await expect(excerpt).toContainText(codeword);
 });
+
+test("a busca acha a decisão pelo racional, e não só pelo título", async ({ page }) => {
+  // A regra 1 de `search.py` mantinha decisão fora "porque um hit dela levaria a lugar
+  // nenhum". Agora leva à aba — e o termo procurado está no **porquê**, que é como
+  // alguém de fato procura uma decisão meses depois.
+  await signIn(page, CLIENT);
+  const results = await search(page, "horário comercial");
+
+  await expect(results.getByRole("listitem").filter({ hasText: "Decisão" })).toBeVisible();
+  await expect(results).toContainText("Adotar fila gerenciada em vez de instância própria");
+});

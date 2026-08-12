@@ -385,15 +385,15 @@ def test_a_document_barred_by_the_scanner_offers_nothing_to_open(
     assert titles[0]["document_id"] == ""
 
 
-def test_a_decision_is_not_reachable_because_no_tab_shows_one(
+def test_a_decision_is_reachable_now_that_a_tab_shows_one(
     world: World, authenticated, migrated_engine: Engine
 ) -> None:
-    """Só entra o que o cliente alcança por alguma aba.
+    """A exceção que a regra 1 carregava por três fases, fechada (ADR 0049).
 
-    ``Decision`` tem modelo desde a Fase 1 e não é projetada em
-    ``build_dashboard``: um hit dela levaria a lugar nenhum, que é a mesma
-    classe de defeito que a ADR 0017 corrigiu ao transformar a citação em link.
-    Quando existir aba de decisões, este teste é o que muda junto.
+    Este teste afirmava o contrário: que decisão **não** entra na busca, porque nenhuma
+    aba a mostrava e um hit dela levaria a lugar nenhum. O docstring do módulo dizia
+    "quando existir aba de decisões, entra aqui junto", e a ADR 0024 nomeava este caso
+    como o que muda junto. É o que está acontecendo aqui.
     """
     from portal_api.models import Decision
 
@@ -404,11 +404,40 @@ def test_a_decision_is_not_reachable_because_no_tab_shows_one(
                 organization_id=world.mine.organization_id,
                 project_id=world.mine.project_id,
                 title="Decisão sobre o faturamento",
+                rationale="O cliente prefere nota mensal por centro de custo.",
             )
         )
         session.commit()
 
-    assert "decision" not in _kinds(_search("faturamento"))
+    hits = _search("faturamento")
+    assert "decision" in _kinds(hits)
+    decision = next(hit for hit in hits if hit["kind"] == "decision")
+    assert decision["tab"] == "Decisões"
+
+
+def test_a_decision_is_found_by_its_rationale_not_only_its_title(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """Quem procura uma decisão raramente lembra o título dela.
+
+    Lembra do assunto que a motivou — que está no porquê. Sem o `rationale` no
+    casamento, a busca acharia a decisão só por um texto que ninguém memoriza.
+    """
+    from portal_api.models import Decision
+
+    authenticated(world.mine.actor)
+    with Session(migrated_engine) as session:
+        session.add(
+            Decision(
+                organization_id=world.mine.organization_id,
+                project_id=world.mine.project_id,
+                title="Adotar fila gerenciada",
+                rationale="O volume previsto não paga o Memorystore.",
+            )
+        )
+        session.commit()
+
+    assert "decision" in _kinds(_search("Memorystore"))
 
 
 # --- forma do resultado -----------------------------------------------------

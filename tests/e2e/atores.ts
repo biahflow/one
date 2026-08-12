@@ -53,19 +53,32 @@ export async function signIn(page: Page, user: Ator) {
   // reescrito **depois** do `clearCookies`, e a resposta certa é esperar a rede
   // assentar e limpar de novo, não aumentar o timeout de um botão que não vai
   // aparecer.
+  //
+  // **A condição do laço é o botão, e não a URL, e isso foi medido.** A primeira
+  // versão conferia `page.url()` logo depois do `goto` e só então clicava, sem
+  // teto: a reescrita do cookie pode chegar **depois** dessa leitura, e aí o laço
+  // dava por boa uma página que virou o dashboard no instante seguinte, com o
+  // clique esperando os 120 s inteiros do teste por um botão que não existe mais.
+  // Foi assim que `search.spec.ts` reprovou no CI — o sintoma que este laço
+  // existe para eliminar, sobrevivendo dentro dele. Perguntar pelo botão, com
+  // teto curto, é perguntar pelo que de fato se precisa: se ele não veio, o
+  // certo é limpar e tentar de novo, não esperar mais.
   for (let tentativa = 0; ; tentativa += 1) {
     await page.context().clearCookies();
     await page.goto("/login");
-    if (new URL(page.url()).pathname.startsWith("/login")) break;
-    if (tentativa >= 2) {
-      throw new Error(
-        `a sessão foi reescrita em ${page.url()} depois de três limpezas — ` +
-          "não é a corrida conhecida, e aumentar a espera esconderia o motivo",
-      );
+    try {
+      await page.getByRole("button", { name: /Entrar com SSO/ }).click({ timeout: 15_000 });
+      break;
+    } catch (erro) {
+      if (tentativa >= 2) {
+        throw new Error(
+          `a tela de login não apareceu em ${page.url()} depois de três limpezas — ` +
+            `não é a corrida conhecida, e aumentar a espera esconderia o motivo (${erro})`,
+        );
+      }
+      await page.waitForLoadState("networkidle");
     }
-    await page.waitForLoadState("networkidle");
   }
-  await page.getByRole("button", { name: /Entrar com SSO/ }).click();
 
   // Tela do Keycloak, no endereço público — se o `iss` estivesse errado, o
   // navegador nem chegaria aqui.

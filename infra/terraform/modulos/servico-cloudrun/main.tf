@@ -1,14 +1,41 @@
 # Um serviço HTTP no Cloud Run.
 #
 # O módulo existe para que `servicos.tf` possa dizer "um serviço com esta imagem,
-# nesta porta, público ou não" sem saber o que é uma revisão do Cloud Run.
+# nesta porta, alcançável por estes" sem saber o que é uma revisão do Cloud Run.
 
 variable "projeto" { type = string }
 variable "regiao" { type = string }
 variable "nome" { type = string }
 variable "imagem" { type = string }
 variable "porta" { type = number }
-variable "publico" { type = bool }
+variable "acesso" {
+  description = <<-TXT
+    Quem alcança este serviço, em três valores e não num booleano:
+
+      `publico`     — qualquer um, pela URL `run.app` e pela borda.
+      `interno`     — só de dentro da VPC, e com identidade: ingress **e** IAM.
+      `balanceador` — só de dentro da VPC e pelo balanceador de aplicação.
+
+    O terceiro existe porque o segundo não serve a um serviço **cujo cliente é o
+    navegador**. A `biahflow-api` é chamada pelo SPA que a `biahflow-web` serve; um
+    NEG sem servidor não apresenta ID token ao Cloud Run, e nginx não emite nenhum —
+    então sob `interno` o IAM invoker nunca é atravessado e a barreira efetiva é uma
+    só, com a aparência de duas. Era o item que a ADR 0046 deixou aberto.
+
+    **Sob `balanceador` o IAM é aberto de propósito, e isso não é descuido.** Como o
+    NEG não autentica, exigir IAM ali seria exigir do balanceador uma credencial que
+    ele não tem: o serviço responderia 403 a toda requisição legítima. A barreira é
+    o ingress — a `run.app` deixa de existir para a internet — e a borda passa a ser
+    nossa. Quem quiser a segunda barreira de verdade põe Cloud Armor no backend
+    service, não um `iam_member` que ninguém pode apresentar (ADR 0048).
+  TXT
+  type        = string
+
+  validation {
+    condition     = contains(["publico", "interno", "balanceador"], var.acesso)
+    error_message = "`acesso` é `publico`, `interno` ou `balanceador`."
+  }
+}
 variable "cpu" { type = string }
 variable "memoria" { type = string }
 variable "minimo" { type = number }
@@ -23,11 +50,24 @@ resource "google_cloud_run_v2_service" "servico" {
   name     = var.nome
   location = var.regiao
 
-  # **O ingress é a decisão de segurança deste módulo.** `INGRESS_TRAFFIC_ALL` é o
-  # default do Cloud Run, e para a `api` ele estaria errado: o `Caddyfile` do
-  # compose decidiu que ela não é alcançada pelo navegador — quem fala com ela é o
-  # BFF. Publicá-la daria à internet um caminho que o produto não usa.
-  ingress = var.publico ? "INGRESS_TRAFFIC_ALL" : "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  # **O ingress é a decisão de segurança deste módulo**, e são três respostas porque
+  # há três clientes: a internet, um processo nosso, e o navegador *pela nossa
+  # borda*. `INGRESS_TRAFFIC_ALL` é o default do Cloud Run e para as duas APIs
+  # estaria errado — o `Caddyfile` do compose decidiu que a `portal-api` não é
+  # alcançada pelo navegador, e a `biahflow-api` só é alcançada **através do
+  # balanceador**, nunca pela `run.app`. Publicar qualquer uma daria à internet um
+  # caminho que o produto não usa.
+  #
+  # `INTERNAL_LOAD_BALANCER` é **superconjunto** de `INTERNAL_ONLY`: o alcance pela
+  # VPC continua, e é por ele que a `portal-api` fala com a `biahflow-api`.
+  #
+  # Mapa e não ternário aninhado: com três casos, o ternário é onde o quarto valor
+  # entra errado sem nada ficar vermelho.
+  ingress = {
+    publico     = "INGRESS_TRAFFIC_ALL"
+    interno     = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+    balanceador = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  }[var.acesso]
 
   template {
     service_account = var.conta
@@ -98,29 +138,46 @@ resource "google_cloud_run_v2_service" "servico" {
   }
 }
 
-# Público significa "sem autenticação IAM na frente". Para os serviços internos
-# esta permissão **não** é criada: além do ingress interno, quem chamar precisa de
-# identidade. São duas barreiras, e a segunda é a que sobrevive a alguém trocar o
-# ingress por engano.
-resource "google_cloud_run_v2_service_iam_member" "publico" {
-  count    = var.publico ? 1 : 0
+# Renomeado na ADR 0048: sob `balanceador` este binding continua sendo `allUsers` e
+# o serviço **não** é público. Um label dizendo "publico" faria o `terraform state
+# list` afirmar o contrário do que o ingress decide.
+moved {
+  from = google_cloud_run_v2_service_iam_member.publico
+  to   = google_cloud_run_v2_service_iam_member.invocacao_aberta
+}
+
+# `allUsers` significa "sem autenticação IAM na frente" — e significa coisas
+# diferentes conforme o ingress, que é o par que decide de verdade:
+#
+#   `publico`     → qualquer um na internet invoca. É o caso do BFF e do Keycloak.
+#   `balanceador` → só o balanceador chega, e ele **não tem como** apresentar
+#                   identidade: um NEG sem servidor não cunha ID token. Exigir IAM
+#                   aqui seria 403 em toda requisição legítima.
+#
+# Sob `interno` esta permissão não é criada: lá o chamador é um processo nosso, que
+# tem conta e sabe apresentá-la.
+resource "google_cloud_run_v2_service_iam_member" "invocacao_aberta" {
+  count    = contains(["publico", "balanceador"], var.acesso) ? 1 : 0
   name     = google_cloud_run_v2_service.servico.name
   location = var.regiao
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
 
-# E a segunda barreira precisava de **alguém que a atravessasse**. Ela estava
-# descrita acima e não era exercida por ninguém: nenhum chamador apresentava
-# identidade ao Cloud Run, então toda chamada interna levaria 403 antes de a
-# aplicação existir na conversa — e o 403 do Cloud Run não aparece em log nosso
-# (ADR 0046).
+# E a segunda barreira precisa de **alguém que a atravesse**, senão ela é decoração
+# que produz 403 antes de a aplicação existir na conversa — e o 403 do Cloud Run não
+# aparece em log nosso (ADR 0046). Quem atravessa é a conta de execução, que é a
+# mesma dos dois lados: o serviço que chama roda com ela, e é ela que o
+# `X-Serverless-Authorization` do BFF apresenta (`app/lib/serviceIdentity.ts`).
 #
-# Quem invoca é a conta de execução, que é a mesma dos dois lados: o serviço que
-# chama roda com ela, e é ela que o `X-Serverless-Authorization` do BFF apresenta.
-# Concedida **só nos internos**, porque num público o `allUsers` acima já responde.
+# **Sobrou uma só sob esta regra, a `portal-api`, e a `biahflow-api` saiu por não ter
+# chamador capaz de atravessá-la**: quem a chama é o navegador. O preço, declarado na
+# ADR 0048, é que a chamada `portal-api → biahflow-api` deixa de ter IAM e passa a
+# ser barrada só pelo `BIAHFLOW_READ_TOKEN` que a aplicação já manda — o que, medido,
+# é mais do que ela tinha: `integrations/biahflow.py` nunca cunhou ID token nenhum, e
+# aquele caminho respondia 403 em HML sem nada denunciar.
 resource "google_cloud_run_v2_service_iam_member" "invocacao_interna" {
-  count    = var.publico ? 0 : 1
+  count    = var.acesso == "interno" ? 1 : 0
   name     = google_cloud_run_v2_service.servico.name
   location = var.regiao
   role     = "roles/run.invoker"

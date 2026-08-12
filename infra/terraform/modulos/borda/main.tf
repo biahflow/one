@@ -1,4 +1,5 @@
-# A borda: um endereço de entrada, um certificado e um nome por frente pública.
+# A borda: um endereço de entrada, um certificado, um nome por frente pública — e,
+# desde a ADR 0048, **um caminho por serviço que não tem nome nenhum**.
 #
 # **Por que este módulo existe, e por que não é `google_cloud_run_domain_mapping`.**
 # O `servicos.tf` declarava uma chave `dominio` por serviço desde o começo, e a
@@ -36,22 +37,83 @@ variable "endereco" {
   TXT
   type        = string
 }
-variable "servicos" {
+variable "backends" {
   description = <<-TXT
-    Os serviços públicos que ganham nome, na forma `{ host = ..., servico = ... }`.
-    `servico` é o nome do Cloud Run; `host` é o nome completo já resolvido pelo
-    `servicos.tf`, que é quem sabe se o domínio é próprio ou `nip.io`.
+    Os serviços que o balanceador alcança, na forma `{ servico = ... }`. A **chave**
+    nomeia o NEG e o backend service (`hml-<chave>`) e por isso é estável: trocá-la
+    recria os dois.
+
+    Nem todo backend tem nome público: a `biahflow-api` está aqui e **não** está em
+    `rotas`, porque quem lhe manda tráfego é um `path_rule` de outro host.
   TXT
   type = map(object({
-    host    = string
     servico = string
   }))
 }
+variable "rotas" {
+  description = <<-TXT
+    Um nome público e o que fazer com os caminhos dele. A **chave** nomeia o
+    `path_matcher` e também é estável.
+
+      `host`   — o nome completo, já resolvido pelo `servicos.tf`, que é quem sabe
+                 se o domínio é próprio ou `nip.io`.
+      `padrao` — a chave de `backends` que atende tudo que nenhuma regra pegou.
+      `regras` — os caminhos que pertencem a **outro** serviço.
+
+    `regras` existe porque a `biahflow-web` é nginx servindo um SPA e o cliente da
+    API é o navegador: `/api`, `/admin` e `/static` de `app.<base>` são da
+    `biahflow-api`, e atravessá-los pelo `proxy_pass` do nginx tornava impossível
+    qualquer barreira além da rede (ADR 0046, ADR 0048).
+
+    **É desta variável, e não de `backends`, que sai o `domains` do certificado.**
+    Um backend novo não pode reemitir um certificado em uso.
+  TXT
+  type = map(object({
+    host   = string
+    padrao = string
+    regras = optional(list(object({
+      paths   = list(string)
+      destino = string
+    })), [])
+  }))
+
+  # Dois nomes iguais em `rotas` produzem dois `host_rule` com o mesmo host, e a API
+  # responde "Host rule has a duplicate host" — depois de o certificado já ter sido
+  # planejado com a lista repetida. Um `distinct()` no `domains` esconderia isto: o
+  # certificado sairia bem-formado e o erro apareceria noutro recurso.
+  #
+  # **Medido, e o alcance é menor do que parece:** com `var.dominio` vazio o host
+  # deriva do IP de entrada, que é desconhecido antes de existir, e uma condição
+  # sobre valor desconhecido não é avaliada — o `terraform validate` do primeiro dia
+  # passa. Ela dispara com host conhecido, que é todo `plan` posterior e todo
+  # ambiente com domínio próprio. Escrito aqui para ninguém a ler como se cobrisse o
+  # caso em que mais dói.
+  validation {
+    condition     = length(distinct([for r in var.rotas : r.host])) == length(var.rotas)
+    error_message = "Dois hosts iguais em `rotas`: um host pertence a exatamente um `path_matcher`, e a API recusa o `url_map` inteiro."
+  }
+
+  # A regra que o próprio provider documenta em `path_rule.paths`: "each must start
+  # with / and the only place a * is allowed is at the end following a /". Aqui e não
+  # no apply, porque um caminho recusado pela API derruba o `url_map` inteiro — e com
+  # ele os três nomes, não só o que estava errado.
+  validation {
+    condition = alltrue(flatten([
+      for r in var.rotas : [
+        for regra in r.regras : [
+          for p in regra.paths :
+          startswith(p, "/") && (!strcontains(p, "*") || endswith(p, "/*")) && length(regexall("\\*", p)) <= 1
+        ]
+      ]
+    ]))
+    error_message = "Caminho de `path_rule` inválido: começa com `/`, e o `*` só é aceito no fim, depois de uma `/`."
+  }
+}
 variable "servico_padrao" {
   description = <<-TXT
-    Para qual chave de `servicos` vai quem chega por um nome que não mapeamos (ou
-    pelo IP cru). Explícito e não `keys(...)[0]`, que seria a ordem alfabética —
-    hoje `biahflow-web`, e portanto o portal do *outro* produto.
+    Para qual chave de **`backends`** vai quem chega por um nome que não mapeamos (ou
+    pelo IP cru). Explícito e não `keys(...)[0]`, que seria a ordem alfabética — hoje
+    `biahflow-api`, que é interna e não tem sequer uma tela para responder.
   TXT
   type        = string
 }
@@ -59,7 +121,7 @@ variable "servico_padrao" {
 # Um NEG por serviço. É o que liga um balanceador a algo que não tem IP nem porta —
 # o Cloud Run não é um grupo de instâncias, e o `cloud_run` aqui é o adaptador.
 resource "google_compute_region_network_endpoint_group" "neg" {
-  for_each = var.servicos
+  for_each = var.backends
 
   name                  = "hml-${each.key}"
   region                = var.regiao
@@ -68,7 +130,7 @@ resource "google_compute_region_network_endpoint_group" "neg" {
 }
 
 resource "google_compute_backend_service" "backend" {
-  for_each = var.servicos
+  for_each = var.backends
 
   name                  = "hml-${each.key}"
   load_balancing_scheme = "EXTERNAL_MANAGED"
@@ -80,6 +142,17 @@ resource "google_compute_backend_service" "backend" {
 
   # Sem verificação de saúde, e não é esquecimento: um backend sem servidor não
   # aceita `health_checks` — a disponibilidade é do Cloud Run, não do balanceador.
+
+  # A borda passou a ser o único caminho do navegador até a `biahflow-api`, e antes
+  # havia um registro de acesso ali: o nginx do SPA escrevia uma linha por
+  # requisição com o `req=<id>`. O GFE **não** gera `X-Request-ID` — o Django gera o
+  # seu quando o header falta, então a correlação *dentro* da aplicação sobrevive
+  # (ADR 0018); o que se perdia era a linha que prova "chegou na borda" num 502 ou
+  # num timeout, que é justamente o caso em que a aplicação não tem log nenhum.
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
 }
 
 # Um certificado para os três nomes. Gerenciado, o que significa que a Google o
@@ -87,25 +160,41 @@ resource "google_compute_backend_service" "backend" {
 # fundação. É por isso que a primeira emissão leva
 # de quinze minutos a uma hora: enquanto ela não termina, o HTTPS responde erro de
 # certificado e não erro de rota. `docs/runbooks/hml-gcp.md` diz como conferir.
+#
+# **Os nomes saem de `rotas`, e nunca de `backends`.** É a linha mais frágil deste
+# arquivo: `backends` ganhou a `biahflow-api`, que não tem host, e derivar `domains`
+# dali produziria um `null` na lista ou um nome a mais — e **trocar a lista recria o
+# certificado**, o que derruba o HTTPS dos três nomes pelo tempo da emissão nova. A
+# ordem também é parte da identidade, porque o provider tipa `domains` como `list` e
+# não como `set`: `for` sobre map visita as chaves em ordem lexicográfica, então uma
+# rota nova cuja chave ordene antes das existentes é uma **reemissão**, não um
+# acréscimo.
 resource "google_compute_managed_ssl_certificate" "cert" {
   name = "hml"
   managed {
-    domains = [for s in var.servicos : s.host]
+    domains = [for r in var.rotas : r.host]
   }
   # Trocar a lista de nomes recria o certificado, e um certificado em uso não pode
   # ser destruído antes de o novo existir e estar preso ao proxy.
   lifecycle { create_before_destroy = true }
 }
 
-# O roteamento por nome. O `default_service` é decisão e não sobra: quem chega pelo
-# IP cru cai na frente que sabe pedir login, não no Keycloak nem num 404 do
-# balanceador.
+# O roteamento por nome, e dentro de um nome por caminho. O `default_service` é
+# decisão e não sobra: quem chega pelo IP cru cai na frente que sabe pedir login,
+# não no Keycloak, não numa API interna e não num 404 do balanceador.
+#
+# **Os `path_rule` são o que tira o `proxy_pass` do nginx do caminho.** Antes,
+# `/api/*` de `app.<base>` ia para a `biahflow-web`, que reencaminhava por dentro da
+# VPC — e como nginx não emite ID token, o IAM invoker da `biahflow-api` nunca era
+# atravessado (ADR 0046). Agora a borda entrega direto à `biahflow-api` e a `run.app`
+# dela deixou de existir para a internet. O casamento é por prefixo mais longo, então
+# uma regra nova mais específica não conflita com estas.
 resource "google_compute_url_map" "mapa" {
   name            = "hml"
   default_service = google_compute_backend_service.backend[var.servico_padrao].id
 
   dynamic "host_rule" {
-    for_each = var.servicos
+    for_each = var.rotas
     content {
       hosts        = [host_rule.value.host]
       path_matcher = host_rule.key
@@ -113,10 +202,18 @@ resource "google_compute_url_map" "mapa" {
   }
 
   dynamic "path_matcher" {
-    for_each = var.servicos
+    for_each = var.rotas
     content {
       name            = path_matcher.key
-      default_service = google_compute_backend_service.backend[path_matcher.key].id
+      default_service = google_compute_backend_service.backend[path_matcher.value.padrao].id
+
+      dynamic "path_rule" {
+        for_each = path_matcher.value.regras
+        content {
+          paths   = path_rule.value.paths
+          service = google_compute_backend_service.backend[path_rule.value.destino].id
+        }
+      }
     }
   }
 }

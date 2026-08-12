@@ -94,6 +94,57 @@ desta operação e o único invisível.
 > descartável do cluster de produção redefine a senha dos quatro papéis nele.
 > Passe as senhas em vigor, ou restaure noutro cluster.
 
+## Contra um Postgres gerenciado (Neon)
+
+A ADR 0044 deixou isto aberto por escrito, e a ADR 0048 o fecha do lado do script. O
+que muda não é o procedimento — é **qual é a unidade perigosa**.
+
+**No Neon a unidade é o branch, não o cluster.** Os papéis pertencem ao branch, e cada
+branch tem os seus. Isso tem duas consequências opostas e ambas importam: `--database
+ensaio` **no mesmo branch** redefine as senhas em vigor exatamente como o aviso acima
+descreve — o "banco descartável" não protege nada aqui —, e **criar um branch é a saída
+barata**, porque ele nasce com os papéis copiados, sai de graça e é descartável de
+verdade. Restaure num branch novo.
+
+Duas variáveis existem para esse alvo, e as duas preservam o comportamento do compose
+quando ausentes:
+
+| Variável | Para quê | Default |
+|---|---|---|
+| `RESTORE_ADMIN_URL` | a DSN administrativa **inteira** | montada da `DATABASE_MIGRATION_URL` trocando usuário e senha |
+| `POSTGRES_MAINTENANCE_DB` | o banco de onde sai o `CREATE DATABASE` | `postgres` (no Neon costuma ser `neondb`) |
+
+A primeira não é conveniência. O script montava a credencial administrativa trocando
+duas peças sobre a URL do migrator, e num gerenciado isso **não alcança o alvo**: o
+papel de maior privilégio e o *endpoint* mudam por branch, então host, porta, usuário e
+senha mudam juntos. Com `POSTGRES_USER` ausente as duas continuam obrigatórias; com
+`RESTORE_ADMIN_URL` presente elas deixam de ser cobradas, porque exigi-las obrigaria a
+inventar um valor só para passar pela checagem — o modo de falha que o `preflight`
+existe para impedir, um nível acima.
+
+```bash
+# Um branch novo no Neon, e a DSN dele inteira. As senhas de papel continuam sendo as
+# quatro de sempre: o roles.sql as reescreve no branch novo, que é onde isso é barato.
+export RESTORE_ADMIN_URL='postgresql://<papel>:<senha>@<endpoint-do-branch>/neondb?sslmode=require'
+export POSTGRES_MAINTENANCE_DB=neondb
+./scripts/restore.sh backups/<timestamp> --database ensaio
+```
+
+**Uma dependência de ordem que ninguém tinha escrito.** O passo 3 (`pg_restore
+--clean`) derruba objetos cujo dono é `portal_migrator`, e desde o PG 16 transferir
+posse exige **ser membro** do papel de destino. Num superusuário isso é gratuito; fora
+dele, quem concede é o próprio `roles.sql` do passo 2 (`GRANT portal_migrator TO
+current_user`, o ramo de não-superusuário da ADR 0044). O script agora **confere e
+recusa por nome** entre os dois passos — antes, a falha aparecia no meio do restore
+como erro de posse de um objeto, longe da causa.
+
+O `backup.sh` **não muda**. O `pg_dump --schema=portal` sob `portal_migrator` funciona
+num gerenciado porque o `roles.sql` o faz dono do schema, das tabelas e dos tipos.
+
+> ⚠️ Este caminho ainda **não foi exercitado contra o Neon**. O que a ADR 0048 entrega é
+> o script capaz de descrever aquele alvo e recusar por nome onde antes falhava por
+> acidente; a execução real entra no roteiro de `hml-gcp.md`.
+
 ## Depois do restore: os expurgos que ele desfez
 
 Um backup anterior a um `data_erasure_request` cumprido contém a organização

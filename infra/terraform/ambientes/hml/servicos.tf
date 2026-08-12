@@ -47,20 +47,57 @@ locals {
   # (`<serviço>-<número do projeto>.<região>.run.app`), e o número vem do data source
   # abaixo — que não depende de recurso nenhum nosso.
   # A lista é literal e curta de propósito: derivá-la de `keys(local.servicos_http)`
-  # seria um ciclo, porque é este mapa que alimenta aquele. São os dois serviços de
-  # ingress interno — os únicos que alguém chama por dentro.
+  # seria um ciclo, porque é este mapa que alimenta aquele. São os dois serviços sem
+  # nome público — a `portal-api`, de ingress interno, e a `biahflow-api`, que de fora
+  # só a borda alcança e que a `portal-api` continua chamando por dentro da VPC.
   url_interna = { for nome in ["portal-api", "biahflow-api"] :
     nome => "https://${nome}-${data.google_project.este.number}.${var.regiao}.run.app"
   }
 
   host_interno = { for nome, url in local.url_interna : nome => replace(url, "https://", "") }
 
-  # Os serviços HTTP. `publico = false` é o ingress interno — e para a `api` isso
-  # não é preferência: o `Caddyfile` do compose decidiu que ela não é alcançada
-  # pelo navegador, e publicá-la daria à internet um caminho que o produto não usa.
+  # Quais prefixos de caminho de um host **não** pertencem ao serviço que o serve por
+  # padrão. É a mesma afirmação que o `location ~ ^/(api|admin|static)/` do
+  # `nginx.conf.template` do outro repositório fazia, deslocada para onde ela pode ser
+  # uma barreira em vez de um `proxy_pass` (ADR 0048).
+  #
+  # **Local irmão e não campo de `servicos_http`**, por duas razões: o `for_each` de
+  # `main.tf` só aceita aquele mapa porque os cinco valores têm atributos idênticos, e
+  # um campo presente num só quebra a unificação do tipo; e uma lista de regras de
+  # caminho é vocabulário de borda, que o topo deste arquivo mantém fora daqui.
+  #
+  # **Sete caminhos e não os três que a ADR 0046 cita.** `/healthz` e `/readyz` porque
+  # a sonda que cai no `try_files` do SPA recebe o `index.html` com **200**, e um
+  # balanceador lê isso como "saudável" com a API fora do ar — é o argumento que o
+  # bloco próprio das sondas no nginx já trazia. E **com barra no fim**, porque o
+  # `HealthProbeMiddleware` do Django faz `rstrip("/")` e responde as duas formas
+  # enquanto a regex do nginx (`^/(healthz|readyz)$`) exige a forma sem barra: medido,
+  # `app.<base>/healthz/` devolve o SPA com 200 hoje. Replicar só os cinco caminhos
+  # óbvios replicaria o defeito.
+  rotas_internas = {
+    biahflow-web = [
+      {
+        destino = "biahflow-api"
+        paths = [
+          "/api/*", "/admin/*", "/static/*",
+          "/healthz", "/healthz/", "/readyz", "/readyz/",
+        ]
+      },
+    ]
+  }
+
+  # Os serviços HTTP. `acesso` tem três valores e não é um booleano, porque há três
+  # clientes possíveis: a internet (`publico`), um processo nosso (`interno`, com
+  # ingress **e** IAM) e o navegador **pela nossa borda** (`balanceador`).
+  #
+  # Para a `portal-api`, `interno` não é preferência: o `Caddyfile` do compose decidiu
+  # que ela não é alcançada pelo navegador — quem fala com ela é o BFF, que sabe
+  # apresentar identidade. Para a `biahflow-api` a resposta é outra, e é por isso que
+  # o terceiro valor existe: quem a chama é o SPA, e nginx não emite ID token. Ver
+  # `modulos/servico-cloudrun/`.
   servicos_http = {
     portal-web = {
-      publico = true
+      acesso  = "publico"
       porta   = 3000
       cpu     = "1"
       memoria = "512Mi"
@@ -91,7 +128,7 @@ locals {
     }
 
     portal-api = {
-      publico = false
+      acesso  = "interno"
       porta   = 8000
       cpu     = "1"
       memoria = "1Gi"
@@ -165,7 +202,7 @@ locals {
     }
 
     keycloak = {
-      publico = true
+      acesso  = "publico"
       porta   = 8080
       cpu     = "1"
       memoria = "1Gi"
@@ -185,7 +222,7 @@ locals {
     }
 
     biahflow-api = {
-      publico = false
+      acesso  = "balanceador"
       porta   = 8000
       cpu     = "1"
       memoria = "1Gi"
@@ -197,6 +234,12 @@ locals {
         # sem ele o Django responde 400 a toda chamada do portal — o tropeço já
         # registrado no runbook de integração, onde um `curl` da máquina funcionava
         # porque mandava outro `Host`. O `localhost` é para as sondas do Cloud Run.
+        #
+        # **Os dois primeiros passaram a ser exercidos por caminhos diferentes**
+        # (ADR 0048): `app.<base>` é o Host que o balanceador **preserva** ao entregar
+        # `/api|/admin|/static` direto aqui — um NEG sem servidor não reescreve Host —,
+        # e o `run.app` é o que a `portal-api` usa por dentro da VPC. Antes só o
+        # segundo valia, porque o nginx reescrevia o Host para `$proxy_host`.
         DJANGO_ALLOWED_HOSTS    = "${local.host_biahflow},${local.host_interno["biahflow-api"]},localhost"
         TRUST_X_FORWARDED_PROTO = "true"
         PORTAL_BASE_URL         = local.url_portal
@@ -226,7 +269,7 @@ locals {
     }
 
     biahflow-web = {
-      publico = true
+      acesso  = "publico"
       porta   = 8080
       cpu     = "1"
       memoria = "256Mi"
@@ -234,6 +277,23 @@ locals {
       max     = 3
       dominio = local.host_biahflow
       variaveis = {
+        # **Estas duas ficaram sem cliente e continuam aqui de propósito** (ADR 0048).
+        # Desde que a borda roteia `/api|/admin|/static|/healthz|/readyz` de
+        # `app.<base>` direto para a `biahflow-api`, o navegador nunca mais alcança os
+        # blocos `location` do `nginx.conf.template` que as lêem: tirar o `proxy_pass`
+        # do caminho era o ponto inteiro da mudança.
+        #
+        # Removê-las **não** faria o nginx falhar, e é por isso que ficam: o
+        # `Dockerfile` do SPA declara `API_UPSTREAM=http://api:8000` e
+        # `DNS_RESOLVER=127.0.0.11` como default da imagem, que são os valores do
+        # compose. O nginx subiria igual e, no dia em que um `path_rule` estiver
+        # errado, responderia 502 dizendo que não conseguiu resolver **`api`** — um
+        # nome de rede do Docker, dentro do Cloud Run. Trocaríamos um caminho que
+        # funciona por um diagnóstico que mente.
+        #
+        # Elas saem no mesmo commit em que `biahflow-portal` apagar aqueles dois
+        # `location`. Configuração e leitor morrem juntos, e o leitor mora no outro
+        # repositório.
         API_UPSTREAM = local.url_interna["biahflow-api"]
         # O nginx do SPA usava `resolver 127.0.0.11`, o DNS do Docker, que não existe
         # aqui. `169.254.169.254` é o servidor de metadados, que resolve nome público.

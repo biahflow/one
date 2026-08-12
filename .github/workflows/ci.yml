@@ -179,7 +179,14 @@ jobs:
   # existir, uma mudança de infraestrutura entra num PR sem prova nenhuma de que
   # sequer parseia. `-backend=false` é o que torna isto possível: instala os
   # providers sem tocar no bucket de estado.
-  terraform:
+  #
+  # **`infra-quality` e não `terraform`**, que era o nome na primeira versão: o
+  # job do `infra-hml.yml` já se chama `terraform`, e os dois aparecem lado a lado
+  # na lista de checks de um PR que toque `infra/terraform/**`. Com o mesmo nome,
+  # um verde e um vermelho, "qual deles falhou" deixa de ter resposta olhando a
+  # lista — e o que falha por falta de `WIF_PROVIDER` é justamente o que **não**
+  # é defeito do PR. Medido no PR #20, onde os dois apareceram como `terraform`.
+  infra-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

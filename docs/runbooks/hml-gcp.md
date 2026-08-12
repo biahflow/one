@@ -242,7 +242,7 @@ próprio:
 - **A ordem é apply → deploy → apply.** O primeiro cria com a imagem de bootstrap, o
   deploy publica a real, e os seguintes preservam a real pelo `ignore_changes`.
 - **`terraform fmt -check -recursive` reprova o CI.** O `infra-hml.yml` o roda sobre a
-  árvore inteira, e o job `terraform` do `ci.yml` também — este sem credencial, e por isso
+  árvore inteira, e o job `infra-quality` do `ci.yml` também — este sem credencial, e por isso
   é o único que dá para reproduzir localmente antes de existir `WIF_PROVIDER`.
 
 ---

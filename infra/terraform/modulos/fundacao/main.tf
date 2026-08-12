@@ -3,7 +3,9 @@
 
 variable "projeto" { type = string }
 variable "regiao" { type = string }
-variable "nomes_de_segredo" { type = list(string) }
+# Nome do segredo => produto dono. O dono não é usado aqui; ele existe para os
+# portões de leitor, que moram nos states de produto (ADR 0051).
+variable "segredos" { type = map(string) }
 variable "repositorios_github" { type = list(string) }
 variable "repositorio_infra" { type = string }
 variable "bucket_estado" { type = string }
@@ -171,8 +173,8 @@ resource "google_storage_bucket" "midia" {
 # pelo Terraform — senão eles ficariam no estado, que é um arquivo num bucket.
 
 resource "google_secret_manager_secret" "segredo" {
-  for_each  = toset(var.nomes_de_segredo)
-  secret_id = each.value
+  for_each  = var.segredos
+  secret_id = each.key
   replication {
     auto {}
   }

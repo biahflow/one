@@ -198,13 +198,21 @@ jobs:
       # Sobre a árvore inteira, como o `infra-hml.yml` faz: um módulo mal
       # formatado reprova lá, e descobrir isso só no PR de infraestrutura é tarde.
       - run: terraform -chdir=infra/terraform/ambientes/hml fmt -check -recursive ../..
-      - run: terraform -chdir=infra/terraform/ambientes/hml init -backend=false -input=false
 
-      # O que ele prova: que os módulos resolvem, que os tipos casam, e que uma
-      # `validation` de variável cujo valor é conhecido reprova aqui em vez de no
-      # apply. O que ele **não** prova está escrito no `hml-gcp.md`: valores de
-      # enum contra a API, org policy, e o diff.
-      - run: terraform -chdir=infra/terraform/ambientes/hml validate
+      # **Os três ambientes desde a ADR 0051.** Sem credencial nenhuma, então este é o
+      # único gate de Terraform que dá para reproduzir localmente e o único que roda em
+      # todo PR — e são justamente os diretórios novos que mais precisam dele.
+      #
+      # `-backend=false` instala os providers sem tocar no bucket de estado. O preço,
+      # declarado: sem backend não há `terraform_remote_state`, então o `validate` dos
+      # dois produtos prova que os módulos resolvem e que os tipos casam, e **não**
+      # prova que as saídas que eles leem da fundação existem. Quem prova isso é o
+      # `plan` do `infra-hml.yml`, que tem credencial.
+      - run: |
+          for d in hml hml-biahflow hml-portal; do
+            terraform -chdir=infra/terraform/ambientes/$d init -backend=false -input=false
+            terraform -chdir=infra/terraform/ambientes/$d validate
+          done
 
   local-stack:
     runs-on: ubuntu-latest

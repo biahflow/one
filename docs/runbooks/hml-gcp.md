@@ -1,6 +1,6 @@
 # Runbook — subir a homologação na GCP
 
-ADR 0044, 0045, 0046, 0048 e 0050. A infraestrutura é definida em `infra/terraform/`, em duas
+ADR 0044, 0045, 0046, 0048, 0050 e 0051. A infraestrutura é definida em `infra/terraform/`, em duas
 camadas: `ambientes/hml/` diz **o quê** e `modulos/` diz **como**. O `README.md` de lá
 explica a arquitetura, o `nip.io`, os três portões e as identidades — não repito nada
 disso aqui. Este runbook é o que falta entre aquele Terraform e um ambiente de pé: **a
@@ -146,15 +146,23 @@ portões reprova o plano), mas o `apply` vai em dois: `-target=module.fundacao` 
 segredo, `gcloud secrets versions add` lhe dá versão, e só então o apply completo o monta.
 Foi assim que o `EMAIL_HOST_PASSWORD` entrou.
 
-## 6. O apply completo
+## 6. O apply completo — e agora são três
 
 ```bash
-terraform apply
+terraform apply                                   # a fundação: cofre, rede, registro e a borda
+cd ../hml-biahflow && terraform init && terraform apply
+cd ../hml-portal   && terraform init && terraform apply
 ```
 
-Agora sim os serviços, os jobs, os worker pools e a borda. Eles sobem **quebrados** neste
-momento, e isso é esperado: o realm não existe (passo 8) e o banco ainda não tem os papéis
-(passo 9).
+**A fundação primeiro, sempre.** Os dois produtos leem as saídas dela por
+`terraform_remote_state`, e um `plan` deles contra uma fundação não aplicada falha dizendo
+que a saída não existe — mensagem que fala de output e não de ordem.
+
+Entre os dois produtos não há ordem: eles não se leem. Um produto que precise de valor do
+outro o deriva do número do projeto, que é data source e não recurso nosso.
+
+Os serviços sobem **quebrados** neste momento, e isso é esperado: o realm não existe
+(passo 8) e o banco ainda não tem os papéis (passo 9).
 
 ## 7. O `WIF_PROVIDER`, nos dois repositórios
 

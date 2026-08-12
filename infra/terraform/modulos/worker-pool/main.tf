@@ -34,9 +34,11 @@ resource "google_cloud_run_v2_worker_pool" "pool" {
   name     = var.nome
   location = var.regiao
 
-  # O provider ainda marca worker pool como recurso em preview; sem isto o apply
-  # recusa. Sai quando o recurso sair de preview.
-  launch_stage = "BETA"
+  # `launch_stage = "BETA"` saiu daqui, e não por limpeza: **a API passou a responder
+  # `GA`** para estes recursos, de modo que a linha virou uma afirmação falsa que todo
+  # `plan` tentava reimpor (`"GA" -> "BETA"`). Era o "fica aberto" da ADR 0045, e quem
+  # o fechou foi a separação dos states — o primeiro `plan` de um diretório novo lê o
+  # recurso vivo em vez de comparar com o que o state já dizia.
 
   scaling {
     # **Manual, e não automático.** O `beat` precisa ser exatamente um — dois
@@ -97,8 +99,18 @@ resource "google_cloud_run_v2_worker_pool" "pool" {
   # Quem troca a imagem é o workflow de deploy. Sem isto, um apply de
   # infraestrutura reverteria o worker para a tag do último apply — desfazendo o
   # deploy mais recente sem ninguém pedir.
+  #
+  # O segundo item é o irmão do que o `servico-cloudrun` ignora, e a assimetria é ao
+  # contrário: `scaling_mode` nós **declaramos** (`MANUAL`, e o argumento está acima),
+  # e a API não o devolve. Todo `plan` propunha acrescentá-lo, todo `apply` o
+  # acrescentava, e o `plan` seguinte propunha de novo. **Só o modo é ignorado** —
+  # `manual_instance_count` continua comparado, que é o número que importa: dois `beat`
+  # emitem a mesma tarefa duas vezes.
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    ignore_changes = [
+      template[0].containers[0].image,
+      scaling[0].scaling_mode,
+    ]
   }
 }
 

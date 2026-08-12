@@ -1,11 +1,12 @@
-# A costura: liga a camada portátil (`servicos.tf`) aos módulos que sabem GCP.
+# A fundação: o que é do projeto, e não de um produto.
 #
-# Nada de negócio mora aqui. Se este arquivo crescer com regra de produto, a
-# separação em duas camadas deixou de valer.
+# Rede, saída, entrada, registro de imagens, os buckets, o cofre, as identidades e a
+# federação com o GitHub. Mais a borda, pela razão escrita em `borda.tf`.
+#
+# **Os serviços saíram daqui** (ADR 0051). Cada produto tem o seu diretório e o seu
+# state; este declara o que os dois compartilham, e é o único que pode. A ordem de
+# leitura é sempre a mesma — fundação → produto —, nunca entre produtos.
 
-# O número do projeto, que é o que torna a URL de um serviço do Cloud Run
-# previsível antes de ele existir. Data source e não recurso nosso, então usá-lo em
-# `local.url_interna` não cria dependência circular com os módulos.
 data "google_project" "este" {
   project_id = var.projeto
 }
@@ -15,195 +16,70 @@ module "fundacao" {
 
   projeto             = var.projeto
   regiao              = var.regiao
-  nomes_de_segredo    = var.nomes_de_segredo
+  segredos            = var.segredos
   repositorios_github = var.repositorios_github
   repositorio_infra   = var.repositorio_infra
   bucket_estado       = var.bucket_estado
 }
 
-locals {
-  # `tag_imagem` vazia é o **primeiro apply**: o registro ainda não tem imagem
-  # nenhuma, e uma referência a tag inexistente faz o Cloud Run recusar a revisão.
-  # O `ignore_changes` dos módulos não salva aqui — ele só age em update. Ver
-  # `var.imagem_bootstrap` para o argumento inteiro.
-  primeiro_apply = var.tag_imagem == ""
-
-  imagem = { for nome in toset(concat(keys(local.servicos_http), ["portal-api"])) :
-    nome => local.primeiro_apply ? var.imagem_bootstrap : "${module.fundacao.registro}/${nome}:${var.tag_imagem}"
-  }
-}
-
-module "servicos" {
-  source   = "../../modulos/servico-cloudrun"
-  for_each = local.servicos_http
-
-  projeto  = var.projeto
-  regiao   = var.regiao
-  nome     = each.key
-  imagem   = local.imagem[each.key]
-  porta    = each.value.porta
-  acesso   = each.value.acesso
-  cpu      = each.value.cpu
-  memoria  = each.value.memoria
-  minimo   = each.value.min
-  maximo   = each.value.max
-  conta    = module.fundacao.conta_execucao
-  rede     = module.fundacao.rede
-  sub_rede = module.fundacao.sub_rede
-
-  variaveis = each.value.variaveis
-  segredos  = each.value.segredos
-}
-
-# Os processos longos. **A imagem é a do serviço de que cada um é irmão**, e isso é
-# proposital: eles executam as tasks que aquela API enfileira, então precisam do
-# mesmo código, do mesmo banco e do mesmo storage. Duas imagens divergiriam no dia
-# em que alguém acrescentasse uma task e reconstruísse só uma delas.
-module "workers" {
-  source   = "../../modulos/worker-pool"
-  for_each = local.processos_longos
-
-  projeto    = var.projeto
-  regiao     = var.regiao
-  nome       = each.key
-  imagem     = local.imagem[each.value.servico]
-  comando    = each.value.comando
-  instancias = each.value.instancias
-  cpu        = each.value.cpu
-  memoria    = each.value.memoria
-  conta      = module.fundacao.conta_execucao
-  rede       = module.fundacao.rede
-  sub_rede   = module.fundacao.sub_rede
-
-  variaveis = local.servicos_http[each.value.servico].variaveis
-  segredos  = local.servicos_http[each.value.servico].segredos
-}
-
-# A borda. Ela consome a chave `dominio` que `servicos.tf` declarava desde o começo e
-# que a costura **nunca lia** — de modo que os nomes existiam nas variáveis de
-# ambiente dos serviços e não existiam como rota para lugar nenhum.
-module "borda" {
-  source = "../../modulos/borda"
-
-  regiao   = var.regiao
-  endereco = module.fundacao.endereco_entrada
-
-  # Tudo que o balanceador alcança — **inclusive o que não tem nome**. A
-  # `biahflow-api` entra aqui e não em `rotas`: ela é destino de `path_rule` e não de
-  # `host_rule`, e é essa separação que mantém o `domains` do certificado com os três
-  # nomes de sempre (ADR 0048). Um serviço `interno` nunca entra: dar-lhe um backend
-  # service desfaria a decisão do próprio módulo do Cloud Run.
-  backends = {
-    for nome, s in local.servicos_http : nome => { servico = nome }
-    if s.acesso != "interno"
-  }
-
-  # As frentes com nome. O filtro é só `dominio != null` — deixou de ser
-  # `publico && dominio != null` porque "tem nome público" e "é alcançável sem passar
-  # por nós" pararam de ser a mesma pergunta.
-  rotas = {
-    for nome, s in local.servicos_http : nome => {
-      host   = s.dominio
-      padrao = nome
-      regras = try(local.rotas_internas[nome], [])
-    }
-    if s.dominio != null
-  }
-
-  servico_padrao = "portal-web"
-}
-
-# Os trabalhos que começam e terminam. Cada um herda o ambiente do serviço de que
-# é irmão — o `migrate` do portal precisa exatamente do que a `portal-api` tem, e
-# manter as duas listas separadas seria criar uma segunda verdade sobre a mesma
-# configuração.
-module "trabalhos" {
-  source   = "../../modulos/job"
-  for_each = local.trabalhos
-
-  projeto  = var.projeto
-  regiao   = var.regiao
-  nome     = each.key
-  imagem   = local.imagem[each.value.servico]
-  comando  = each.value.comando
-  conta    = module.fundacao.conta_execucao
-  rede     = module.fundacao.rede
-  sub_rede = module.fundacao.sub_rede
-
-  variaveis = local.servicos_http[each.value.servico].variaveis
-  # A migração escreve o schema com a credencial do **migrator**, que é dona das
-  # tabelas e não é a do caminho de requisição (ADR 0010). Ela não precisa mais de
-  # tratamento especial aqui: `DATABASE_MIGRATION_URL` passou a ser entregue à
-  # `portal-api` também, porque o `preflight` a exige de todo processo — e o job
-  # herda a lista dela.
-  segredos = local.servicos_http[each.value.servico].segredos
-}
-
-# --- Os três portões deste diretório --------------------------------------------
-# Escritos porque as duas direções já falharam de verdade, e nenhuma delas deixava
-# nada vermelho: `ANTHROPIC_API_KEY` e `VOYAGE_API_KEY` eram criadas no Secret
-# Manager e não chegavam a serviço nenhum (respondedor offline em silêncio, que é o
-# que a ADR 0022 existe para impedir), e `KEYCLOAK_CLIENT_SECRET` era entregue com
-# um nome que o `auth.ts` não lê. É a forma da guarda de consumo da ADR 0033, um
-# nível abaixo: lá é campo publicado sem leitor, aqui é segredo sem leitor.
-
+# --- O portão que sobrou aqui ---------------------------------------------------
+# Os dois portões de segredo eram uma afirmação **global**: "todo segredo tem leitor"
+# só é verificável por quem enxerga todos os serviços, e este state deixou de
+# enxergar. Eles não foram apagados — foram divididos, e a divisão custa alguma coisa
+# (ADR 0051).
 #
-# **`precondition` e não `check`.** A primeira versão usava um bloco `check`, e ele
-# está errado para isto: `check` emite *warning*, sempre — o `terraform plan` sai 0,
-# o job do CI fica verde, e um portão que não reprova é o `dependency-review` da ADR
-# 0023 outra vez. `precondition` faz o plano falhar, que é o que "portão" significa.
+# Aqui fica a metade que a fundação ainda pode afirmar: todo segredo declara **de que
+# produto é**. Sem isso, os portões dos produtos não teriam contra o que comparar, e
+# um segredo novo poderia nascer sem dono — que é como `ANTHROPIC_API_KEY` e
+# `VOYAGE_API_KEY` chegaram a existir sem chegar a ninguém (ADR 0046).
 locals {
-  # `values()` e não a coleção inteira: desde que `segredos` virou mapa, a chave é a
-  # variável de ambiente e **o valor é o nome do segredo**. É o valor que tem de existir
-  # no Secret Manager; comparar a chave faria o portão cobrar um segredo chamado
-  # `DATABASE_URL` que deliberadamente não existe mais.
-  segredos_lidos    = toset(flatten([for s in local.servicos_http : values(s.segredos)]))
-  segredos_sem_dono = setsubtract(local.segredos_lidos, toset(var.nomes_de_segredo))
-  segredos_sem_leitor = setsubtract(
-    toset(var.nomes_de_segredo), local.segredos_lidos
-  )
-
-  # O terceiro (ADR 0048). Uma rota cujo `destino` não é backend já reprova sozinha,
-  # com um `Invalid index` que fala de índice e não de rota; este portão diz o que é.
-  rotas_sem_backend = setsubtract(
-    toset(flatten([for regras in values(local.rotas_internas) : [for r in regras : r.destino]])),
-    toset([for nome, s in local.servicos_http : nome if s.acesso != "interno"]),
-  )
+  produtos_conhecidos = toset(["biahflow", "portal"])
+  segredos_sem_dono_valido = [
+    for nome, produto in var.segredos : nome
+    if !contains(local.produtos_conhecidos, produto)
+  ]
 }
 
-resource "terraform_data" "portoes_de_segredo" {
+resource "terraform_data" "portao_de_dono" {
   input = "ok"
 
   lifecycle {
     precondition {
-      condition = length(local.segredos_sem_dono) == 0
+      condition = length(local.segredos_sem_dono_valido) == 0
       error_message = format(
-        "Segredo referenciado por um serviço e ausente de `nomes_de_segredo`: %s. Ele não é criado, a revisão do Cloud Run não monta, e a mensagem do erro fala de permissão — não de nome.",
-        join(", ", local.segredos_sem_dono),
-      )
-    }
-
-    precondition {
-      condition = length(local.segredos_sem_leitor) == 0
-      error_message = format(
-        "Segredo criado que nenhum serviço lê: %s. Alguém põe valor nele, o `gcloud secrets versions add` responde sucesso, e o controle que ele sustenta continua desligado.",
-        join(", ", local.segredos_sem_leitor),
-      )
-    }
-
-    precondition {
-      condition = length(local.rotas_sem_backend) == 0
-      error_message = format(
-        "Rota da borda apontando para serviço sem backend: %s. Ou o nome está errado, ou o serviço é `interno` — e um serviço `interno` atrás de um `path_rule` responde 404 do balanceador a toda requisição do navegador, sem log nosso.",
-        join(", ", local.rotas_sem_backend),
+        "Segredo sem produto dono reconhecido: %s. O dono é o que permite ao state daquele produto cobrar que alguém o leia — sem ele, o segredo existe, recebe valor, e nenhum portão pergunta se chega a alguém.",
+        join(", ", local.segredos_sem_dono_valido),
       )
     }
   }
 }
 
-output "urls" {
-  value = { for k, m in module.servicos : k => m.url }
+# --- Saídas ---------------------------------------------------------------------
+# É por aqui que os dois produtos leem a fundação, e **só por aqui**. Um produto que
+# precise de algo que não está nesta lista está pedindo para acoplar aos recursos, e
+# não ao contrato.
+
+output "numero_projeto" {
+  description = "O que torna a URL interna de um serviço previsível antes de ele existir."
+  value       = data.google_project.este.number
 }
+
+output "registro" { value = module.fundacao.registro }
+output "conta_execucao" { value = module.fundacao.conta_execucao }
+output "rede" { value = module.fundacao.rede }
+output "sub_rede" { value = module.fundacao.sub_rede }
+output "bucket_documentos" { value = module.fundacao.bucket_documentos }
+output "bucket_midia" { value = module.fundacao.bucket_midia }
+
+output "segredos" {
+  description = "Nome do segredo => produto dono. Cada produto cobra a sua metade."
+  value       = var.segredos
+}
+
+output "dominio_base" { value = local.dominio_base }
+output "realm" { value = local.realm }
+output "issuer" { value = local.issuer }
+output "jwks_url" { value = local.jwks_url }
 
 output "ip_saida" {
   description = "IP fixo de saída — para a allowlist do Neon e do Upstash."
@@ -222,6 +98,14 @@ output "hosts" {
     keycloak = local.host_keycloak
     biahflow = local.host_biahflow
     issuer   = local.issuer
+  }
+}
+
+output "urls_publicas" {
+  value = {
+    portal   = local.url_portal
+    keycloak = local.url_keycloak
+    biahflow = local.url_biahflow
   }
 }
 

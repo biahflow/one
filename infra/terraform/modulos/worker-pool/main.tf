@@ -26,7 +26,9 @@ variable "conta" { type = string }
 variable "rede" { type = string }
 variable "sub_rede" { type = string }
 variable "variaveis" { type = map(string) }
-variable "segredos" { type = list(string) }
+# Mapa e não lista: a chave é a variável de ambiente, o valor é o nome do segredo.
+# Ver o argumento inteiro em `modulos/servico-cloudrun/main.tf`.
+variable "segredos" { type = map(string) }
 
 resource "google_cloud_run_v2_worker_pool" "pool" {
   name     = var.nome
@@ -78,9 +80,9 @@ resource "google_cloud_run_v2_worker_pool" "pool" {
       }
 
       dynamic "env" {
-        for_each = toset(var.segredos)
+        for_each = var.segredos
         content {
-          name = env.value
+          name = env.key
           value_source {
             secret_key_ref {
               secret  = env.value

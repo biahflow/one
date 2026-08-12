@@ -153,7 +153,11 @@ module "trabalhos" {
 # o job do CI fica verde, e um portão que não reprova é o `dependency-review` da ADR
 # 0023 outra vez. `precondition` faz o plano falhar, que é o que "portão" significa.
 locals {
-  segredos_lidos    = toset(flatten([for s in local.servicos_http : s.segredos]))
+  # `values()` e não a coleção inteira: desde que `segredos` virou mapa, a chave é a
+  # variável de ambiente e **o valor é o nome do segredo**. É o valor que tem de existir
+  # no Secret Manager; comparar a chave faria o portão cobrar um segredo chamado
+  # `DATABASE_URL` que deliberadamente não existe mais.
+  segredos_lidos    = toset(flatten([for s in local.servicos_http : values(s.segredos)]))
   segredos_sem_dono = setsubtract(local.segredos_lidos, toset(var.nomes_de_segredo))
   segredos_sem_leitor = setsubtract(
     toset(var.nomes_de_segredo), local.segredos_lidos

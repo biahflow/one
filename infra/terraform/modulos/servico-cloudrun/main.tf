@@ -44,7 +44,16 @@ variable "conta" { type = string }
 variable "rede" { type = string }
 variable "sub_rede" { type = string }
 variable "variaveis" { type = map(string) }
-variable "segredos" { type = list(string) }
+
+# **Mapa e não lista: a chave é a variável de ambiente, o valor é o nome do segredo.**
+# Era uma lista, e a lista impunha que os dois fossem a mesma string — o que estava
+# certo até dois produtos precisarem do mesmo nome de variável apontando para valores
+# diferentes. Foi o caso de `DATABASE_URL`: um segredo só, um valor só, montado na
+# `portal-api` e na `biahflow-api`, de modo que os dois liam a mesma DSN. Renomear a
+# variável não era opção — o nome é contrato com o código de cada aplicação.
+#
+# Na maioria dos casos os dois lados continuam iguais, e o mapa diz isso por extenso.
+variable "segredos" { type = map(string) }
 
 resource "google_cloud_run_v2_service" "servico" {
   name     = var.nome
@@ -116,9 +125,9 @@ resource "google_cloud_run_v2_service" "servico" {
       # ele não aparece em `gcloud run services describe`, nem no estado do
       # Terraform, nem no log de deploy.
       dynamic "env" {
-        for_each = toset(var.segredos)
+        for_each = var.segredos
         content {
-          name = env.value
+          name = env.key
           value_source {
             secret_key_ref {
               secret  = env.value

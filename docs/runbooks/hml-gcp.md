@@ -92,7 +92,7 @@ terraform init
 terraform apply -target=module.fundacao
 ```
 
-**Só a fundação, e a razão é o passo seguinte** (ADR 0050). O Terraform cria os 26 segredos
+**Só a fundação, e a razão é o passo seguinte** (ADR 0050). O Terraform cria os 29 segredos
 **sem versão nenhuma**, de propósito — um valor passado por ele ficaria no estado —, e todo
 serviço os monta com `version = "latest"`. O `latest` de um segredo sem versão não existe, e
 a revisão do Cloud Run é **recusada na criação**, não no boot. Aplicar tudo de uma vez aqui
@@ -107,7 +107,7 @@ está vazio; um serviço criado apontando para tag inexistente tem a revisão re
 Vazia, ela significa `imagem_bootstrap` — o `hello` da Google, que existe e sobe —, e o
 serviço passa a existir para o `deploy-hml.yml` poder atualizá-lo.
 
-## 5. Os 26 segredos
+## 5. Os 29 segredos
 
 Criados **vazios** pelo Terraform, de propósito: um valor passado pelo Terraform ficaria
 no estado, que é um arquivo num bucket. O nome do segredo **é** o nome da variável de
@@ -124,8 +124,11 @@ do que acontece ao rotacionar. O que muda é o destino — Secret Manager e não
 que a HML da GCP acrescenta os do outro produto (`DJANGO_SECRET_KEY`, `PORTAL_*`, os três
 `GOOGLE_OAUTH_*`) e os do Keycloak gerenciado (`KC_DB_*`, `KC_BOOTSTRAP_ADMIN_PASSWORD`).
 
-`DATABASE_URL` e `REDIS_URL` vêm do Neon e do Upstash, e são **compartilhados** entre a
-`portal-api` e a `biahflow-api`.
+As DSNs do Neon e do Upstash entram em **quatro** segredos, e não em dois: `BIAHFLOW_DATABASE_URL`
+e `BIAHFLOW_REDIS_URL` para este produto, `PORTAL_*` para o outro. Cada aplicação continua lendo
+`DATABASE_URL` e `REDIS_URL` no ambiente — quem faz a ligação é o mapa `segredos` de `servicos.tf`.
+Até 12/08/2026 havia **um** segredo para cada nome, montado nos dois produtos, de modo que a
+`portal-api` e o Django do Biahflow recebiam a mesma DSN sem ninguém ter decidido isso.
 
 > **Um segredo esquecido não reprova no apply.** Os portões de `ambientes/hml/main.tf`
 > pegam segredo referenciado e não criado, e segredo criado sem leitor — nenhum dos dois
@@ -133,7 +136,7 @@ que a HML da GCP acrescenta os do outro produto (`DJANGO_SECRET_KEY`, `PORTAL_*`
 > por isso o sintoma é um serviço que não sobe, não um plano vermelho. Os três motivos de
 > recusa estão em `deploy.md § Quando a subida é recusada`, e valem igual aqui.
 
-**Um segredo que este ambiente não usa ainda precisa de versão.** Os 26 servem aos dois
+**Um segredo que este ambiente não usa ainda precisa de versão.** Os 29 servem aos dois
 produtos; se você está subindo só um deles, os do outro recebem um valor de marcação. É a
 existência da versão que o Cloud Run cobra, não o conteúdo — ver o passo 4.
 
@@ -196,7 +199,7 @@ alguém falha em silêncio: ver `auth-failure.md`.
 
 ## 9. O `roles.sql` contra o Neon
 
-Não há Cloud Run Job que faça isto, e as senhas de papel não estão entre os 26 segredos —
+Não há Cloud Run Job que faça isto, e as senhas de papel não estão entre os 29 segredos —
 é passo de pessoa, uma vez, com a credencial administrativa do Neon.
 
 ```bash

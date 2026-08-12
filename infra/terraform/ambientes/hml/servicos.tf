@@ -243,7 +243,7 @@ locals {
         DJANGO_ALLOWED_HOSTS    = "${local.host_biahflow},${local.host_interno["biahflow-api"]},localhost"
         TRUST_X_FORWARDED_PROTO = "true"
         PORTAL_BASE_URL         = local.url_portal
-        # As quatro abaixo existem porque o `entrypoint.sh` de lá roda
+        # As cinco abaixo existem porque o `entrypoint.sh` de lá roda
         # `check --deploy --fail-level WARNING --tag security` antes do gunicorn, e
         # esse check **reprova** com `SECURE_SSL_REDIRECT` e `SECURE_HSTS_SECONDS`
         # desligados. Os defaults do `settings.py` os deixam desligados, e o
@@ -257,6 +257,19 @@ locals {
         DJANGO_HSTS_SECONDS         = "31536000"
         DJANGO_CSRF_TRUSTED_ORIGINS = local.url_biahflow
         FRONTEND_ORIGIN             = local.url_biahflow
+        # `NUM_PROXIES` é a quinta, e faltava (ADR 0050): o `biahflow.E002` cobra o
+        # **par** `TRUST_X_FORWARDED_PROTO` + `NUM_PROXIES`, e sem ela a revisão nem
+        # sobe — foi o que reprovou o primeiro deploy real, com `Container called
+        # exit(1)` e a sonda de inicialização recusando toda revisão.
+        #
+        # O valor é a posição, contada do fim, de onde o DRF tira o IP do cliente no
+        # `X-Forwarded-For`. Aqui a cadeia é cliente → balanceador → Cloud Run, e o
+        # header chega `<cliente>, <balanceador>`: logo **2**, e não o `1` do compose,
+        # onde o nginx é o único salto. Errar para baixo é o defeito que o próprio
+        # E002 descreve — todo mundo atrás do mesmo proxy dividindo um balde só; errar
+        # para cima faz o DRF ler a ponta esquerda, que o cliente pode forjar.
+        # **Fica aberto medir o header como ele chega**; 2 é raciocínio, não medição.
+        NUM_PROXIES = "2"
         # O modo que roda em qualquer lugar (ADR 0016 do Biahflow): credencial de
         # usuário por refresh token, como o n8n. O `adc` exigiria metadata server.
         GOOGLE_AUTH_MODE = "oauth"

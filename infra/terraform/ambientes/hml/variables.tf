@@ -124,6 +124,10 @@ variable "nomes_de_segredo" {
     "KC_DB_URL", "KC_DB_USERNAME", "KC_DB_PASSWORD", "KC_BOOTSTRAP_ADMIN_PASSWORD",
     "DJANGO_SECRET_KEY", "PORTAL_READ_TOKEN", "PORTAL_WEBHOOK_SECRET", "REDIS_URL",
     "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN",
+    # A senha de app do Gmail. É a única credencial de e-mail: o resto (host, porta,
+    # TLS, usuário, remetente) é variável comum, porque nenhum deles é segredo e
+    # todos aparecem em `gcloud run services describe` sem prejuízo.
+    "EMAIL_HOST_PASSWORD",
     "ANTHROPIC_API_KEY", "VOYAGE_API_KEY",
   ]
 }

@@ -137,6 +137,12 @@ que a HML da GCP acrescenta os do outro produto (`DJANGO_SECRET_KEY`, `PORTAL_*`
 produtos; se você está subindo só um deles, os do outro recebem um valor de marcação. É a
 existência da versão que o Cloud Run cobra, não o conteúdo — ver o passo 4.
 
+**Acrescentar um segredo depois repete o mesmo par de passos, e pela mesma razão.** O nome
+entra em `variables.tf` e na lista `segredos` do serviço **no mesmo commit** (senão um dos
+portões reprova o plano), mas o `apply` vai em dois: `-target=module.fundacao` cria o
+segredo, `gcloud secrets versions add` lhe dá versão, e só então o apply completo o monta.
+Foi assim que o `EMAIL_HOST_PASSWORD` entrou.
+
 ## 6. O apply completo
 
 ```bash

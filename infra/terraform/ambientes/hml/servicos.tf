@@ -273,11 +273,33 @@ locals {
         # O modo que roda em qualquer lugar (ADR 0016 do Biahflow): credencial de
         # usuário por refresh token, como o n8n. O `adc` exigiria metadata server.
         GOOGLE_AUTH_MODE = "oauth"
+        # SMTP do Workspace. O default do `settings.py` de lá é `localhost:1025` — o
+        # Mailpit do compose, que dentro do Cloud Run é lugar nenhum —, e a flag
+        # `email` nasce ligada **sem exigir credencial**, porque SMTP tem default:
+        # não há variável cuja ausência denuncie o problema. Quem denuncia é a sonda
+        # do `check_integrations`, e ela vinha reprovando com `Connection refused`.
+        #
+        # Isso não é cosmético. `POST /invitations/` é transacional com
+        # `fail_silently=False`: sem SMTP ele responde **502 e desfaz o convite** —
+        # e o convite é o único caminho de onboarding do produto.
+        #
+        # 587 e não 465: o `settings.py` de lá só expõe `EMAIL_USE_TLS` (STARTTLS),
+        # não há `EMAIL_USE_SSL`. E não 25: a GCP bloqueia a saída naquela porta.
+        EMAIL_HOST      = "smtp.gmail.com"
+        EMAIL_PORT      = "587"
+        EMAIL_USE_TLS   = "true"
+        EMAIL_HOST_USER = "daniel@biahflow.ai"
+        # O Gmail recusa remetente que não seja a conta autenticada ou um alias dela,
+        # então os dois são o mesmo endereço. O default do código é
+        # `noreply@biahflow.local`, e `.local` não é domínio entregável — o runbook de
+        # homologação já registrava que relay sério o recusa.
+        DEFAULT_FROM_EMAIL = "daniel@biahflow.ai"
       }
       segredos = [
         "DJANGO_SECRET_KEY", "DATABASE_URL", "REDIS_URL",
         "PORTAL_READ_TOKEN", "PORTAL_WEBHOOK_SECRET",
         "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN",
+        "EMAIL_HOST_PASSWORD",
       ]
     }
 

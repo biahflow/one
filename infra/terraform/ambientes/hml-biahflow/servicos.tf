@@ -140,6 +140,11 @@ locals {
         GOOGLE_OAUTH_CLIENT_SECRET = "GOOGLE_OAUTH_CLIENT_SECRET"
         GOOGLE_OAUTH_REFRESH_TOKEN = "GOOGLE_OAUTH_REFRESH_TOKEN"
         EMAIL_HOST_PASSWORD        = "EMAIL_HOST_PASSWORD"
+        # Sem esta linha o endpoint público de captação existe e recusa tudo: o
+        # `settings.LEAD_INTAKE_TOKEN` nasce vazio e `_valid_intake_token` exige
+        # `bool(expected)` antes de comparar. O site recebe 401, traduz para 502, e o
+        # visitante lê "tente novamente" — sem nada de anormal no log de lá.
+        LEAD_INTAKE_TOKEN = "LEAD_INTAKE_TOKEN"
       }
     }
 

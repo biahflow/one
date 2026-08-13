@@ -48,7 +48,16 @@ variable "repositorios_github" {
     ADR 0016 do Biahflow adotou por política da organização.
   TXT
   type        = list(string)
-  default     = ["dcamppos83/biahflow-portal-cliente", "dcamppos83/biahflow-portal"]
+  # `biahflow-site` entrou em 13/08/2026: o site de marketing passou a ter backend
+  # próprio no Cloud Run (`biahflow-site-api-hml`), e o workflow que publica a imagem
+  # dele precisa da mesma federação — sem chave, como os outros dois. O Terraform
+  # daquele produto mora no repo dele, então ele **não** entra em `repositorio_infra`:
+  # federa só a conta de deploy.
+  default = [
+    "dcamppos83/biahflow-portal-cliente",
+    "dcamppos83/biahflow-portal",
+    "dcamppos83/biahflow-site",
+  ]
 }
 
 variable "repositorio_infra" {
@@ -117,5 +126,15 @@ variable "segredos" {
     GOOGLE_OAUTH_CLIENT_SECRET = "biahflow"
     GOOGLE_OAUTH_REFRESH_TOKEN = "biahflow"
     EMAIL_HOST_PASSWORD        = "biahflow"
+    # Token compartilhado da captação de leads: quem o apresenta em `X-Intake-Token`
+    # pode postar em `/api/v1/leads/intake/`. O leitor é a `biahflow-api`; o emissor
+    # é o relay do site de marketing (repo `biahflow-site`), que o guarda do lado
+    # servidor para ele nunca chegar ao navegador.
+    #
+    # Sem ele o intake não fica aberto — fica **fechado**: `_valid_intake_token`
+    # exige `bool(expected)` antes de comparar, então token vazio recusa todo lead
+    # com 401 e o visitante vê erro. É o mesmo segredo que o site guarda em
+    # `site-crm-intake-token-hml`, e os dois valores têm de ser idênticos.
+    LEAD_INTAKE_TOKEN = "biahflow"
   }
 }

@@ -144,10 +144,21 @@ variable "segredos" {
   # webhook em direção ao Biahflow, `AGENT_KEY_PEPPER`, `DRIVE_TOKEN_ENCRYPTION_KEY`,
   # o par `STORAGE_*` e as chaves da Anthropic e da Voyage.
   #
-  # **Apagar o segredo apaga o valor**, e os valores das DSNs continuam válidos do
-  # outro lado: o Postgres do portal e o do Keycloak seguem na Neon, o Redis na
-  # Upstash. Quem religar o portal um dia recria os segredos aqui e põe os valores de
-  # lá — o que se perdeu foi a cópia, não a fonte.
+  # **Apagar o segredo apaga o valor, e não há lixeira no Secret Manager.** Para as
+  # oito DSNs isso é barato: o Postgres do portal e o do Keycloak seguem na Neon, o
+  # Redis na Upstash, e quem religar o portal relê os valores de lá — perdeu-se a
+  # cópia, não a fonte.
+  #
+  # **Para duas delas é o contrário, e isso foi decidido de olhos abertos em
+  # 13/08/2026.** `DRIVE_TOKEN_ENCRYPTION_KEY` cifra os tokens do Drive guardados
+  # naquele mesmo Postgres que sobreviveu, e `AGENT_KEY_PEPPER` é o pepper das chaves
+  # de agente guardadas com hash: sem eles, o banco continua de pé e aquelas duas
+  # colunas viram lixo. Não é dado que se recupera — é dado que se refaz, com
+  # reconsentimento no Drive e reemissão das chaves de agente.
+  #
+  # `ANTHROPIC_API_KEY` e `VOYAGE_API_KEY` tinham **uma única versão cada**, isto é,
+  # nunca foram rotacionadas. São regeneráveis no console de cada fornecedor, mas o
+  # valor que existia aqui não volta.
   #
   # `PORTAL_READ_TOKEN` e `PORTAL_WEBHOOK_SECRET` **ficam**, e não é esquecimento: o
   # dono deles é `biahflow`, quem os lê é a `biahflow-api`, e removê-los quebraria o

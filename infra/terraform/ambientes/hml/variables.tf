@@ -27,6 +27,29 @@ variable "dominio" {
   default     = ""
 }
 
+variable "borda_ligada" {
+  description = <<-TXT
+    Se a borda serve requisições. `false` destrói as duas regras de encaminhamento e
+    **só** elas — é o único item de HML que cobra por hora estando parado, ~US$ 18/mês,
+    e a ADR 0046 já o registrava como "o único custo fixo de HML".
+
+    Num ambiente com um usuário só, deixar isso ligado 730 horas por mês para usar
+    algumas dezenas é o desperdício óbvio. Desligado, o resto da borda continua de pé
+    (NEG, backend service, url map, proxies, certificado) e não custa nada: religar é
+    um apply de segundos, sem tocar em DNS nem reemitir certificado.
+
+    O que **não** sobrevive a um sono longo é a renovação do certificado gerenciado,
+    que chega pela porta 80 — ver o comentário em `modulos/borda/main.tf` e o runbook.
+
+    O IP de entrada permanece reservado de propósito. Solto, ele custaria US$ 0,01/h
+    (o dobro da tarifa de "em uso"), e liberá-lo mudaria os hostnames `nip.io`, que
+    contêm o IP — forçando reemissão de certificado a cada religada. Isso só deixa de
+    valer quando `var.dominio` estiver preenchida.
+  TXT
+  type        = bool
+  default     = true
+}
+
 variable "bucket_estado" {
   description = <<-TXT
     O bucket do estado remoto, criado **à mão** antes de tudo (o comando está em

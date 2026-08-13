@@ -71,6 +71,7 @@ module "borda" {
   backends       = local.backends_da_borda
   rotas          = local.rotas_da_borda
   servico_padrao = "portal-web"
+  ligada         = var.borda_ligada
 }
 
 # O terceiro portão (ADR 0048). Uma rota cujo `destino` não é backend já reprova

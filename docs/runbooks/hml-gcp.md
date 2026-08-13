@@ -376,6 +376,54 @@ O `portal-beat` volta como **1 e nunca mais que isso** — dois agendadores emit
 tarefa duas vezes. Em produção os três voltam a 1 por padrão: lá, "um alerta de backup que
 não roda é pior que nenhum" deixa de ser retórica.
 
+## A borda também dorme, e essa é a que custa dinheiro
+
+Escalar tudo a zero deixou o compute em zero, mas **não** o único item que cobra por hora
+parado: as duas regras de encaminhamento globais, ~US$ 18/mês, que a ADR 0046 já registrava
+como "o único custo fixo de HML". `var.borda_ligada` destrói **só** essas duas.
+
+```bash
+cd infra/terraform/ambientes/hml
+terraform apply -var=borda_ligada=false   # dormir
+terraform apply -var=borda_ligada=true    # acordar
+```
+
+Acordar leva segundos e **não** mexe em DNS nem reemite certificado: o IP de entrada
+continua reservado, e NEG, backend service, url map, proxies e certificado nunca saem.
+
+**O plano tem de mostrar exatamente dois recursos destruídos.** Se aparecer certificado,
+url map, backend service ou NEG na lista, o `count` foi parar no lugar errado — não
+aplique, porque o certificado leva de 15 min a 1h para voltar.
+
+**Com a borda dormindo, quem cai e quem não cai.** Caem os três nomes (`portal.`, `auth.`,
+`app.`): o `curl` não recebe 404 nem 502, recebe conexão recusada, porque não há nada
+escutando no IP. **Não** cai a captação de leads do site de marketing — o relay do
+`biahflow-site` alcança a `biahflow-api` pela URL `run.app` por Direct VPC egress, e o
+ingress `internal-and-cloud-load-balancing` aceita tráfego interno da VPC além do que vem
+do balanceador. O caminho do lead nunca passou pela borda.
+
+**A armadilha, e ela tem prazo.** O certificado gerenciado se revalida sozinho antes de
+expirar, e a validação chega pela **porta 80** — que dormindo não existe. Uma renovação
+que caia numa janela de sono falha e o certificado vai para `FAILED_NOT_VISIBLE`. Não se
+perde nada além de tempo, mas a próxima subida paga a reemissão inteira. Antes de um sono
+longo, veja quanto falta:
+
+```bash
+gcloud compute ssl-certificates describe hml --global \
+  --account=daniel@biahflow.ai --project=biahflow-hml \
+  --format='value(managed.status,expireTime)'
+```
+
+**Por que as duas rules e não uma.** As cinco primeiras regras globais custam US$ 0,025/hora
+**no total** — manter só a de 443 sairia pelo mesmo preço de manter as duas e não
+economizaria nada.
+
+**Por que o IP fica reservado**, apesar de IP solto custar US$ 0,01/h (o dobro da tarifa de
+"em uso"): os hostnames `nip.io` contêm o IP, então liberá-lo mudaria os três nomes e
+forçaria reemissão de certificado a cada religada. Pagar US$ 7,30/mês para que acordar leve
+segundos é a troca certa **enquanto `var.dominio` estiver vazia**. Com domínio próprio, o
+IP passa a ser descartável e o sono vai a custo zero.
+
 ## Armadilhas medidas
 
 - **`ip_saida` ≠ `ip_entrada`.** Já dito no passo 10, e repetido aqui porque foi um defeito

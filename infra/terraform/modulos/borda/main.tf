@@ -118,6 +118,24 @@ variable "servico_padrao" {
   type        = string
 }
 
+variable "ligada" {
+  description = <<-TXT
+    Se as regras de encaminhamento existem. `false` desliga a borda inteira do ponto de
+    vista de quem chega — e é a única coisa neste módulo que muda a fatura.
+
+    **Só as regras de encaminhamento são cobradas.** NEG, backend service, url map,
+    target proxy e o certificado gerenciado custam zero parados, então desligar é
+    destruir dois recursos e reconstruí-los em segundos. É o que torna o custo do único
+    item fixo de HML proporcional ao uso, num ambiente com um usuário só.
+
+    **As duas rules caem juntas, e não é simetria estética.** As cinco primeiras regras
+    globais custam US$ 0,025/hora **no total** — manter uma só sairia pelo mesmo preço
+    de manter as duas, e não economizaria nada.
+  TXT
+  type        = bool
+  default     = true
+}
+
 # Um NEG por serviço. É o que liga um balanceador a algo que não tem IP nem porta —
 # o Cloud Run não é um grupo de instâncias, e o `cloud_run` aqui é o adaptador.
 resource "google_compute_region_network_endpoint_group" "neg" {
@@ -225,6 +243,8 @@ resource "google_compute_target_https_proxy" "proxy" {
 }
 
 resource "google_compute_global_forwarding_rule" "https" {
+  count = var.ligada ? 1 : 0
+
   name                  = "hml-https"
   load_balancing_scheme = "EXTERNAL_MANAGED"
   ip_address            = var.endereco
@@ -232,10 +252,26 @@ resource "google_compute_global_forwarding_rule" "https" {
   target                = google_compute_target_https_proxy.proxy.id
 }
 
+# Sem isto, acrescentar `count` renomeia o recurso de `.https` para `.https[0]` e o
+# Terraform lê a mudança de endereço como destruir-e-criar — o que aqui é inofensivo,
+# mas em qualquer recurso com estado seria perda de dado. O `moved` diz que é o mesmo
+# recurso com outro nome.
+moved {
+  from = google_compute_global_forwarding_rule.https
+  to   = google_compute_global_forwarding_rule.https[0]
+}
+
 # --- A porta 80, que existe para não servir nada --------------------------------
 # Ela não é conveniência. Sem ela, um `http://` responde conexão recusada, e é isso
 # que a validação do certificado gerenciado e o primeiro acesso de qualquer pessoa
 # encontram antes de o HTTPS existir. Redirecionar é a única coisa que ela faz.
+#
+# **E é isso que dá prazo à borda desligada.** O certificado gerenciado se revalida
+# sozinho antes de expirar, e a validação chega por aqui: com `ligada = false` não há
+# porta 80 no IP, então uma renovação que caia numa janela de sono **falha**, e o
+# certificado vai para `FAILED_NOT_VISIBLE`. Não se perde nada além de tempo — a
+# próxima subida paga de 15 min a 1h de reemissão —, mas quem não souber vai procurar
+# defeito onde não há. Ver o runbook `docs/runbooks/hml-gcp.md`.
 
 resource "google_compute_url_map" "redirecionamento" {
   name = "hml-http"
@@ -252,6 +288,8 @@ resource "google_compute_target_http_proxy" "proxy_http" {
 }
 
 resource "google_compute_global_forwarding_rule" "http" {
+  count = var.ligada ? 1 : 0
+
   name                  = "hml-http"
   load_balancing_scheme = "EXTERNAL_MANAGED"
   ip_address            = var.endereco
@@ -259,4 +297,14 @@ resource "google_compute_global_forwarding_rule" "http" {
   target                = google_compute_target_http_proxy.proxy_http.id
 }
 
+moved {
+  from = google_compute_global_forwarding_rule.http
+  to   = google_compute_global_forwarding_rule.http[0]
+}
+
 output "certificado" { value = google_compute_managed_ssl_certificate.cert.name }
+
+output "ligada" {
+  description = "Se a borda está servindo. `false` significa desligada por economia, não quebrada."
+  value       = var.ligada
+}

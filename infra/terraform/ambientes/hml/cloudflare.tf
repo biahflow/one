@@ -26,8 +26,18 @@
 # errada. Foi o que aconteceu na primeira tentativa de apply.
 #
 # O id é identificador, como o `conta_cloudflare`: não é segredo, e fixá-lo troca uma
-# chamada de API e uma permissão por uma constante. O token daqui precisa só de
-# `DNS → Edit`, `Config Rules → Edit` e `Access: Apps and Policies → Edit`.
+# chamada de API e uma permissão por uma constante.
+#
+# **As três permissões que o token daqui precisa**, medidas uma a uma contra a API e
+# não deduzidas do nome do recurso:
+#
+#   Zone → DNS → Edit                        (`cloudflare_dns_record`)
+#   Zone → **Origin Rules** → Edit           (`cloudflare_ruleset` de `http_request_origin`)
+#   Account → Access: Apps and Policies → Edit  (as duas do Zero Trust)
+#
+# A do meio se chama **Origin Rules** e não "Config Rules": com a errada, o
+# `POST /zones/<id>/rulesets` responde `403 request is not authorized` — que não diz
+# qual permissão falta, e manda procurar no lugar errado.
 
 locals {
   # A URL nova do Cloud Run (`<serviço>-<número do projeto>.<região>.run.app`), e não a

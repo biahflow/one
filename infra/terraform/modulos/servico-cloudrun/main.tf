@@ -71,9 +71,24 @@ variable "variaveis" { type = map(string) }
 # Na maioria dos casos os dois lados continuam iguais, e o mapa diz isso por extenso.
 variable "segredos" { type = map(string) }
 
+# **A trava de exclusão existia sem estar escrita.** O provider 6.x liga
+# `deletion_protection` por default, então todo serviço nasceu protegido sem que
+# arquivo nenhum aqui dissesse isso — e a conta veio no `terraform destroy`, que
+# reprova inteiro com "cannot destroy service without setting
+# deletion_protection=false" depois de já ter derrubado o que não era serviço.
+#
+# Escrita, ela vira decisão em vez de efeito colateral. O default é `true` porque a
+# trava está certa: desmontar um produto é raro e deve custar uma linha explícita.
+variable "protegido" {
+  description = "Se o serviço recusa ser destruído. `false` só ao desmontar um ambiente de propósito."
+  type        = bool
+  default     = true
+}
+
 resource "google_cloud_run_v2_service" "servico" {
-  name     = var.nome
-  location = var.regiao
+  name                = var.nome
+  location            = var.regiao
+  deletion_protection = var.protegido
 
   # **O ingress é a decisão de segurança deste módulo**, e são três respostas porque
   # há três clientes: a internet, um processo nosso, e o navegador *pela nossa

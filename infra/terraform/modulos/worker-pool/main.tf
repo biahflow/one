@@ -30,9 +30,17 @@ variable "variaveis" { type = map(string) }
 # Ver o argumento inteiro em `modulos/servico-cloudrun/main.tf`.
 variable "segredos" { type = map(string) }
 
+# Mesma trava, mesmo motivo do `modulos/servico-cloudrun/main.tf`.
+variable "protegido" {
+  description = "Se o worker pool recusa ser destruído. `false` só ao desmontar um ambiente de propósito."
+  type        = bool
+  default     = true
+}
+
 resource "google_cloud_run_v2_worker_pool" "pool" {
-  name     = var.nome
-  location = var.regiao
+  name                = var.nome
+  location            = var.regiao
+  deletion_protection = var.protegido
 
   # `launch_stage = "BETA"` saiu daqui, e não por limpeza: **a API passou a responder
   # `GA`** para estes recursos, de modo que a linha virou uma afirmação falsa que todo

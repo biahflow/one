@@ -11,14 +11,15 @@
 # organização proíbe criá-las (a política que a ADR 0016 do Biahflow encontrou).
 name: deploy-hml
 
+# **O gatilho de push saiu em 13/08/2026, e o workflow ficou.** Os serviços que ele
+# publica (`portal-api`, `portal-web`, `portal-worker`, `portal-beat`,
+# `portal-migrate`) não existem mais na GCP — o portal do cliente espera quem o opere.
+# Com o `push` ligado, todo commit na `main` gastaria alguns minutos de CI para
+# terminar em `service not found`, e o vermelho recorrente ensinaria a ignorar o
+# vermelho. Sem ele, o arquivo continua sendo a receita de como o portal sobe, e não
+# há uma segunda verdade a reescrever quando ele voltar: religar é devolver este
+# bloco e reaplicar o Terraform do `ambientes/hml-portal`.
 on:
-  push:
-    branches: [main]
-    # Documento não vira imagem. Sem isto, corrigir uma vírgula num ADR
-    # redeployaria o portal inteiro.
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
   workflow_dispatch:
 
 concurrency:

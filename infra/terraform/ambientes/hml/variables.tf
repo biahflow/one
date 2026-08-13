@@ -76,10 +76,19 @@ variable "repositorios_github" {
   # dele precisa da mesma federação — sem chave, como os outros dois. O Terraform
   # daquele produto mora no repo dele, então ele **não** entra em `repositorio_infra`:
   # federa só a conta de deploy.
+  #
+  # Os dois do OikOS entraram **fora do Terraform** e foram descobertos por um plano
+  # que queria removê-los. Estão escritos aqui porque a condição do provedor é um
+  # atributo único e não um conjunto de bindings: quem a reescrever a partir de uma
+  # lista incompleta **revoga** o que não está nela — o `oikos-proto-web` pararia de
+  # ser publicado, e o sintoma seria um token recusado no CI de outro repositório.
+  # Federam só a conta de deploy, como o site.
   default = [
     "dcamppos83/biahflow-portal-cliente",
     "dcamppos83/biahflow-portal",
     "dcamppos83/biahflow-site",
+    "dcamppos83/OikOS",
+    "dcamppos83/plataforma-oikos",
   ]
 }
 

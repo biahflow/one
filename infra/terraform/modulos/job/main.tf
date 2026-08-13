@@ -22,9 +22,18 @@ variable "variaveis" { type = map(string) }
 # Ver o argumento inteiro em `modulos/servico-cloudrun/main.tf`.
 variable "segredos" { type = map(string) }
 
+# Mesma trava, mesmo motivo do `modulos/servico-cloudrun/main.tf`. Os três recursos do
+# Cloud Run a têm, e descobrir isso um de cada vez custou três `destroy` reprovados.
+variable "protegido" {
+  description = "Se o job recusa ser destruído. `false` só ao desmontar um ambiente de propósito."
+  type        = bool
+  default     = true
+}
+
 resource "google_cloud_run_v2_job" "job" {
-  name     = var.nome
-  location = var.regiao
+  name                = var.nome
+  location            = var.regiao
+  deletion_protection = var.protegido
 
   template {
     template {

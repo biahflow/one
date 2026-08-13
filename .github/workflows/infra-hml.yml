@@ -38,7 +38,10 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        ambiente: [hml, hml-biahflow, hml-portal]
+        # `hml-portal` saiu em 13/08/2026 junto com o state dele: o portal do cliente
+        # espera quem o opere. Voltar é recriar o diretório e reacrescentar a entrada
+        # aqui — o histórico guarda os dois.
+        ambiente: [hml, hml-biahflow]
     env:
       DIRETORIO: infra/terraform/ambientes/${{ matrix.ambiente }}
     steps:

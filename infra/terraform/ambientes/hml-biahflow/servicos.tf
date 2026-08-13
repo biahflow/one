@@ -66,6 +66,20 @@ locals {
         DJANGO_ALLOWED_HOSTS    = "${local.host_biahflow},${local.host_interno["biahflow-api"]},localhost"
         TRUST_X_FORWARDED_PROTO = "true"
         PORTAL_BASE_URL         = local.url_portal
+        # **Para onde o Biahflow avisa que algo mudou.** Faltava, e a ausência não
+        # deixava nada vermelho: a flag `portal` de lá tem como default a presença desta
+        # variável, então ela ficava desligada e `portal.emit` retornava na primeira
+        # linha. Nenhum webhook saía, e o silêncio era indistinguível de "está tudo
+        # entregue".
+        #
+        # É a URL **interna** e com o caminho completo: o `emit` usa o valor literalmente,
+        # sem montar path. E é interna porque a `portal-api` é `interno` — quem a alcança
+        # é quem está na VPC e sabe apresentar identidade, que passou a ser o caso do
+        # Django com a ADR 0029 do outro repositório.
+        #
+        # Oitavo achado da família "variável que o compose declara e a infra não" (ADR
+        # 0052). A guarda que compararia as duas listas continua sem dono.
+        PORTAL_WEBHOOK_URL = "${local.url_interna["portal-api"]}/api/v1/integrations/biahflow/webhook"
         # As cinco abaixo existem porque o `entrypoint.sh` de lá roda
         # `check --deploy --fail-level WARNING --tag security` antes do gunicorn, e
         # esse check **reprova** com `SECURE_SSL_REDIRECT` e `SECURE_HSTS_SECONDS`

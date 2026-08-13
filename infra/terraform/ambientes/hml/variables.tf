@@ -39,6 +39,20 @@ variable "conta_cloudflare" {
   default     = "81d31bb1b024f9759bbd374d13370976"
 }
 
+variable "zona_cloudflare" {
+  description = <<-TXT
+    Zone ID de `biahflow.ai`. Fixo, e não descoberto por `data "cloudflare_zone"`
+    filtrando por nome — a busca exige `Zone → Zone → Read` no token, e um token sem
+    essa permissão não responde "acesso negado": responde **`0 found`**, que parece
+    nome de zona errado e manda depurar a coisa errada.
+
+    Identificador, como o account id. O valor confere com o que o state do
+    `biahflow-site` já resolveu para a mesma zona.
+  TXT
+  type        = string
+  default     = "fd52b4e75ea808250a902949f7a494e2"
+}
+
 variable "emails_com_acesso" {
   description = <<-TXT
     Quem atravessa o Cloudflare Access na frente do CRM. Lista explícita, e não regra

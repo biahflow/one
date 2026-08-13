@@ -19,11 +19,15 @@
 # recurso. É o que permite declarar a borda inteira sem ler state de produto nenhum, e
 # sem ciclo.
 
-data "cloudflare_zone" "principal" {
-  filter = {
-    name = var.dominio
-  }
-}
+# **A zona entra por id e não por busca, e isso é uma permissão a menos.** O repo do
+# site descobre a zona com `data "cloudflare_zone"` filtrando por nome, o que exige
+# `Zone → Zone → Read` no token — e um token sem essa permissão não falha com "acesso
+# negado", falha com **"0 found"**, que parece nome errado e manda depurar a coisa
+# errada. Foi o que aconteceu na primeira tentativa de apply.
+#
+# O id é identificador, como o `conta_cloudflare`: não é segredo, e fixá-lo troca uma
+# chamada de API e uma permissão por uma constante. O token daqui precisa só de
+# `DNS → Edit`, `Config Rules → Edit` e `Access: Apps and Policies → Edit`.
 
 locals {
   # A URL nova do Cloud Run (`<serviço>-<número do projeto>.<região>.run.app`), e não a
@@ -34,7 +38,7 @@ locals {
 }
 
 resource "cloudflare_dns_record" "crm" {
-  zone_id = data.cloudflare_zone.principal.zone_id
+  zone_id = var.zona_cloudflare
   name    = local.host_biahflow
   type    = "CNAME"
   content = local.origem_do_crm
@@ -52,7 +56,7 @@ resource "cloudflare_dns_record" "crm" {
 # Google, sem log nosso e sem pista de que o problema é um header. Override de `Host`
 # em Origin Rules existe no plano free.
 resource "cloudflare_ruleset" "origem_do_crm" {
-  zone_id     = data.cloudflare_zone.principal.zone_id
+  zone_id     = var.zona_cloudflare
   name        = "origem do CRM (hml)"
   description = "Reescreve o Host para o hostname da run.app do biahflow-web."
   kind        = "zone"

@@ -501,6 +501,24 @@ depende deste número existir.
 
 Nomeado para não ser confundido com feito:
 
+- **A guarda que compara o que o compose declara com o que a infraestrutura entrega
+  continua sem dono, e já são oito ocorrências.** É uma família inteira de defeito, não
+  um caso: uma variável de ambiente existe no `docker-compose` e não no Terraform, e
+  **nada fica vermelho** — porque o código quase sempre a lê com default vazio e desliga
+  o recurso que ela habilita. O sintoma é silêncio, e silêncio é indistinguível de
+  "está tudo funcionando".
+
+  O caso que fechou a contagem foi `PORTAL_WEBHOOK_URL`, na branch
+  `a-url-que-o-webhook-nao-tinha` (commit `01834d9`, 12/08/2026): a flag `portal` do CRM
+  liga pela **presença** da variável, então sem ela `portal.emit` retornava na primeira
+  linha e nenhum webhook saía. A branch morreu em 13/08 com o produto — `portal-api` não
+  existe mais —, mas o modo de falha não morreu junto: ele vale para qualquer variável
+  nova dos dois lados.
+
+  O que resolveria é um portão comparando as duas listas, no estilo dos três que a ADR
+  0051 já tem. Enquanto ele não existir, **variável nova é conferida a olho**, nos dois
+  arquivos.
+
 - **A execução completa deste runbook aconteceu em 12/08/2026**, os onze passos, e os
   tropeços entraram em *Armadilhas medidas*, na ADR 0050 e na ADR 0052. O que ela prova:
   o login do portal do cliente fecha ponta a ponta — navegador, BFF, Keycloak, troca de

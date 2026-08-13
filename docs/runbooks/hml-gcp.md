@@ -416,6 +416,30 @@ Foi exatamente o que aconteceu.
 
 ## Armadilhas medidas
 
+- **A rede corporativa bloqueia `*.biahflow.ai`, e o sintoma imita defeito de TLS.** Da
+  rede da Globo, `https://app.biahflow.ai` e `https://hml.biahflow.ai` fecham a conexão
+  no handshake (`Recv failure: Connection reset by peer`, sem certificado oferecido) e a
+  porta 80 responde **503**. Isso parece certificado ausente ou zona quebrada, e em
+  13/08/2026 custou um diagnóstico inteiro errado: "o custom domain do Pages não está
+  ativo", quando o site estava no ar o tempo todo.
+
+  **O que denuncia é o corpo do 503**, não o status:
+
+  ```bash
+  curl -sI http://app.biahflow.ai/ | grep -i p3p     # P3P: CP="CAO PSA OUR"
+  curl -s  http://app.biahflow.ai/ | grep -i title   # <title>Web Page Blocked</title>
+  ```
+
+  Página de bloqueio de firewall corporativo, não da Cloudflare. Para conferir de fora
+  sem trocar de rede:
+
+  ```bash
+  curl -s "https://r.jina.ai/https://app.biahflow.ai/" | head -5
+  ```
+
+  O esperado é **200 com a tela de login do Cloudflare Access**. Da rede liberada, o
+  mesmo hostname responde **302** — que também é sucesso, e é o Access redirecionando.
+
 - **`ip_saida` ≠ `ip_entrada`.** Já dito no passo 10, e repetido aqui porque foi um defeito
   real, não hipotético.
 - **Segredo esquecido reprova no boot, não no apply.** Ver o aviso do passo 5.

@@ -12,42 +12,41 @@ variable "regiao" {
 
 variable "dominio" {
   description = <<-TXT
-    Domínio de HML, sem subdomínio. Vazio faz tudo cair em `nip.io` sobre o IP de
-    **entrada** do balanceador, que dá nome estável ao OIDC — o Keycloak precisa
-    que o `issuer` não mude a cada deploy.
+    A zona registrada na Cloudflare. **Obrigatória desde 13/08/2026**, e é a mudança
+    que tornou a borda gratuita.
 
-    Uma versão anterior montava o `nip.io` sobre o IP de *saída* do Cloud NAT, que
-    é endereço que serviço nenhum escuta: o nome resolvia e não respondia.
+    Antes ela podia ser vazia, e vazio caía em `nip.io` sobre o IP de entrada do
+    balanceador — o único jeito de dar nome estável ao `issuer` do Keycloak sem
+    domínio. Com o Keycloak fora e a borda na Cloudflare, o fallback deixou de ter
+    para o que apontar: o IP global foi liberado, e um default que constrói hostname
+    a partir de um recurso destruído produz erro pior do que exigir o valor.
 
-    Trocar depois é mudar esta variável e aplicar. O que **não** vem de graça: o
-    realm do Keycloak guarda `redirectUris` e o `issuer`, e isso é passo de runbook,
-    não de Terraform.
+    `var.borda_ligada` sumiu junto. Ela desligava as duas regras de encaminhamento
+    para não pagá-las paradas; hoje não há regra de encaminhamento para desligar.
   TXT
   type        = string
-  default     = ""
+  default     = "biahflow.ai"
+
+  validation {
+    condition     = var.dominio != ""
+    error_message = "`dominio` não é mais opcional: sem ele não há de onde derivar `app.<domínio>`, e o `nip.io` que preenchia essa lacuna dependia de um IP que não existe mais."
+  }
 }
 
-variable "borda_ligada" {
+variable "conta_cloudflare" {
+  description = "Account ID da Cloudflare. Identificador, não segredo — o segredo é o token, que vem por `CLOUDFLARE_API_TOKEN` no ambiente. Mesmo valor do repo do site."
+  type        = string
+  default     = "81d31bb1b024f9759bbd374d13370976"
+}
+
+variable "emails_com_acesso" {
   description = <<-TXT
-    Se a borda serve requisições. `false` destrói as duas regras de encaminhamento e
-    **só** elas — é o único item de HML que cobra por hora estando parado, ~US$ 18/mês,
-    e a ADR 0046 já o registrava como "o único custo fixo de HML".
-
-    Num ambiente com um usuário só, deixar isso ligado 730 horas por mês para usar
-    algumas dezenas é o desperdício óbvio. Desligado, o resto da borda continua de pé
-    (NEG, backend service, url map, proxies, certificado) e não custa nada: religar é
-    um apply de segundos, sem tocar em DNS nem reemitir certificado.
-
-    O que **não** sobrevive a um sono longo é a renovação do certificado gerenciado,
-    que chega pela porta 80 — ver o comentário em `modulos/borda/main.tf` e o runbook.
-
-    O IP de entrada permanece reservado de propósito. Solto, ele custaria US$ 0,01/h
-    (o dobro da tarifa de "em uso"), e liberá-lo mudaria os hostnames `nip.io`, que
-    contêm o IP — forçando reemissão de certificado a cada religada. Isso só deixa de
-    valer quando `var.dominio` estiver preenchida.
+    Quem atravessa o Cloudflare Access na frente do CRM. Lista explícita, e não regra
+    por domínio, porque o acesso inclui uma conta fora de `@biahflow.ai` — uma regra
+    por domínio esconderia essa exceção em vez de declará-la.
   TXT
-  type        = bool
-  default     = true
+  type        = list(string)
+  default     = ["daniel@biahflow.ai", "danielcamppos@gmail.com"]
 }
 
 variable "bucket_estado" {
@@ -125,30 +124,23 @@ variable "segredos" {
     mapa `segredos` de cada produto faz a ligação.
   TXT
   type        = map(string)
+  # **Os vinte segredos do portal do cliente saíram em 13/08/2026**, com o produto.
+  # Eram `AUTH_SECRET`, `AUTH_KEYCLOAK_SECRET`, `KEYCLOAK_ADMIN_CLIENT_SECRET`, as
+  # quatro DSNs do portal, os quatro `KC_*` do Keycloak, os dois tokens de leitura e
+  # webhook em direção ao Biahflow, `AGENT_KEY_PEPPER`, `DRIVE_TOKEN_ENCRYPTION_KEY`,
+  # o par `STORAGE_*` e as chaves da Anthropic e da Voyage.
+  #
+  # **Apagar o segredo apaga o valor**, e os valores das DSNs continuam válidos do
+  # outro lado: o Postgres do portal e o do Keycloak seguem na Neon, o Redis na
+  # Upstash. Quem religar o portal um dia recria os segredos aqui e põe os valores de
+  # lá — o que se perdeu foi a cópia, não a fonte.
+  #
+  # `PORTAL_READ_TOKEN` e `PORTAL_WEBHOOK_SECRET` **ficam**, e não é esquecimento: o
+  # dono deles é `biahflow`, quem os lê é a `biahflow-api`, e removê-los quebraria o
+  # `secret_key_ref` daquele serviço para economizar centavos. O webhook em direção ao
+  # portal se desliga sozinho — `apps/core/flags.py` exige as duas variáveis
+  # preenchidas, e `settings.py` as lê com default vazio.
   default = {
-    # --- Portal do cliente ---------------------------------------------------
-    AUTH_SECRET                  = "portal"
-    AUTH_KEYCLOAK_SECRET         = "portal"
-    KEYCLOAK_ADMIN_CLIENT_SECRET = "portal"
-    PORTAL_DATABASE_URL          = "portal"
-    PORTAL_REDIS_URL             = "portal"
-    DATABASE_SYSTEM_URL          = "portal"
-    DATABASE_ADMIN_URL           = "portal"
-    DATABASE_MIGRATION_URL       = "portal"
-    BIAHFLOW_READ_TOKEN          = "portal"
-    BIAHFLOW_WEBHOOK_SECRET      = "portal"
-    AGENT_KEY_PEPPER             = "portal"
-    DRIVE_TOKEN_ENCRYPTION_KEY   = "portal"
-    STORAGE_ACCESS_KEY           = "portal"
-    STORAGE_SECRET_KEY           = "portal"
-    ANTHROPIC_API_KEY            = "portal"
-    VOYAGE_API_KEY               = "portal"
-    KC_DB_URL                    = "portal"
-    KC_DB_USERNAME               = "portal"
-    KC_DB_PASSWORD               = "portal"
-    KC_BOOTSTRAP_ADMIN_PASSWORD  = "portal"
-
-    # --- Biahflow ------------------------------------------------------------
     DJANGO_SECRET_KEY          = "biahflow"
     BIAHFLOW_DATABASE_URL      = "biahflow"
     BIAHFLOW_REDIS_URL         = "biahflow"

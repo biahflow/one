@@ -97,22 +97,19 @@ resource "google_compute_address" "saida" {
   region = var.regiao
 }
 
-# O endereço de **entrada**, que é outra coisa e mora aqui pelo mesmo motivo que o
-# de saída: endereço é o que a nuvem entrega, e este módulo é onde isso é dito.
+# **Havia um segundo endereço aqui, o de entrada, e ele saiu em 13/08/2026.** Era o
+# IP global do balanceador, e existia neste módulo porque, sem domínio próprio, o nome
+# de cada frente continha o IP (`portal.<ip>.nip.io`): o certificado da borda precisava
+# dos nomes, e os nomes precisavam do endereço, então criá-lo na borda fecharia ciclo.
 #
-# Ele é global porque o balanceador da borda é global, e nasce **aqui** e não lá por
-# causa de um ciclo: sem domínio próprio, o nome de cada frente contém o IP
-# (`portal.<ip>.nip.io`), e o certificado da borda precisa dos nomes — um endereço
-# criado na borda faria o `servicos.tf` depender de uma saída daquele módulo para
-# produzir uma entrada dele.
+# Com a borda na Cloudflare e um domínio de verdade, o ciclo deixou de existir e o
+# endereço passou a ser só um IP reservado sem nada escutando nele — que é a **tarifa
+# mais cara** que a GCP cobra por endereço, o dobro da de "em uso".
 #
-# Confundir os dois foi o defeito que o módulo `borda` conserta: o `nip.io` era
-# montado sobre o de saída, que é por onde o Cloud Run *fala* com o Neon e o Upstash
-# e onde serviço nenhum escuta.
-resource "google_compute_global_address" "entrada" {
-  name       = "hml-entrada"
-  depends_on = [google_project_service.api]
-}
+# O de saída fica, e a distinção entre os dois é o defeito que a ADR 0046 registrou: o
+# `nip.io` chegou a ser montado sobre o de saída, que é por onde o Cloud Run *fala* com
+# o Neon e o Upstash e onde serviço nenhum escuta. É ele que está nas allowlists deles,
+# e é por isso que **este não pode mudar**.
 
 resource "google_compute_router_nat" "nat" {
   name                               = "hml"
@@ -382,8 +379,6 @@ output "conta_infra" { value = google_service_account.infra.email }
 output "bucket_documentos" { value = google_storage_bucket.documentos.name }
 output "bucket_midia" { value = google_storage_bucket.midia.name }
 output "ip_saida" { value = google_compute_address.saida.address }
-output "ip_entrada" { value = google_compute_global_address.entrada.address }
-output "endereco_entrada" { value = google_compute_global_address.entrada.id }
 output "registro_espelho" {
   description = "Espelho do quay.io. O Cloud Run não puxa de registro de terceiro."
   value       = "${var.regiao}-docker.pkg.dev/${var.projeto}/${google_artifact_registry_repository.espelho.repository_id}"

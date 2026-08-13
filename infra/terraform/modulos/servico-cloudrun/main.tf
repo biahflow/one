@@ -10,30 +10,39 @@ variable "imagem" { type = string }
 variable "porta" { type = number }
 variable "acesso" {
   description = <<-TXT
-    Quem alcança este serviço, em três valores e não num booleano:
+    Quem alcança este serviço, em quatro valores e não num booleano:
 
-      `publico`     — qualquer um, pela URL `run.app` e pela borda.
-      `interno`     — só de dentro da VPC, e com identidade: ingress **e** IAM.
-      `balanceador` — só de dentro da VPC e pelo balanceador de aplicação.
+      `publico`         — qualquer um, pela URL `run.app`.
+      `interno`         — só de dentro da VPC, e com identidade: ingress **e** IAM.
+      `interno-sem-iam` — só de dentro da VPC, sem identidade: ingress e nada mais.
+      `balanceador`     — só de dentro da VPC e pelo balanceador de aplicação da GCP.
 
-    O terceiro existe porque o segundo não serve a um serviço **cujo cliente é o
-    navegador**. A `biahflow-api` é chamada pelo SPA que a `biahflow-web` serve; um
-    NEG sem servidor não apresenta ID token ao Cloud Run, e nginx não emite nenhum —
-    então sob `interno` o IAM invoker nunca é atravessado e a barreira efetiva é uma
-    só, com a aparência de duas. Era o item que a ADR 0046 deixou aberto.
+    O terceiro e o quarto existem porque o segundo não serve a um serviço **cujo
+    cliente não sabe assinar**. A `biahflow-api` é chamada pelo nginx que a
+    `biahflow-web` executa e pelo relay do site de marketing; nginx não emite ID
+    token, e aquele relay autentica por `X-Intake-Token`, não por IAM. Sob `interno`
+    os dois tomariam 403 — o IAM invoker nunca chega a ser atravessado, e a barreira
+    efetiva seria uma só com a aparência de duas. Era o item que a ADR 0046 deixou
+    aberto.
 
-    **Sob `balanceador` o IAM é aberto de propósito, e isso não é descuido.** Como o
-    NEG não autentica, exigir IAM ali seria exigir do balanceador uma credencial que
-    ele não tem: o serviço responderia 403 a toda requisição legítima. A barreira é
-    o ingress — a `run.app` deixa de existir para a internet — e a borda passa a ser
-    nossa. Quem quiser a segunda barreira de verdade põe Cloud Armor no backend
-    service, não um `iam_member` que ninguém pode apresentar (ADR 0048).
+    **`balanceador` ficou órfão em 13/08/2026 e continua aqui por honestidade.** A
+    borda da GCP foi apagada quando o portal do cliente saiu; nenhum serviço usa mais
+    este valor. Remover a opção esconderia que ela existiu e que o `INTERNAL_ONLY` de
+    hoje é mais fechado do que o `INTERNAL_LOAD_BALANCER` de ontem — o segundo é
+    **superconjunto** do primeiro, e é essa diferença que o quarto valor captura.
+
+    **Sob `interno-sem-iam` e `balanceador` o IAM é aberto de propósito, e não é
+    descuido.** Quem chama não tem credencial para apresentar: exigir IAM faria o
+    serviço responder 403 a toda requisição legítima. A barreira é o ingress — a
+    `run.app` deixa de existir para a internet, e só quem está na VPC entra. Quem
+    quiser a segunda barreira de verdade põe mTLS ou um proxy que assine, não um
+    `iam_member` que ninguém pode satisfazer (ADR 0048).
   TXT
   type        = string
 
   validation {
-    condition     = contains(["publico", "interno", "balanceador"], var.acesso)
-    error_message = "`acesso` é `publico`, `interno` ou `balanceador`."
+    condition     = contains(["publico", "interno", "interno-sem-iam", "balanceador"], var.acesso)
+    error_message = "`acesso` é `publico`, `interno`, `interno-sem-iam` ou `balanceador`."
   }
 }
 variable "cpu" { type = string }
@@ -90,23 +99,23 @@ resource "google_cloud_run_v2_service" "servico" {
   location            = var.regiao
   deletion_protection = var.protegido
 
-  # **O ingress é a decisão de segurança deste módulo**, e são três respostas porque
-  # há três clientes: a internet, um processo nosso, e o navegador *pela nossa
-  # borda*. `INGRESS_TRAFFIC_ALL` é o default do Cloud Run e para as duas APIs
-  # estaria errado — o `Caddyfile` do compose decidiu que a `portal-api` não é
-  # alcançada pelo navegador, e a `biahflow-api` só é alcançada **através do
-  # balanceador**, nunca pela `run.app`. Publicar qualquer uma daria à internet um
-  # caminho que o produto não usa.
+  # **O ingress é a decisão de segurança deste módulo.** `INGRESS_TRAFFIC_ALL` é o
+  # default do Cloud Run e para a `biahflow-api` estaria errado: quem a chama é o
+  # nginx do SPA e o relay do site, os dois de dentro da VPC. Publicá-la daria à
+  # internet um caminho que o produto não usa.
   #
-  # `INTERNAL_LOAD_BALANCER` é **superconjunto** de `INTERNAL_ONLY`: o alcance pela
-  # VPC continua, e é por ele que a `portal-api` fala com a `biahflow-api`.
+  # `INTERNAL_LOAD_BALANCER` é **superconjunto** de `INTERNAL_ONLY` — o alcance pela
+  # VPC continua sob os dois, e é isso que fez a troca de um pelo outro, quando a borda
+  # da GCP saiu, ser um **aperto** e não um risco: some o que vinha do balanceador, que
+  # já não existe, e fica o que vem da VPC, que é todo o tráfego real.
   #
-  # Mapa e não ternário aninhado: com três casos, o ternário é onde o quarto valor
+  # Mapa e não ternário aninhado: com quatro casos, o ternário é onde o quinto valor
   # entra errado sem nada ficar vermelho.
   ingress = {
-    publico     = "INGRESS_TRAFFIC_ALL"
-    interno     = "INGRESS_TRAFFIC_INTERNAL_ONLY"
-    balanceador = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+    publico         = "INGRESS_TRAFFIC_ALL"
+    interno         = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+    interno-sem-iam = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+    balanceador     = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   }[var.acesso]
 
   template {
@@ -211,15 +220,19 @@ moved {
 # `allUsers` significa "sem autenticação IAM na frente" — e significa coisas
 # diferentes conforme o ingress, que é o par que decide de verdade:
 #
-#   `publico`     → qualquer um na internet invoca. É o caso do BFF e do Keycloak.
-#   `balanceador` → só o balanceador chega, e ele **não tem como** apresentar
-#                   identidade: um NEG sem servidor não cunha ID token. Exigir IAM
-#                   aqui seria 403 em toda requisição legítima.
+#   `publico`         → qualquer um na internet invoca. É o caso da `biahflow-web`,
+#                       que precisa ser alcançada pela Cloudflare — e a Cloudflare
+#                       chega pela internet, como qualquer outro cliente.
+#   `interno-sem-iam` → só quem está na VPC chega, e não sabe assinar: o nginx do SPA
+#                       e o relay do site, que autentica por `X-Intake-Token`.
+#   `balanceador`     → só o balanceador chegava, e ele **não tinha como** apresentar
+#                       identidade: um NEG sem servidor não cunha ID token.
 #
-# Sob `interno` esta permissão não é criada: lá o chamador é um processo nosso, que
-# tem conta e sabe apresentá-la.
+# Nos três, exigir IAM seria 403 em toda requisição legítima. Sob `interno` esta
+# permissão não é criada: lá o chamador é um processo nosso, que tem conta e sabe
+# apresentá-la.
 resource "google_cloud_run_v2_service_iam_member" "invocacao_aberta" {
-  count    = contains(["publico", "balanceador"], var.acesso) ? 1 : 0
+  count    = contains(["publico", "interno-sem-iam", "balanceador"], var.acesso) ? 1 : 0
   name     = google_cloud_run_v2_service.servico.name
   location = var.regiao
   role     = "roles/run.invoker"

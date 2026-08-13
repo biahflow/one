@@ -1,7 +1,8 @@
 # A fundação: o que é do projeto, e não de um produto.
 #
-# Rede, saída, entrada, registro de imagens, os buckets, o cofre, as identidades e a
-# federação com o GitHub. Mais a borda, pela razão escrita em `borda.tf`.
+# Rede, saída, registro de imagens, os buckets, o cofre, as identidades e a federação
+# com o GitHub. Mais a borda — que desde 13/08/2026 é a Cloudflare (`cloudflare.tf`) e
+# não mais um balanceador global da Google.
 #
 # **Os serviços saíram daqui** (ADR 0051). Cada produto tem o seu diretório e o seu
 # state; este declara o que os dois compartilham, e é o único que pode. A ordem de
@@ -33,7 +34,10 @@ module "fundacao" {
 # um segredo novo poderia nascer sem dono — que é como `ANTHROPIC_API_KEY` e
 # `VOYAGE_API_KEY` chegaram a existir sem chegar a ninguém (ADR 0046).
 locals {
-  produtos_conhecidos = toset(["biahflow", "portal"])
+  # `portal` saiu em 13/08/2026 junto com o state do produto. Deixá-lo aqui manteria
+  # aberta a porta de nascer segredo para um dono que não tem mais quem cobre leitor —
+  # que é exatamente o defeito que este portão existe para fechar.
+  produtos_conhecidos = toset(["biahflow"])
   segredos_sem_dono_valido = [
     for nome, produto in var.segredos : nome
     if !contains(local.produtos_conhecidos, produto)
@@ -78,34 +82,25 @@ output "segredos" {
 }
 
 output "dominio_base" { value = local.dominio_base }
-output "realm" { value = local.realm }
-output "issuer" { value = local.issuer }
-output "jwks_url" { value = local.jwks_url }
+
+# `realm`, `issuer` e `jwks_url` saíram com o Keycloak; `ip_entrada`, com o
+# balanceador global. Não viraram `null`: uma saída que existe e não vale nada é uma
+# pergunta que alguém vai fazer daqui a seis meses.
 
 output "ip_saida" {
-  description = "IP fixo de saída — para a allowlist do Neon e do Upstash."
+  description = "IP fixo de saída — para a allowlist do Neon e do Upstash. É o único IP que sobrou, e é o que não pode mudar."
   value       = module.fundacao.ip_saida
 }
 
-output "ip_entrada" {
-  description = "IP do balanceador. É sobre ele que os nomes `nip.io` são montados."
-  value       = module.fundacao.ip_entrada
-}
-
 output "hosts" {
-  description = "Os nomes públicos. O do Keycloak é o `issuer` que o realm tem de declarar."
+  description = "Os nomes públicos. Um só, desde que o portal do cliente saiu."
   value = {
-    portal   = local.host_portal
-    keycloak = local.host_keycloak
     biahflow = local.host_biahflow
-    issuer   = local.issuer
   }
 }
 
 output "urls_publicas" {
   value = {
-    portal   = local.url_portal
-    keycloak = local.url_keycloak
     biahflow = local.url_biahflow
   }
 }

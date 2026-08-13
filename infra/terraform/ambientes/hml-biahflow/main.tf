@@ -16,18 +16,13 @@ data "terraform_remote_state" "fundacao" {
 locals {
   fundacao = data.terraform_remote_state.fundacao.outputs
 
-  # Os nomes moram na fundação porque todo nome deste ambiente contém o IP de entrada.
+  # Os nomes moram na fundação porque quem publica um nome é a borda, e a borda é dela.
+  # Sobrou um: os do portal e do Keycloak saíram com o produto, e `realm`, `issuer` e
+  # `jwks_url` com o Keycloak (13/08/2026).
   numero_projeto = local.fundacao.numero_projeto
   dominio_base   = local.fundacao.dominio_base
-  host_portal    = local.fundacao.hosts.portal
-  host_keycloak  = local.fundacao.hosts.keycloak
   host_biahflow  = local.fundacao.hosts.biahflow
-  url_portal     = local.fundacao.urls_publicas.portal
-  url_keycloak   = local.fundacao.urls_publicas.keycloak
   url_biahflow   = local.fundacao.urls_publicas.biahflow
-  realm          = local.fundacao.realm
-  issuer         = local.fundacao.issuer
-  jwks_url       = local.fundacao.jwks_url
 
   primeiro_apply = var.tag_imagem == ""
 

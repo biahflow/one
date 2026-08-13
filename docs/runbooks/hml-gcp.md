@@ -1,6 +1,14 @@
 # Runbook — subir a homologação na GCP
 
-ADR 0044, 0045, 0046, 0048, 0050 e 0051. A infraestrutura é definida em `infra/terraform/`, em duas
+> **13/08/2026 — o portal do cliente saiu.** Não existem mais `portal-web`, `portal-api`,
+> `keycloak`, `portal-worker`, `portal-beat` nem `portal-migrate` na GCP, nem o state
+> `ambientes/hml-portal`, nem os vinte segredos que eram deles. O que sobrou de HML é o
+> CRM (`biahflow-*`) e o relay do site de marketing. **Os passos 5, 8 e 9 abaixo tratam
+> de segredos, do realm do Keycloak e do `roles.sql` do banco do portal — são história
+> até alguém religar o produto**, e ficam porque religar é refazê-los. A ADR 0053 conta o
+> resto, inclusive a troca do balanceador da GCP pela Cloudflare.
+
+ADR 0044, 0045, 0046, 0048, 0050, 0051 e 0053. A infraestrutura é definida em `infra/terraform/`, em duas
 camadas: `ambientes/hml/` diz **o quê** e `modulos/` diz **como**. O `README.md` de lá
 explica a arquitetura, o `nip.io`, os três portões e as identidades — não repito nada
 disso aqui. Este runbook é o que falta entre aquele Terraform e um ambiente de pé: **a
@@ -281,59 +289,77 @@ vão pelo `infra-hml.yml` (`workflow_dispatch` com `aplicar=true`).
 
 ---
 
-## Conferir o certificado
+## A borda é a Cloudflare (desde 13/08/2026)
 
-A primeira emissão leva **de quinze minutos a uma hora**. Nesse intervalo o HTTPS
-responde **erro de certificado, e não erro de rota** — quem não souber disso vai depurar
-a coisa errada, que é o motivo de esta seção existir.
+O balanceador global da GCP foi apagado com a saída do portal do cliente: ele servia três
+nomes de dois produtos, e com um produto só a conta da ADR 0048 não se sustentava. Quem
+serve `app.biahflow.ai` agora é a Cloudflare — DNS proxied mais uma Origin Rule que
+reescreve o `Host` para a `run.app` da `biahflow-web`. Ver ADR 0053.
 
-Na primeira execução real (12/08/2026) os três nomes saíram `ACTIVE` em **poucos minutos**.
-A faixa acima fica porque é o pior caso do Google e o engano que ela evita é caro; mas não
-espere uma hora antes de olhar.
+**Não há mais certificado gerenciado para conferir, nem IP de entrada, nem `url_map`.** As
+seções que ensinavam isso saíram junto; se você chegou aqui procurando por elas, o
+histórico do git as tem até o commit que apaga `modulos/borda/`.
 
-```bash
-# ACTIVE é o que se espera. PROVISIONING é normal na primeira hora.
-gcloud compute ssl-certificates describe hml --global \
-  --format='value(managed.status, managed.domainStatus)'
-```
+### O apply da fundação virou um ato local
 
-`FAILED_NOT_VISIBLE` num domínio significa que ele não resolve para o IP de entrada. Com
-`nip.io` isso é por construção — se acontecer, o nome foi montado sobre o IP errado (ver
-passo 10).
-
-## Depois do apply da borda
-
-Mudar o ingress de um serviço ou as rotas do `url_map` **não é instantâneo**: a permissão
-de IAM leva até cerca de um minuto para valer, e uma alteração de balanceador global leva
-de segundos a alguns minutos para alcançar todos os pontos de presença. Nesse intervalo
-`https://app.<base>/api/v1/...` pode responder 403 ou 404 **do Google**, sem nada no log
-do Django — porque o Django não foi chamado.
-
-Espere e repita antes de investigar. Começar a depuração na aplicação, aqui, é repetir o
-defeito #9 da ADR 0046.
-
-**A ordem importa quando as duas coisas mudam juntas** (ADR 0048). O ingress
-`INTERNAL_LOAD_BALANCER` é superconjunto de `INTERNAL_ONLY`, então aplicá-lo sozinho não
-muda nada observável; já o `url_map` apontando para um serviço que ainda é `INTERNAL_ONLY`
-responde 404 até o outro recurso existir. Por isso, em dois:
+O `infra-hml.yml` autentica na GCP por WIF e **não tem** `CLOUDFLARE_API_TOKEN`. Enquanto
+esse secret não for cadastrado no repositório, a fundação se aplica assim:
 
 ```bash
-terraform apply -target=module.servicos    # 1. ingress e IAM, reversível e invisível
-terraform apply                            # 2. NEG, backend service e url_map
+cd infra/terraform/ambientes/hml
+export CLOUDFLARE_API_TOKEN=...          # não entra em variável: variável aparece em plano e em state
+TOKEN=$(gcloud auth print-access-token --account=daniel@biahflow.ai)
+GOOGLE_OAUTH_ACCESS_TOKEN="$TOKEN" terraform init -reconfigure -backend-config="access_token=$TOKEN"
+GOOGLE_OAUTH_ACCESS_TOKEN="$TOKEN" terraform apply
 ```
+
+O `GOOGLE_OAUTH_ACCESS_TOKEN` existe porque a ADC da máquina pode estar apontando para
+outra conta; ele evita ter que refazer `gcloud auth application-default login` e derrubar
+o login de trabalho de quem estiver na mesma máquina.
+
+### O que conferir depois
+
+```bash
+# 1. O nome responde, e responde o SPA e não um 404 do Google.
+curl -sI https://app.biahflow.ai/ | head -3
+
+# 2. O 404 do Google, se aparecer, é a Origin Rule não tendo casado: a Cloudflare
+#    entregou o Host original e o Cloud Run não reconheceu o nome.
+#    Confira comparando com a origem crua, que tem de responder 200:
+curl -sI https://biahflow-web-209400815796.us-east1.run.app/ | head -3
+
+# 3. A API por dentro. O caminho é Cloudflare → biahflow-web → nginx → biahflow-api,
+#    e é o nginx quem reescreve o Host para a run.app da API.
+curl -sI https://app.biahflow.ai/healthz | head -3
+```
+
+**Mudança de ingress não é instantânea** — a permissão de IAM leva até cerca de um minuto
+para valer. Nesse intervalo a resposta pode ser 403 **do Google**, sem nada no log do
+Django, porque o Django não foi chamado. Espere e repita antes de investigar; começar a
+depuração na aplicação aqui é repetir o defeito #9 da ADR 0046.
+
+### Medir o `NUM_PROXIES` (aberto)
+
+A cadeia ficou mais longa com a troca de borda, e o valor `2` não foi corrigido porque
+seria trocar um palpite por outro (ADR 0050, ADR 0053). Medir é uma requisição:
+
+```bash
+# Mande um XFF conhecido e veja o que o DRF considera ser o IP do cliente.
+curl -s https://app.biahflow.ai/api/v1/... -H 'X-Forwarded-For: 203.0.113.7' | ...
+```
+
+O que se procura é `203.0.113.7` sendo lido como cliente. Se o que aparecer for um IP da
+Cloudflare ou do Cloud Run, `NUM_PROXIES` está baixo demais — e o sintoma real disso não é
+um erro, é todo mundo dividindo o mesmo balde de rate limit.
 
 ## Trocar o domínio
 
-Enquanto `var.dominio` for `""`, tudo cai em `nip.io` sobre o IP de entrada. Com domínio
-próprio:
+`var.dominio` é **obrigatória** desde 13/08/2026 — o `nip.io` que preenchia a lacuna era
+montado sobre o IP do balanceador, e o balanceador não existe mais.
 
-1. `dominio = "exemplo.com"` no `terraform.tfvars` e `terraform apply`. O certificado é
-   **recriado** — a lista de nomes mudou —, então conte outra vez com os 15 a 60 minutos.
-2. Aponte o DNS dos três nomes para `terraform output -raw ip_entrada`.
-3. **O que o Terraform não faz:** o realm guarda os `redirectUris` do client `portal-web`
-   e o próprio `issuer`. Os dois têm de ser ajustados à mão no Keycloak, e enquanto não
-   forem, o login para de fechar — a API recusa um token cujo `iss` não é o que ela
-   valida.
+Trocar é mudar `dominio` no `terraform.tfvars` e aplicar. A zona precisa estar na
+Cloudflare, e é só isso: não há certificado a reemitir (a Cloudflare já termina TLS para a
+zona) e não há DNS a apontar à mão (o registro é do Terraform).
 
 ## HML dorme: o que está desligado e como acordar
 
@@ -376,53 +402,17 @@ O `portal-beat` volta como **1 e nunca mais que isso** — dois agendadores emit
 tarefa duas vezes. Em produção os três voltam a 1 por padrão: lá, "um alerta de backup que
 não roda é pior que nenhum" deixa de ser retórica.
 
-## A borda também dorme, e essa é a que custa dinheiro
+## A borda que dormia, e por que a seção sumiu
 
-Escalar tudo a zero deixou o compute em zero, mas **não** o único item que cobra por hora
-parado: as duas regras de encaminhamento globais, ~US$ 18/mês, que a ADR 0046 já registrava
-como "o único custo fixo de HML". `var.borda_ligada` destrói **só** essas duas.
+Existiu aqui um `var.borda_ligada` que destruía as duas regras de encaminhamento globais
+para não pagá-las paradas — ~US$ 18/mês, "o único custo fixo de HML" da ADR 0046. Ele foi
+aplicado em 13/08/2026 e viveu algumas horas: no mesmo dia a borda inteira saiu, e não há
+mais regra de encaminhamento para desligar nem certificado gerenciado cuja renovação um
+sono longo pudesse quebrar.
 
-```bash
-cd infra/terraform/ambientes/hml
-terraform apply -var=borda_ligada=false   # dormir
-terraform apply -var=borda_ligada=true    # acordar
-```
-
-Acordar leva segundos e **não** mexe em DNS nem reemite certificado: o IP de entrada
-continua reservado, e NEG, backend service, url map, proxies e certificado nunca saem.
-
-**O plano tem de mostrar exatamente dois recursos destruídos.** Se aparecer certificado,
-url map, backend service ou NEG na lista, o `count` foi parar no lugar errado — não
-aplique, porque o certificado leva de 15 min a 1h para voltar.
-
-**Com a borda dormindo, quem cai e quem não cai.** Caem os três nomes (`portal.`, `auth.`,
-`app.`): o `curl` não recebe 404 nem 502, recebe conexão recusada, porque não há nada
-escutando no IP. **Não** cai a captação de leads do site de marketing — o relay do
-`biahflow-site` alcança a `biahflow-api` pela URL `run.app` por Direct VPC egress, e o
-ingress `internal-and-cloud-load-balancing` aceita tráfego interno da VPC além do que vem
-do balanceador. O caminho do lead nunca passou pela borda.
-
-**A armadilha, e ela tem prazo.** O certificado gerenciado se revalida sozinho antes de
-expirar, e a validação chega pela **porta 80** — que dormindo não existe. Uma renovação
-que caia numa janela de sono falha e o certificado vai para `FAILED_NOT_VISIBLE`. Não se
-perde nada além de tempo, mas a próxima subida paga a reemissão inteira. Antes de um sono
-longo, veja quanto falta:
-
-```bash
-gcloud compute ssl-certificates describe hml --global \
-  --account=daniel@biahflow.ai --project=biahflow-hml \
-  --format='value(managed.status,expireTime)'
-```
-
-**Por que as duas rules e não uma.** As cinco primeiras regras globais custam US$ 0,025/hora
-**no total** — manter só a de 443 sairia pelo mesmo preço de manter as duas e não
-economizaria nada.
-
-**Por que o IP fica reservado**, apesar de IP solto custar US$ 0,01/h (o dobro da tarifa de
-"em uso"): os hostnames `nip.io` contêm o IP, então liberá-lo mudaria os três nomes e
-forçaria reemissão de certificado a cada religada. Pagar US$ 7,30/mês para que acordar leve
-segundos é a troca certa **enquanto `var.dominio` estiver vazia**. Com domínio próprio, o
-IP passa a ser descartável e o sono vai a custo zero.
+Fica registrado porque o raciocínio dele previu o próprio fim: "o IP de entrada permanece
+reservado de propósito — isso só deixa de valer quando `var.dominio` estiver preenchida".
+Foi exatamente o que aconteceu.
 
 ## Armadilhas medidas
 

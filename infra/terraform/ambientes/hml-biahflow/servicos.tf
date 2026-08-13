@@ -49,9 +49,19 @@ locals {
       porta      = 8000
       cpu        = "1"
       memoria    = "1Gi"
-      min        = 1
-      max        = 4
-      dominio    = null
+      # Zero: em homologação, 1 vCPU + 1 GiB acesos 730h/mês custam mais que todo o
+      # resto do ambiente somado, e nada aqui exige processo vivo entre requisições —
+      # o cache é o Redis do Upstash (não `LocMemCache`), não há agendador embutido
+      # (quem agenda é o worker pool `biahflow-scheduler`) e o boot só roda
+      # `check --deploy`, sem migração.
+      #
+      # O preço é cold start no primeiro acesso. **Quem sente é o site**: o relay de
+      # `biahflow-site` posta o lead aqui, e a `LeadIntakeView` ainda enriquece e
+      # qualifica por IA de forma síncrona. O timeout de lá foi alargado por causa
+      # desta linha — mexer numa coisa sem a outra derruba a captação.
+      min     = 0
+      max     = 4
+      dominio = null
       variaveis = {
         # `biahflow-api` é o nome pelo qual esta API é alcançada **dentro** da VPC, e
         # sem ele o Django responde 400 a toda chamada do portal — o tropeço já
@@ -204,9 +214,18 @@ locals {
     # rodariam, incluindo a que avisa que o backup envelheceu. Um alerta de backup
     # que não roda é pior que nenhum: ele faz o silêncio parecer boa notícia.
     biahflow-scheduler = {
-      servico    = "biahflow-api"
-      comando    = ["python", "manage.py", "run_scheduler"]
-      instancias = 1
+      servico = "biahflow-api"
+      comando = ["python", "manage.py", "run_scheduler"]
+      # Desligado em homologação (13/08/2026) por custo — 1 vCPU aceso 730h/mês para
+      # rotinas que, aqui, rodam sobre dados de teste. **Desligar é diferente de
+      # escalar a zero**: worker pool não acorda por requisição, então ele só volta
+      # com um apply.
+      #
+      # O que para junto, e o comentário acima deste bloco não deixa esquecer:
+      # digest diário, sincronia de calendário, faturas vencidas, frescor da base —
+      # e o aviso de backup envelhecido. Em produção esta linha volta a ser 1, porque
+      # lá "um alerta de backup que não roda é pior que nenhum" deixa de ser retórica.
+      instancias = 0
       cpu        = "1"
       memoria    = "512Mi"
     }

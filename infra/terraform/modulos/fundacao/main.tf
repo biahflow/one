@@ -58,6 +58,18 @@ resource "google_compute_subnetwork" "sub_rede" {
   ip_cidr_range = "10.20.0.0/24"
   region        = var.regiao
   network       = google_compute_network.rede.id
+
+  # Tráfego para APIs e serviços do Google (GCS, OAuth, Drive, e as URLs `run.app`
+  # de um serviço para outro) passa a sair por caminho privado, sem atravessar o
+  # Cloud NAT — que cobra por GB processado. Não custa nada e é aditivo: o que já
+  # ia pelo NAT continua indo.
+  #
+  # **Isto não torna o NAT dispensável**, e a distinção importa porque a hipótese
+  # contrária já foi levantada: PGA cobre destinos *do Google*, e os serviços daqui
+  # dependem de cinco que não são — Neon (o banco), Upstash (Redis), Anthropic,
+  # Voyage e `smtp.gmail.com:587` (SMTP direto não é API do Google para esse fim).
+  # Remover o NAT deixaria os dois produtos sem banco.
+  private_ip_google_access = true
 }
 
 # **Não há conector de VPC**, e a ausência é decisão. O Cloud Run alcança a rede

@@ -99,9 +99,19 @@ locals {
       porta      = 8000
       cpu        = "1"
       memoria    = "1Gi"
-      min        = 1 # o boot roda `preflight` e abre pool; zero daria 503 no primeiro acesso
-      max        = 4
-      dominio    = null
+      # Era 1, com a justificativa de que "o boot roda `preflight` e abre pool; zero
+      # daria 503 no primeiro acesso". Passou a zero por custo: 1 vCPU + 1 GiB acesos
+      # 730h/mês são o maior item do ambiente, e homologação fica ociosa a maior parte
+      # do tempo.
+      #
+      # O 503 previsto **não** se confirmou: o Cloud Run segura a requisição até a
+      # sonda de inicialização passar, e a sonda só passa quando o processo aceita
+      # conexão — ou seja, depois do `preflight`. O que sobra é latência no primeiro
+      # acesso, não erro. Se algum dia aparecer 503 aqui, o caminho é voltar para 1 e
+      # registrar a evidência, não repetir a suposição.
+      min     = 0
+      max     = 4
+      dominio = null
       variaveis = {
         ENVIRONMENT    = "homolog"
         PORTAL_WEB_URL = local.url_portal
@@ -192,9 +202,23 @@ locals {
       porta      = 8080
       cpu        = "1"
       memoria    = "1Gi"
-      # Um só, e nunca zero: o Keycloak leva dezenas de segundos para subir, e um
-      # provedor de identidade que dorme faz todo login esperar por ele.
-      min     = 1
+      # Dormia nunca, por "dezenas de segundos para subir". A medição em boots reais
+      # deste serviço deu **43,6s e 115,7s** — o comentário anterior era otimista, e o
+      # `start` sem `--optimized` (que o compose usa) ajuda a explicar a diferença.
+      #
+      # Mesmo assim, zero: é o serviço mais caro do ambiente (1 vCPU + 1 GiB, 730h/mês)
+      # e homologação passa a maior parte do tempo ociosa. A escolha é consciente e o
+      # preço é conhecido — **o primeiro login do dia espera de um a dois minutos**.
+      # Quem espera é a equipe, não cliente.
+      #
+      # Isso cabe no limite de requisição do Cloud Run (bem acima de 116s), mas é a
+      # margem mais estreita do ambiente. Se o boot crescer, a saída barata é publicar
+      # a imagem já otimizada (`kc.sh build` + `start --optimized`), não voltar a
+      # deixá-lo aceso.
+      #
+      # `max` continua 1: com uma instância só, não há sessão fragmentada entre
+      # réplicas, que é o risco clássico de escalar Keycloak.
+      min     = 0
       max     = 1
       dominio = local.host_keycloak
       variaveis = {
@@ -246,18 +270,31 @@ locals {
   # a mesma chave que `trabalhos` usa, e pelo mesmo motivo. Antes a herança era
   # fixa na `portal-api`, o que tornava impossível declarar aqui um processo longo do
   # **outro** produto sem lhe dar o ambiente errado.
+  #
+  # **Zerados em homologação (13/08/2026), e isto não é "escalar a zero".** Um serviço
+  # HTTP com `min = 0` acorda quando chega requisição; um worker pool não tem
+  # requisição que o acorde — `instancias = 0` é **desligar**, e ele só volta com um
+  # apply. A economia é real (três processos de 1 vCPU acesos 730h/mês), e o preço é
+  # que nada agendado roda e nada da fila é consumido enquanto estiverem assim.
+  #
+  # A armadilha não é o custo, é o esquecimento: quem for testar upload ou ingestão
+  # daqui a duas semanas verá a tarefa entrar na fila e nada acontecer, com um
+  # sintoma que não aponta para "o worker está desligado". Religar é subir para 1 e
+  # aplicar — está no runbook `docs/runbooks/hml-gcp.md`.
   processos_longos = {
     portal-worker = {
       servico    = "portal-api"
       comando    = ["celery", "-A", "portal_api.worker.celery_app", "worker", "--loglevel=INFO"]
-      instancias = 1
+      instancias = 0
       cpu        = "1"
       memoria    = "1Gi"
     }
     portal-beat = {
-      servico    = "portal-api"
-      comando    = ["celery", "-A", "portal_api.worker.celery_app", "beat", "--loglevel=INFO"]
-      instancias = 1
+      servico = "portal-api"
+      comando = ["celery", "-A", "portal_api.worker.celery_app", "beat", "--loglevel=INFO"]
+      # Quando voltar a rodar, volta como **1** e nunca mais que isso: dois
+      # agendadores emitem a mesma tarefa duas vezes.
+      instancias = 0
       cpu        = "1"
       memoria    = "512Mi"
     }

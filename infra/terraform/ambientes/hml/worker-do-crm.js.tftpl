@@ -1,0 +1,25 @@
+// O proxy que existe por causa de um `Host`.
+//
+// O Cloud Run roteia por `Host` e responde 404 a um nome que não conhece; a Cloudflare
+// repassa o `Host` original. Quem resolveria isso na borda é o override de Host das
+// Origin Rules, que o plano gratuito não tem direito de usar ("not entitled to use the
+// HostHeader override"). Aqui o override é de graça e implícito: num Worker o `Host` da
+// subrequisição sai da **URL**, não de um header — trocar o hostname da URL já basta.
+
+const ORIGEM = "${origem}";
+
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    url.protocol = "https:";
+    url.hostname = ORIGEM;
+    url.port = "";
+
+    // `redirect: "manual"` é o que faz o login funcionar. O padrão do `fetch` num
+    // Worker é **seguir** o redirecionamento na subrequisição, o que entregaria ao
+    // navegador o corpo final com status 200 e engoliria o `Set-Cookie` do 302 — um
+    // login que responde "ok" e não autentica ninguém. Manual devolve o 302 como ele
+    // veio, e quem decide seguir é o navegador.
+    return fetch(new Request(url, request), { redirect: "manual" });
+  },
+};

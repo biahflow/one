@@ -61,26 +61,35 @@ resource "cloudflare_dns_record" "crm" {
   comment = "CRM de homologação — gerenciado pelo Terraform em biahflow-portal-cliente"
 }
 
-# **A regra que faz o CNAME funcionar.** A Cloudflare repassa o `Host` original para a
-# origem, e o Cloud Run roteia por `Host`: sem reescrever, todo request morre em 404 do
-# Google, sem log nosso e sem pista de que o problema é um header. Override de `Host`
-# em Origin Rules existe no plano free.
-resource "cloudflare_ruleset" "origem_do_crm" {
-  zone_id     = var.zona_cloudflare
-  name        = "origem do CRM (hml)"
-  description = "Reescreve o Host para o hostname da run.app do biahflow-web."
-  kind        = "zone"
-  phase       = "http_request_origin"
+# **O que faz o CNAME funcionar, e por que não é uma Origin Rule.** A Cloudflare
+# repassa o `Host` original para a origem, e o Cloud Run roteia por `Host`: sem
+# reescrever, todo request morre em 404 do Google, sem log nosso e sem pista de que o
+# problema é um header.
+#
+# A ferramenta óbvia para isso é o override de Host das Origin Rules, e ela foi tentada
+# primeiro. A API recusa: `400 not entitled to use the HostHeader override`. **É
+# entitlement de plano e não permissão de token** — o mesmo erro aparece em relato de
+# zona Pro, e nenhum ajuste no token o resolve.
+#
+# Um Worker consegue o mesmo de graça, e por um caminho diferente: numa subrequisição
+# de Worker o `Host` sai da **URL**, não de um header, então trocar o hostname da URL
+# já é o override. O free tier são 100 mil requisições por dia, contra um usuário.
+resource "cloudflare_workers_script" "proxy_do_crm" {
+  account_id  = var.conta_cloudflare
+  script_name = "crm-hml-proxy"
+  content     = templatefile("${path.module}/worker-do-crm.js.tftpl", { origem = local.origem_do_crm })
+  main_module = "worker.js"
 
-  rules = [{
-    action      = "route"
-    description = "Host da run.app do CRM"
-    expression  = "http.host eq \"${local.host_biahflow}\""
+  # Sem data de compatibilidade o Worker nasce preso ao runtime do dia em que foi
+  # criado, e "o dia em que foi criado" não é uma data que alguém consiga ler no
+  # código. Escrita, ela vira decisão datada.
+  compatibility_date = "2026-08-13"
+}
 
-    action_parameters = {
-      host_header = local.origem_do_crm
-    }
-  }]
+resource "cloudflare_workers_route" "proxy_do_crm" {
+  zone_id = var.zona_cloudflare
+  pattern = "${local.host_biahflow}/*"
+  script  = cloudflare_workers_script.proxy_do_crm.script_name
 }
 
 # --- Access ---------------------------------------------------------------------

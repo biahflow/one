@@ -335,6 +335,47 @@ próprio:
    forem, o login para de fechar — a API recusa um token cujo `iss` não é o que ela
    valida.
 
+## HML dorme: o que está desligado e como acordar
+
+Desde 13/08/2026 homologação não tem nada aceso por padrão. Duas coisas diferentes, e a
+diferença é a que mais confunde:
+
+**Serviços HTTP (`min = 0`) acordam sozinhos.** `portal-api`, `portal-web`, `keycloak`,
+`biahflow-api`, `biahflow-web` sobem quando chega requisição. Não há o que fazer — só
+esperar. Tempos medidos em boots reais:
+
+| Serviço | Primeiro acesso depois de ocioso |
+| --- | --- |
+| `keycloak` | **43,6s a 115,7s** (JVM, e roda `start` sem `--optimized`) |
+| APIs Django | segundos |
+
+Ou seja: **o primeiro login do dia pode levar até dois minutos**. Não é defeito, é a
+escolha registrada em `ambientes/hml-portal/servicos.tf`. Se isso incomodar mais que o
+custo, o caminho é voltar `min = 1` no `keycloak` — ou publicar a imagem otimizada
+(`kc.sh build` + `start --optimized`), que ataca a causa em vez do sintoma.
+
+**Worker pools (`instancias = 0`) NÃO acordam.** `portal-worker`, `portal-beat` e
+`biahflow-scheduler` estão desligados, e worker pool não tem requisição que o acorde —
+ele só volta com um `apply`. Enquanto estiverem assim:
+
+- nada da fila é consumido (scan de documento, ingestão/embeddings, sync do Drive, digest);
+- nada agendado roda: `drive-sync`, `retention-purge`, `erasure-requests`,
+  `onboarding-stuck`, digest diário, sincronia de calendário, faturas vencidas, frescor da
+  base — **e o aviso de backup envelhecido**.
+
+**Antes de testar qualquer coisa que use fila** (upload, ingestão, convite com anexo),
+suba o worker — senão a tarefa entra na fila, nada acontece, e o sintoma não aponta para
+a causa:
+
+```bash
+# em ambientes/hml-portal/servicos.tf, portal-worker: instancias = 1
+cd infra/terraform/ambientes/hml-portal && terraform apply
+```
+
+O `portal-beat` volta como **1 e nunca mais que isso** — dois agendadores emitem a mesma
+tarefa duas vezes. Em produção os três voltam a 1 por padrão: lá, "um alerta de backup que
+não roda é pior que nenhum" deixa de ser retórica.
+
 ## Armadilhas medidas
 
 - **`ip_saida` ≠ `ip_entrada`.** Já dito no passo 10, e repetido aqui porque foi um defeito

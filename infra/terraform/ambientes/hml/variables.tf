@@ -96,12 +96,19 @@ variable "repositorios_github" {
   # lista incompleta **revoga** o que não está nela — o `oikos-proto-web` pararia de
   # ser publicado, e o sintoma seria um token recusado no CI de outro repositório.
   # Federam só a conta de deploy, como o site.
+  #
+  # Em 14/08/2026 dois repos foram transferidos para a org `biahflow`:
+  # `dcamppos83/biahflow-site` virou `biahflow/site` (por esta mudança) e
+  # `dcamppos83/plataforma-oikos` virou `biahflow/eliseu` (a condição do provedor
+  # foi editada à mão no console no mesmo dia; aqui ela só passou a ser rastreada).
+  # A claim OIDC acompanha o caminho novo, e os antigos saíram da lista de
+  # propósito — mantê-los autorizaria qualquer repo recriado naqueles caminhos.
   default = [
     "dcamppos83/biahflow-portal-cliente",
     "dcamppos83/biahflow-portal",
-    "dcamppos83/biahflow-site",
+    "biahflow/site",
     "dcamppos83/OikOS",
-    "dcamppos83/plataforma-oikos",
+    "biahflow/eliseu",
   ]
 }
 

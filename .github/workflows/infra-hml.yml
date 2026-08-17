@@ -44,6 +44,21 @@ jobs:
         ambiente: [hml, hml-biahflow]
     env:
       DIRETORIO: infra/terraform/ambientes/${{ matrix.ambiente }}
+
+      # **A borda virou Cloudflare (ADR 0053) e a credencial não veio junto.** O
+      # `versions.tf` do `hml` declara `provider "cloudflare" {}` e diz por que o token
+      # entra pelo ambiente e não por variável — variável aparece em plano, em state e
+      # em log de CI. Só que nenhum workflow o passava, então o `plan` chegava à API sem
+      # header de autenticação e morria em `400 … Missing X-Auth-Key, X-Auth-Email or
+      # Authorization headers` — que parece problema de conta e é falta de fiação.
+      #
+      # Vazio para `hml-biahflow`, que não tem provider Cloudflare, e isso é de graça:
+      # o provider só é configurado onde é declarado.
+      #
+      # As três permissões que o token precisa estão medidas uma a uma em
+      # `ambientes/hml/cloudflare.tf`, e duas delas falham de forma enganosa quando
+      # faltam — `Zone → Zone → Read` ausente responde "0 found", e não "negado".
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 

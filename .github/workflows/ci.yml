@@ -199,19 +199,29 @@ jobs:
       # formatado reprova lá, e descobrir isso só no PR de infraestrutura é tarde.
       - run: terraform -chdir=infra/terraform/ambientes/hml fmt -check -recursive ../..
 
-      # **Os três ambientes desde a ADR 0051.** Sem credencial nenhuma, então este é o
-      # único gate de Terraform que dá para reproduzir localmente e o único que roda em
-      # todo PR — e são justamente os diretórios novos que mais precisam dele.
+      # **Todo ambiente que existe, descoberto e não digitado.** Sem credencial nenhuma,
+      # então este é o único gate de Terraform que dá para reproduzir localmente e o
+      # único que roda em todo PR — e são justamente os diretórios novos que mais
+      # precisam dele.
+      #
+      # A lista era `hml hml-biahflow hml-portal`, escrita à mão. O `hml-portal` saiu
+      # em 13/08/2026 junto com o state dele; a matriz do `infra-hml.yml` foi atualizada
+      # e **esta linha não**, então o laço passou a apontar para um diretório que não
+      # existe e o job reprovava com `chdir: no such file or directory` — vermelho que
+      # não fala de Terraform nenhum. É o defeito das ADRs 0033 e 0035 outra vez, e a
+      # correção é a mesma: derivar do artefato em vez de redigitá-lo. Acrescentar ou
+      # remover um ambiente agora não deixa este laço para trás.
       #
       # `-backend=false` instala os providers sem tocar no bucket de estado. O preço,
       # declarado: sem backend não há `terraform_remote_state`, então o `validate` dos
-      # dois produtos prova que os módulos resolvem e que os tipos casam, e **não**
-      # prova que as saídas que eles leem da fundação existem. Quem prova isso é o
-      # `plan` do `infra-hml.yml`, que tem credencial.
+      # produtos prova que os módulos resolvem e que os tipos casam, e **não** prova que
+      # as saídas que eles leem da fundação existem. Quem prova isso é o `plan` do
+      # `infra-hml.yml`, que tem credencial.
       - run: |
-          for d in hml hml-biahflow hml-portal; do
-            terraform -chdir=infra/terraform/ambientes/$d init -backend=false -input=false
-            terraform -chdir=infra/terraform/ambientes/$d validate
+          for d in infra/terraform/ambientes/*/; do
+            echo "== ${d}"
+            terraform -chdir="$d" init -backend=false -input=false
+            terraform -chdir="$d" validate
           done
 
   local-stack:

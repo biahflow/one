@@ -322,8 +322,26 @@ histórico do git as tem até o commit que apaga `modulos/borda/`.
 
 ### O apply da fundação virou um ato local
 
-O `infra-hml.yml` autentica na GCP por WIF e **não tem** `CLOUDFLARE_API_TOKEN`. Enquanto
-esse secret não for cadastrado no repositório, a fundação se aplica assim:
+O `infra-hml.yml` autentica na GCP por WIF, e a borda nova precisa de uma segunda
+credencial que aquele mecanismo não dá.
+
+*Retificado em 17/08/2026.* Esta seção dizia que o workflow **não tem**
+`CLOUDFLARE_API_TOKEN`, e a frase descrevia duas coisas de uma vez: a fiação ausente e o
+segredo não cadastrado. Só a segunda continua verdadeira. O preço da primeira foi o
+`plan` do `hml` reprovando a cada PR com `400 … Missing X-Auth-Key, X-Auth-Email or
+Authorization headers` — um vermelho que fala de header e não diz que falta um segredo,
+que é o pior formato para um portão que ninguém pode consertar sem saber disso. O
+workflow agora passa `CLOUDFLARE_API_TOKEN` pelo ambiente, com o porquê escrito ao lado.
+
+**O que falta é um ato humano, e é este:** cadastrar o secret `CLOUDFLARE_API_TOKEN` em
+`biahflow/portal-cliente`, com as **três** permissões que `ambientes/hml/cloudflare.tf`
+mediu uma a uma contra a API — `Zone → DNS → Edit`, `Zone → Origin Rules → Edit` e
+`Account → Access: Apps and Policies → Edit`. Não deduza permissão do nome do recurso:
+duas delas falham de forma enganosa quando faltam, e a de `Origin Rules` chamada errada
+responde `403 request is not authorized`, que manda procurar no lugar errado.
+
+Enquanto o secret não existir, o `plan` do `hml` segue vermelho — agora por falta de
+credencial e não por falta de fiação — e a fundação se aplica assim:
 
 ```bash
 cd infra/terraform/ambientes/hml

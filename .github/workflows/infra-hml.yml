@@ -60,7 +60,7 @@ jobs:
       # faltam — `Zone → Zone → Read` ausente responde "0 found", e não "negado".
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # **Conta própria, diferente da do deploy.** A `hml-deploy` tem as quatro
       # permissões de trocar revisão e publicar imagem, e nenhuma delas cria uma

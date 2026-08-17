@@ -179,14 +179,34 @@ Os serviços sobem **quebrados** neste momento, e isso é esperado: o realm não
 terraform output -raw provedor_wif
 ```
 
-O valor vai na variável de repositório `WIF_PROVIDER` de **`biahflow-portal-cliente` e
-`biahflow-portal`**. São dois, e esquecer o segundo faz o deploy do outro produto falhar
+O valor vai na variável de repositório `WIF_PROVIDER` de **`biahflow/portal-cliente` e
+`biahflow/portal`**. São dois, e esquecer o segundo faz o deploy do outro produto falhar
 na primeira linha do primeiro job — com uma mensagem sobre credencial, não sobre variável
 ausente.
 
 Só o repositório que **contém** o Terraform federa a `hml-infra`; o outro recebe apenas a
 `hml-deploy`. A separação é da ADR 0046 e não é cosmética: a `hml-infra` tem quase o
 projeto inteiro.
+
+### Quando um repositório muda de dono
+
+O caminho `dono/repo` é a claim `assertion.repository` do token do GitHub, e ele aparece em
+**três** lugares — dois deles fora deste repositório. Transferir sem mexer neles não quebra
+o `git`: quebra o CI, com erro de credencial e não de configuração.
+
+1. **A condição do provedor** e o binding da `hml-deploy` moram hoje em
+   `biahflow/infra`, `envs/hml/wif/variables.tf` (`repos_allowlist` e `deploy_sa_repos`).
+   Um PR ali aplica sozinho no merge. É onde a mudança acontece de verdade.
+2. **As listas deste repositório** (`infra/terraform/ambientes/hml/variables.tf`) são
+   espelho das de lá desde que o pool passou a ter dois donos — atualize junto, senão o
+   próximo `apply` daqui reescreve a condição a partir da lista atrasada.
+3. **A federação da `hml-infra`** só existe neste state (`repositorio_infra`). Ela é a que
+   o `infra-hml.yml` usa, e a que **não** vem de graça com o PR do item 1: o token do
+   caminho novo passa pela condição do provedor e falha na impersonação.
+
+O caminho antigo **sai** da lista, nunca fica junto do novo — mantê-lo autorizaria um
+repositório recriado naquele caminho. Precedentes: `biahflow/site` e `biahflow/eliseu`
+(14/08/2026), `biahflow/portal` e `biahflow/portal-cliente` (17/08/2026).
 
 ## 8. O realm `portal-homolog`
 

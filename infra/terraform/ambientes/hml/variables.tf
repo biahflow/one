@@ -82,6 +82,15 @@ variable "repositorios_github" {
     Os repositórios que podem se autenticar por Workload Identity Federation, no
     formato `dono/repo`. **Sem chave de conta de serviço** — é a mesma postura que a
     ADR 0016 do Biahflow adotou por política da organização.
+
+    **Este state não é mais o único dono deste pool.** Desde 17/08/2026 o repositório
+    `biahflow/infra` adotou (por `import`) o mesmo pool, o mesmo provedor e a mesma
+    conta `hml-deploy`, em `envs/hml/wif`, e é **lá** que o `apply` roda por CI a cada
+    merge. Esta lista é hoje um espelho da `repos_allowlist` de lá e precisa ser
+    mantida em dia com ela: quem aplicar este state com a lista atrasada reescreve a
+    condição do provedor a partir dela e derruba o CI de quem tiver ficado de fora.
+    Foi por pouco: até esta mudança faltavam aqui `biahflow/infra` e
+    `biahflow/croquito`.
   TXT
   type        = list(string)
   # `biahflow-site` entrou em 13/08/2026: o site de marketing passou a ter backend
@@ -103,12 +112,39 @@ variable "repositorios_github" {
   # foi editada à mão no console no mesmo dia; aqui ela só passou a ser rastreada).
   # A claim OIDC acompanha o caminho novo, e os antigos saíram da lista de
   # propósito — mantê-los autorizaria qualquer repo recriado naqueles caminhos.
+  #
+  # Em 17/08/2026 os outros dois foram: `dcamppos83/biahflow-portal` virou
+  # `biahflow/portal` e `dcamppos83/biahflow-portal-cliente` — este repositório —
+  # virou `biahflow/portal-cliente`. Nenhum caminho `dcamppos83` sobrou fora do OikOS.
   default = [
-    "dcamppos83/biahflow-portal-cliente",
-    "dcamppos83/biahflow-portal",
+    "biahflow/portal-cliente",
+    "biahflow/portal",
     "biahflow/site",
     "dcamppos83/OikOS",
     "biahflow/eliseu",
+    "biahflow/infra",
+    "biahflow/croquito",
+  ]
+}
+
+variable "repositorios_deploy" {
+  description = <<-TXT
+    Quem impersona a `hml-deploy`, isto é, quem publica imagem e troca revisão.
+    Subconjunto de `repositorios_github`, e a diferença é `biahflow/infra`: o CI dele
+    autentica no pool (por isso está na condição) mas aplica Terraform com a
+    `infra-deploy`, que vive no state dele. Espelho da `deploy_sa_repos` de
+    `biahflow/infra` — as duas descrevem os mesmos membros da mesma conta, e a de lá é
+    um binding **autoritativo**: divergir aqui faz os dois states se desfazerem em
+    turnos.
+  TXT
+  type        = list(string)
+  default = [
+    "biahflow/portal-cliente",
+    "biahflow/portal",
+    "biahflow/site",
+    "dcamppos83/OikOS",
+    "biahflow/eliseu",
+    "biahflow/croquito",
   ]
 }
 
@@ -121,9 +157,14 @@ variable "repositorio_infra" {
 
     Precisa estar contido em `repositorios_github`, senão a condição do provedor
     de WIF recusa o token antes de a federação ser consultada.
+
+    **É a única parte da federação que só este state tem.** A `hml-infra` não existe
+    em `biahflow/infra`, então a troca deste caminho na transferência de 17/08/2026
+    não vinha de lá: o token do caminho novo passava pela condição do provedor e
+    esbarrava na impersonação, e o `infra-hml.yml` falhava com a lista já correta.
   TXT
   type        = string
-  default     = "dcamppos83/biahflow-portal-cliente"
+  default     = "biahflow/portal-cliente"
 }
 
 variable "segredos" {

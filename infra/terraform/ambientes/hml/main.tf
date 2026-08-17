@@ -19,6 +19,7 @@ module "fundacao" {
   regiao              = var.regiao
   segredos            = var.segredos
   repositorios_github = var.repositorios_github
+  repositorios_deploy = var.repositorios_deploy
   repositorio_infra   = var.repositorio_infra
   bucket_estado       = var.bucket_estado
 }

@@ -1,7 +1,11 @@
 # FDD 020 — Funil de onboarding
 
-**Status:** **parcialmente implementado** — 07/08/2026 (ADR 0039, ADR 0040, ADR 0041).
-Recorte construível da **RFC 001**.
+**Feature ID:** `F-020`
+
+**Status:** `BLOCKED` — a vigília de IA permanece condicionada a histórico suficiente para
+priorização segura. Recorte construível da **RFC 001**.
+
+**Registro histórico:** parcialmente implementado em 07/08/2026 (ADR 0039, ADR 0040, ADR 0041).
 
 > *Os passos 1 e 3 da RFC estão de pé, e os **sete** degraus existem. O 1 — "carimbar sem
 > expor" — trouxe a tabela, as policies, os seis degraus que tinham produtor e a

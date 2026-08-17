@@ -1,8 +1,8 @@
 # RFC 001 — Funil de onboarding medido
 
-**Status:** **parcialmente implementada** — 07/08/2026. Passos 1, 2 e 3 do plano de rollout de
-pé (ADR 0039, ADR 0040); o passo 4, a vigília da IA, segue aberto pela condição que ele mesmo
-declara. O recorte construível é a **FDD 020**, que é quem carrega o estado item a item.
+**Uso no ciclo:** este RFC preserva contexto e proposta. O estado da implementação pertence à
+**FDD 020** (`F-020`): passos 1, 2 e 3 do plano de rollout estão de pé (ADR 0039, ADR 0040), e o
+passo 4, a vigília da IA, segue bloqueado pela condição que ele mesmo declara.
 
 *Corrigido em 07/08/2026 (ADR 0041): esta linha dizia `**Status:** proposta — 07/08/2026.
 Nada aqui está implementado.` e passou o dia inteiro sendo falsa — o funil foi carimbado pela

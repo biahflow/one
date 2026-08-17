@@ -42,3 +42,5 @@ docker compose up --build
 ```
 
 Consulte [AGENTS.md](AGENTS.md) antes de alterar código. As regras de produto, segurança e IA estão em [PRD.md](PRD.md) e `docs/`.
+O contexto operacional, fontes de verdade e perfis de validação estão em
+[`docs/project-context.md`](docs/project-context.md).

@@ -2,6 +2,23 @@
 
 Este documento acompanha o plano de entrega. Itens concluídos permanecem aqui para dar visibilidade ao que já existe; cada nova funcionalidade deve ter FDD, testes e atualização deste roadmap.
 
+## Operação na Engineering OS
+
+Este arquivo é o índice canônico de descoberta de trabalho. Para funcionalidades com FDD, a FDD
+é o contrato detalhado e dona do estado do ciclo; ADRs registram decisões e RFCs preservam
+contexto e trade-offs. O histórico abaixo é preservado. A convenção prospectiva, inclusive planos,
+contratos de tarefa e evidências, está em [`docs/features/README.md`](docs/features/README.md).
+
+## Trabalho ativo
+
+| Feature | Prioridade | Estado | Contrato | Dependência ou condição |
+| --- | --- | --- | --- | --- |
+| `F-020` — Funil de onboarding: vigília de IA | Não selecionada | `BLOCKED` | [FDD 020](docs/fdd/020-funil-de-onboarding.md) | Histórico suficiente para priorização segura da IA. |
+| `F-022` — Pesquisa de satisfação por evento | Não selecionada | `BLOCKED` | [FDD 022](docs/fdd/022-pesquisa-de-satisfacao-por-evento.md) | Laço de ação do funil fechado de verdade. |
+
+`Não selecionada` não é prioridade implícita: exige seleção humana antes de especificação,
+planejamento ou execução.
+
 ## Concluído — Fundação local
 
 - [x] Interface responsiva do dashboard e chat demonstrável.
@@ -701,7 +718,7 @@ não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e
 digita, clica e cai na aba, e sobe um documento com termo inédito para achá-lo **dentro** do
 texto.*
 
-## Fase 7 — Saber se o cliente engaja, e puxá-lo de volta (proposta)
+## Fase 7 — Saber se o cliente engaja, e puxá-lo de volta (histórico e trabalho em curso)
 
 Adicionada em 07/08/2026. As seis fases anteriores construíram o que o cliente **encontra**
 quando abre o portal. Esta é sobre o que ele **não** faz: hoje o produto sabe se um projeto

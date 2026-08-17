@@ -179,14 +179,34 @@ Os serviços sobem **quebrados** neste momento, e isso é esperado: o realm não
 terraform output -raw provedor_wif
 ```
 
-O valor vai na variável de repositório `WIF_PROVIDER` de **`biahflow-portal-cliente` e
-`biahflow-portal`**. São dois, e esquecer o segundo faz o deploy do outro produto falhar
+O valor vai na variável de repositório `WIF_PROVIDER` de **`biahflow/portal-cliente` e
+`biahflow/portal`**. São dois, e esquecer o segundo faz o deploy do outro produto falhar
 na primeira linha do primeiro job — com uma mensagem sobre credencial, não sobre variável
 ausente.
 
 Só o repositório que **contém** o Terraform federa a `hml-infra`; o outro recebe apenas a
 `hml-deploy`. A separação é da ADR 0046 e não é cosmética: a `hml-infra` tem quase o
 projeto inteiro.
+
+### Quando um repositório muda de dono
+
+O caminho `dono/repo` é a claim `assertion.repository` do token do GitHub, e ele aparece em
+**três** lugares — dois deles fora deste repositório. Transferir sem mexer neles não quebra
+o `git`: quebra o CI, com erro de credencial e não de configuração.
+
+1. **A condição do provedor** e o binding da `hml-deploy` moram hoje em
+   `biahflow/infra`, `envs/hml/wif/variables.tf` (`repos_allowlist` e `deploy_sa_repos`).
+   Um PR ali aplica sozinho no merge. É onde a mudança acontece de verdade.
+2. **As listas deste repositório** (`infra/terraform/ambientes/hml/variables.tf`) são
+   espelho das de lá desde que o pool passou a ter dois donos — atualize junto, senão o
+   próximo `apply` daqui reescreve a condição a partir da lista atrasada.
+3. **A federação da `hml-infra`** só existe neste state (`repositorio_infra`). Ela é a que
+   o `infra-hml.yml` usa, e a que **não** vem de graça com o PR do item 1: o token do
+   caminho novo passa pela condição do provedor e falha na impersonação.
+
+O caminho antigo **sai** da lista, nunca fica junto do novo — mantê-lo autorizaria um
+repositório recriado naquele caminho. Precedentes: `biahflow/site` e `biahflow/eliseu`
+(14/08/2026), `biahflow/portal` e `biahflow/portal-cliente` (17/08/2026).
 
 ## 8. O realm `portal-homolog`
 
@@ -302,8 +322,26 @@ histórico do git as tem até o commit que apaga `modulos/borda/`.
 
 ### O apply da fundação virou um ato local
 
-O `infra-hml.yml` autentica na GCP por WIF e **não tem** `CLOUDFLARE_API_TOKEN`. Enquanto
-esse secret não for cadastrado no repositório, a fundação se aplica assim:
+O `infra-hml.yml` autentica na GCP por WIF, e a borda nova precisa de uma segunda
+credencial que aquele mecanismo não dá.
+
+*Retificado em 17/08/2026.* Esta seção dizia que o workflow **não tem**
+`CLOUDFLARE_API_TOKEN`, e a frase descrevia duas coisas de uma vez: a fiação ausente e o
+segredo não cadastrado. Só a segunda continua verdadeira. O preço da primeira foi o
+`plan` do `hml` reprovando a cada PR com `400 … Missing X-Auth-Key, X-Auth-Email or
+Authorization headers` — um vermelho que fala de header e não diz que falta um segredo,
+que é o pior formato para um portão que ninguém pode consertar sem saber disso. O
+workflow agora passa `CLOUDFLARE_API_TOKEN` pelo ambiente, com o porquê escrito ao lado.
+
+**O que falta é um ato humano, e é este:** cadastrar o secret `CLOUDFLARE_API_TOKEN` em
+`biahflow/portal-cliente`, com as **três** permissões que `ambientes/hml/cloudflare.tf`
+mediu uma a uma contra a API — `Zone → DNS → Edit`, `Zone → Origin Rules → Edit` e
+`Account → Access: Apps and Policies → Edit`. Não deduza permissão do nome do recurso:
+duas delas falham de forma enganosa quando faltam, e a de `Origin Rules` chamada errada
+responde `403 request is not authorized`, que manda procurar no lugar errado.
+
+Enquanto o secret não existir, o `plan` do `hml` segue vermelho — agora por falta de
+credencial e não por falta de fiação — e a fundação se aplica assim:
 
 ```bash
 cd infra/terraform/ambientes/hml

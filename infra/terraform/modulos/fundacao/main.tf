@@ -7,6 +7,12 @@ variable "regiao" { type = string }
 # portões de leitor, que moram nos states de produto (ADR 0051).
 variable "segredos" { type = map(string) }
 variable "repositorios_github" { type = list(string) }
+# Quem impersona a `hml-deploy`. Nem todo repositório da condição do provedor
+# publica imagem: `biahflow/infra` entra na condição (o CI dele autentica) e **não**
+# federa esta conta — ele usa a `infra-deploy`, que é de outro state. Sem esta
+# separação, a lista da condição concederia deploy a quem só precisa entrar, e os
+# dois states passariam a discordar sobre um mesmo binding (ver `ambientes/hml`).
+variable "repositorios_deploy" { type = list(string) }
 variable "repositorio_infra" { type = string }
 variable "bucket_estado" { type = string }
 
@@ -347,13 +353,13 @@ resource "google_storage_bucket_iam_member" "estado" {
   member = "serviceAccount:${google_service_account.infra.email}"
 }
 
-# A federação, por conta e por repositório. A `hml-deploy` vale para os dois repos,
-# porque os dois publicam imagem; a `hml-infra` vale **só para o repo que contém o
-# Terraform** — dar a outro a conta que pode recriar a rede seria conceder um poder
-# que ele não tem como exercer e não tem por que ter.
+# A federação, por conta e por repositório. A `hml-deploy` vale para quem publica
+# imagem; a `hml-infra` vale **só para o repo que contém o Terraform** — dar a outro a
+# conta que pode recriar a rede seria conceder um poder que ele não tem como exercer e
+# não tem por que ter.
 locals {
   federacoes = merge(
-    { for repo in var.repositorios_github :
+    { for repo in var.repositorios_deploy :
       "deploy/${repo}" => { conta = google_service_account.deploy.name, repo = repo }
     },
     { "infra/${var.repositorio_infra}" = {

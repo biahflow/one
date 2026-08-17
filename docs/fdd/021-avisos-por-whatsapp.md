@@ -1,6 +1,9 @@
 # FDD 021 — Avisos por WhatsApp
 
-**Status:** **implementada** — 07/08/2026 (ADR 0043). Recorte construível da **RFC 002**.
+**Feature ID:** `F-021`
+
+**Registro histórico:** implementada em 07/08/2026 (ADR 0043). Recorte construível da
+**RFC 002**. Esta FDD antecede a adoção prospectiva dos estados da Engineering OS.
 
 > *Os seis critérios de aceite estão de pé e têm teste. O que a construção descobriu, e que
 > nenhum documento previa, foi que **metade da fatia não era o canal**: o critério (4) exige

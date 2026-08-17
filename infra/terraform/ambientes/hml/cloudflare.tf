@@ -58,7 +58,7 @@ resource "cloudflare_dns_record" "crm" {
   # origem abaixo só existe porque o tráfego passa por aqui.
   proxied = true
   ttl     = 1 # 1 = automático; obrigatório no schema, ignorado quando proxied
-  comment = "CRM de homologação — gerenciado pelo Terraform em biahflow-portal-cliente"
+  comment = "CRM de homologação — gerenciado pelo Terraform em biahflow/portal-cliente"
 }
 
 # **O que faz o CNAME funcionar, e por que não é uma Origin Rule.** A Cloudflare

@@ -1,7 +1,10 @@
 # FDD 022 — Pesquisa de satisfação por evento
 
-**Status:** proposta — 07/08/2026. Nada aqui está implementado. **Segundo sinal**: só começa
-depois que o laço de ação do funil (FDD 020) estiver fechado de verdade.
+**Feature ID:** `F-022`
+
+**Status:** `BLOCKED` — **segundo sinal**: só começa depois que o laço de ação do funil
+(`F-020`) estiver fechado de verdade. Registro histórico: proposta em 07/08/2026; nada desta
+FDD foi implementado.
 
 ## Objetivo e não objetivos
 

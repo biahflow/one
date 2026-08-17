@@ -1,7 +1,8 @@
 # RFC 002 — Canal de WhatsApp
 
-**Status:** proposta — 07/08/2026. Nada aqui está implementado. RFC **obrigatória** pelo
-gatilho de **conector externo** do `docs/rfc/README.md`.
+**Uso no ciclo:** este RFC preserva o contexto e os trade-offs da proposta. A implementação é
+registrada pela **FDD 021** (`F-021`), implementada em 07/08/2026 com a ADR 0043. RFC
+**obrigatória** pelo gatilho de **conector externo** do `docs/rfc/README.md`.
 
 ## Contexto
 

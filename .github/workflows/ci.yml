@@ -385,8 +385,21 @@ jobs:
       - run: pip install "$(grep '^pip-audit==' apps/api/requirements-dev.txt)"
       - run: npm run audit
 
+  # **Desligado por variável desde 17/08/2026, e pela mesma razão do `codeql`
+  # abaixo: repositório privado.** Ao migrar para a org `biahflow` este repo
+  # passou a privado, e ali a API de dependency review exige Advanced Security —
+  # o job reprova com "Dependency review is not supported on this repository",
+  # que é sobre o plano do repositório e não sobre as dependências do PR.
+  #
+  # O que se perde está declarado: some o portão sobre o **diff** do PR, isto é,
+  # a biblioteca ruim *entrando*. Fica o `dependency-audit` acima, que pergunta o
+  # que já está instalado e roda em `push` e `pull_request` — a metade que
+  # importa mais, e a que já pegava o que ninguém via. Não é substituto: os dois
+  # nunca se sobrepuseram, e é por isso que o job continua aqui em vez de ser
+  # apagado. Ligar é criar `DEPENDENCY_REVIEW_ENABLED=true` — o que só faz
+  # sentido depois de contratar Advanced Security ou de o repo voltar a público.
   dependency-review:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && vars.DEPENDENCY_REVIEW_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

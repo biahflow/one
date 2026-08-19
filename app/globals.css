@@ -472,6 +472,13 @@
      o chat é um painel, não uma rota, e um hash no endereço prometeria um link
      compartilhável que a conversa de outra pessoa não honraria. */
   .message--focused { @apply rounded-xl ring-2 ring-brand-300; }
+  /* A linha que o link do aviso apontou (ADR 0056). Mesmo anel do turno em foco,
+     e de propósito: as duas respondem "é isto que você veio ver", e dois realces
+     diferentes para a mesma pergunta ensinariam a ler dois vocabulários. */
+  .is-anchored { @apply rounded-xl ring-2 ring-brand-300; }
+  /* E quando a linha não existe mais. Discreta como o `.empty-note`, porque a aba
+     está inteira ali — o que falta é só o destaque. */
+  .anchor-missing { @apply mb-3 rounded-xl bg-brand-50 px-3.5 py-2.5 text-xs text-muted; }
   .empty-note, .panel-note { @apply px-0.5 py-4 text-xs leading-relaxed text-muted; }
 
   /* ---------- Perfil e configurações ---------- */

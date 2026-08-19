@@ -919,9 +919,9 @@ que ele respeita.
       *A retentativa depois de uma queda do fornecedor **não** gasta uma segunda unidade do
       teto, porque a reserva é pela chave do aviso — sem isso, uma indisponibilidade de minutos
       viraria silêncio permanente naquele canal, e sem rastro. Está em regressão.*
-      **Aberto:** o link em granularidade de item (hoje cai na aba, a mesma
-      resolução que a busca estabeleceu). *O teto de horário, que esta linha também dava como
-      aberto, foi fechado em 19/08/2026 (ADR 0055).*
+      *~~**Aberto:** o link em granularidade de item (hoje cai na aba, a mesma resolução que a
+      busca estabeleceu).~~ Fechado em 19/08/2026 (ADR 0056). O teto de horário, que esta linha
+      também dava como aberto, foi fechado no mesmo dia (ADR 0055).*
 - [x] **Teto de horário — e quem volta buscar o que ele adiou** *(FDD 021, ADR 0055)*: a mesma
       ponta que as ADRs 0042 e 0043 deixaram nomeada com as mesmas palavras — *"é decisão do
       remetente, não do orçamento, e **entra com o canal**"* — e que não entrou com o canal. O teto
@@ -948,6 +948,36 @@ que ele respeita.
       daí o teste de concorrência ter prazo e afirmar *ter terminado*. *Fica aberto: feriado e fim
       de semana, que são calendário e não horário, e o teto de horário do e-mail do digest,
       deliberadamente fora.*
+- [x] **O link que cai no item** *(FDD 021, ADR 0056)*: a última ponta que a ADR 0043 deixou
+      nomeada. O aviso caía na **aba** — a mesma resolução da busca —, e o critério de aceite (4)
+      da FDD 021 pede "a coisa exata, nunca na home"; a FDD abria afirmando que os seis critérios
+      estavam de pé, e os dois documentos não podiam estar certos ao mesmo tempo. Agora o link
+      carrega `&item=<namespace>:<rótulo>`, e a tela destaca a linha e rola até ela.
+      **A âncora é o rótulo, e o porquê foi medido:** só `PendingOut` publica `id` entre os seis
+      esquemas de lista, e nem ele serviria — o sync do Biahflow apaga e recria essas linhas, e o
+      link do canal é assíncrono por desenho, então um link por uuid **nasceria apontando para uma
+      linha que vai deixar de existir**. O rótulo é o identificador que a tela já usa como chave
+      React; é a terceira vez que o repositório decide isso (ADR 0024 na busca, ADR 0043 nas abas).
+      A pergunta "que tela?" continua sendo por espécie e fica no `LINK_TAB`; "qual linha?" é por
+      **evento** e vai em `Change.item`, com o namespace escrito uma vez por espécie no
+      `ITEM_ANCHOR` e a composição num lugar só. Quem não aponta para linha nenhuma tem frase
+      assinada em `ANCHORLESS`, na forma do `NOT_AN_ALERT`.
+      **O teto de tamanho dropa a âncora em vez de truncar** — âncora truncada não casa com nada
+      *parecendo* que casou —, e a ADR registra que **nenhum limite de caracteres do fornecedor foi
+      medido**: `_MAX_LINK` é sanidade, e o que sustenta a escolha é a queda ser monotônica (sem
+      âncora, o link é o de antes). **A jornada tem dois níveis** e é onde o link seria correto e
+      inalcançável: o painel só desenha os entregáveis da fase selecionada, então a fase passa a ser
+      derivada da âncora — o que também dispensa âncora composta e o escape do separador. E o
+      seletor do efeito **não interpola** o valor, que vem da barra de endereço: uma aspa no título
+      quebraria o `querySelector`, então a varredura compara `getAttribute` em JavaScript.
+      **As duas guardas que ligam os deployables nasceram vermelhas, e isso é o ponto:** foram
+      escritas antes do TSX e vistas falhando, acusando os seis namespaces "só no Python" e as nove
+      espécies com o componente certo de cada uma — o achado da ADR 0033 aplicado antes do fato, e
+      não depois. A varredura de `Change` é por AST e alcança as **quatro** origens, que é o ponto
+      cego que deixou dez ramificações sem `link` até a ADR 0043. *De quebra: a fixture do SSR
+      trazia `link: null` nas duas notificações, contradizendo a garantia da ADR 0043 sem que nada
+      pegasse — o ramo `<a>` da Central era código morto nos testes. Fica aberto e nomeado: o
+      popover do sino, cuja linha é `<div>` e não `<a>`, e a âncora na busca.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já
@@ -958,16 +988,15 @@ que ele respeita.
 
 **Pontas abertas da fase, sem dono e sem prioridade** (seleção é gate humano):
 
-- **O link em granularidade de item.** A ADR 0043 fez o aviso cair na aba certa — a mesma resolução
-  que a busca estabeleceu. Cair no item exato é o que o critério (4) da FDD 021 pede por inteiro.
 - **Intervalo mínimo por espécie de mensagem.** Medido na ADR 0042 e escrito na emenda da FDD 022:
   o teto global **não** satisfaz sozinho o critério (2) de lá, porque "um segundo evento na mesma
   semana não gera segundo convite" é afirmação sobre a **espécie** e não sobre o volume — com três
   por semana, dois convites passam. Entra junto de `survey_invite`.
 
-*Fechada, para não ser reaberta por leitura de ADR:* o **teto de horário**, que as ADRs 0042 e
+*Fechadas, para não serem reabertas por leitura de ADR:* o **teto de horário**, que as ADRs 0042 e
 0043 deixaram aberto e a ADR 0055 entregou em 19/08/2026, junto da varredura sem a qual ele seria
-um descarte. Ler aquelas duas sem esta linha o dá como pendente.
+um descarte; e **o link em granularidade de item**, que a ADR 0043 deixou nomeado e a ADR 0056
+entregou no mesmo dia. Ler aquelas duas sem estas linhas as dá como pendentes.
 
 **Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
 compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar

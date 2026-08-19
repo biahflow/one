@@ -358,7 +358,7 @@ async function apiFailure(url: string, status: number): Promise<Error> {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; tab?: string }>;
+  searchParams: Promise<{ project?: string; tab?: string; item?: string }>;
 }) {
   const base = process.env.API_BASE_URL;
 
@@ -376,7 +376,10 @@ export default async function Page({
   const authorization = await authorizationHeader();
   if (!session || session.error || !authorization) redirect("/login");
 
-  const { project: projectId, tab } = await searchParams;
+  // `item` é passagem, como `tab` já era (ADR 0056): o BFF não decide nada aqui, e
+  // não há validação de servidor possível nem desejável — o rótulo só faz sentido
+  // contra a lista que a tela desenhou, e é lá que ele é comparado.
+  const { project: projectId, tab, item } = await searchParams;
   const dashboardUrl = projectId
     ? `${base}/api/v1/projects/${projectId}/dashboard`
     : `${base}/api/v1/me/dashboard`;
@@ -430,6 +433,7 @@ export default async function Page({
       projects={marked}
       notifications={notifications}
       initialTab={tab}
+      initialItem={item}
     />
   );
 }

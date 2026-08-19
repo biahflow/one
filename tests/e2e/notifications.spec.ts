@@ -142,3 +142,37 @@ test("a central lista o histórico do projeto", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Central de notificações" })).toBeVisible();
   await expect(page.getByText("Avisos do projeto")).toBeVisible();
 });
+
+test("o aviso leva à linha do documento, e não só à aba", async ({ page }) => {
+  // O critério de aceite (4) da FDD 021 provado ponta a ponta pela primeira vez
+  // (ADR 0056): até aqui o e2e provava que o aviso **existe**, não que ele leva a
+  // algum lugar. O documento sincronizado no `beforeEach` dá o rótulo exato para
+  // ancorar, e o percurso é o do cliente — sino, "Ver todas", clique no aviso.
+  await signIn(page, CLIENT);
+
+  await page.getByRole("button", { name: /^Notificações/ }).click();
+  // Pelo botão "Ver todas": o popover mostra a linha como `<div>`, e o `<a>` com o
+  // link só existe na Central. Ligá-lo lá é fatia à parte, e está nomeada na ADR.
+  await page.locator(".popover--notifications").getByRole("button", { name: /Ver todas/ }).click();
+
+  const aviso = page
+    .locator("a.notification-row")
+    .filter({ hasText: lastChange! })
+    .first();
+  await expect(aviso).toBeVisible();
+
+  // A Central abre em nova aba (`target="_blank"`), que continua sendo o
+  // comportamento de lá — esta fatia mudou o destino, não a forma de abrir.
+  const abriu = page.context().waitForEvent("page");
+  await aviso.click();
+  const destino = await abriu;
+  await destino.waitForLoadState("domcontentloaded");
+
+  expect(destino.url()).toContain("tab=Documentos");
+  expect(destino.url()).toContain(`item=document%3A${encodeURIComponent(lastChange!)}`);
+
+  // E a linha daquele documento chega destacada, não só a aba.
+  const linha = destino.locator(`[data-item="document:${lastChange!}"]`);
+  await expect(linha).toBeVisible();
+  await expect(linha).toHaveClass(/is-anchored/);
+});

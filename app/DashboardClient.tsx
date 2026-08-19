@@ -130,6 +130,38 @@ function openPendings(overview: Overview): PendingItemView[] {
     );
 }
 
+/**
+ * Toda âncora que esta tela consegue desenhar, no formato do `?item=` (ADR 0056).
+ *
+ * Existe para uma pergunta só, e é a que faz a degradação **aparecer**: o rótulo
+ * que o aviso apontou ainda está no projeto? Sem ela, "cliquei no aviso do marco X
+ * e o marco X não está aqui" seria a pergunta que o suporte receberia — o cliente
+ * chega na aba certa e nada acontece, que é exatamente o defeito silencioso que a
+ * ADR 0033 nomeou.
+ *
+ * **É a lista de dados e não o DOM**, ao contrário do efeito que rola até a linha,
+ * e a razão é o servidor: um `querySelectorAll` só existe depois da hidratação, e a
+ * nota precisa vir no HTML do SSR — senão ela pisca depois da primeira pintura e
+ * nenhuma asserção de HTML renderizado a alcança. As duas respostas coincidem
+ * porque os quatro filtros de aba nascem em "todos" e a linha ancorada está no
+ * primeiro render.
+ *
+ * Os literais são os mesmos dos `data-item` abaixo, e é `test_item_anchor.py` quem
+ * cobra que os espaços de nomes daqui sejam os do Python.
+ */
+function screenAnchors(overview: Overview): Set<string> {
+  const anchors = new Set<string>();
+  for (const phase of overview.journey.phases) {
+    anchors.add(`phase:${phase.name}`);
+    for (const deliverable of phase.deliverables) anchors.add(`deliverable:${deliverable.name}`);
+  }
+  for (const milestone of overview.milestones) anchors.add(`milestone:${milestone.title}`);
+  for (const document of overview.documents) anchors.add(`document:${document.title}`);
+  for (const meeting of overview.meetings) anchors.add(`meeting:${meeting.title}`);
+  for (const pending of overview.pendings) anchors.add(`pending:${pending.title}`);
+  return anchors;
+}
+
 // Mapeia o estado do marco para as classes de cor já existentes no CSS
 const stateStyle: Record<string, string> = {
   "Concluído": "done",
@@ -374,6 +406,7 @@ export default function DashboardClient({
   projects,
   notifications = { unreadCount: 0, items: [] },
   initialTab,
+  initialItem,
 }: {
   overview: Overview;
   user: PortalUser;
@@ -390,6 +423,18 @@ export default function DashboardClient({
    * mandar nada — nunca uma tela em branco.
    */
   initialTab?: string;
+  /**
+   * A **linha** que o `?item=` da URL pediu, no formato `<namespace>:<rótulo>`
+   * (ADR 0056). O `initialTab` acima abre a tela; este destaca o assunto dentro
+   * dela, que é o que o critério de aceite (4) da FDD 021 pede ao exigir "a coisa
+   * exata, nunca na home".
+   *
+   * Também não é confiada, e por um motivo mais forte: o rótulo é texto livre do
+   * cliente e chega pela barra de endereço. Nada aqui a interpola em seletor nem
+   * em HTML — ela só é **comparada** com o que a tela desenhou, e uma âncora que
+   * não casa com nada vira a nota discreta abaixo em vez de sumir em silêncio.
+   */
+  initialItem?: string;
 }) {
   const router = useRouter();
   // Projeto sem escrita no Biahflow: a tela vira consulta (ADR 0036/0037). Derivado do overview e
@@ -398,6 +443,7 @@ export default function DashboardClient({
   const [activeNav, setActiveNav] = useState(
     navItems.some((item) => item.label === initialTab) ? initialTab! : "Visão geral",
   );
+  const [focusedItem, setFocusedItem] = useState<string | null>(initialItem ?? null);
   const [chatOpen, setChatOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -442,7 +488,10 @@ export default function DashboardClient({
   const activeProject = projects.find((project) => project.current) ?? projects[0] ?? null;
 
   const toggleMenu = (target: typeof menu) => setMenu((current) => (current === target ? null : target));
-  const goTo = (label: string) => { setActiveNav(label); setMenu(null); setMobileNavOpen(false); };
+  // Trocar de aba por vontade própria encerra o destaque, como "Nova conversa"
+  // encerra o turno em foco: o cliente saiu do assunto que o aviso abriu, e um
+  // realce que sobrevive à navegação passa a apontar para uma pergunta antiga.
+  const goTo = (label: string) => { setActiveNav(label); setFocusedItem(null); setMenu(null); setMobileNavOpen(false); };
   const selectProject = (project: ProjectSummary) => router.push(`/?project=${project.id}`);
 
   const suggestedQuestions = useMemo(
@@ -686,6 +735,9 @@ export default function DashboardClient({
     [overview, aiPendings],
   );
   const openCount = openPendings(view).length;
+  // Derivado no render, e não num efeito: a nota tem de estar no HTML do servidor
+  // (ver o efeito de rolagem abaixo).
+  const anchorMissing = focusedItem !== null && !screenAnchors(view).has(focusedItem);
 
   useEffect(() => {
     if (!focusedTurn || !chatOpen) return;
@@ -700,16 +752,45 @@ export default function DashboardClient({
     return () => cancelAnimationFrame(frame);
   }, [focusedTurn, chatOpen]);
 
+  /**
+   * Rola até a linha que o aviso apontou (ADR 0056). Irmão do efeito acima, com
+   * uma diferença deliberada e uma consequência.
+   *
+   * **A diferença é o seletor, e é o ponto de segurança da fatia.** O efeito do
+   * turno interpola o valor dentro de `querySelector` e *pode*, porque ali o valor
+   * é um uuid que veio da API. Aqui ele vem da **barra de endereço** e é o título
+   * que o cliente digitou no Biahflow: uma aspa no meio dele fecha o seletor cedo
+   * e, na melhor das hipóteses, seleciona outra coisa. A varredura compara o
+   * atributo em JavaScript, onde aspa é um caractere e não sintaxe.
+   *
+   * **A consequência é o destaque não morar aqui.** Ele é JSX (`is-anchored`
+   * abaixo), como o `message--focused` já é, e não um `classList.add` deste
+   * efeito: assim ele existe no HTML do SSR — sem isso haveria um piscar entre a
+   * primeira pintura e a hidratação, e a guarda node não teria o que ver.
+   */
+  useEffect(() => {
+    if (!focusedItem) return;
+    // `requestAnimationFrame` pelo motivo do efeito acima: a aba pedida pelo
+    // `?tab=` acabou de montar, e sem esperar o layout o `scrollIntoView` roda
+    // sobre altura zero.
+    const frame = requestAnimationFrame(() => {
+      Array.from(document.querySelectorAll("[data-item]"))
+        .find((node) => node.getAttribute("data-item") === focusedItem)
+        ?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusedItem, activeNav]);
+
   function renderActiveView() {
     switch (activeNav) {
       case "Cronograma":
-        return <ScheduleView onAsk={askAi} overview={view} />;
+        return <ScheduleView onAsk={askAi} overview={view} focusedItem={focusedItem} />;
       case "Documentos":
-        return <DocumentsView onAsk={askAi} overview={view} />;
+        return <DocumentsView onAsk={askAi} overview={view} focusedItem={focusedItem} />;
       case "Reuniões":
-        return <MeetingsView onAsk={askAi} overview={view} />;
+        return <MeetingsView onAsk={askAi} overview={view} focusedItem={focusedItem} />;
       case "Pendências":
-        return <PendingView onAsk={askAi} overview={view} onOpenTurn={openTurn} />;
+        return <PendingView onAsk={askAi} overview={view} onOpenTurn={openTurn} focusedItem={focusedItem} />;
       case "Decisões":
         return <DecisionsView onAsk={askAi} overview={view} />;
       case "Resultados":
@@ -730,6 +811,7 @@ export default function DashboardClient({
             onNavigate={goTo}
             onOpenTurn={openTurn}
             overview={view}
+            focusedItem={focusedItem}
             onAnalyze={() => sendQuestion(undefined, "Mostre todas as pendências.")}
           />
         );
@@ -836,6 +918,12 @@ export default function DashboardClient({
         </header>
 
         <div className="dashboard">
+          {/* A âncora do aviso não existe mais no projeto. Discreta de propósito —
+              o cliente veio ver a aba, e ela está inteira aqui —, mas dita: sem
+              esta linha o link degradaria de forma invisível. */}
+          {anchorMissing && (
+            <p className="anchor-missing">O item deste aviso não está mais nesta lista.</p>
+          )}
           {renderActiveView()}
         </div>
       </section>
@@ -1108,10 +1196,28 @@ const PHASE_STATE_LABEL: Record<JourneyPhase["state"], string> = {
 
 // "Você está aqui": a jornada de transformação pela perspectiva do cliente — sem nada
 // técnico. Cada fase concluída/ativa revela seus entregáveis; as bloqueadas ficam veladas.
-function JourneyPanel({ journey }: { journey: Overview["journey"] }) {
+function JourneyPanel({ journey, focusedItem }: { journey: Overview["journey"]; focusedItem?: string | null }) {
   const phases = journey.phases;
   const activeIndex = phases.findIndex((phase) => phase.state === "active");
-  const initial = activeIndex >= 0 ? activeIndex : Math.max(0, phases.length - 1);
+  /**
+   * A fase que a âncora do aviso pede, quando há uma (ADR 0056).
+   *
+   * Este painel só desenha os entregáveis da fase **selecionada**, e o padrão é a
+   * fase ativa. Sem isto, um `deliverable_delivered` de fase já concluída
+   * produziria uma âncora fora do DOM: link tecnicamente correto e inalcançável,
+   * que é o pior desfecho possível — pior que não ter link, porque parece que tem.
+   *
+   * É também o que dispensa uma âncora composta `fase/entregável`, e com ela o
+   * problema de escapar o separador num rótulo que contém dois-pontos. **O preço
+   * está escrito**: entregáveis homônimos em fases diferentes se resolvem pela
+   * primeira fase que os contiver.
+   */
+  const anchored = phases.findIndex(
+    (phase) =>
+      `phase:${phase.name}` === focusedItem ||
+      phase.deliverables.some((deliverable) => `deliverable:${deliverable.name}` === focusedItem),
+  );
+  const initial = anchored >= 0 ? anchored : activeIndex >= 0 ? activeIndex : Math.max(0, phases.length - 1);
   const [selected, setSelected] = useState(initial);
   if (phases.length === 0) return null;
   const phase = phases[Math.min(selected, phases.length - 1)];
@@ -1130,7 +1236,11 @@ function JourneyPanel({ journey }: { journey: Overview["journey"] }) {
 
       <ol className="journey-track">
         {phases.map((item, index) => (
-          <li key={item.name} className={`journey-step journey-step--${item.state} ${index === selected ? "is-selected" : ""}`}>
+          <li
+            key={item.name}
+            className={`journey-step journey-step--${item.state} ${index === selected ? "is-selected" : ""} ${`phase:${item.name}` === focusedItem ? "is-anchored" : ""}`}
+            data-item={`phase:${item.name}`}
+          >
             <button type="button" onClick={() => setSelected(index)} aria-current={item.state === "active"}>
               <span className="journey-dot">
                 {item.state === "done" ? <Check size={14} /> : item.state === "locked" ? <Lock size={12} /> : <span className="journey-pulse" />}
@@ -1159,7 +1269,11 @@ function JourneyPanel({ journey }: { journey: Overview["journey"] }) {
             {phase.deliverables.map((deliverable) => {
               const unlocked = deliverable.state === "delivered";
               return (
-                <li key={deliverable.name} className={unlocked ? "is-unlocked" : "is-locked"}>
+                <li
+                  key={deliverable.name}
+                  className={`${unlocked ? "is-unlocked" : "is-locked"} ${`deliverable:${deliverable.name}` === focusedItem ? "is-anchored" : ""}`}
+                  data-item={`deliverable:${deliverable.name}`}
+                >
                   <span className="deliverable-icon">{unlocked ? <Check size={13} /> : <Lock size={12} />}</span>
                   {unlocked && deliverable.link ? (
                     <a href={deliverable.link} target="_blank" rel="noreferrer">{deliverable.name} <ArrowUpRight size={13} /></a>
@@ -1197,7 +1311,7 @@ function compact(value: number): string {
   return value.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 }
 
-function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string) => void; onOpenTurn: (messageId: string, conversationId: string | null) => void; overview: Overview; user: PortalUser }) {
+function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user, focusedItem }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string) => void; onOpenTurn: (messageId: string, conversationId: string | null) => void; overview: Overview; user: PortalUser; focusedItem?: string | null }) {
   const timeline = overview.milestones;
   const open = openPendings(overview);
   const roi = roiValue(overview.roi);
@@ -1211,7 +1325,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
     <>
       <ViewHero eyebrow={overview.project.toLocaleUpperCase("pt-BR")} title={`Bom dia, ${firstName(user.name)}.`} subtitle="Veja o que está acontecendo no seu projeto." onAsk={onAsk} />
 
-      <JourneyPanel journey={overview.journey} />
+      <JourneyPanel journey={overview.journey} focusedItem={focusedItem} />
 
       <DigitalEmployees employees={overview.digitalEmployees} />
 
@@ -1306,7 +1420,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
   );
 }
 
-function ScheduleView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+function ScheduleView({ onAsk, overview, focusedItem }: { onAsk: () => void; overview: Overview; focusedItem?: string | null }) {
   const [state, setState] = useState<string | null>(null);
   const counts = countBy(overview.milestones, (item) => item.state);
   const milestones =
@@ -1338,7 +1452,11 @@ function ScheduleView({ onAsk, overview }: { onAsk: () => void; overview: Overvi
           {milestones.map((item) => {
             const tone = stateStyle[item.state] ?? "2";
             return (
-              <div className="milestone" key={item.title}>
+              <div
+                className={`milestone ${`milestone:${item.title}` === focusedItem ? "is-anchored" : ""}`}
+                data-item={`milestone:${item.title}`}
+                key={item.title}
+              >
                 <div className={`timeline-dot timeline-dot--${tone}`}><span /></div>
                 <div className="milestone-date">{item.date}</div>
                 <div className="milestone-title"><strong>{item.title}</strong>{item.owner && <span>{item.owner}</span>}</div>
@@ -1352,7 +1470,7 @@ function ScheduleView({ onAsk, overview }: { onAsk: () => void; overview: Overvi
   );
 }
 
-function DocumentsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+function DocumentsView({ onAsk, overview, focusedItem }: { onAsk: () => void; overview: Overview; focusedItem?: string | null }) {
   const [type, setType] = useState<string | null>(null);
   const counts = countBy(overview.documents, (doc) => doc.type || null);
   const documents =
@@ -1378,7 +1496,11 @@ function DocumentsView({ onAsk, overview }: { onAsk: () => void; overview: Overv
       )}
       <section className="card-grid" aria-label="Lista de documentos">
         {documents.map((doc) => (
-          <article className="panel doc-card" key={doc.title}>
+          <article
+            className={`panel doc-card ${`document:${doc.title}` === focusedItem ? "is-anchored" : ""}`}
+            data-item={`document:${doc.title}`}
+            key={doc.title}
+          >
             <div className="source-row">
               <span className="file-icon"><FileText size={17} /></span>
               <div>
@@ -1399,7 +1521,7 @@ function DocumentsView({ onAsk, overview }: { onAsk: () => void; overview: Overv
   );
 }
 
-function MeetingsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+function MeetingsView({ onAsk, overview, focusedItem }: { onAsk: () => void; overview: Overview; focusedItem?: string | null }) {
   const [only, setOnly] = useState<string | null>(null);
   const withTranscript = overview.meetings.filter((meeting) => meeting.hasTranscript);
   const meetings = only === "transcript" ? withTranscript : overview.meetings;
@@ -1428,7 +1550,11 @@ function MeetingsView({ onAsk, overview }: { onAsk: () => void; overview: Overvi
             </p>
           )}
           {meetings.map((meeting) => (
-            <div className="source-row" key={meeting.title}>
+            <div
+              className={`source-row ${`meeting:${meeting.title}` === focusedItem ? "is-anchored" : ""}`}
+              data-item={`meeting:${meeting.title}`}
+              key={meeting.title}
+            >
               <span className="file-icon"><Video size={17} /></span>
               <div>
                 <strong>{meeting.title}</strong>
@@ -1544,7 +1670,7 @@ function countBy<T>(items: T[], of: (item: T) => string | null): Record<string, 
   return counts;
 }
 
-function PendingView({ onAsk, overview, onOpenTurn }: { onAsk: () => void; overview: Overview; onOpenTurn: (messageId: string, conversationId: string | null) => void }) {
+function PendingView({ onAsk, overview, onOpenTurn, focusedItem }: { onAsk: () => void; overview: Overview; onOpenTurn: (messageId: string, conversationId: string | null) => void; focusedItem?: string | null }) {
   const [priority, setPriority] = useState<string | null>(null);
   const all = openPendings(overview);
   const counts = countBy(all, (item) => item.priority);
@@ -1575,14 +1701,14 @@ function PendingView({ onAsk, overview, onOpenTurn }: { onAsk: () => void; overv
                   : "Nenhuma pendência aberta com esta prioridade."}
               </p>
             )}
-            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread readOnly={readOnlyReason(overview)} />)}
+            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread readOnly={readOnlyReason(overview)} focusedItem={focusedItem} />)}
           </div>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Resolvidas <span>{resolved.length}</span></h2></div></div>
           <div className="pending-list">
             {resolved.length === 0 && <p className="empty-state">Nenhuma pendência resolvida ainda.</p>}
-            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread readOnly={readOnlyReason(overview)} />)}
+            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread readOnly={readOnlyReason(overview)} focusedItem={focusedItem} />)}
           </div>
         </article>
       </section>
@@ -2220,6 +2346,7 @@ function PendingItem({
   onOpenTurn,
   withThread = false,
   readOnly = null,
+  focusedItem = null,
 }: {
   item: PendingItemView;
   onOpenTurn?: (messageId: string, conversationId: string | null) => void;
@@ -2227,12 +2354,18 @@ function PendingItem({
   withThread?: boolean;
   /** Projeto encerrado ou removido: o fio abre para leitura, sem campo de escrita (ADR 0036/0037). */
   readOnly?: ReadOnlyReason;
+  /** A âncora do `?item=` (ADR 0056). O resumo da Visão geral não a recebe: o link
+   *  da pendência abre a aba de Pendências, que é onde a lista está inteira. */
+  focusedItem?: string | null;
 }) {
   const tone = pendingTone[item.state] ?? "amber";
   const owner = item.owner ?? "Sem responsável definido";
   const detail = [owner, item.age].filter(Boolean).join(" • ");
   return (
-    <div className="pending-entry">
+    <div
+      className={`pending-entry ${`pending:${item.title}` === focusedItem ? "is-anchored" : ""}`}
+      data-item={`pending:${item.title}`}
+    >
       <div className="pending-row">
       <span className={`pending-avatar pending-avatar--${tone}`}>{owner.slice(0, 1)}</span>
       <div>

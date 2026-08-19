@@ -114,6 +114,7 @@ def _notify(
     dedupe_key: str = "document:1",
     title: str = "Novo documento no projeto",
     detail: str | None = "Contrato de prestação — cláusula 4, R$ 180.000",
+    item: str | None = None,
 ) -> uuid.UUID:
     """Um aviso já comitado, na forma que o ``fan_out`` grava — com link inclusive."""
     record = Notification(
@@ -123,7 +124,7 @@ def _notify(
         kind=kind,
         title=title,
         detail=detail,
-        link=notifications.deep_link(ids["project"], kind),
+        link=notifications.deep_link(ids["project"], kind, item),
         occurred_at=datetime.now(timezone.utc),
         dedupe_key=dedupe_key,
     )
@@ -281,6 +282,39 @@ def test_the_link_lands_on_the_subject_and_not_on_the_home(
     assert url.startswith("https://portal.test/?project=")
     assert str(world["project"]) in url
     assert "tab=Pend%C3%AAncias" in url
+
+
+def test_the_message_url_points_at_the_row_and_not_at_the_tab(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E, desde a ADR 0056, na **linha** — que é o que o critério (4) pede.
+
+    Afirmado sobre o `url` que o `build_payload` mandou, e não sobre o `link` da
+    linha do banco: o pedido enviado é o único lugar onde se prova o que **sai**,
+    a mesma forma da asserção de que trecho de documento não viaja no template.
+    """
+    with Session(migrated_engine) as session:
+        _notify(
+            session,
+            world,
+            kind=NotificationKind.milestone_done,
+            dedupe_key="m:1",
+            title="Marco concluído",
+            detail="Validação de integrações",
+            item="Validação de integrações",
+        )
+        session.commit()
+
+    _run(monkeypatch, world, _settings())
+
+    url = sent.bodies[0]["template"]["components"][0]["parameters"][1]["text"]
+    assert url == (
+        f"https://portal.test/?project={world['project']}&tab=Cronograma"
+        "&item=milestone%3AValida%C3%A7%C3%A3o%20de%20integra%C3%A7%C3%B5es"
+    )
 
 
 # (5) Provedor fora do ar: o aviso continua no sino ----------------------------

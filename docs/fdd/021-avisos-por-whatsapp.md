@@ -149,3 +149,27 @@ retentativa condicionada a outra mudança acontecer.*
 *Fica aberto: **feriado e fim de semana**, que são calendário e não horário, e o teto de horário
 do **e-mail** do digest, deliberadamente fora — o argumento das duas ADRs é sobre o canal que
 chega no bolso da pessoa.*
+
+**Critério (4) na resolução do item.** *Emenda de 19/08/2026 (ADR 0056), e ela fecha uma
+divergência que estava dentro deste documento.* O registro histórico acima afirma que "os seis
+critérios de aceite estão de pé e têm teste", enquanto o critério (4) pede "a tela específica do
+assunto" e a jornada desta FDD diz "na coisa exata, nunca na home" — e o `ROADMAP.md` listava o
+link em granularidade de item como ponta aberta. As duas leituras não podiam valer ao mesmo tempo,
+e nenhum documento dizia qual era a boa.
+
+A partir desta data vale a leitura forte, e ela está entregue: **o critério (4) esteve de pé na
+resolução da aba desde 07/08/2026, e na do item desde 19/08/2026.** O link carrega
+`&item=<namespace>:<rótulo>`, a tela destaca a linha e rola até ela, e quando a linha não existe
+mais a aba diz isso em vez de calar. A âncora é o **rótulo** e não o `id`, porque o sync do
+Biahflow apaga e recria essas linhas — um link por uuid nasceria apontando para uma linha que vai
+deixar de existir, e o link deste canal é assíncrono por desenho.
+
+*Duas coisas que esta FDD não sabia e a construção mediu.* A primeira: a fixture do SSR trazia
+`link: null` nas duas notificações, contradizendo em silêncio a garantia que a ADR 0043
+estabeleceu — toda espécie de cliente tem link —, e o único controle que consome o campo era código
+morto nos testes. A segunda: o e2e desta FDD provava que o aviso **existe**, não que ele leva a
+algum lugar; o critério (4) só passou a ter prova ponta a ponta agora.
+
+*Fica aberto: o **popover do sino** renderiza a linha como `<div>` e não como `<a>`, então o
+caminho de menor atrito para quem já está no portal continua sem link — o percurso provado passa
+por "Ver todas".*

@@ -16,19 +16,26 @@ auto-pulam quando não há, como o resto da camada de dados.
 from __future__ import annotations
 
 import uuid
+from contextlib import nullcontext
 from typing import Any
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from portal_api import notifications
+from portal_api import notifications, worker
 from portal_api.integrations import biahflow
 from portal_api.models import (
+    DeliverableState,
     MemberRole,
     Membership,
+    MilestoneState,
     Notification,
     NotificationKind,
+    PendingItem,
+    PendingItemComment,
+    PendingState,
+    PhaseState,
     User,
 )
 
@@ -288,3 +295,193 @@ def test_a_comment_notifies_the_other_side_and_not_its_author(db_session: Sessio
         ).scalars()
     )
     assert recipients == {internal_id}
+
+
+def test_the_diff_names_the_row_of_every_change() -> None:
+    """Toda ramificação do ``diff`` diz **qual linha** mudou (ADR 0056).
+
+    Unitário sobre os dois estados, e não sobre o sync: o que se prova aqui é que
+    nenhuma das dez ramificações esqueceu o ``item=``, e é o valor que importa —
+    uma âncora com o rótulo errado leva o cliente a uma linha que não é a do aviso,
+    e é indistinguível de uma certa até alguém abrir a tela.
+
+    O ``project_status_changed`` aparece duas vezes com ``None``: status e saúde são
+    fatos do projeto inteiro, e é a única espécie de cliente legitimamente sem
+    âncora (``notifications.ANCHORLESS``).
+    """
+    before = notifications.ProjectState(
+        status="active",
+        health_label="No prazo",
+        milestones={"Validação de integrações": MilestoneState.in_progress},
+        phases={"Welcome": PhaseState.active, "Prove": PhaseState.locked},
+        deliverables={("Welcome", "Acesso ao portal"): DeliverableState.pending},
+        documents={},
+        meetings={"Kickoff": False},
+        pendings={"71": ("Aprovar fluxo", PendingState.open)},
+    )
+    after = notifications.ProjectState(
+        status="completed",
+        health_label="Em atenção",
+        milestones={"Validação de integrações": MilestoneState.done},
+        phases={"Welcome": PhaseState.active, "Prove": PhaseState.active},
+        deliverables={("Welcome", "Acesso ao portal"): DeliverableState.delivered},
+        documents={"41": "Plano de implantação.pdf"},
+        meetings={"Kickoff": True, "Comitê": False},
+        pendings={
+            "71": ("Aprovar fluxo", PendingState.resolved),
+            "72": ("Enviar lista de usuários", PendingState.open),
+        },
+    )
+
+    assert {(change.kind, change.item) for change in notifications.diff(before, after)} == {
+        (NotificationKind.project_status_changed, None),
+        (NotificationKind.phase_advanced, "Prove"),
+        (NotificationKind.milestone_done, "Validação de integrações"),
+        # O nome do entregável e **não** "Acesso ao portal (Welcome)": a fase sai da
+        # âncora quando a jornada escolhe qual delas abrir.
+        (NotificationKind.deliverable_delivered, "Acesso ao portal"),
+        # O título, e não o `external_id` que compõe a chave de dedupe — aquele não
+        # aparece em lugar nenhum da tela.
+        (NotificationKind.document_added, "Plano de implantação.pdf"),
+        (NotificationKind.meeting_scheduled, "Comitê"),
+        (NotificationKind.transcript_ready, "Kickoff"),
+        (NotificationKind.pending_opened, "Enviar lista de usuários"),
+        (NotificationKind.pending_resolved, "Aprovar fluxo"),
+    }
+
+
+def test_the_link_of_a_milestone_points_at_the_milestone() -> None:
+    """A URL literal, encoding incluído — é o que pega um ``quote`` esquecido."""
+    project_id = uuid.UUID("11111111-2222-4333-8444-555555555555")
+
+    assert notifications.deep_link(
+        project_id, NotificationKind.milestone_done, "Validação de integrações"
+    ) == (
+        "/?project=11111111-2222-4333-8444-555555555555&tab=Cronograma"
+        "&item=milestone%3AValida%C3%A7%C3%A3o%20de%20integra%C3%A7%C3%B5es"
+    )
+
+
+def test_a_title_with_ampersand_survives_the_link() -> None:
+    """O rótulo é texto do cliente, e ``&`` em título de documento é comum.
+
+    Sem ``safe=""`` no ``quote`` o ``&`` viraria separador de parâmetro: a tela
+    receberia um ``item`` truncado e um parâmetro extra, e a âncora deixaria de
+    casar sem nada ficar vermelho. Vale igual para ``#``, ``?`` e ``+``.
+    """
+    project_id = uuid.UUID("11111111-2222-4333-8444-555555555555")
+
+    link = notifications.deep_link(
+        project_id, NotificationKind.document_added, "Contrato P&D + anexo?"
+    )
+
+    assert link is not None
+    assert link.endswith("&item=document%3AContrato%20P%26D%20%2B%20anexo%3F")
+    # Um parâmetro a mais seria exatamente o sintoma do escape faltando.
+    assert link.count("&") == 2
+
+
+def _system_session(monkeypatch: pytest.MonkeyPatch, session: Session) -> None:
+    """Faz as tasks do worker rodarem sobre a sessão do teste.
+
+    As duas tasks abrem a **própria** sessão de sistema, e a fixture desta suíte é
+    revertida no fim: sem este desvio a task não enxergaria a linha que o teste
+    acabou de escrever. O que continua sendo exercitado é o corpo real da task —
+    inclusive a construção do ``Change`` e o ``fan_out`` —, que é onde mora o
+    ``item=`` desta fatia; e o papel é o mesmo (``portal_system``), então nem a
+    credencial muda.
+    """
+    monkeypatch.setattr(worker, "get_session", lambda **_: nullcontext(session))
+
+
+def test_the_ai_pending_notice_carries_the_anchor(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pendência que a IA abriu é uma linha da aba, e o link cai nela.
+
+    Origem de ``Change`` que o ``diff`` não cobre: são quatro, e uma guarda dirigida
+    pela fixture do sync só veria uma. Foi o mesmo ponto cego que deixou dez
+    ramificações sem ``link`` até a ADR 0043.
+    """
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=141, client_id=91)
+    )
+    _with_members(db_session, project, "m141")
+    pending = db_session.execute(
+        select(PendingItem).where(PendingItem.project_id == project.id)
+    ).scalars().one()
+
+    _system_session(monkeypatch, db_session)
+    worker.notify_pending_created(str(project.id), str(pending.id))
+
+    links = {item.link for item in _notifications(db_session, project.id)}
+    assert links == {
+        f"/?project={project.id}&tab=Pend%C3%AAncias&item=pending%3AAprovar%20fluxo"
+    }
+
+
+def test_the_comment_notice_carries_the_anchor_of_its_pending(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E o comentário aponta para a pendência comentada, não para a aba."""
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=142, client_id=92)
+    )
+    client_id, _ = _with_members(db_session, project, "m142")
+    pending = db_session.execute(
+        select(PendingItem).where(PendingItem.project_id == project.id)
+    ).scalars().one()
+    comment = PendingItemComment(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        pending_item_id=pending.id,
+        author_user_id=client_id,
+        author_label="Cliente",
+        body="Segue a planilha.",
+    )
+    db_session.add(comment)
+    db_session.flush()
+
+    _system_session(monkeypatch, db_session)
+    worker.notify_pending_comment(str(project.id), str(comment.id))
+
+    links = {item.link for item in _notifications(db_session, project.id)}
+    assert links == {
+        f"/?project={project.id}&tab=Pend%C3%AAncias&item=pending%3AAprovar%20fluxo"
+    }
+
+
+def test_the_comment_notice_falls_back_to_the_tab_when_the_pending_is_gone(
+    db_session: Session
+) -> None:
+    """Sem rótulo, o link do comentário é o da aba — a degradação de sempre.
+
+    O ramo é o ``item.title if item is not None else None`` da task: entre o
+    comentário e a passagem dela, o sync pode ter apagado e recriado a pendência.
+
+    **Provado pelo ``fan_out`` e não pela task**, e a razão é medida: o FK do
+    comentário é ``ON DELETE CASCADE``, então uma pendência que some leva o
+    comentário junto e a task para antes, no ``comment is None``. Encenar o
+    contrário no banco exigiria desligar a integridade referencial para provar uma
+    linha — e é justamente essa a saída que ``AGENTS.md`` não deixa tomar.
+    """
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=143, client_id=93)
+    )
+    _with_members(db_session, project, "m143")
+
+    notifications.fan_out(
+        db_session,
+        project,
+        [
+            notifications.Change(
+                kind=NotificationKind.pending_commented,
+                title="Cliente comentou numa pendência",
+                dedupe_key=f"comment:{uuid.uuid4()}",
+                item=None,
+            )
+        ],
+    )
+
+    links = {item.link for item in _notifications(db_session, project.id)}
+    assert links == {f"/?project={project.id}&tab=Pend%C3%AAncias"}

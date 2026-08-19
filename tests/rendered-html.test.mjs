@@ -439,6 +439,93 @@ test("encerrado e removido juntos mostram o motivo mais forte", async () => {
   }
 });
 
+/**
+ * A linha ancorada, com a classe **e** o atributo no mesmo elemento (ADR 0056).
+ *
+ * Asserção de proximidade e não de presença, e a diferença é o que se prova:
+ * `is-anchored` em algum lugar do documento mais `data-item` em outro qualquer
+ * passaria verde com o destaque na linha errada — que é justamente o desfecho que
+ * esta fatia existe para impedir.
+ */
+function anchoredRow(markup, anchor) {
+  const escaped = anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`<[^>]*class="[^"]*is-anchored[^"]*"[^>]*data-item="${escaped}"`).test(markup);
+}
+
+async function anchored(tab, item) {
+  const response = await render(
+    `/?tab=${encodeURIComponent(tab)}&item=${encodeURIComponent(item)}`,
+    { headers: { cookie: await sessionCookie() } },
+  );
+  assert.equal(response.status, 200);
+  return renderedMarkup(await response.text());
+}
+
+/**
+ * O `?item=` cai na linha, e não só na aba — o critério de aceite (4) da FDD 021.
+ *
+ * Aqui e não só no Python porque "a âncora é alcançável" é afirmação sobre **HTML
+ * renderizado com dados reais**, e só o lado que roda `next start` a produz. Isso
+ * funciona pela mesma razão que faz o `?tab=` funcionar: o `useState(initialTab)`
+ * roda no SSR, então a aba pedida já vem desenhada do servidor.
+ */
+test("o link do aviso destaca a linha do assunto em cada aba ancorável", async () => {
+  const casos = [
+    ["Cronograma", "milestone:Validação de integrações"],
+    ["Documentos", "document:Plano de implantação v3.pdf"],
+    ["Reuniões", "meeting:Comitê de projeto"],
+    ["Pendências", "pending:Renovar o certificado do integrador"],
+    ["Visão geral", "phase:Prove"],
+  ];
+
+  for (const [tab, item] of casos) {
+    const markup = await anchored(tab, item);
+    assert.ok(anchoredRow(markup, item), `sem destaque em ${tab} para ${item}`);
+  }
+});
+
+test("o entregável de uma fase já concluída abre a fase que o contém", async () => {
+  // O painel da jornada só desenha os entregáveis da fase **selecionada**, e o
+  // padrão é a ativa ("Prove"). Sem derivar a fase da âncora, o link de um
+  // `deliverable_delivered` de fase concluída apontaria para um nó fora do DOM:
+  // correto e inalcançável, que é pior do que não ter link.
+  const semAncora = renderedMarkup(
+    await (await render("/", { headers: { cookie: await sessionCookie() } })).text(),
+  );
+  assert.doesNotMatch(semAncora, /Acesso ao portal/, "a fase concluída não abre sozinha");
+
+  const markup = await anchored("Visão geral", "deliverable:Acesso ao portal");
+  assert.ok(anchoredRow(markup, "deliverable:Acesso ao portal"));
+});
+
+test("uma âncora que não existe mais mostra a aba inteira e diz o que houve", async () => {
+  // Sem esta nota a degradação seria invisível: o cliente chega na aba certa e nada
+  // acontece — "cliquei no aviso do marco X e o marco X não está aqui" é a pergunta
+  // que o suporte receberia. É o defeito que a ADR 0033 nomeou.
+  const markup = await anchored("Cronograma", "milestone:não existe");
+
+  assert.match(markup, /O item deste aviso não está mais nesta lista\./);
+  assert.doesNotMatch(markup, /is-anchored/);
+  // E a aba continua inteira: a nota é um aviso, não um estado de erro.
+  assert.match(markup, /Todos os marcos/);
+  assert.match(markup, /Validação de integrações/);
+});
+
+test("o link do aviso atravessa o BFF até o componente que o renderiza", async () => {
+  // A Central de notificações — o único lugar onde `Notification.link` vira `<a>`
+  // — só monta por navegação no cliente, então o HTML do SSR não tem como carregar
+  // aquele `href`; quem o prova ponta a ponta é o e2e. O que **este** lado prova é
+  // o elo anterior, e ele não tinha nenhuma asserção: a fixture trazia `link: null`
+  // nas duas notificações, de modo que aquele ramo era código morto nos testes e um
+  // `link` perdido em `toNotifications` passaria verde.
+  const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+  assert.ok(
+    html.includes("item=milestone%3AValida"),
+    "o link com âncora não chegou às props do componente",
+  );
+});
+
 test("the search route forwards the session and answers from the API", async () => {
   // O campo da lupa prometia "buscar no contexto do projeto" desde a primeira
   // versão da tela, com um `<input>` sem handler nenhum (ADR 0024). O que este

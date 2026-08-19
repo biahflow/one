@@ -21,6 +21,7 @@ Duas armadilhas que o desenho evita de propósito:
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -49,6 +50,8 @@ from portal_api.models import (
     ProjectPhase,
     User,
 )
+
+logger = logging.getLogger(__name__)
 
 # Quem recebe o quê. O cliente recebe tudo — é dele o projeto e é essa a razão de
 # o portal existir. O time interno recebe só o que exige ação dele, porque o
@@ -121,22 +124,131 @@ LINK_TAB: dict[NotificationKind, str] = {
     # e já traz `link` próprio. Uma linha aqui o mandaria para a tela do cliente.
 }
 
+#: O espaço de nomes da âncora, um por lista que a tela desenha (ADR 0056).
+#:
+#: Em inglês porque é identificador de código (`AGENTS.md`); o que vem depois do
+#: `:` é o rótulo em PT-BR que o cliente lê. Existe por uma ambiguidade real e só
+#: uma: a "Visão geral" hospeda **duas** listas — as fases da jornada e os
+#: entregáveis de cada fase —, e um rótulo solto não diria qual delas.
+ANCHOR_PHASE = "phase"
+ANCHOR_DELIVERABLE = "deliverable"
+ANCHOR_MILESTONE = "milestone"
+ANCHOR_DOCUMENT = "document"
+ANCHOR_MEETING = "meeting"
+ANCHOR_PENDING = "pending"
 
-def deep_link(project_id: uuid.UUID, kind: NotificationKind) -> str | None:
+#: Que **linha** daquela tela o aviso abre (FDD 021 critério (4), ADR 0056).
+#:
+#: O ``LINK_TAB`` acima responde "que tela?", que é pergunta **por espécie** e cabe
+#: numa tabela. Esta responde "qual linha?", que é pergunta por **evento** — só quem
+#: comparou os dois estados sabe qual marco ficou pronto —, então aqui mora apenas
+#: metade da resposta: o espaço de nomes. O rótulo chega em ``Change.item``, e é
+#: :func:`deep_link` quem os junta, para o namespace ser escrito uma vez por espécie
+#: e não uma por construção.
+#:
+#: **A âncora é do objeto, não do fato**: ``meeting_scheduled`` e
+#: ``transcript_ready`` falam da mesma reunião, e as três de pendência da mesma
+#: pendência. Espécies diferentes, linha na tela a mesma.
+#:
+#: **E é rótulo, não id** — medido, não deduzido. Só ``PendingOut`` publica ``id``
+#: entre os seis esquemas de lista, e nem ele serviria: ``integrations/biahflow.py``
+#: apaga e recria essas linhas a cada sync, de modo que o uuid de hoje não é o de
+#: amanhã. O link do canal é assíncrono por desenho — entre a emissão e o clique há
+#: sync —, então um link por uuid **nasceria apontando para uma linha que vai deixar
+#: de existir**. É a terceira vez que o repositório decide isso: a busca (ADR 0024)
+#: e as abas (ADR 0043) mandam o rótulo pronto pelo mesmo motivo.
+ITEM_ANCHOR: dict[NotificationKind, str] = {
+    NotificationKind.phase_advanced: ANCHOR_PHASE,
+    NotificationKind.deliverable_delivered: ANCHOR_DELIVERABLE,
+    NotificationKind.milestone_done: ANCHOR_MILESTONE,
+    NotificationKind.document_added: ANCHOR_DOCUMENT,
+    NotificationKind.meeting_scheduled: ANCHOR_MEETING,
+    NotificationKind.transcript_ready: ANCHOR_MEETING,
+    NotificationKind.pending_opened: ANCHOR_PENDING,
+    NotificationKind.pending_resolved: ANCHOR_PENDING,
+    NotificationKind.pending_commented: ANCHOR_PENDING,
+}
+
+#: Quem legitimamente **não** aponta para uma linha, com o motivo escrito.
+#:
+#: Na forma do ``NOT_AN_ALERT`` de ``test_telemetry.py`` e do ``NOT_CONSUMED`` de
+#: ``tests/api-contract.test.mjs``: a isenção existe, e ela é uma frase que alguém
+#: assinou. ``test_item_anchor.py`` cobra as duas direções — construção sem âncora
+#: precisa de linha aqui, e linha aqui precisa de construção sem âncora, senão a
+#: lista vira sedimento (ADR 0033).
+ANCHORLESS: dict[NotificationKind, str] = {
+    NotificationKind.project_status_changed: (
+        "o assunto é o projeto inteiro, e a 'coisa exata' da FDD 021 **é** a Visão "
+        "geral — não há linha a destacar, e inventar uma para satisfazer uma tabela "
+        "seria o defeito. Único caso de cliente legitimamente sem âncora"
+    ),
+    NotificationKind.whatsapp_reply: (
+        "interno. O `LINK_TAB` o manda para Pendências porque é **onde o time "
+        "responde**, não porque a resposta seja uma pendência: a mensagem vive no "
+        "`detail` do próprio aviso e não tem linha correspondente na tela"
+    ),
+    NotificationKind.onboarding_stuck: (
+        "interno, traz `link` explícito para `/admin/funil` e nunca passa por "
+        "`deep_link` — o explícito vence, em `fan_out`"
+    ),
+}
+
+#: Teto de sanidade do link, em caracteres de URL relativa.
+#:
+#: **Não é especificação de fornecedor, e esta fatia não a mediu**: nenhum limite de
+#: caracteres do canal está documentado neste repositório, e citar um número de
+#: provedor sem conferir seria inventar precisão. O que sustenta a escolha é outro
+#: argumento, e esse é verificável: a queda é **monotônica** — sem âncora o link é
+#: exatamente o de hoje, que é a aba —, então errar o teto para baixo custa um
+#: destaque e nunca um link quebrado.
+#:
+#: O número precisa existir porque os títulos são ``String(200)`` e duzentos
+#: caracteres acentuados, percent-encoded, passam de mil — mais longos que a
+#: mensagem que os carrega.
+_MAX_LINK = 512
+
+
+def deep_link(
+    project_id: uuid.UUID, kind: NotificationKind, item: str | None = None
+) -> str | None:
     """A URL relativa que abre o assunto deste aviso. ``None`` quando não há aba.
 
     O projeto entra porque o portal é uma tela só com troca de projeto por
     ``?project=``, e a aba porque a tela navega **por rótulo** desde a Fase 2 — a
     decisão que a busca já tinha tomado (ADR 0024), reusada em vez de duplicada.
 
+    ``item`` é o rótulo cru da linha, e a composição com o espaço de nomes acontece
+    **aqui** por três razões que são todas de vizinhança: quem conhece o projeto,
+    quem conhece o encoding e quem conhece o orçamento de tamanho é este ponto, não
+    as catorze construções de :class:`Change` espalhadas por quatro módulos.
+
     ``None`` é uma resposta legítima e o remetente do canal a respeita: sem aba, não
     há "coisa exata" a abrir, e a FDD 021 proíbe cair na home. O aviso continua no
     sino, que é onde ele sempre esteve.
+
+    **Estourando o teto, a âncora cai — nunca é truncada.** Uma âncora truncada não
+    casa com linha nenhuma, e com a agravante de *parecer* que casou: o cliente
+    chega na aba certa e nada acontece, sem nada ficar vermelho em lugar nenhum. Sem
+    âncora, o link é o de hoje.
     """
     tab = LINK_TAB.get(kind)
     if tab is None:
         return None
-    return f"/?project={project_id}&tab={quote(tab)}"
+    link = f"/?project={project_id}&tab={quote(tab)}"
+
+    namespace = ITEM_ANCHOR.get(kind)
+    if namespace is None or not item:
+        return link
+
+    # `safe=""` porque o rótulo é texto do cliente: `&`, `#`, `?` e `+` aparecem em
+    # título de documento e quebrariam a query string em silêncio.
+    anchored = f"{link}&item={quote(f'{namespace}:{item}', safe='')}"
+    if len(anchored) > _MAX_LINK:
+        # Nunca o rótulo: é texto do cliente, e o log é o lugar onde a regra 5 do
+        # `AGENTS.md` custa mais caro. A espécie basta para saber o que investigar.
+        logger.info("notification.anchor_dropped", extra={"kind": kind.value})
+        return link
+    return anchored
 
 
 @dataclass(frozen=True)
@@ -148,6 +260,16 @@ class Change:
     dedupe_key: str
     detail: str | None = None
     link: str | None = None
+    #: A linha da tela que este fato mudou, **só o rótulo cru** (ADR 0056).
+    #:
+    #: Sem o espaço de nomes de propósito: quem o prefixa é :func:`deep_link`, a
+    #: partir do ``ITEM_ANCHOR``. Assim o namespace é escrito uma vez por espécie e
+    #: não uma vez por construção — e as construções são catorze, em quatro módulos.
+    #:
+    #: Mora no evento e não numa tabela porque **não há tabela possível**: qual
+    #: marco ficou pronto é resposta de quem comparou os dois estados, não da
+    #: espécie do aviso. ``None`` é legítimo e cai na aba, que é o link de hoje.
+    item: str | None = None
 
 
 @dataclass(frozen=True)
@@ -270,6 +392,7 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title=f"Nova fase da jornada: {name}",
                     detail="Você está aqui.",
                     dedupe_key=_key("phase", name, "active"),
+                    item=name,
                 )
             )
 
@@ -281,6 +404,7 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title="Marco concluído",
                     detail=title,
                     dedupe_key=_key("milestone", title, "done"),
+                    item=title,
                 )
             )
 
@@ -293,6 +417,11 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title="Entregável liberado",
                     detail=f"{name} ({phase_name})",
                     dedupe_key=_key("deliverable", phase_name, name, "delivered"),
+                    # Só o nome do entregável — o `phase_name` **não** entra. A tela
+                    # deriva a fase da âncora ao escolher qual delas abrir, e uma
+                    # âncora composta exigiria escapar o separador num rótulo que
+                    # legitimamente contém dois-pontos ("Fase 2: descoberta").
+                    item=name,
                 )
             )
 
@@ -304,6 +433,9 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title="Novo documento no projeto",
                     detail=title,
                     dedupe_key=_key("document", external_id),
+                    # O título, não o `external_id`: a chave de dedupe é do
+                    # Biahflow e não aparece em lugar nenhum da tela.
+                    item=title,
                 )
             )
 
@@ -315,6 +447,7 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title="Reunião agendada",
                     detail=title,
                     dedupe_key=_key("meeting", title),
+                    item=title,
                 )
             )
         if has_transcript and not before.meetings.get(title, False):
@@ -324,6 +457,7 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title="Transcrição disponível",
                     detail=title,
                     dedupe_key=_key("transcript", title),
+                    item=title,
                 )
             )
 
@@ -336,6 +470,7 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title="Nova pendência",
                     detail=title,
                     dedupe_key=_key("pending", external_ref, "opened"),
+                    item=title,
                 )
             )
         elif (
@@ -349,6 +484,7 @@ def diff(before: ProjectState | None, after: ProjectState | None) -> list[Change
                     title="Pendência resolvida",
                     detail=title,
                     dedupe_key=_key("pending", external_ref, "resolved"),
+                    item=title,
                 )
             )
 
@@ -448,7 +584,7 @@ def fan_out(
             "detail": change.detail,
             # O explícito vence: o alerta do funil aponta para `/admin/funil`, que
             # não é aba de cliente e não sairia de `deep_link`.
-            "link": change.link or deep_link(project.id, change.kind),
+            "link": change.link or deep_link(project.id, change.kind, change.item),
             "occurred_at": when,
             "dedupe_key": change.dedupe_key,
         }

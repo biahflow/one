@@ -124,7 +124,13 @@ export const DASHBOARD = {
   },
 };
 
-/** `GET /api/v1/me/notifications` — a caixa do projeto atual (Fase 2, ADR 0012). */
+/** `GET /api/v1/me/notifications` — a caixa do projeto atual (Fase 2, ADR 0012).
+ *
+ *  Os dois `link` eram `null` até a ADR 0056, e nada pegava: o esquema declara
+ *  `string | null`, então o ramo `<a>` da Central — o único controle que o campo
+ *  tem — era **código morto nos testes**. É a mesma classe de defeito que a
+ *  ADR 0043 encontrou no próprio campo, um nível acima. Agora eles trazem o link
+ *  real, com a âncora do item, e batem com o rótulo das listas acima. */
 export const NOTIFICATIONS = {
   unread_count: 2,
   items: [
@@ -133,7 +139,7 @@ export const NOTIFICATIONS = {
       kind: "milestone_done",
       title: "Marco concluído",
       detail: "Validação de integrações",
-      link: null,
+      link: "/?project=11111111-2222-4333-8444-555555555555&tab=Cronograma&item=milestone%3AValida%C3%A7%C3%A3o%20de%20integra%C3%A7%C3%B5es",
       occurred_at: "2026-08-03T12:00:00+00:00",
       read: false,
     },
@@ -142,7 +148,7 @@ export const NOTIFICATIONS = {
       kind: "document_added",
       title: "Novo documento no projeto",
       detail: "Plano de implantação v3.pdf",
-      link: null,
+      link: "/?project=11111111-2222-4333-8444-555555555555&tab=Documentos&item=document%3APlano%20de%20implanta%C3%A7%C3%A3o%20v3.pdf",
       occurred_at: "2026-08-02T09:00:00+00:00",
       read: false,
     },

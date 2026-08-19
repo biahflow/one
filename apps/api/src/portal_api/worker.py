@@ -1146,6 +1146,9 @@ def notify_pending_created(project_id: str, pending_id: str) -> dict[str, int]:
                     title="Pendência aberta pela IA",
                     detail=item.title,
                     dedupe_key=f"pending:portal:{item.id}",
+                    # A pendência que a IA acabou de abrir é uma linha da aba, e o
+                    # link cai nela (ADR 0056).
+                    item=item.title,
                 )
             ],
         )
@@ -1179,6 +1182,10 @@ def notify_pending_comment(project_id: str, comment_id: str) -> dict[str, int]:
                     kind=notifications.NotificationKind.pending_commented,
                     title=f"{comment.author_label} comentou numa pendência",
                     detail=item.title if item is not None else None,
+                    # A pendência já pode ter sumido entre o comentário e esta task:
+                    # sem rótulo a âncora cai e o link vira o da aba, que é a
+                    # degradação de sempre (ADR 0056).
+                    item=item.title if item is not None else None,
                     # Único por comentário: um reenvio da mensagem não repete o
                     # aviso, e dois comentários seguidos não se anulam.
                     dedupe_key=f"comment:{comment.id}",

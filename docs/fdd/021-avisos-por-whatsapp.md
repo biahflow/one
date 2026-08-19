@@ -127,3 +127,25 @@ esquece o segundo passo. O envio desta FDD a consome antes de falar com o proved
 `dedupe_key` que ele passa é o da própria notificação — é o que faz a retentativa sobre
 `whatsapp_sent_at IS NULL` não gastar uma segunda unidade e transformar um provedor fora do ar
 em silêncio permanente.*
+
+**Teto de horário**, que esta FDD não pedia. *Acrescentado em 19/08/2026 (ADR 0055). As
+ADRs 0042 e 0043 o deixaram nomeado e aberto com a mesma frase — "é decisão do remetente, não do
+orçamento, e entra com o canal" —, e ele não entrou com o canal: o teto de frequência conta
+contatos e não sabe que horas são, de modo que três mensagens por semana permitidas continuavam
+sendo três mensagens às três da manhã. A janela é lida no fuso do produto (`America/Sao_Paulo`,
+constante — a ADR 0026 decidiu que fuso não é configurável), atravessa a meia-noite, e início
+igual ao fim a desliga. O aviso **não se perde**: ele não é carimbado, não gasta orçamento e sai
+na varredura seguinte.*
+
+***E a fatia mediu uma coisa que esta FDD não sabia, e que era metade do trabalho:** não havia
+entrada de `beat_schedule` para a task de envio. Ela só rodava no fim de um sync do Biahflow, de
+modo que **adiar não tinha quem voltasse buscar** — num projeto quieto, o "depois" não chegava. A
+mesma lacuna já tornava otimista o que o `alerts.md` dizia sobre a queda do provedor ("a próxima
+passagem do sync tenta de novo"). `send_due_whatsapp_notices` fecha as duas, de quinze em quinze
+minutos, e com ela o critério (5) desta FDD — "com o provedor fora do ar, o aviso continua no sino
+e a falha aparece no estado da integração" — passou a ter retentativa com prazo em vez de
+retentativa condicionada a outra mudança acontecer.*
+
+*Fica aberto: **feriado e fim de semana**, que são calendário e não horário, e o teto de horário
+do **e-mail** do digest, deliberadamente fora — o argumento das duas ADRs é sobre o canal que
+chega no bolso da pessoa.*

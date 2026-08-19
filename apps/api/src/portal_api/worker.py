@@ -136,6 +136,22 @@ if settings.onboarding_alert_enabled:
         "task": "portal_api.alert_stuck_onboarding",
         "schedule": timedelta(seconds=settings.onboarding_alert_interval_seconds),
     }
+# A varredura do canal de WhatsApp (Fase 7, FDD 021). Não se agenda varredura
+# para um canal desligado, na forma das três acima.
+#
+# A condição é a **flag** e não `whatsapp.is_enabled`, que seria a pergunta mais
+# completa: `is_enabled` exige também a credencial, e exigi-la aqui obrigaria a
+# montar o token do fornecedor no **beat** — um contêiner que não fala com
+# fornecedor nenhum. O portal já recusou esse negócio duas vezes (o refresh token
+# do Drive fora do caminho de requisição, a chave de agente irrecuperável depois
+# de emitida), e o que se compra pagando com o segredo é pouco: sem credencial a
+# task devolve zero **antes de tocar o banco**, e a metade que importa —
+# "configurado?" — continua conferida onde a mensagem sai.
+if settings.whatsapp_enabled:
+    celery_app.conf.beat_schedule["whatsapp-due"] = {
+        "task": "portal_api.send_due_whatsapp_notices",
+        "schedule": timedelta(seconds=settings.whatsapp_sweep_interval_seconds),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -901,7 +917,7 @@ def send_whatsapp_notices(project_id: str) -> dict[str, int]:
     """
     current = get_settings()
     if not whatsapp.is_enabled(current):
-        return {"sent": 0, "suppressed": 0, "notifications": 0}
+        return {"sent": 0, "suppressed": 0, "notifications": 0, "deferred": 0}
 
     sent = 0
     suppressed = 0
@@ -914,12 +930,55 @@ def send_whatsapp_notices(project_id: str) -> dict[str, int]:
                     Notification.whatsapp_sent_at.is_(None),
                 )
                 .order_by(Notification.occurred_at)
+                # **Duas passagens não mandam a mesma mensagem duas vezes.** O risco
+                # já existia com dois syncs simultâneos e a varredura o torna
+                # provável em vez de raro: são dois produtores agora. O `claim` do
+                # orçamento não protege disso — ele é idempotente pela chave do
+                # aviso e responde `True` para as duas.
+                #
+                # Dentro do banco, e não em Redis, pelo precedente do
+                # `_claim_drive_sync`: a linha que decide já está sendo lida aqui, e
+                # um lock noutro sistema seria uma segunda verdade sobre ela. Quem
+                # chega depois **pula** em vez de esperar — esperar só faria a
+                # segunda passagem reenviar quando a primeira soltasse.
+                #
+                # O carimbo continua **depois** do envio, de propósito: carimbar
+                # antes mataria a retentativa que a ADR 0043 desenhou para a queda
+                # do fornecedor.
+                .with_for_update(skip_locked=True)
             ).scalars()
         )
         if not pending:
-            return {"sent": 0, "suppressed": 0, "notifications": 0}
+            return {"sent": 0, "suppressed": 0, "notifications": 0, "deferred": 0}
 
-        now = datetime.now(timezone.utc)
+        # Um relógio só para a passagem inteira, e é o mesmo que `contact_budget`
+        # usa: dois relógios sobre um fato só divergem no primeiro que alguém
+        # editar, e aqui divergiriam entre "que horas são" e "que hora foi gasta".
+        now = retention.now()
+
+        # **Adiar não é descartar, e é por isso que esta guarda não carimba.** As
+        # três abaixo carimbam `whatsapp_sent_at` e seguem, porque o que as motiva
+        # é definitivo — consentimento revogado, espécie sem link, teto gasto. O
+        # relógio não: ele não foi gasto, só ainda não chegou. Descartar aqui seria
+        # desligar o canal à noite, que é outra decisão e ninguém a pediu.
+        #
+        # A checagem é **do lote**: o relógio é o mesmo para todos nesta passagem,
+        # então uma linha de log e um retorno — não uma linha por aviso.
+        #
+        # E vem **antes** do `claim`: reservar orçamento para mensagem que não vai
+        # sair agora gasta a unidade na hora errada, e é a unidade que conta a
+        # janela de sete dias.
+        if whatsapp.within_quiet_hours(current, now):
+            logger.info(
+                "whatsapp.deferred_quiet_hours", extra={"notifications": len(pending)}
+            )
+            return {
+                "sent": 0,
+                "suppressed": 0,
+                "notifications": len(pending),
+                "deferred": len(pending),
+            }
+
         for item in pending:
             user = session.get(User, item.user_id)
             if user is None:
@@ -991,7 +1050,78 @@ def send_whatsapp_notices(project_id: str) -> dict[str, int]:
             item.whatsapp_sent_at = now
             sent += 1
 
-    return {"sent": sent, "suppressed": suppressed, "notifications": len(pending)}
+    return {
+        "sent": sent,
+        "suppressed": suppressed,
+        "notifications": len(pending),
+        "deferred": 0,
+    }
+
+
+@celery_app.task(name="portal_api.send_due_whatsapp_notices")
+def send_due_whatsapp_notices() -> dict[str, int]:
+    """O tick que volta buscar o aviso que não saiu (FDD 021).
+
+    **Sem isto a guarda de horário seria um descarte com outro nome.** Até aqui a
+    task de envio só rodava no fim de um sync do Biahflow — não havia entrada de
+    ``beat_schedule`` para ela —, de modo que um aviso adiado dependia de *outra*
+    mudança acontecer naquele projeto para ser tentado de novo. Um projeto quieto
+    nunca mais falaria. De quebra fecha o buraco que já existia e o
+    ``alerts.md`` descrevia otimista: quando o fornecedor recusa, o laço sai sem
+    carimbar e conta com "a próxima passagem do sync", que pode não vir.
+
+    Um projeto por transação, na forma de ``purge_expired_data`` e
+    ``alert_stuck_onboarding``, e **não** o fan-out de ``sync_due_drive_connections``:
+    ali cada projeto fala com um Google que pode demorar minutos numa pasta grande,
+    e aqui o laço de envio já **pausa a passagem** no primeiro erro do fornecedor —
+    o custo de um provedor morto é um timeout por projeto, não a fila inteira.
+    Chamar direto é também o que mantém "a varredura envia" verificável de ponta a
+    ponta, em vez de um teste que afirma só o enfileiramento.
+
+    O ``except`` por projeto é o dos dois vizinhos e pela razão deles: sem ele um
+    erro de banco num projeto derruba o tick e os demais nunca chegam à vez — e,
+    se o erro for persistente, nunca chegariam em tick nenhum.
+    """
+    current = get_settings()
+    if not whatsapp.is_enabled(current):
+        return {"projects": 0, "sent": 0, "deferred": 0}
+
+    with get_session(role=DbRole.system) as session:
+        # Os projetos com alguma coisa a enviar, e só eles. Perguntar ao banco
+        # quais têm pendência é mais barato que varrer todo projeto do produto
+        # para descobrir que quase nenhum tem.
+        due = list(
+            session.execute(
+                select(Notification.project_id)
+                .where(Notification.whatsapp_sent_at.is_(None))
+                .distinct()
+            ).scalars()
+        )
+
+    # **A janela é a mesma para todo mundo, então pergunta-se uma vez por tick.**
+    # É o argumento de "a checagem é do lote" um nível acima: lá o lote é a
+    # passagem de um projeto, aqui é a passagem inteira. A guarda de dentro
+    # continua onde está — ela cobre o caminho do sync, que não passa por aqui —,
+    # mas deixá-la responder sozinha custava caro justamente na madrugada, que é
+    # quando ela responde: uma transação e um `FOR UPDATE` por projeto para
+    # descobrir em cada um a mesma coisa, e a mesma linha de log repetida a cada
+    # quinze minutos pela noite inteira. Uma linha por passagem foi a decisão lá
+    # dentro pelo mesmo motivo que aqui.
+    if whatsapp.within_quiet_hours(current, retention.now()):
+        logger.info("whatsapp.deferred_quiet_hours", extra={"projects": len(due)})
+        return {"projects": len(due), "sent": 0, "deferred": len(due)}
+
+    sent = 0
+    for project_id in due:
+        try:
+            outcome = send_whatsapp_notices(str(project_id))
+        except Exception:
+            logger.exception(
+                "whatsapp.sweep_failed", extra={"project_id": str(project_id)}
+            )
+            continue
+        sent += outcome["sent"]
+    return {"projects": len(due), "sent": sent, "deferred": 0}
 
 
 @celery_app.task(name="portal_api.notify_pending_created")

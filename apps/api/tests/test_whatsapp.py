@@ -14,6 +14,7 @@ fala com fornecedor nenhum, e o que cada teste afirma é sobre **o pedido enviad
 from __future__ import annotations
 
 import json
+import threading
 import uuid
 from collections.abc import Iterator
 from datetime import datetime, timezone
@@ -23,7 +24,7 @@ import pytest
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
-from portal_api import notifications, worker
+from portal_api import notifications, retention, worker
 from portal_api.config import Settings
 from portal_api.integrations import whatsapp
 from portal_api.models import (
@@ -406,3 +407,304 @@ def test_a_200_without_a_message_id_is_a_refusal(
         whatsapp.send_notice(
             _settings(), to="5511987654321", title="Oi", url="https://portal.test/", client=empty
         )
+
+
+# --------------------------------------------------------------------------- #
+# O teto de horário, e quem volta buscar o que ele adiou (FDD 021)
+# --------------------------------------------------------------------------- #
+#
+# As duas metades são uma fatia só de propósito. Uma guarda que adia sem
+# varredura seria descarte com outro nome: até aqui a task de envio só rodava no
+# fim de um sync do Biahflow, e num projeto quieto o "depois" não chegava.
+
+#: 23h30 em São Paulo. Escolhido em **UTC** porque é o que o worker passa, e a
+#: conversão é justamente o que está sob teste.
+_QUIET = datetime(2026, 8, 19, 2, 30, tzinfo=timezone.utc)
+#: 08h30 em São Paulo, o primeiro horário fora da janela padrão.
+_AWAKE = datetime(2026, 8, 19, 11, 30, tzinfo=timezone.utc)
+
+
+def _freeze(monkeypatch: pytest.MonkeyPatch, moment: datetime) -> None:
+    """Congela o relógio da passagem, na forma do ``retention.now`` (ADR 0017).
+
+    Uma indireção só: a task e o ``contact_budget`` leem o mesmo relógio, então
+    congelar um congela os dois — que é a razão de o worker ter deixado de chamar
+    ``datetime.now`` direto nesta fatia.
+    """
+    monkeypatch.setattr(retention, "now", lambda: moment)
+
+
+def test_inside_the_quiet_window_nothing_is_sent_and_nothing_is_stamped(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """É a asserção que distingue **adiar** de descartar.
+
+    As outras três guardas do laço carimbam ``whatsapp_sent_at`` e seguem, porque
+    o que as motiva é definitivo. O relógio não é: ele não foi gasto, só ainda não
+    chegou — e um aviso carimbado aqui nunca mais sairia pelo canal.
+    """
+    with Session(migrated_engine) as session:
+        notification_id = _notify(session, world)
+        session.commit()
+
+    _freeze(monkeypatch, _QUIET)
+    result = _run(monkeypatch, world, _settings())
+
+    assert result["sent"] == 0
+    assert result["deferred"] == 1
+    assert sent.requests == []
+    with Session(migrated_engine) as session:
+        assert session.get(Notification, notification_id).whatsapp_sent_at is None
+
+
+def test_inside_the_quiet_window_the_contact_budget_is_not_spent(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A guarda vem **antes** do ``claim``, e é isso que este teste fixa.
+
+    Reservar orçamento para uma mensagem que não vai sair agora gastaria a unidade
+    na hora errada — e é a unidade que conta a janela de sete dias, de modo que o
+    aviso adiado voltaria de manhã já suprimido pelo teto que ele mesmo consumiu.
+    """
+    with Session(migrated_engine) as session:
+        _notify(session, world)
+        session.commit()
+
+    _freeze(monkeypatch, _QUIET)
+    _run(monkeypatch, world, _settings())
+
+    with Session(migrated_engine) as session:
+        spent = session.execute(
+            select(ContactEvent).where(ContactEvent.user_id == world["user"])
+        ).scalars().all()
+    assert spent == []
+
+
+def test_after_the_quiet_window_the_same_notice_goes_out(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O adiamento tem fim, e o aviso é o mesmo — não um segundo aviso."""
+    with Session(migrated_engine) as session:
+        notification_id = _notify(session, world)
+        session.commit()
+
+    _freeze(monkeypatch, _QUIET)
+    assert _run(monkeypatch, world, _settings())["sent"] == 0
+
+    _freeze(monkeypatch, _AWAKE)
+    assert _run(monkeypatch, world, _settings())["sent"] == 1
+
+    assert len(sent.requests) == 1
+    with Session(migrated_engine) as session:
+        assert session.get(Notification, notification_id).whatsapp_sent_at is not None
+
+
+def test_the_window_is_read_in_the_product_timezone_and_not_in_utc() -> None:
+    """Os dois horários que **invertem** entre São Paulo e UTC.
+
+    Sem eles o teste passaria por acidente sobre uma implementação que ignorasse o
+    fuso: 23h30 e 08h30 em São Paulo caem do mesmo lado da janela em UTC. 06h00 e
+    18h30 não caem — e são os que provam que a conversão acontece.
+    """
+    current = _settings()
+
+    # 06h00 em São Paulo (09h00 UTC): silêncio. Em UTC seria dia claro.
+    assert whatsapp.within_quiet_hours(
+        current, datetime(2026, 8, 19, 9, 0, tzinfo=timezone.utc)
+    )
+    # 18h30 em São Paulo (21h30 UTC): não é silêncio. Em UTC já seria.
+    assert not whatsapp.within_quiet_hours(
+        current, datetime(2026, 8, 19, 21, 30, tzinfo=timezone.utc)
+    )
+
+    # E os dois lados da virada, que é o caso normal da janela e não a exceção.
+    assert whatsapp.within_quiet_hours(current, _QUIET)
+    assert not whatsapp.within_quiet_hours(current, _AWAKE)
+
+
+def test_a_window_that_does_not_cross_midnight_is_read_correctly_too() -> None:
+    """A outra forma da janela, que um ``start <= hour < end`` ingênuo acertaria e
+    a de cima quebraria. As duas precisam estar certas ao mesmo tempo."""
+    current = _settings(contact_quiet_hours_start=2, contact_quiet_hours_end=6)
+
+    # 03h00 em São Paulo (06h00 UTC).
+    assert whatsapp.within_quiet_hours(
+        current, datetime(2026, 8, 19, 6, 0, tzinfo=timezone.utc)
+    )
+    # 07h00 em São Paulo (10h00 UTC).
+    assert not whatsapp.within_quiet_hours(
+        current, datetime(2026, 8, 19, 10, 0, tzinfo=timezone.utc)
+    )
+    # E 23h30, que a janela padrão silencia e esta não.
+    assert not whatsapp.within_quiet_hours(current, _QUIET)
+
+
+def test_a_start_equal_to_the_end_silences_nothing(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """É como um ambiente desliga a janela sem uma terceira setting booleana.
+
+    E o teste é pela task, não pela função pura: desligar a janela tem de sair
+    pelo caminho que envia, senão prova só que a aritmética aceita o caso.
+    """
+    with Session(migrated_engine) as session:
+        _notify(session, world)
+        session.commit()
+
+    _freeze(monkeypatch, _QUIET)
+    result = _run(
+        monkeypatch,
+        world,
+        _settings(contact_quiet_hours_start=21, contact_quiet_hours_end=21),
+    )
+
+    assert result["sent"] == 1
+    assert result["deferred"] == 0
+    assert len(sent.requests) == 1
+
+
+def test_the_sweep_sends_a_pending_notice_without_a_new_sync(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A metade sem a qual a guarda de horário seria um descarte.
+
+    Ninguém chama ``send_whatsapp_notices`` aqui: a varredura descobre sozinha o
+    projeto que tem aviso pendente. Era o que faltava — não havia entrada de
+    ``beat_schedule`` para o canal, e a task só rodava no fim de um sync.
+    """
+    with Session(migrated_engine) as session:
+        notification_id = _notify(session, world)
+        session.commit()
+
+    _freeze(monkeypatch, _AWAKE)
+    settings = _settings()
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    result = worker.send_due_whatsapp_notices()
+
+    assert result["projects"] >= 1
+    # As asserções são sobre **este** aviso e não sobre um total: a varredura é
+    # global por desenho — ela procura em todo projeto com pendência —, e um total
+    # aqui mediria também o que outro teste deixou no banco compartilhado.
+    ours = [
+        body
+        for body in sent.bodies
+        if str(world["project"]) in body["template"]["components"][0]["parameters"][1]["text"]
+    ]
+    assert len(ours) == 1
+    with Session(migrated_engine) as session:
+        assert session.get(Notification, notification_id).whatsapp_sent_at is not None
+
+
+def test_the_sweep_asks_the_clock_once_instead_of_waking_every_project(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A janela é a mesma para todos, e o tick pergunta por todos de uma vez.
+
+    A guarda de dentro sozinha daria a resposta certa e cara: uma transação e um
+    ``FOR UPDATE`` por projeto, de quinze em quinze minutos, para descobrir em
+    cada um que ainda é madrugada — e a mesma linha de log repetida a noite
+    inteira. O que este teste fixa é que **nada é carimbado e nada sai**, e que a
+    contagem devolvida é de projetos, não de avisos.
+    """
+    with Session(migrated_engine) as session:
+        notification_id = _notify(session, world)
+        session.commit()
+
+    _freeze(monkeypatch, _QUIET)
+    settings = _settings()
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    result = worker.send_due_whatsapp_notices()
+
+    assert result["sent"] == 0
+    assert result["deferred"] == result["projects"] >= 1
+    assert sent.requests == []
+    with Session(migrated_engine) as session:
+        assert session.get(Notification, notification_id).whatsapp_sent_at is None
+
+
+def test_a_notice_already_claimed_by_another_pass_is_skipped(
+    migrated_engine: Engine,
+    world: dict,
+    sent: _Capture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Com dois produtores, duas passagens podem pegar o mesmo aviso.
+
+    **O que este teste afirma é o mecanismo, não uma corrida de verdade**: ele
+    segura a linha com um ``FOR UPDATE`` noutra conexão — que é exatamente o
+    estado em que uma passagem concorrente deixa a linha — e verifica que a task
+    **pula** em vez de esperar ou de enviar. Provar a corrida real exigiria duas
+    passagens disputando o mesmo instante, e o que se ganharia é a mesma
+    afirmação com um escalonador no meio.
+
+    O ``join`` com prazo é parte da asserção e não impaciência. Sem
+    ``skip_locked`` a task não envia duas vezes: ela **bloqueia** na linha até a
+    outra soltar — e uma regressão que trava é o pior sinal que este repositório
+    conhece (foi o que segurou o ``web-quality`` por seis horas). Aqui ela vira
+    vermelho com o motivo escrito.
+
+    O ``claim`` do orçamento não cobre isto: ele é idempotente pela chave do aviso
+    e responde ``True`` para as duas passagens — de propósito, para a retentativa
+    não custar uma segunda unidade do teto.
+    """
+    with Session(migrated_engine) as session:
+        notification_id = _notify(session, world)
+        session.commit()
+
+    _freeze(monkeypatch, _AWAKE)
+    settings = _settings()
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+
+    outcome: dict = {}
+
+    def second_pass() -> None:
+        outcome["result"] = worker.send_whatsapp_notices(str(world["project"]))
+
+    passage = threading.Thread(target=second_pass, daemon=True)
+    holder = Session(migrated_engine)
+    try:
+        holder.execute(
+            select(Notification)
+            .where(Notification.id == notification_id)
+            .with_for_update()
+        ).scalars().all()
+
+        passage.start()
+        passage.join(timeout=20)
+        skipped = not passage.is_alive()
+    finally:
+        # Soltar a linha antes de afirmar: se a task tiver ficado bloqueada, é
+        # aqui que ela destrava e termina, em vez de sobrar uma thread presa.
+        holder.rollback()
+        holder.close()
+        passage.join(timeout=20)
+
+    assert skipped, (
+        "a passagem esperou pela linha em vez de pulá-la: o `select` perdeu o "
+        "`skip_locked` e duas passagens agora se enfileiram sobre o mesmo aviso."
+    )
+    assert outcome["result"]["sent"] == 0
+    assert outcome["result"]["notifications"] == 0
+    assert sent.requests == []
+
+    # E o aviso continua pendente: a passagem que o tinha é que vai enviá-lo.
+    with Session(migrated_engine) as session:
+        assert session.get(Notification, notification_id).whatsapp_sent_at is None

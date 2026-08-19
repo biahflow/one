@@ -297,10 +297,19 @@ services:
       WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN:-}
       WHATSAPP_TEMPLATE_NAME: ${WHATSAPP_TEMPLATE_NAME:-portal_aviso}
       WHATSAPP_TEMPLATE_LANGUAGE: ${WHATSAPP_TEMPLATE_LANGUAGE:-pt_BR}
+      # A varredura roda no beat, mas quem executa a task é este serviço — e o
+      # intervalo entra aqui também porque a task é a mesma nos dois caminhos.
+      WHATSAPP_SWEEP_INTERVAL_SECONDS: ${WHATSAPP_SWEEP_INTERVAL_SECONDS:-900}
       # Teto de frequência de contato (ADR 0042), compartilhado por todo canal
       # que sai — hoje o WhatsApp, amanhã a pesquisa da FDD 022.
       CONTACT_WINDOW_DAYS: ${CONTACT_WINDOW_DAYS:-7}
       CONTACT_CAP_PER_WINDOW: ${CONTACT_CAP_PER_WINDOW:-3}
+      # Teto de horário (FDD 021). Quem decide adiar é o **remetente**, e o
+      # remetente é este serviço: o beat não precisa destas duas. Fuso fixo em
+      # America/Sao_Paulo, sem variável — a ADR 0026 decidiu que fuso não é
+      # configurável, e uma variável aqui seria um segundo lugar decidindo isso.
+      CONTACT_QUIET_HOURS_START: ${CONTACT_QUIET_HOURS_START:-21}
+      CONTACT_QUIET_HOURS_END: ${CONTACT_QUIET_HOURS_END:-8}
       # Ingestão dos documentos (ADR 0014): é aqui que o arquivo vira texto,
       # chunk e embedding. Sem VOYAGE_API_KEY o embedder é o offline
       # determinístico, e a stack local indexa sem chave nenhuma.
@@ -366,6 +375,16 @@ services:
       # expurgo é o worker (ADR 0017).
       RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
       RETENTION_INTERVAL_SECONDS: ${RETENTION_INTERVAL_SECONDS:-86400}
+      # A varredura do canal de WhatsApp (FDD 021), pelo mesmo motivo. **Duas
+      # variáveis e não as cinco do canal**, que é o conjunto mínimo para montar
+      # a agenda: a condição da entrada é a flag e o intervalo é o tick. O token
+      # e o phone number id ficariam de fora ainda que a condição fosse
+      # `whatsapp.is_enabled` — não se monta credencial de fornecedor num
+      # contêiner que não fala com fornecedor —, e o template, o segredo do
+      # webhook e o teto de horário são de quem envia e de quem recebe, não de
+      # quem agenda.
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+      WHATSAPP_SWEEP_INTERVAL_SECONDS: ${WHATSAPP_SWEEP_INTERVAL_SECONDS:-900}
     # **Sem healthcheck, de propósito** (ADR 0018). O tick mais curto do beat é
     # de 15 minutos e o mais longo é diário: qualquer sonda barata aqui — o
     # processo existe, o arquivo de agenda existe — responderia "saudável" para

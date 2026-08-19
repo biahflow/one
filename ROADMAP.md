@@ -878,7 +878,8 @@ que ele respeita.
       passam. Falta intervalo mínimo por espécie, que entra junto de `survey_invite`; ficou
       escrito na emenda daquela FDD em vez de virar dívida redescoberta no meio da implementação.
       *O valor padrão não tem medição por trás — a primeira virá do próprio `contact.suppressed`
-      —, e é por isso que ele é setting e não constante de módulo. **Aberto:** teto de horário.*
+      —, e é por isso que ele é setting e não constante de módulo. ~~**Aberto:** teto de
+      horário.~~ *Fechado em 19/08/2026 (ADR 0055).*
 - [x] **Canal de WhatsApp — e o link que não existia** *(RFC 002, FDD 021, ADR 0043)*: aviso
       1:1 por template ao lado do sino e do digest, no ponto de extensão que a ADR 0012 já
       descreve, com opt-in revogável como coluna da pessoa. **Nunca grupo** e **nunca IA**: o
@@ -918,8 +919,35 @@ que ele respeita.
       *A retentativa depois de uma queda do fornecedor **não** gasta uma segunda unidade do
       teto, porque a reserva é pela chave do aviso — sem isso, uma indisponibilidade de minutos
       viraria silêncio permanente naquele canal, e sem rastro. Está em regressão.*
-      **Aberto:** teto de horário, e o link em granularidade de item (hoje cai na aba, a mesma
-      resolução que a busca estabeleceu).
+      **Aberto:** o link em granularidade de item (hoje cai na aba, a mesma
+      resolução que a busca estabeleceu). *O teto de horário, que esta linha também dava como
+      aberto, foi fechado em 19/08/2026 (ADR 0055).*
+- [x] **Teto de horário — e quem volta buscar o que ele adiou** *(FDD 021, ADR 0055)*: a mesma
+      ponta que as ADRs 0042 e 0043 deixaram nomeada com as mesmas palavras — *"é decisão do
+      remetente, não do orçamento, e **entra com o canal**"* — e que não entrou com o canal. O teto
+      que existia conta contatos e não sabe que horas são: três por semana permitidas continuavam
+      sendo três às três da manhã. **E metade da fatia não era o teto**, o que só apareceu ao
+      medir: não havia entrada de `beat_schedule` para a task de envio, que só rodava no fim de um
+      sync do Biahflow — de modo que **adiar não tinha quem voltasse buscar**, e num projeto quieto
+      o "depois" não chegava. Uma guarda de horário sem varredura seria descarte com outro nome, e
+      pior que o descarte honesto, porque ninguém procura o aviso que o documento diz que saiu.
+      Três decisões carregam o resto. A guarda de horário é a **primeira que não carimba**: as três
+      do laço carimbam porque o que as motiva é definitivo, e o relógio não foi gasto, só ainda não
+      chegou. Ela vem **antes** do `claim`, senão o aviso voltaria de manhã já suprimido pelo teto
+      que ele mesmo consumiu de madrugada. E o **fuso é constante** enquanto as **horas são
+      setting**, cada um pelo critério que já existia — o fuso porque a ADR 0026 decidiu que ele
+      não é configurável neste produto, as horas porque não têm medição por trás, que foi o
+      argumento da ADR 0042 para os três contatos por semana. **De quebra, a varredura conserta o
+      que já estava quebrado:** a retentativa depois de uma queda do fornecedor dependia de um sync
+      que podia não vir, e o `alerts.md` afirmava o contrário — a linha foi retificada com nota
+      datada. E, com dois produtores, duas passagens podiam mandar a mesma mensagem duas vezes: o
+      `claim` não protege disso, porque é idempotente pela chave do aviso e responde `True` para as
+      duas de propósito. A resposta é `FOR UPDATE SKIP LOCKED` dentro do banco, pelo precedente da
+      guarda de sobreposição do sync do Drive — e o que a medição mostrou é que **sem ela a
+      regressão não fica vermelha, fica pendurada**, porque a passagem bloqueia em vez de enviar;
+      daí o teste de concorrência ter prazo e afirmar *ter terminado*. *Fica aberto: feriado e fim
+      de semana, que são calendário e não horário, e o teto de horário do e-mail do digest,
+      deliberadamente fora.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já
@@ -930,14 +958,16 @@ que ele respeita.
 
 **Pontas abertas da fase, sem dono e sem prioridade** (seleção é gate humano):
 
-- **Teto de horário de contato.** Declarado aberto nas ADRs 0042 e 0043: o teto que existe é de
-  frequência, e nada nele impede uma mensagem às três da manhã.
 - **O link em granularidade de item.** A ADR 0043 fez o aviso cair na aba certa — a mesma resolução
   que a busca estabeleceu. Cair no item exato é o que o critério (4) da FDD 021 pede por inteiro.
 - **Intervalo mínimo por espécie de mensagem.** Medido na ADR 0042 e escrito na emenda da FDD 022:
   o teto global **não** satisfaz sozinho o critério (2) de lá, porque "um segundo evento na mesma
   semana não gera segundo convite" é afirmação sobre a **espécie** e não sobre o volume — com três
   por semana, dois convites passam. Entra junto de `survey_invite`.
+
+*Fechada, para não ser reaberta por leitura de ADR:* o **teto de horário**, que as ADRs 0042 e
+0043 deixaram aberto e a ADR 0055 entregou em 19/08/2026, junto da varredura sem a qual ele seria
+um descarte. Ler aquelas duas sem esta linha o dá como pendente.
 
 **Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
 compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar

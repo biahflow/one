@@ -24,7 +24,9 @@ import hashlib
 import hmac
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -91,6 +93,42 @@ def is_configured(settings: Settings) -> bool:
 
 def is_enabled(settings: Settings) -> bool:
     return settings.whatsapp_enabled and is_configured(settings)
+
+
+#: O fuso do produto, e ele é **constante** (ADR 0026). Fuso por organização ou por
+#: pessoa foi decidido contra: não há coluna, não há rota, e a tela já formata toda
+#: data nesta zona. Um segundo lugar respondendo "que horas são para esta pessoa"
+#: divergiria do primeiro no dia em que alguém editasse um só — que é o argumento
+#: do ``textfold.py``.
+PRODUCT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+
+
+def within_quiet_hours(settings: Settings, moment: datetime) -> bool:
+    """A hora em que este canal não fala (FDD 021; o teto que a ADR 0042 deixou aberto).
+
+    Mora **aqui** e não em :mod:`portal_api.contact_budget` porque a ADR 0042 já
+    escreveu de quem é a decisão: o orçamento conta contatos, e a hora não é um
+    contato. Um remetente futuro com outra tolerância — a pesquisa da FDD 022, por
+    exemplo — decide a sua sem mexer no teto que os dois compartilham.
+
+    Função pura, na forma de ``build_payload``: o relógio entra por parâmetro, como
+    o dia entra em ``results.py`` e em ``audit.evaluate``. ``moment`` é *aware* em
+    UTC — quem chama é o worker, com o mesmo ``retention.now()`` que o orçamento usa.
+
+    Duas propriedades que o teste fixa, porque as duas já foram escritas errado em
+    algum produto: início igual ao fim **desliga** a janela, e a janela que
+    atravessa a meia-noite (21 → 8) é o caso normal, não a exceção.
+    """
+    start = settings.contact_quiet_hours_start
+    end = settings.contact_quiet_hours_end
+    if start == end:
+        return False
+
+    hour = moment.astimezone(PRODUCT_TIMEZONE).hour
+    if start < end:
+        return start <= hour < end
+    # Atravessa a meia-noite: é silêncio dos dois lados da virada.
+    return hour >= start or hour < end
 
 
 def ensure_configured(settings: Settings) -> None:

@@ -301,6 +301,19 @@ class Settings(BaseSettings):
     whatsapp_template_language: str = "pt_BR"
     #: HMAC do corpo cru no webhook de entrada, na forma do `biahflow_webhook_secret`.
     whatsapp_webhook_secret: str = ""
+    #: De quanto em quanto tempo o beat volta buscar o que ficou para trás.
+    #:
+    #: **A varredura existe porque o canal não tinha quem o acordasse.** Até aqui a
+    #: task de envio só rodava no fim de um sync do Biahflow (``queue_project_digests``),
+    #: de modo que um aviso não enviado — provedor fora do ar, e agora também a janela
+    #: de silêncio — dependia de outra mudança acontecer naquele projeto para ser
+    #: tentado de novo. Adiar sem quem volte buscar é descartar com outro nome.
+    #:
+    #: Quinze minutos pelo argumento do ``drive_sync_interval_seconds``: é o tick mais
+    #: curto do beat, e um aviso que chega quinze minutos depois continua sendo um
+    #: aviso. Mais curto só multiplicaria consulta ao banco sobre uma tabela que na
+    #: maior parte do tempo não tem nada pendente.
+    whatsapp_sweep_interval_seconds: int = 900
 
     # O teto de frequência de contato (Fase 7, FDD 021 e FDD 022, ADR 0042).
     #
@@ -319,6 +332,26 @@ class Settings(BaseSettings):
     #: aviso que continua no sino; errar para cima queima o canal, e canal queimado
     #: não se recupera baixando o teto depois.
     contact_cap_per_window: int = 3
+    #
+    # O teto de **horário**, que as ADRs 0042 e 0043 deixaram nomeado e aberto.
+    #
+    # Setting e não constante pelo mesmo critério do ``contact_cap_per_window``:
+    # não há medição por trás dos números, e o que manda neles é o argumento da
+    # FDD 021 — um canal que alcança o bolso de alguém às três da manhã queima, e
+    # canal queimado não se recupera mudando a hora depois. O **fuso**, ao
+    # contrário, é constante de módulo em ``integrations/whatsapp.py``: a ADR 0026
+    # decidiu que fuso não é configurável neste produto.
+    #
+    # Quem lê estes dois números é o **remetente** e não o orçamento (ADR 0042):
+    # o teto de frequência conta contatos, e a hora não é um contato.
+    #
+    #: Início da janela de silêncio, hora cheia no fuso do produto.
+    contact_quiet_hours_start: int = 21
+    #: Fim da janela. **Valores iguais desligam a janela** — é como um ambiente
+    #: diz "aqui pode a qualquer hora" sem precisar de uma terceira setting
+    #: booleana, que seria um segundo lugar decidindo a mesma coisa. A janela que
+    #: **atravessa a meia-noite** é o caso normal (21 → 8), não a exceção.
+    contact_quiet_hours_end: int = 8
     #
     # **Sem janela de retenção própria**, de propósito: a poda do contato usa a da
     # notificação (`retention_notification_days`, já sobrescritível por organização).

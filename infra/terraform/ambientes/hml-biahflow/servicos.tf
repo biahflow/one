@@ -12,7 +12,7 @@
 locals {
   # **O endereço interno de um serviço do Cloud Run é a URL dele, não o nome dele.**
   # Isto estava errado desde a primeira versão: `API_BASE_URL = "http://portal-api"`
-  # e `API_UPSTREAM = "http://biahflow-api"` supunham um DNS de nome curto que o
+  # e `API_UPSTREAM = "http://cockpit-api"` supunham um DNS de nome curto que o
   # Cloud Run **não tem** — não é Kubernetes, e não existe `portal-api.internal`. A
   # chamada falharia na resolução, e o `INGRESS_TRAFFIC_INTERNAL_ONLY` nem chegaria
   # a ser exercido.
@@ -23,9 +23,9 @@ locals {
   # abaixo — que não depende de recurso nenhum nosso.
   # A lista é literal e curta de propósito: derivá-la de `keys(local.servicos_http)`
   # seria um ciclo, porque é este mapa que alimenta aquele. `portal-api` saiu dela em
-  # 13/08/2026, com o produto; sobrou a `biahflow-api`, que não tem nome público e é
+  # 13/08/2026, com o produto; sobrou a `cockpit-api`, que não tem nome público e é
   # alcançada por dentro da VPC — pelo nginx do SPA e pelo relay do site de marketing.
-  url_interna = { for nome in ["biahflow-api"] :
+  url_interna = { for nome in ["cockpit-api"] :
     nome => "https://${nome}-${local.numero_projeto}.${var.regiao}.run.app"
   }
 
@@ -34,13 +34,13 @@ locals {
   # Os serviços HTTP. `acesso` tem quatro valores e não é um booleano — ver
   # `modulos/servico-cloudrun/`.
   #
-  # A `biahflow-api` usa `interno-sem-iam` desde que a borda da GCP foi apagada. Antes
+  # A `cockpit-api` usa `interno-sem-iam` desde que a borda da GCP foi apagada. Antes
   # era `balanceador`, que aceitava tráfego da VPC **e** do balanceador; sem
   # balanceador, o segundo termo é uma porta aberta para ninguém. Não é `interno`
   # porque nenhum dos dois chamadores sabe assinar: o nginx não emite ID token, e o
   # relay do site autentica por `X-Intake-Token` (`backend/server.py` daquele repo).
   servicos_http = {
-    biahflow-api = {
+    cockpit-api = {
       # As duas imagens deste produto são nossas: o deploy as publica no registro.
       imagem     = null
       argumentos = []
@@ -51,7 +51,7 @@ locals {
       # Zero: em homologação, 1 vCPU + 1 GiB acesos 730h/mês custam mais que todo o
       # resto do ambiente somado, e nada aqui exige processo vivo entre requisições —
       # o cache é o Redis do Upstash (não `LocMemCache`), não há agendador embutido
-      # (quem agenda é o worker pool `biahflow-scheduler`) e o boot só roda
+      # (quem agenda é o worker pool `cockpit-scheduler`) e o boot só roda
       # `check --deploy`, sem migração.
       #
       # O preço é cold start no primeiro acesso. **Quem sente é o site**: o relay de
@@ -62,20 +62,20 @@ locals {
       max     = 4
       dominio = null
       variaveis = {
-        # `biahflow-api` é o nome pelo qual esta API é alcançada **dentro** da VPC, e
+        # `cockpit-api` é o nome pelo qual esta API é alcançada **dentro** da VPC, e
         # sem ele o Django responde 400 a toda chamada do portal — o tropeço já
         # registrado no runbook de integração, onde um `curl` da máquina funcionava
         # porque mandava outro `Host`. O `localhost` é para as sondas do Cloud Run.
         #
         # **Quem exercita cada um mudou de novo em 13/08/2026, e desta vez para trás.**
         # Com a borda da GCP apagada, o caminho do navegador voltou a ser
-        # `Cloudflare → biahflow-web → nginx → aqui`, e o nginx faz `proxy_pass` com
+        # `Cloudflare → cockpit-web → nginx → aqui`, e o nginx faz `proxy_pass` com
         # variável sem `proxy_set_header Host`: ele reescreve o Host para
         # `$proxy_host`, que é o `run.app` — o segundo da lista. O primeiro
         # (`app.<domínio>`) fica porque continua sendo o nome que o navegador digita e
         # o que o Django compara em `CSRF_TRUSTED_ORIGINS`; tirá-lo faria o formulário
         # de login reprovar sem o erro falar de Host.
-        DJANGO_ALLOWED_HOSTS    = "${local.host_biahflow},${local.host_interno["biahflow-api"]},localhost"
+        DJANGO_ALLOWED_HOSTS    = "${local.host_biahflow},${local.host_interno["cockpit-api"]},localhost"
         TRUST_X_FORWARDED_PROTO = "true"
         # As cinco abaixo existem porque o `entrypoint.sh` de lá roda
         # `check --deploy --fail-level WARNING --tag security` antes do gunicorn, e
@@ -168,7 +168,7 @@ locals {
     }
 
 
-    biahflow-web = {
+    cockpit-web = {
       # As duas imagens deste produto são nossas: o deploy as publica no registro.
       imagem     = null
       argumentos = []
@@ -182,7 +182,7 @@ locals {
       variaveis = {
         # **Estas duas ficaram sem cliente e continuam aqui de propósito** (ADR 0048).
         # Desde que a borda roteia `/api|/admin|/static|/healthz|/readyz` de
-        # `app.<base>` direto para a `biahflow-api`, o navegador nunca mais alcança os
+        # `app.<base>` direto para a `cockpit-api`, o navegador nunca mais alcança os
         # blocos `location` do `nginx.conf.template` que as lêem: tirar o `proxy_pass`
         # do caminho era o ponto inteiro da mudança.
         #
@@ -197,7 +197,7 @@ locals {
         # Elas saem no mesmo commit em que `biahflow-portal` apagar aqueles dois
         # `location`. Configuração e leitor morrem juntos, e o leitor mora no outro
         # repositório.
-        API_UPSTREAM = local.url_interna["biahflow-api"]
+        API_UPSTREAM = local.url_interna["cockpit-api"]
         # O nginx do SPA usava `resolver 127.0.0.11`, o DNS do Docker, que não existe
         # aqui. `169.254.169.254` é o servidor de metadados, que resolve nome público.
         DNS_RESOLVER = "169.254.169.254"
@@ -222,8 +222,8 @@ locals {
     # **não tinha casa em HML** — de modo que as três rotinas simplesmente não
     # rodariam, incluindo a que avisa que o backup envelheceu. Um alerta de backup
     # que não roda é pior que nenhum: ele faz o silêncio parecer boa notícia.
-    biahflow-scheduler = {
-      servico = "biahflow-api"
+    cockpit-scheduler = {
+      servico = "cockpit-api"
       comando = ["python", "manage.py", "run_scheduler"]
       # Desligado em homologação (13/08/2026) por custo — 1 vCPU aceso 730h/mês para
       # rotinas que, aqui, rodam sobre dados de teste. **Desligar é diferente de
@@ -244,12 +244,12 @@ locals {
   # existiam em lugar nenhum — um workflow que invoca recurso inexistente falha no
   # primeiro deploy, que é tarde para descobrir.
   trabalhos = {
-    biahflow-migrate = {
-      servico = "biahflow-api"
+    cockpit-migrate = {
+      servico = "cockpit-api"
       comando = ["python", "manage.py", "migrate", "--noinput"]
     }
-    biahflow-check = {
-      servico = "biahflow-api"
+    cockpit-check = {
+      servico = "cockpit-api"
       comando = ["python", "manage.py", "check_integrations", "--all"]
     }
   }

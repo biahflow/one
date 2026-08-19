@@ -116,9 +116,14 @@ variable "repositorios_github" {
   # Em 17/08/2026 os outros dois foram: `dcamppos83/biahflow-portal` virou
   # `biahflow/portal` e `dcamppos83/biahflow-portal-cliente` — este repositório —
   # virou `biahflow/portal-cliente`. Nenhum caminho `dcamppos83` sobrou fora do OikOS.
+  #
+  # Em 19/08/2026 `biahflow/portal` virou `biahflow/cockpit` (ADR 0030 de lá). O
+  # redirect do GitHub cobre clone e push, mas a claim OIDC carrega o nome novo — e o
+  # espelho de `biahflow/infra` já foi aplicado com ele; divergir aqui desfaria aquilo
+  # no próximo apply.
   default = [
     "biahflow/portal-cliente",
-    "biahflow/portal",
+    "biahflow/cockpit",
     "biahflow/site",
     "dcamppos83/OikOS",
     "biahflow/eliseu",
@@ -140,7 +145,7 @@ variable "repositorios_deploy" {
   type        = list(string)
   default = [
     "biahflow/portal-cliente",
-    "biahflow/portal",
+    "biahflow/cockpit",
     "biahflow/site",
     "dcamppos83/OikOS",
     "biahflow/eliseu",

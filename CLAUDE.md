@@ -206,6 +206,15 @@ CI (`.github/workflows/ci.yml`) runs seven gates you should reproduce locally be
   ao lado dela. A isenção é uma linha em `PINNED_BY_EXCEPTION` com motivo em prosa e **sem
   prazo** — pino não caduca por calendário, e quem a vence é a asserção de obsolescência, no
   precedente do `FOUNDATION_WITHOUT_A_LINE` e não no do `advisories.json`.
+- **Mexeu na estrutura, o documento de arquitetura vem junto** (ADR 0064). `test_architecture_doc.py`
+  confere `docs/architecture.md` e `infra/terraform/README.md` contra o repositório, com corpus
+  derivado nas quatro asserções: ambiente é `docker-compose*.yml` mais quem tem `backend.tf`; a
+  fence de estrutura é achada pela **forma do bloco**, o que deixa a nota histórica da prosa fora
+  do alcance da guarda por construção; serviço da tabela de HML é chave lida por indentação de
+  `servicos.tf` — e **não** substring nos `.tf`, que passa verde porque `portal-api` e `keycloak`
+  sobrevivem em comentário. A regra sobre número: **guarde o que tem denominador contável, apague
+  o que tem denominador narrativo** — o "dois ambientes" não virou "três", foi apagado, e as três
+  topologias passaram a ser nomeadas.
 - **Mexeu no prompt, muda a `PROMPT_VERSION`** (ADR 0021). Alterar o `SYSTEM_PROMPT`, o `OUTPUT_SCHEMA` ou a moldura de `build_user_prompt` sem trocar a versão reprova em `test_prompt_version.py`, e **regravar o registro não conserta** — `python -m portal_api.ai.prompt --record` recusa reescrever uma versão já gravada. É o terceiro gate de deriva, ao lado do `alembic check` e do `openapi.json`. Mudança de prompt, recuperador, modelo ou ferramenta também pede eval (`docs/ai/eval-dataset.md`), e a seção adversarial é a que roda contra o respondedor real — com o cliente injetado pelo ponto de costura, **sem chave e sem custo de token**.
 - Web tests assert against **server-rendered HTML** (`tests/rendered-html.test.mjs` boots `next start` and matches strings like the page title and dashboard copy). If you change dashboard text/structure, update these assertions. The second test scans every source file under `app/` and `components/` to guard against reintroducing hardcoded tab data (the Fase 2 regression) and starter leftovers.
 - **A mensagem do log é o nome do evento; o detalhe vai em `extra`** (ADR 0018/0034).

@@ -6,31 +6,47 @@ trabalho de reescrever um diretório em vez de reescrever o produto.
 ```
 ambientes/hml/              ← a fundação: o que é do projeto e não de um produto, mais a borda
 ambientes/hml-biahflow/     ← o portal operacional: serviços, jobs, agendador
-ambientes/hml-portal/       ← o portal do cliente: serviços, job, workers
     <cada um>/servicos.tf   ← camada portátil: o que a aplicação precisa, em termos neutros
     <cada um>/main.tf       ← a costura, e os portões
 modulos/fundacao/           ← como a GCP entrega rede, endereço, registro, segredo, identidade
 modulos/servico-cloudrun/   ← como a GCP entrega "um serviço HTTP"
 modulos/worker-pool/        ← como a GCP entrega "um processo longo sem HTTP"
 modulos/job/                ← como a GCP entrega "um trabalho que começa e termina"
-modulos/borda/              ← como a GCP entrega "este nome, com TLS, aponta para aquele
-                              serviço — e estes caminhos dele, para aquele outro"
 ```
 
 `modulos/maquina-fila/` esteve listado aqui e **nunca existiu** depois da ADR 0045: era a VM que
 os worker pools substituíram, e a linha sobreviveu à remoção do diretório.
 
-**São três states desde a ADR 0051**, um por dono, em prefixos do mesmo bucket. A fundação não
-lê ninguém; cada produto lê **só as saídas** dela, e nunca o outro produto. É o que faz um `apply`
-de um portal não alcançar o outro — e o que forçou cada um a ter a própria DSN, porque dois states
-não podem ambos ser donos de um segredo chamado `DATABASE_URL`.
+*Acrescentado em 20/08/2026 (ADR 0064): e aconteceu de novo, duas vezes, exatamente pelo motivo
+que o parágrafo acima descreve — o desenho listava `ambientes/hml-portal/`, apagado em 13/08 com o
+produto (ADR 0053), e `modulos/borda/`, apagado no mesmo dia quando a borda virou Cloudflare. A
+correção de então foi à mão e não deixou portão, que é a forma da ADR 0034. Agora quem cobra é
+`apps/api/tests/test_architecture_doc.py`: todo caminho desenhado num bloco de estrutura tem de
+existir, com o corpus achado pela **forma** do bloco e não por uma lista de arquivos — e é por
+morar na prosa, fora da fence, que esta linha continua aqui em vez de a guarda exigir que o
+repositório apague o registro do próprio erro.*
+
+**São dois states**, um por dono, em prefixos do mesmo bucket. A fundação não lê ninguém; cada
+produto lê **só as saídas** dela, e nunca o outro produto. É o que faz um `apply` de um portal não
+alcançar o outro — e o que forçou cada um a ter a própria DSN, porque dois states não podem ambos
+ser donos de um segredo chamado `DATABASE_URL`.
+
+Foram **três** entre a ADR 0051 e 13/08/2026, quando o `ambientes/hml-portal/` saiu com o produto
+(ADR 0053). O desenho é o mesmo com dois: a razão dele é a fronteira entre donos, não a
+quantidade.
 
 `servicos.tf` descreve os serviços sem citar GCP: nome, imagem, porta, **quem alcança**, variáveis,
 segredos, quantas instâncias. Trocar de provedor é reescrever `modulos/` e manter aquele arquivo.
 
-"Quem alcança" é `acesso`, com três valores e não um booleano (ADR 0048): `publico`, `interno` e
-`balanceador`. O terceiro existe porque o segundo não serve a um serviço **cujo cliente é o
-navegador** — ver a linha da `biahflow-api` na tabela abaixo.
+"Quem alcança" é `acesso`, com quatro valores e não um booleano (ADR 0048): `publico`, `interno`,
+`interno-sem-iam` e `balanceador`. O `balanceador` existe porque o `interno` não serve a um serviço
+**cujo cliente é o navegador** — ver a linha da `cockpit-api` na tabela abaixo —, e o
+`interno-sem-iam` porque nem todo chamador de dentro da VPC sabe apresentar identidade.
+
+*Corrigido em 20/08/2026 (ADR 0064): este parágrafo dizia "três valores" e nomeava três, enquanto
+o `validation` de `modulos/servico-cloudrun/main.tf` aceita quatro desde a ADR 0048. O quarto,
+`interno-sem-iam`, é justamente o da `cockpit-api`, que é a linha para a qual o parágrafo mandava
+olhar.*
 
 ## Por que as aplicações já são portáteis
 
@@ -47,24 +63,37 @@ Isto foi medido antes de escolher, e é o que sustenta a promessa acima:
 
 | Peça | Onde | Por quê |
 |---|---|---|
-| `web` (BFF Next.js) | Cloud Run, **público** | é o único que o navegador alcança |
-| `portal-api` (FastAPI) | Cloud Run, **ingress interno** + IAM | o `Caddyfile` diz por extenso que a API não é pública: quem fala com ela é o BFF, que sabe apresentar identidade. Publicá-la daria à internet um caminho que o produto não usa |
-| `keycloak` | Cloud Run, público, `KC_PROXY=edge` | TLS termina na borda, e acreditar nisso é opt-in (ADR 0011) |
-| `biahflow-web` (SPA em nginx) | Cloud Run, público | serve o `index.html` e os `assets/` do outro produto em `app.<base>` |
-| `biahflow-api` (Django) | Cloud Run, **ingress de balanceador** | o cliente dela é **o navegador**, e para esse cliente IAM invoker não é barreira: nginx não emite ID token e um NEG sem servidor também não. A `run.app` deixa de ser alcançável de fora e `/api|/admin|/static|/healthz|/readyz` de `app.<base>` chegam pela nossa borda (ADR 0046, ADR 0048) |
-| `worker` + `beat` | **Cloud Run worker pool** | a primitiva feita para carga longa sem HTTP — o container de um worker pool nem tem bloco `ports`. Uma versão anterior deste arquivo os mandava para uma VM, sobre a conclusão errada de que o Cloud Run não os aceitava (ADR 0045) |
+| `cockpit-web` (SPA em nginx) | Cloud Run, **público** | é o único que o navegador alcança direto; serve o `index.html` e os assets em `app.<base>` |
+| `cockpit-api` (Django) | Cloud Run, **`interno-sem-iam`** | o cliente dela é **o navegador**, e para esse cliente IAM invoker não é barreira: nginx não emite ID token e um NEG sem servidor também não. A `run.app` deixa de ser alcançável de fora, e os caminhos de `app.<base>` chegam pela nossa borda (ADR 0046, ADR 0048) |
+| `cockpit-scheduler` | **Cloud Run worker pool** | a primitiva feita para carga longa sem HTTP — o container de um worker pool nem tem bloco `ports`. Uma versão anterior deste arquivo o mandava para uma VM, sobre a conclusão errada de que o Cloud Run não os aceitava (ADR 0045) |
+| `cockpit-migrate`, `cockpit-check` | **Cloud Run job** | começam e terminam: a migração e o `check --deploy` do deploy |
 | Redis | **Upstash**, externo | cobrado por comando, então o `polling_interval` do Celery foi afrouxado para 5s — um worker ocioso a 1s gera ~86 mil comandos/dia sem trabalho nenhum |
 | documentos | Cloud Storage | S3-compatível por HMAC. Resolve de carona um ponto que o `Caddyfile` deixou em aberto: a URL assinada **cobre o host**, e o MinIO não era publicado |
 | Postgres | Neon, externo | ver ADR 0044 — o `roles.sql` foi verificado lá |
-| rede | VPC + **egress direto** + Cloud NAT | a VPC existe por um motivo só: fazer o ingress interno das APIs significar alguma coisa. Vale para as duas — o `INTERNAL_LOAD_BALANCER` da `biahflow-api` é superconjunto do `INTERNAL_ONLY` e é por dentro da VPC que a `portal-api` a alcança. Sem conector — ele é peça paga, e worker pool nem o aceita |
+| rede | VPC + **egress direto** + Cloud NAT | a VPC existe por um motivo só: fazer o ingress interno da API significar alguma coisa — é por dentro dela que o nginx da SPA alcança a `cockpit-api`. Sem conector — ele é peça paga, e worker pool nem o aceita |
+
+*Corrigido em 20/08/2026 (ADR 0064): esta tabela listava `web`, `portal-api`, `keycloak`, `worker`
+e `beat` como peças de HML, e eles saíram em 13/08 com o produto (ADR 0053); e chamava os dois
+serviços que ficaram de `biahflow-web` e `biahflow-api`, nomes que deixaram de existir em 19/08.
+Nenhum dos cinco primeiros estava só errado no papel: a tabela é o que alguém abre para saber o
+que a HML tem. O portão que passou a cobrar isto exige que todo nome citado aqui seja chave de
+algum `servicos.tf` — e a versão ingênua dele, que perguntava se o nome aparecia em algum `.tf`,
+foi **medida e recusada**, porque `portal-api` e `keycloak` sobrevivem em comentários de
+histórico e ela nasceria verde sobre este defeito exato.*
 
 ## O domínio
 
-Ainda não há um. `var.dominio` vazio faz tudo cair em **`nip.io`** sobre o IP de **entrada** do
-balanceador, que dá nome estável o bastante para o OIDC funcionar. Quando o domínio existir, é
-**uma variável**: o `terraform apply` reemite o certificado e refaz as regras de host.
+Há um: a borda é a **Cloudflare** desde 13/08/2026 (ADR 0053), na zona que já era do site de
+marketing, e o nome do produto operacional entra como registro de DNS mais rota de Worker em
+`ambientes/hml/cloudflare.tf`. O TLS termina lá, e é lá que o Zero Trust Access decide quem passa.
 
-Duas coisas que esta seção afirmava e não eram verdade, e que o `modulos/borda/` conserta:
+*Corrigido em 20/08/2026 (ADR 0064): o parágrafo abaixo descrevia a borda **anterior** — o
+balanceador HTTPS global da Google, com `hml-entrada`, certificado gerenciado e `nip.io` — como se
+fosse a de hoje, e apontava para um `modulos/borda/` apagado junto com ela. Fica como registro do
+que se aprendeu ali, e não como descrição do ambiente: as duas correções que ele narra são
+verdadeiras sobre aquela borda.*
+
+Duas coisas que esta seção afirmava e não eram verdade, e que a borda de então consertou:
 
 - **O IP era o de saída**, do Cloud NAT — o endereço por onde o Cloud Run *fala* com o Neon e o
   Upstash, e onde serviço nenhum escuta. O nome resolvia e não respondia, então o login OIDC não
@@ -76,8 +105,9 @@ Duas coisas que esta seção afirmava e não eram verdade, e que o `modulos/bord
   servidor, cujo certificado gerenciado se valida por resolução DNS até o IP — o que o `nip.io`
   satisfaz por construção. O preço é uma regra de encaminhamento global, único custo fixo de HML.
 
-O que **não** é automático na troca: o realm do Keycloak guarda `redirectUris` e o `issuer`, e
-os dois `.env` guardam `KEYCLOAK_ISSUER` e `PORTAL_WEB_URL`. Está no runbook.
+O que **não** era automático na troca, enquanto havia Keycloak aqui: o realm guarda
+`redirectUris` e o `issuer`, e os dois `.env` guardam `KEYCLOAK_ISSUER` e `PORTAL_WEB_URL`. Está
+no runbook, e volta a valer quando o portal do cliente voltar.
 
 ## Os dois portões
 
@@ -108,7 +138,6 @@ cp terraform.tfvars.example terraform.tfvars    # e preencha; nenhum segredo ent
 terraform init && terraform plan
 
 cd ../hml-biahflow && terraform init && terraform plan   # depois cada produto, em qualquer ordem
-cd ../hml-portal   && terraform init && terraform plan
 ```
 
 Os segredos vão para o Secret Manager por fora (`gcloud secrets versions add`), e o Terraform só

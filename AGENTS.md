@@ -56,6 +56,13 @@ listas são a mesma e que toda citação por número resolve.*
   `test_supply_chain_pins.py` reprova quem despinar. Isenção é linha em `PINNED_BY_EXCEPTION`
   com motivo e **sem prazo** — pino não caduca por calendário, e quem a vence é a asserção de
   obsolescência.
+- Apagou um diretório, criou um ambiente ou mudou o que a pilha tem? **O documento de
+  arquitetura vem junto** (ADR 0064): `test_architecture_doc.py` cobra que todo ambiente
+  declarado (`docker-compose*.yml`, `infra/terraform/ambientes/*/` com `backend.tf`) seja nomeado
+  na topologia de `docs/architecture.md`, que todo caminho desenhado num bloco de estrutura
+  exista, que todo serviço nomeado na tabela de HML seja chave de algum `servicos.tf`, e que
+  número escrito case com o contado. **Guarde o número cujo denominador é artefato contável;
+  apague o número cujo denominador é escolha narrativa.**
 
 ## Comandos locais
 

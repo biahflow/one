@@ -1207,6 +1207,31 @@ que ele respeita.
       declarado, não contornado:* digest **congela**, `python:3.13.15-slim` não recebe mais
       patch ao rebuildar, e o descongelamento é `npm run pins -- --update` — um comando que uma
       pessoa roda de propósito, e não o robô que abria vinte PRs por semana.
+- [x] **O documento que não conhecia a nuvem** *(ADR 0064)*: a irmã da ADR 0054 no outro
+      documento. Lá o **índice canônico** não sabia das dez ADRs da implantação (0044–0053) e
+      ganhou portão; aqui quem não sabia era o documento de **arquitetura**, que abria a
+      topologia com *"fisicamente há **dois ambientes**"* e descrevia dois composes — sem conter
+      as palavras `Terraform`, `Cloud Run`, `Cloudflare`, `Neon` nem `Upstash`, e sem saber que
+      o portal tinha saído do ar. O `infra/terraform/README.md` repetia o defeito **no parágrafo
+      que registra tê-lo tido antes**: a linha sobre o `modulos/maquina-fila/` que *"sobreviveu à
+      remoção do diretório"* foi conserto à mão sem portão, e em 13/08 aconteceu de novo duas
+      vezes — `ambientes/hml-portal/` e `modulos/borda/` continuaram desenhados depois de
+      apagados, junto de um `cd ../hml-portal` que **falha**, de dois contadores errados e de uma
+      tabela cujos **seis** serviços nenhum `servicos.tf` declara. Agora quem confere é
+      `test_architecture_doc.py`, com quatro asserções e **corpus derivado em todas**: ambiente é
+      `docker-compose*.yml` mais quem tem `backend.tf`, e a fence de estrutura é achada pela
+      **forma do bloco** — o que faz a nota histórica, que mora na prosa, ficar fora do alcance
+      da guarda por construção, em vez de exigir que o repositório apague o registro do próprio
+      erro. *A regra que a fatia deixa escrita:* **guarde o número cujo denominador é artefato
+      contável; apague o número cujo denominador é escolha narrativa** — o "dois ambientes" não
+      virou "três", foi apagado, e as topologias passaram a ser nomeadas. *E três defeitos que só
+      apareceram por medir:* o casador de crases atravessava a cerca do diagrama e faria (a)
+      reprovar um documento que já nomeava o ambiente; `hml/` nu na fence deixava a guarda
+      **verde**, porque token de um segmento era ignorado e não reprovado; e o `_HISTORICAL_NOTE`
+      do precedente **trunca no negrito**, deixando o número velho dentro do texto que a guarda
+      lê. Mais um braço inteiro **recusado com o número**: a leitura de crases inline rende zero
+      achados únicos e 32 falso-positivos das classes `try/except` e `application/octet-stream`,
+      que é o `.priority` da ADR 0033 comprado de propósito.
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

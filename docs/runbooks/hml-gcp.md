@@ -3,10 +3,11 @@
 > **13/08/2026 — o portal do cliente saiu.** Não existem mais `portal-web`, `portal-api`,
 > `keycloak`, `portal-worker`, `portal-beat` nem `portal-migrate` na GCP, nem o state
 > `ambientes/hml-portal`, nem os vinte segredos que eram deles. O que sobrou de HML é o
-> CRM (`biahflow-*`) e o relay do site de marketing. **Os passos 5, 8 e 9 abaixo tratam
-> de segredos, do realm do Keycloak e do `roles.sql` do banco do portal — são história
-> até alguém religar o produto**, e ficam porque religar é refazê-los. A ADR 0053 conta o
-> resto, inclusive a troca do balanceador da GCP pela Cloudflare.
+> CRM (`cockpit-*`, renomeado de `biahflow-*` em 19/08/2026) e o relay do site de
+> marketing. **Os passos 5, 8 e 9 abaixo tratam de segredos, do realm do Keycloak e do
+> `roles.sql` do banco do portal — são história até alguém religar o produto**, e ficam
+> porque religar é refazê-los. A ADR 0053 conta o resto, inclusive a troca do
+> balanceador da GCP pela Cloudflare.
 
 ADR 0044, 0045, 0046, 0048, 0050, 0051 e 0053. A infraestrutura é definida em `infra/terraform/`, em duas
 camadas: `ambientes/hml/` diz **o quê** e `modulos/` diz **como**. O `README.md` de lá
@@ -100,7 +101,7 @@ terraform init
 terraform apply -target=module.fundacao
 ```
 
-**Só a fundação, e a razão é o passo seguinte** (ADR 0050). O Terraform cria os 29 segredos
+**Só a fundação, e a razão é o passo seguinte** (ADR 0050). O Terraform cria os **dez** segredos
 **sem versão nenhuma**, de propósito — um valor passado por ele ficaria no estado —, e todo
 serviço os monta com `version = "latest"`. O `latest` de um segredo sem versão não existe, e
 a revisão do Cloud Run é **recusada na criação**, não no boot. Aplicar tudo de uma vez aqui
@@ -115,7 +116,7 @@ está vazio; um serviço criado apontando para tag inexistente tem a revisão re
 Vazia, ela significa `imagem_bootstrap` — o `hello` da Google, que existe e sobe —, e o
 serviço passa a existir para o `deploy-hml.yml` poder atualizá-lo.
 
-## 5. Os 29 segredos
+## 5. Os segredos
 
 Criados **vazios** pelo Terraform, de propósito: um valor passado pelo Terraform ficaria
 no estado, que é um arquivo num bucket. O nome do segredo **é** o nome da variável de
@@ -132,11 +133,16 @@ do que acontece ao rotacionar. O que muda é o destino — Secret Manager e não
 que a HML da GCP acrescenta os do outro produto (`DJANGO_SECRET_KEY`, `PORTAL_*`, os três
 `GOOGLE_OAUTH_*`) e os do Keycloak gerenciado (`KC_DB_*`, `KC_BOOTSTRAP_ADMIN_PASSWORD`).
 
-As DSNs do Neon e do Upstash entram em **quatro** segredos, e não em dois: `BIAHFLOW_DATABASE_URL`
-e `BIAHFLOW_REDIS_URL` para este produto, `PORTAL_*` para o outro. Cada aplicação continua lendo
-`DATABASE_URL` e `REDIS_URL` no ambiente — quem faz a ligação é o mapa `segredos` de `servicos.tf`.
-Até 12/08/2026 havia **um** segredo para cada nome, montado nos dois produtos, de modo que a
-`portal-api` e o Django do Biahflow recebiam a mesma DSN sem ninguém ter decidido isso.
+As DSNs do Neon e do Upstash entram em **dois** segredos: `BIAHFLOW_DATABASE_URL` e
+`BIAHFLOW_REDIS_URL`. Cada aplicação continua lendo `DATABASE_URL` e `REDIS_URL` no
+ambiente — quem faz a ligação é o mapa `segredos` de `servicos.tf`.
+
+*Corrigido em 20/08/2026 (ADR 0065). Este parágrafo dizia "entram em **quatro** segredos,
+e não em dois", com `PORTAL_*` para o outro produto: eram quatro porque cada produto tinha
+o seu, e os do portal saíram em 13/08 com ele. O pareamento que a frase existia para
+explicar terminou junto — antes de 12/08/2026 havia **um** segredo para cada nome, montado
+nos dois produtos, de modo que a `portal-api` e o Django do CRM recebiam a mesma DSN sem
+ninguém ter decidido isso.*
 
 > **Um segredo esquecido não reprova no apply.** Os portões de `ambientes/hml/main.tf`
 > pegam segredo referenciado e não criado, e segredo criado sem leitor — nenhum dos dois
@@ -144,9 +150,9 @@ Até 12/08/2026 havia **um** segredo para cada nome, montado nos dois produtos, 
 > por isso o sintoma é um serviço que não sobe, não um plano vermelho. Os três motivos de
 > recusa estão em `deploy.md § Quando a subida é recusada`, e valem igual aqui.
 
-**Um segredo que este ambiente não usa ainda precisa de versão.** Os 29 servem aos dois
-produtos; se você está subindo só um deles, os do outro recebem um valor de marcação. É a
-existência da versão que o Cloud Run cobra, não o conteúdo — ver o passo 4.
+**Um segredo que este ambiente não usa ainda precisa de versão.** Um segredo sem leitor
+hoje recebe um valor de marcação. É a existência da versão que o Cloud Run cobra, não o
+conteúdo — ver o passo 4.
 
 **Acrescentar um segredo depois repete o mesmo par de passos, e pela mesma razão.** O nome
 entra em `variables.tf` e na lista `segredos` do serviço **no mesmo commit** (senão um dos
@@ -154,20 +160,26 @@ portões reprova o plano), mas o `apply` vai em dois: `-target=module.fundacao` 
 segredo, `gcloud secrets versions add` lhe dá versão, e só então o apply completo o monta.
 Foi assim que o `EMAIL_HOST_PASSWORD` entrou.
 
-## 6. O apply completo — e agora são três
+## 6. O apply completo
 
 ```bash
 terraform apply                                   # a fundação: cofre, rede, registro e a borda
 cd ../hml-biahflow && terraform init && terraform apply
-cd ../hml-portal   && terraform init && terraform apply
 ```
 
-**A fundação primeiro, sempre.** Os dois produtos leem as saídas dela por
-`terraform_remote_state`, e um `plan` deles contra uma fundação não aplicada falha dizendo
+**A fundação primeiro, sempre.** O produto lê as saídas dela por
+`terraform_remote_state`, e um `plan` contra uma fundação não aplicada falha dizendo
 que a saída não existe — mensagem que fala de output e não de ordem.
 
-Entre os dois produtos não há ordem: eles não se leem. Um produto que precise de valor do
-outro o deriva do número do projeto, que é data source e não recurso nosso.
+*Corrigido em 20/08/2026 (ADR 0065). Este passo se chamava "e agora são três" e mandava
+`cd ../hml-portal`, diretório que o commit `9e2d61d` apagou em 13/08/2026 — um comando que
+falha com `no such file or directory`, e a ADR 0064 tinha acabado de corrigir a linha
+gêmea no `infra/terraform/README.md` sem alcançar esta. O cardinal saiu em vez de virar
+"dois" pela razão que aquela ADR escreveu: ele era redundante com a fence logo abaixo, e
+quem conta states de verdade é `São dois states`, guardado em `docs/architecture.md` e no
+README daquele diretório. Enquanto houver um produto só, não há ordem entre produtos a
+declarar: um produto que precise de valor do outro o deriva do número do projeto, que é
+data source e não recurso nosso.*
 
 Os serviços sobem **quebrados** neste momento, e isso é esperado: o realm não existe
 (passo 8) e o banco ainda não tem os papéis (passo 9).
@@ -261,8 +273,8 @@ alguém falha em silêncio: ver `auth-failure.md`.
 
 ## 9. O `roles.sql` contra o Neon
 
-Não há Cloud Run Job que faça isto, e as senhas de papel não estão entre os 29 segredos —
-é passo de pessoa, uma vez, com a credencial administrativa do Neon.
+Não há Cloud Run Job que faça isto, e as senhas de papel não estão entre os segredos do
+cofre — é passo de pessoa, uma vez, com a credencial administrativa do Neon.
 
 ```bash
 # O que ele prova: os quatro papéis existem, `portal_system` tem BYPASSRLS e os outros
@@ -282,8 +294,8 @@ Depois dele, as migrações. O `portal-migrate` é executado pelo `deploy-hml.ym
 do outro produto **não são invocados por workflow nenhum** deste repositório:
 
 ```bash
-gcloud run jobs execute biahflow-migrate --region us-east1 --wait
-gcloud run jobs execute biahflow-check   --region us-east1 --wait
+gcloud run jobs execute cockpit-migrate --region us-east1 --wait
+gcloud run jobs execute cockpit-check   --region us-east1 --wait
 ```
 
 ## 10. As allowlists do Neon e do Upstash
@@ -314,7 +326,7 @@ vão pelo `infra-hml.yml` (`workflow_dispatch` com `aplicar=true`).
 O balanceador global da GCP foi apagado com a saída do portal do cliente: ele servia três
 nomes de dois produtos, e com um produto só a conta da ADR 0048 não se sustentava. Quem
 serve `app.biahflow.ai` agora é a Cloudflare — DNS proxied mais uma Origin Rule que
-reescreve o `Host` para a `run.app` da `biahflow-web`. Ver ADR 0053.
+reescreve o `Host` para a `run.app` da `cockpit-web`. Ver ADR 0053.
 
 **Não há mais certificado gerenciado para conferir, nem IP de entrada, nem `url_map`.** As
 seções que ensinavam isso saíram junto; se você chegou aqui procurando por elas, o
@@ -364,9 +376,9 @@ curl -sI https://app.biahflow.ai/ | head -3
 # 2. O 404 do Google, se aparecer, é a Origin Rule não tendo casado: a Cloudflare
 #    entregou o Host original e o Cloud Run não reconheceu o nome.
 #    Confira comparando com a origem crua, que tem de responder 200:
-curl -sI https://biahflow-web-209400815796.us-east1.run.app/ | head -3
+curl -sI https://cockpit-web-209400815796.us-east1.run.app/ | head -3
 
-# 3. A API por dentro. O caminho é Cloudflare → biahflow-web → nginx → biahflow-api,
+# 3. A API por dentro. O caminho é Cloudflare → cockpit-web → nginx → cockpit-api,
 #    e é o nginx quem reescreve o Host para a run.app da API.
 curl -sI https://app.biahflow.ai/healthz | head -3
 ```
@@ -404,41 +416,37 @@ zona) e não há DNS a apontar à mão (o registro é do Terraform).
 Desde 13/08/2026 homologação não tem nada aceso por padrão. Duas coisas diferentes, e a
 diferença é a que mais confunde:
 
-**Serviços HTTP (`min = 0`) acordam sozinhos.** `portal-api`, `portal-web`, `keycloak`,
-`biahflow-api`, `biahflow-web` sobem quando chega requisição. Não há o que fazer — só
-esperar. Tempos medidos em boots reais:
+**Serviços HTTP (`min = 0`) acordam sozinhos.** `cockpit-api` e `cockpit-web` sobem
+quando chega requisição, em segundos. Não há o que fazer — só esperar.
 
-| Serviço | Primeiro acesso depois de ocioso |
-| --- | --- |
-| `keycloak` | **43,6s a 115,7s** (JVM, e roda `start` sem `--optimized`) |
-| APIs Django | segundos |
+**Worker pools (`instancias = 0`) NÃO acordam.** `cockpit-scheduler` está desligado, e
+worker pool não tem requisição que o acorde — ele só volta com um `apply`. Enquanto
+estiver assim, nada agendado do CRM roda: sincronia de calendário, faturas vencidas e
+frescor da base.
 
-Ou seja: **o primeiro login do dia pode levar até dois minutos**. Não é defeito, é a
-escolha registrada em `ambientes/hml-portal/servicos.tf`. Se isso incomodar mais que o
-custo, o caminho é voltar `min = 1` no `keycloak` — ou publicar a imagem otimizada
-(`kc.sh build` + `start --optimized`), que ataca a causa em vez do sintoma.
-
-**Worker pools (`instancias = 0`) NÃO acordam.** `portal-worker`, `portal-beat` e
-`biahflow-scheduler` estão desligados, e worker pool não tem requisição que o acorde —
-ele só volta com um `apply`. Enquanto estiverem assim:
-
-- nada da fila é consumido (scan de documento, ingestão/embeddings, sync do Drive, digest);
-- nada agendado roda: `drive-sync`, `retention-purge`, `erasure-requests`,
-  `onboarding-stuck`, digest diário, sincronia de calendário, faturas vencidas, frescor da
-  base — **e o aviso de backup envelhecido**.
-
-**Antes de testar qualquer coisa que use fila** (upload, ingestão, convite com anexo),
-suba o worker — senão a tarefa entra na fila, nada acontece, e o sintoma não aponta para
-a causa:
+**Antes de testar qualquer coisa que dependa do agendador**, suba-o — senão a tarefa
+simplesmente não acontece, e o sintoma não aponta para a causa:
 
 ```bash
-# em ambientes/hml-portal/servicos.tf, portal-worker: instancias = 1
-cd infra/terraform/ambientes/hml-portal && terraform apply
+# em ambientes/hml-biahflow/servicos.tf, cockpit-scheduler: instancias = 1
+cd infra/terraform/ambientes/hml-biahflow && terraform apply
 ```
 
-O `portal-beat` volta como **1 e nunca mais que isso** — dois agendadores emitem a mesma
-tarefa duas vezes. Em produção os três voltam a 1 por padrão: lá, "um alerta de backup que
-não roda é pior que nenhum" deixa de ser retórica.
+Ele volta como **1 e nunca mais que isso** — dois agendadores emitem a mesma tarefa duas
+vezes.
+
+*Corrigido em 20/08/2026 (ADR 0065). Esta seção descrevia como acordar `portal-api`,
+`portal-web`, `keycloak`, `portal-worker` e `portal-beat`, e mandava aplicar em
+`ambientes/hml-portal/`, apagado em 13/08 junto com aqueles serviços — de modo que o
+único comando executável dela falhava com `no such file or directory`. Também atribuía a
+`ambientes/hml-portal/servicos.tf` a escolha de `min = 0` para o `keycloak`, e com ela a
+frase medida "o primeiro login do dia pode levar até dois minutos" (43,6s a 115,7s de JVM,
+sem `--optimized`): os números foram medidos em boots reais e ficam registrados aqui, mas
+descreviam um serviço que saiu da GCP. A parte da fila do portal — scan de documento,
+ingestão, sync do Drive, digest, `retention-purge`, `erasure-requests`, `onboarding-stuck`
+e o aviso de backup envelhecido — volta com o produto, e o `deploy.md` é onde ela está
+descrita para o compose. Em produção os pools voltam a 1 por padrão: lá, "um alerta de
+backup que não roda é pior que nenhum" deixa de ser retórica.*
 
 ## A borda que dormia, e por que a seção sumiu
 
@@ -525,7 +533,7 @@ ser citado. E leia `is_upstash` — contra o Redis do compose o relatório decla
 **A conta da ADR 0045 está incompleta, e o instrumento existe para mostrar quanto.** Ela
 supõe um comando por ciclo por instância e deixa de fora o gossip/mingle/heartbeat do
 Celery, o result backend (que é o mesmo Redis), os tiques do beat, e o
-`biahflow-scheduler` do outro produto — que aponta para o mesmo Upstash sem nenhuma ADR
+`cockpit-scheduler` do outro produto — que aponta para o mesmo Upstash sem nenhuma ADR
 ter contabilizado os comandos dele. Medido contra o compose ocioso, o total saiu **da
 ordem de quinze vezes** o previsto; ali há duas sondas de healthcheck que HML não tem, e
 o relatório nomeia as duas justamente para ninguém dividir por um fator qualquer e citar
@@ -577,16 +585,16 @@ Nomeado para não ser confundido com feito:
 
   ```bash
   SHA=$(git -C ../biahflow-portal rev-parse HEAD)
-  gcloud beta run worker-pools update biahflow-scheduler \
-    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/biahflow-api:$SHA" --region us-east1 --quiet
-  gcloud run jobs update biahflow-check \
-    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/biahflow-api:$SHA" --region us-east1 --quiet
-  gcloud run jobs execute biahflow-check --region us-east1 --wait
+  gcloud beta run worker-pools update cockpit-scheduler \
+    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/cockpit-api:$SHA" --region us-east1 --quiet
+  gcloud run jobs update cockpit-check \
+    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/cockpit-api:$SHA" --region us-east1 --quiet
+  gcloud run jobs execute cockpit-check --region us-east1 --wait
   ```
 - **O restore contra o Neon.** O `restore.sh` sabe descrever um alvo gerenciado desde a
   ADR 0048 e **não foi exercitado** contra um. Ver `backup-restore.md § Contra um Postgres
   gerenciado`.
-- **A segunda barreira da `biahflow-api`.** O que a ADR 0048 entrega é ingress mais
+- **A segunda barreira da `cockpit-api`.** O que a ADR 0048 entrega é ingress mais
   roteamento — a `run.app` deixou de ser alcançável de fora e a borda é nossa. Não é IAM,
   e não é Cloud Armor; está declarado lá com essas palavras.
 - **As três frentes públicas continuam com a `run.app` alcançável.** Fechá-las é uma linha

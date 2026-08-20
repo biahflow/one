@@ -1232,6 +1232,38 @@ que ele respeita.
       lê. Mais um braço inteiro **recusado com o número**: a leitura de crases inline rende zero
       achados únicos e 32 falso-positivos das classes `try/except` e `application/octet-stream`,
       que é o `.priority` da ADR 0033 comprado de propósito.
+- [x] **O nome que a borda não soube que mudou** *(ADR 0065)*: a continuação da linha
+      acima, e a primeira vez que uma dessas guardas acha defeito que **não é de
+      documento**. A ADR 0064 corrigiu `cd ../hml-portal` no `infra/terraform/README.md`
+      e chamou a linha de *"uma instrução que **falha**"* — e o mesmo comando sobreviveu
+      em `docs/runbooks/hml-gcp.md`, porque o corpus de (b) são as fences de **estrutura**
+      e um runbook não desenha diretório, navega até ele. Aquela ADR já tinha escrito a
+      ponta: *"fica aberto o alcance de (b)"*. **Perseguindo isso apareceu a borda.** Em
+      19/08 os serviços do CRM viraram `cockpit-*` (`b4e0471`, *"registra o que já está na
+      nuvem"*), o rename tocou **um arquivo só**, e `ambientes/hml/cloudflare.tf:47`
+      continuava montando a origem da Cloudflare como `biahflow-web-<número>.run.app` —
+      nome que nenhum `servicos.tf` declara — com o registro DNS e o template do worker
+      saindo daquela `local`. O commit de acerto seguinte (`6a0e45f`) alinhou **outro**
+      espelho e não passou por ali, e a mensagem dele nomeia o modo de falha: *"divergir
+      faz os dois states se desfazerem em turnos"*. Agora há duas asserções novas em
+      `test_architecture_doc.py` — o arquivo **não** foi renomeado, porque seis documentos
+      o nomeiam e renomeá-lo criaria de uma vez seis referências obsoletas, que é a classe
+      de defeito que a fatia fecha. *O sinal que dispensa allowlist é estrutural:* o
+      primeiro segmento de um hostname `run.app` é um serviço por construção da URL, e o
+      argumento de `gcloud run <espécie> <verbo>` é posicional — uma regra, duas espécies
+      de arquivo. **Nasceu vermelha com doze achados e zero falso-positivo**, e das sete
+      referências a serviço que existem no repositório inteiro, **as sete estavam
+      erradas**. *E três defeitos da própria guarda só apareceram por rodá-la:* o escopo
+      era o arquivo e tinha de ser a fence (uma fence de `gcloud` herdava o escopo de
+      outra e reprovava `git -C ../biahflow-portal`), o casador de `../` disparava nas
+      **reticências** de `POST .../clients/<id>`, e sem exigir fence ```` ```bash ```` a
+      guarda cobrava que a **ADR 0064 fosse apagada** — a seção Medição dela cita a saída
+      literal do próprio vermelho. *Mais um ramo acrescentado e retirado de propósito:* a
+      prosa dizia "29" em algarismo e o parser só conhecia numeral por extenso; a saída
+      foi corrigir a prosa para "dez" e deixar o parser fail-closed, porque ramo que
+      nenhuma frase percorre é ramo que ninguém testa. **O `apply` não foi rodado — o
+      `plan` não pôde nem ser gerado**, porque o backend GCS pede reauth, e autenticar é
+      ato de pessoa.
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

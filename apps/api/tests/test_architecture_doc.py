@@ -96,6 +96,17 @@ ACCESS_VALIDATION = (
     REPO_ROOT / "infra" / "terraform" / "modulos" / "servico-cloudrun" / "main.tf"
 )
 
+#: O runbook da implantação na GCP. Entra no corpus de (c) e é o documento que as duas
+#: asserções novas encontraram vermelho — ver o docstring do módulo.
+RUNBOOK_HML = REPO_ROOT / "docs" / "runbooks" / "hml-gcp.md"
+
+#: Onde mora o mapa `segredos`, que é o denominador de dois números do runbook.
+SECRETS_VARIABLE = ENVIRONMENTS / "hml" / "variables.tf"
+
+#: As superfícies de HCL que constroem nome de serviço. `.tftpl` entra junto porque o
+#: worker da borda é um template: o nome atravessa para dentro dele por interpolação.
+HCL_GLOBS = ("infra/**/*.tf", "infra/**/*.tftpl")
+
 #: Diretórios que não são deste repositório, no mesmo recorte do
 #: `test_supply_chain_pins.py`: varrer o `node_modules` faria o corpus de (b) depender
 #: de quem instalou o quê.
@@ -143,6 +154,48 @@ _HISTORICAL_NOTE = re.compile(
 #: texto: medido na própria seção de topologia, onde o diagrama ASCII fazia
 #: `infra/terraform/ambientes/hml/` sair como `ambientes"`.
 _FENCED = re.compile(r"^```[\s\S]*?^```", re.MULTILINE)
+
+#: Um bloco cercado **etiquetado `bash`**, que é a forma de "comandos que alguém roda".
+#:
+#: A etiqueta não é zelo de estilo, é o que mantém duas classes inteiras fora do
+#: alcance por construção, e as duas foram medidas. A primeira é a **seção Medição de
+#: uma ADR**: a 0064 cita a saída literal do próprio vermelho, que nomeia
+#: `ambientes/hml-portal` — sem a etiqueta, esta guarda cobraria que o repositório
+#: apagasse o registro do próprio erro, que é o que a ADR 0034 recusa. Aquele bloco é
+#: ```text, e some daqui sem allowlist nenhuma. A segunda é a **prosa que cita um
+#: comando**: `gcloud run services update` aparece no meio de três frases, e o casador
+#: posicional tomava a palavra seguinte (`falha`, `que`) por nome de serviço.
+_BASH_FENCE_OPEN = re.compile(r"^\s*```(\w*)")
+
+#: Um ambiente do Terraform nomeado por caminho qualificado. Não precisa de escopo:
+#: `ambientes/<nome>` só significa uma coisa neste repositório.
+_ENVIRONMENT_QUALIFIED = re.compile(r"ambientes/([a-z][a-z0-9-]*)")
+
+#: E nomeado como irmão, que é a forma que o runbook usa depois de já ter entrado no
+#: diretório (`cd ../hml-portal`). Este **precisa** de escopo, porque `../<nome>` no
+#: geral é sobre qualquer coisa: só vale dentro de fence que fale de `terraform`. Foi
+#: medido — sem o escopo, `cd ../biahflow-portal` do `integracao-biahflow.md`, que é
+#: um repositório irmão e não um ambiente, entra como falso-vermelho duas vezes.
+_ENVIRONMENT_SIBLING = re.compile(r"(?<!\.)\.\./([a-z][a-z0-9-]*)")
+
+#: O nome de serviço dentro de um hostname do Cloud Run. **O `run.app` é o sinal
+#: estrutural**, e é o que dispensa saber o que "tem forma de nome de serviço": o
+#: primeiro segmento de `<serviço>-<número>.<região>.run.app` é um serviço por
+#: construção da própria URL. Vale igual no HCL que a monta por interpolação e no
+#: `curl` que a escreve com o número literal — uma regra, duas espécies de arquivo.
+_RUN_APP_HOST = re.compile(r"([a-z][a-z0-9-]*?)-(?:\$\{[^}]*\}|\d+)\.[^\s\"'/]*run\.app")
+
+#: E o nome na posição de argumento de um comando `gcloud run`. Posicional, logo
+#: preciso: o nome vem depois do verbo, e o verbo depois da espécie de recurso.
+_GCLOUD_SERVICE = re.compile(
+    r"gcloud\s+(?:beta\s+)?run\s+(?:services|jobs|worker-pools)\s+\S+\s+([a-z][a-z0-9-]*)"
+)
+
+#: Comentário de HCL, retirado antes de qualquer casamento. É o mesmo recorte que o
+#: `_service_keys` já fazia por indentação, e pelo mesmo motivo medido na ADR 0064:
+#: `portal-api` e `keycloak` sobrevivem em comentário de histórico, e perguntar sem
+#: retirá-los deixa a guarda verde sobre exatamente o defeito que ela procura.
+_HCL_COMMENT = re.compile(r"#.*$", re.MULTILINE)
 
 #: Numeral por extenso → inteiro. É **detalhe de parser e não corpus**, no precedente
 #: explícito da tabela de flags do `docker run` (ADR 0063): envelhece com a língua
@@ -384,9 +437,85 @@ def _deployment_environments() -> dict[str, str]:
     return found
 
 
+def _bash_fences(text: str) -> list[list[tuple[int, str]]]:
+    """Os blocos cercados etiquetados `bash`, **um bloco por item**.
+
+    Devolve `(número da linha, linha)` porque as asserções precisam apontar o sítio, e
+    devolve **separado por bloco** porque o escopo de `../<nome>` é a fence e não o
+    arquivo. Isso foi medido: a primeira versão juntava as linhas do arquivo inteiro
+    antes de perguntar se ali se falava de `terraform`, e com isso o
+    `git -C ../biahflow-portal` de uma fence de `gcloud` herdava o escopo de outra
+    fence e entrava como falso-vermelho. O corpus de um predicado é o bloco em que
+    ele vale.
+    """
+    fences: list[list[tuple[int, str]]] = []
+    current: list[tuple[int, str]] = []
+    inside = False
+    language = ""
+    for number, line in enumerate(text.splitlines(), 1):
+        found = _BASH_FENCE_OPEN.match(line)
+        if found:
+            if inside:
+                if language == "bash":
+                    fences.append(current)
+                current = []
+            else:
+                language = found.group(1)
+            inside = not inside
+            continue
+        if inside and language == "bash":
+            current.append((number, line))
+    return fences
+
+
+def _declared_environment_names() -> set[str]:
+    """Os nomes dos ambientes do Terraform — o mesmo marcador de (a), o `backend.tf`.
+
+    Nome e não caminho, e aqui isso é correto ao contrário de (a): lá o documento
+    escreve o caminho inteiro e casar por basename daria falso-verde; aqui o comando
+    escreve `cd ../hml-portal`, onde o nome é tudo o que existe.
+    """
+    return {
+        Path(name).parent.name
+        for name in _files(ENVIRONMENTS, f"*/{ENVIRONMENT_MARKER}", "ambientes do Terraform")
+    }
+
+
+def _declared_service_names() -> set[str]:
+    """Todo serviço que algum `servicos.tf` declara, por indentação e sem comentário."""
+    return {
+        key
+        for text in _files(ENVIRONMENTS, SERVICES_GLOB, "serviços do Terraform").values()
+        for key in _service_keys(text)
+    }
+
+
+def _secret_keys(variables: str) -> list[str]:
+    """As chaves do mapa `segredos`, lidas do `default` do `variable`.
+
+    Do `default` porque ele **é** o conjunto: nenhum `terraform.tfvars` deste
+    repositório sobrescreve `segredos`, de modo que o que está aqui é o que o
+    Terraform cria. Fail-closed como o `_access_values`: se o bloco deixar de ser
+    encontrado, a guarda reprova em vez de contar zero e concluir que a prosa mente.
+    """
+    without_comments = _HCL_COMMENT.sub("", variables)
+    found = re.findall(
+        r'variable\s+"segredos"\s*\{[\s\S]*?default\s*=\s*\{([\s\S]*?)\n\s*\}',
+        without_comments,
+    )
+    assert len(found) == 1, (
+        'esperava exatamente um `variable "segredos"` com bloco `default` em '
+        f"`{SECRETS_VARIABLE.relative_to(REPO_ROOT)}`, e encontrei {len(found)}. "
+        "Aquele mapa é o único denominador de quantos segredos o Terraform cria; sem "
+        "ele os números do runbook não têm contra o que ser conferidos."
+    )
+    return re.findall(r"^\s+([A-Z][A-Z0-9_]*)\s*=", found[0], re.MULTILINE)
+
+
 def _counts() -> dict[str, int]:
     """Os denominadores: o que cada número da prosa afirma, contado na fonte."""
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    secrets = _secret_keys(SECRETS_VARIABLE.read_text(encoding="utf-8"))
     return {
         "serviços do compose local": len(_service_blocks(compose)),
         "serviços que publicam porta no host": len(_services_publishing_ports(compose)),
@@ -397,6 +526,8 @@ def _counts() -> dict[str, int]:
         "valores de `acesso`": len(
             _access_values(ACCESS_VALIDATION.read_text(encoding="utf-8"))
         ),
+        "segredos do Terraform": len(secrets),
+        "segredos que carregam DSN": len([k for k in secrets if k.endswith("_URL")]),
     }
 
 
@@ -419,6 +550,10 @@ COUNTED_IN_PROSE: tuple[tuple[Path, re.Pattern[str], str], ...] = (
      "states do Terraform"),
     (INFRA_README, re.compile(r"`acesso`, com \*{0,2}(\w+)\*{0,2} valores"),
      "valores de `acesso`"),
+    (RUNBOOK_HML, re.compile(r"O Terraform cria os \*{0,2}(\w+)\*{0,2} segredos"),
+     "segredos do Terraform"),
+    (RUNBOOK_HML, re.compile(r"entram em \*{0,2}(\w+)\*{0,2} segredos"),
+     "segredos que carregam DSN"),
 )
 
 #: Os documentos que descrevem a estrutura do repositório em prosa, e portanto os que
@@ -603,4 +738,102 @@ def test_the_topology_allowlist_does_not_keep_a_line_that_stopped_being_needed()
         + ". Apague-as. A isenção não tem prazo de propósito — ambiente não caduca "
         "por calendário —, então esta asserção é o único vencimento que ela tem "
         "(ADR 0064)."
+    )
+
+
+def test_every_terraform_environment_a_command_names_is_declared() -> None:
+    """Um comando não manda entrar num ambiente que não existe (ADR 0065).
+
+    É o alcance que a ADR 0064 deixou aberto com todas as letras. Aquela fatia
+    corrigiu `cd ../hml-portal` no `infra/terraform/README.md` e chamou a linha de
+    *"uma instrução que **falha**"* — e o mesmo comando sobreviveu no
+    `docs/runbooks/hml-gcp.md`, porque o corpus de (b) são as fences de **estrutura** e
+    um runbook não desenha diretório, ele navega até ele.
+
+    **Isto não é o braço de crases inline que aquela ADR recusou.** Aquele lia todo
+    token entre crases e rendia zero achados únicos com 32 falso-positivos das classes
+    `try/except` e `application/octet-stream`. Este pergunta uma coisa só — o nome de
+    um ambiente do Terraform —, e sobre as duas formas em que ele aparece: qualificado
+    por `ambientes/`, que não precisa de escopo, e como irmão (`../<nome>`), que
+    precisa e o tem.
+
+    **A prosa fica fora, e foi medida.** `hml-portal` aparece corretamente em sete
+    lugares de prosa — `ROADMAP.md`, `docs/architecture.md`, o próprio cabeçalho deste
+    runbook — todos registrando que o ambiente **saiu** em 13/08/2026. Alargar para a
+    prosa cobraria que o repositório apagasse o registro do próprio erro, que é o
+    mesmo limite que a ADR 0064 impôs a (b) e a ADR 0034 à guarda de eventos.
+    """
+    declared = _declared_environment_names()
+    named: list[str] = []
+    for name, text in _files(REPO_ROOT, STRUCTURE_DOCS_GLOB, "documentos deste repositório").items():
+        for fence in _bash_fences(text):
+            scoped = "terraform" in "\n".join(line for _, line in fence).lower()
+            for number, line in fence:
+                found = list(_ENVIRONMENT_QUALIFIED.findall(line))
+                if scoped:
+                    found += _ENVIRONMENT_SIBLING.findall(line)
+                named += [
+                    f"{name}:{number} manda usar `{env}`"
+                    for env in dict.fromkeys(found)
+                    if env not in declared
+                ]
+
+    assert named == [], (
+        "estes comandos nomeiam um ambiente do Terraform que este repositório não "
+        "declara: " + "; ".join(named) + ". Um `terraform apply` ali falha com "
+        "`no such file or directory`, e um procedimento que falha é pior que um "
+        "procedimento ausente — quem o segue conclui que errou. Corrija o comando, "
+        "ou mova a menção para a prosa se ela for registro histórico (ADR 0065)."
+    )
+
+
+def test_every_service_name_the_repository_builds_or_invokes_is_declared() -> None:
+    """O nome que a borda monta e o que o runbook invoca são o mesmo que o Terraform declara.
+
+    Esta é a asserção que achou o defeito que **não é de documento**. Em 19/08/2026 os
+    serviços do CRM foram renomeados de `biahflow-*` para `cockpit-*` (`b4e0471`, cuja
+    mensagem diz *"registra o que já está na nuvem"*), e o commit tocou **um arquivo
+    só**: `ambientes/hml-biahflow/servicos.tf`. Sobrou
+    `ambientes/hml/cloudflare.tf`, que monta a origem da Cloudflare como
+    `biahflow-web-<número>.<região>.run.app` — nome que nenhum `servicos.tf` declara
+    desde então — e daquela `local` saem o registro DNS e o template do worker da
+    borda. O commit de acerto seguinte (`6a0e45f`) alinhou **outro** espelho e não
+    passou por aqui; a mensagem dele nomeia este modo de falha por extenso.
+
+    **Direção pendurada, como (d):** um serviço declarado que ninguém nomeia passa
+    despercebido, e continua sendo julgamento e não contagem. O que se cobra é o
+    inverso — quem nomeia, nomeia o que existe.
+
+    **Duas formas, um predicado.** O sinal de "isto é um nome de serviço" é estrutural
+    nas duas: o primeiro segmento de um hostname `run.app` é um serviço por construção
+    da URL, e o argumento posicional de `gcloud run <espécie> <verbo>` também. Não há
+    "forma de nome de serviço" a adivinhar, que é o que dispensa allowlist.
+    """
+    declared = _declared_service_names()
+    named: list[str] = []
+
+    for glob in HCL_GLOBS:
+        for name, text in _files(REPO_ROOT, glob, f"HCL em `{glob}`").items():
+            for number, line in enumerate(_HCL_COMMENT.sub("", text).splitlines(), 1):
+                named += [
+                    f"{name}:{number} constrói `{service}`"
+                    for service in dict.fromkeys(_RUN_APP_HOST.findall(line))
+                    if service not in declared
+                ]
+
+    for name, text in _files(REPO_ROOT, STRUCTURE_DOCS_GLOB, "documentos deste repositório").items():
+        for number, line in [line for fence in _bash_fences(text) for line in fence]:
+            found = _RUN_APP_HOST.findall(line) + _GCLOUD_SERVICE.findall(line)
+            named += [
+                f"{name}:{number} invoca `{service}`"
+                for service in dict.fromkeys(found)
+                if service not in declared
+            ]
+
+    assert named == [], (
+        "estes sítios nomeiam um serviço do Cloud Run que nenhum `servicos.tf` "
+        "declara: " + "; ".join(named) + ". Um nome que o Terraform deixou de "
+        "declarar não existe na nuvem: no HCL isso aponta a borda para uma origem "
+        "morta, e no runbook é um comando que falha dizendo que o recurso não existe "
+        "(ADR 0065)."
     )

@@ -56,6 +56,14 @@ listas são a mesma e que toda citação por número resolve.*
   `test_supply_chain_pins.py` reprova quem despinar. Isenção é linha em `PINNED_BY_EXCEPTION`
   com motivo e **sem prazo** — pino não caduca por calendário, e quem a vence é a asserção de
   obsolescência.
+- Escreveu migração? **Ela é aditiva, e cita a decisão** (ADR 0066). `test_migration_rules.py`
+  lê o AST do `upgrade()` — e só dele, porque `downgrade()` é destrutivo por definição — e
+  reprova o que apaga dado (`drop_table`, `drop_column`, `DROP TABLE/COLUMN`, `TRUNCATE`);
+  `DROP INDEX`, `DROP TYPE`, `DROP POLICY` e `DROP DEFAULT` passam, porque mudam regime e não
+  linhas. Migração que toca policy, RLS ou privilégio cita ADR ou RFC **que existe e não foi
+  recusada**, que é a regra 4 na parte em que o gatilho é estrutural. Isenção é linha em
+  `ADDITIVE_BY_EXCEPTION` com motivo e sem prazo. O `alembic check` **não** cobre isto: ele
+  existe contra deriva, não contra perda.
 - Apagou um diretório, criou um ambiente ou mudou o que a pilha tem? **O documento de
   arquitetura vem junto** (ADR 0064): `test_architecture_doc.py` cobra que todo ambiente
   declarado (`docker-compose*.yml`, `infra/terraform/ambientes/*/` com `backend.tf`) seja nomeado

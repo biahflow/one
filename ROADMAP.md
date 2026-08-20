@@ -1264,6 +1264,35 @@ que ele respeita.
       nenhuma frase percorre é ramo que ninguém testa. **O `apply` não foi rodado — o
       `plan` não pôde nem ser gerado**, porque o backend GCS pede reauth, e autenticar é
       ato de pessoa.
+- [x] **O `drop_column` que nenhum portão veria** *(ADR 0066)*: a regra 4 do
+      `AGENTS.md` — *"migrações são aditivas e revisadas; alterações de tenant,
+      autenticação, RAG ou retenção exigem ADR/RFC"* — era **a única das seis sem
+      portão**, e a ADR 0035 deixou o motivo escrito: *"'migrações são aditivas' não é
+      verificável por `alembic check` — nada impede um `op.drop_column` dentro de um
+      `upgrade()` — e 'exige ADR/RFC' é julgamento."* **A primeira metade está certa e a
+      segunda não sobrevive à medição.** O `alembic check` compara modelos com migrações,
+      então a coluna apagada nos dois lados passa verde nele — ele existe contra *deriva*,
+      não contra *perda* —, mas o que ele não vê o **AST** vê, no sítio que aquela ADR
+      nomeia. E "exige ADR/RFC" deixa de ser julgamento quando o gatilho é **estrutural**:
+      policy, RLS e privilégio são as três formas de o Postgres dizer *quem alcança qual
+      linha*, e é o mesmo sinal que dispensou allowlist em (f) da ADR 0065. *O que decide
+      o desenho é um número:* **23 das 30 migrações** derrubam no `downgrade()` o que
+      criaram acima, de modo que um predicado de arquivo inteiro nasceria vermelho **sobre
+      o comportamento correto** — o escopo tem de ser a função, que é a lição do "corpus de
+      um predicado é o bloco em que ele vale". *E a fatia não achou defeito, o que está
+      dito antes de tudo:* zero `upgrade()` destrutivo e **15 de 15** migrações de tenancy
+      citando decisão que existe. **As quatro asserções nascem verdes, e o que as sustenta
+      é a mutação** — dez, e as **quatro verdes provam mais que as seis vermelhas**: o
+      mesmo `drop_column` movido para o `downgrade()` fica verde, `DROP INDEX` e `DROP
+      DEFAULT` ficam verdes (regime não é dado, e a amostra é o `0013`, que recria um enum
+      inteiro sem perder linha), e um docstring que menciona `DROP COLUMN` fica verde,
+      senão a guarda acusaria justamente quem documentou bem. *De quebra, a armadilha que
+      vale registrar:* uma mutação **malformada** se disfarça de guarda fraca — tirar só a
+      primeira das duas citações de `0009_notifications.py` passou verde e parecia buraco
+      no predicado; a segunda continuava lá, satisfazendo a asserção com razão. **Fica
+      aberto:** RAG e retenção não têm gatilho estrutural (cobrá-las seria a lista digitada
+      da ADR 0033), e "revisadas" continua sem portão — prova-se que a decisão existe e
+      está citada, nunca que alguém a leu.
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

@@ -1143,6 +1143,47 @@ que ele respeita.
       existe para provar não acontece.*
       *Fica registrado e **não** corrigido: `default_project` e `visible_projects` continuam com
       ordens diferentes. Igualá-las mudaria o projeto que clientes existentes veem ao entrar.*
+      **A ADR 0062 fechou as três pontas no dia seguinte** — a ordem, a degradação silenciosa e o
+      rótulo do topbar; ver a linha abaixo. A ressalva acima continua valendo no que ela de fato
+      dizia: os dois **critérios** seguem diferentes, e o projeto que o dashboard serve não mudou.
+- [x] **O robô que abria o PR que ninguém mergeava** *(ADR 0062)*: duas metades, e a mesma
+      pergunta nas duas — **um mecanismo que parecia cobertura e não era**.
+      **O Dependabot foi desligado e `.github/dependabot.yml` apagado** (não esvaziado: arquivo de
+      configuração vazio é ambíguo). O argumento é medido e não é o desuso: **três dos quatro**
+      tetos de `open-pull-requests-limit` estavam saturados — npm 5/5, `github-actions` 3/3, pip
+      **6/5**, e só docker em 2/3 —, com 16 PRs abertos e os mais antigos de 05/08. **Com o teto cheio ele não abre
+      PR novo naquele ecossistema**, inclusive o que consertaria um aviso futuro, de modo que
+      "quem abre o PR que conserta" (ADR 0023) estava travado em três dos quatro. O comentário do
+      próprio arquivo previa a forma da falha — *"um robô que abre vinte PRs por semana treina a
+      equipe a fechá-los sem ler"* — e não previu que o teto a transformaria em bloqueio.
+      *Perda de cobertura declarada, e não suavizada:* `github-actions` e `docker` ficam **sem
+      detecção e sem atualização**. `npm audit` e `pip-audit` não os conhecem (ADR 0023,
+      consequências), então as actions do `ci.yml` — que executam com o token do workflow — e as
+      duas imagens base, pinadas em versão exata pela ADR 0022, congelam na CVE do dia em que
+      foram escolhidas até alguém subir o pin à mão. npm e pip **continuam cobertos** pelo
+      `dependency-audit`, que reprova a cada push, sem limiar de severidade. O conserto passa a
+      ser manual, e o `dependency-advisory.md` diz isso com nota de correção datada — a ADR 0023
+      **não** foi reescrita (ADR 0060: retificação de ADR aceita é ADR nova).
+      **E as três pontas da ADR 0061.** *(a)* A escolha saiu de `default_project` para
+      `access.preferred_project` — puro, sem bind — e `visible_projects` passa a pôr **em
+      primeiro** o projeto que ele escolheria, mantendo o resto por `Project.created_at.desc()`.
+      **Qual projeto o dashboard serve não muda**, e é isso que separa emendar a ADR 0061 de
+      revertê-la: muda a ordem de uma lista. *(b)* `activeProject` nulo deixou de ser mudo nos
+      dois canais — `web.project_unmatched` em `app/page.tsx` (server component: um `logWarn` no
+      `DashboardClient`, que é `"use client"`, sairia no browser e nunca no stdout do BFF), com
+      linha no `alerts.md` no mesmo commit, mais borda e a frase "Fora da sua lista de projetos"
+      no `project-switcher`, afirmando só o que se sabe e nunca qual projeto deveria ser. *(c)* O
+      logo e o `<small>` da mesma linha caíam para coisas de naturezas diferentes — organização e
+      projeto —, e os dois passam a ler `overview.project`; unificar é seguro **agora** porque a
+      identidade virou o `project_id` da ADR 0061 e o nome voltou a ser só rótulo.
+      *O teste da ADR 0061 quebrou por desenho e a asserção foi **movida**, não apagada:*
+      `listed[0] != project_id` era a prova de que as duas ordens divergiam, e o que ela cobria de
+      verdade — que os dois critérios são distintos — continua afirmado, com o mais recente por
+      `Project.created_at` seguindo na lista em outra posição. `Homonyms.listed_first_id` virou
+      `newest_id` pela razão do `date`→`dated_at` da ADR 0038: o nome descrevia a posição, e a
+      posição mudou. *As duas direções da guarda de eventos foram medidas uma a uma, e um efeito
+      colateral apareceu: `MeOut.organization` sai de `visible[0][0]`, então passa a nomear a
+      organização do projeto **servido** — mesma linha para quem tem uma organização só.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já
@@ -1166,7 +1207,11 @@ nomeadas e a ADR 0057 fechou também em 19/08/2026; e **o sino e a busca que nã
 tela**, que a ADR 0057 mediu e deixou aberto com todas as letras e a ADR 0059 fechou em 20/08/2026;
 e **o projeto que a tela adivinhava pelo nome**, que a ADR 0059 deixou nomeado na própria
 `Consequências` e a ADR 0061 fechou no mesmo dia — junto do `activeProject` que caía em
-`projects[0]`. Ler aquelas cinco sem estas linhas as dá como pendentes.
+`projects[0]`; e **as três pontas que aquela deixou nomeadas** — a divergência de ordem entre
+`GET /me` e `GET /me/dashboard`, a degradação sem log nem sinal quando o id servido não casa, e o
+fallback do topbar que misturava organização e projeto —, todas fechadas pela ADR 0062 em
+20/08/2026, com a ressalva de que **igualar os dois critérios** continua recusado e fora de
+escopo, pelo mesmo argumento da ADR 0061. Ler aquelas seis sem estas linhas as dá como pendentes.
 
 **Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
 compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar

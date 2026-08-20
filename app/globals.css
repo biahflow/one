@@ -130,6 +130,11 @@
   .project-switcher > span:nth-child(2) { @apply grid min-w-0 flex-1 gap-0.5; }
   .project-switcher strong, .profile-card strong { @apply text-xs; }
   .project-switcher small, .profile-card small { @apply text-[10px] text-muted; }
+  /* O projeto da tela não está na lista de `/me` (ADR 0062). A borda sobrevive à
+     sidebar recolhida, que esconde o bloco de texto; a linha é o que nomeia o
+     estado para quem está com a sidebar aberta. */
+  .project-switcher--unlisted { @apply border-warning-600/40 bg-warning-50 hover:border-warning-600/40 hover:bg-warning-50; }
+  .project-switcher .project-unlisted { @apply text-warning-600; }
   .project-logo {
     @apply grid h-8 w-8 place-items-center rounded-lg bg-sky-50 text-[13px] font-extrabold text-sky-700;
   }

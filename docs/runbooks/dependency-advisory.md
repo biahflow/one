@@ -121,9 +121,26 @@ pull request e pega a biblioteca ruim entrando. O que já está instalado não �
 foi exatamente assim que nove avisos do `next`, sete do `starlette` e seis do `python-multipart`
 conviveram meses com um CI de seis portões.
 
-O Dependabot (`.github/dependabot.yml`) abre o PR que conserta, semanalmente. Ele é o mecanismo
-**secundário** por escolha: os alertas de segurança nativos do GitHub dependem da mesma
-configuração de repositório que o `codeql` não tem (`ci.yml`), então o que reprova é este job.
+**Não há robô que abra o PR que conserta.** O conserto é manual: quem lê o vermelho sobe o pin,
+roda `npm run audit` de novo e abre o PR à mão. Este job é o único mecanismo automático, e ele
+detecta — não corrige.
+
+E há duas coisas que ele **não** detecta, agora sem nada por trás: as actions do `ci.yml` e as
+duas imagens base do compose. `npm audit` e `pip-audit` não as conhecem, e as imagens estão
+fixadas em versão exata (ADR 0022) — congelam na CVE do dia em que foram escolhidas até alguém
+subir o pin. Quem revisa dependência revisa essas duas listas junto, porque nada mais o fará.
+
+> *Corrigido em 20/08/2026 (ADR 0062). Este parágrafo dizia que "o Dependabot
+> (`.github/dependabot.yml`) abre o PR que conserta, semanalmente", e que ele era o mecanismo
+> **secundário** por escolha — porque os alertas de segurança nativos do GitHub dependem da mesma
+> configuração de repositório que o `codeql` não tem (`ci.yml`). O robô foi **desligado** e o
+> arquivo apagado: três dos quatro tetos de `open-pull-requests-limit` estavam saturados — npm
+> 5/5, `github-actions` 3/3, pip 6/5, e só docker em 2/3 —, e com o teto cheio ele não abre PR
+> novo naquele ecossistema, inclusive o que consertaria um aviso futuro.
+> Dezesseis PRs abertos, os mais antigos de 05/08, e nenhum mergeado. O comentário do próprio
+> arquivo previa a forma da falha ("um robô que abre vinte PRs por semana treina a equipe a
+> fechá-los sem ler, que é a forma de este mecanismo virar o oposto do que é"); o que ele não
+> previu é que o teto transformaria isso em bloqueio.*
 
 ## Se o aviso for grave e estiver em produção
 

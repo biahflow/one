@@ -214,13 +214,20 @@ def administered_organizations(
     )
 
 
-def default_project(session: Session, user: User) -> Project | None:
-    """The project to show when the caller did not name one.
+def preferred_project(session: Session, user: User) -> Project | None:
+    """Which project the caller lands on when they did not name one — no binding.
 
     A client has a direct membership and that is the answer. Internal staff
     usually carry an organization-wide membership (``project_id IS NULL``), which
     used to resolve to nothing at all — they now land on the organization's most
     recent project.
+
+    Split out of ``default_project`` in ADR 0062 so that ``visible_projects`` can
+    ask the same question. Until then "the project the dashboard serves" and "the
+    first project of ``GET /me``" were two criteria with no code in common, and
+    the only thing reconciling them was the project **name** — which is exactly
+    what ADR 0061 had to take out of the BFF. The choice lives here; the binding
+    stays in the caller, because the listing spans projects and must not pin one.
     """
     # The membership policy already restricts this to the caller's own rows.
     memberships = list(
@@ -231,19 +238,28 @@ def default_project(session: Session, user: User) -> Project | None:
         ).scalars()
     )
 
-    project: Project | None = None
     direct = next((m for m in memberships if m.project_id is not None), None)
     if direct is not None:
-        project = session.get(Project, direct.project_id)
-    else:
-        org_wide = next((m for m in memberships if m.project_id is None), None)
-        if org_wide is not None:
-            project = session.execute(
-                select(Project)
-                .where(Project.organization_id == org_wide.organization_id)
-                .order_by(Project.created_at.desc())
-            ).scalars().first()
+        return session.get(Project, direct.project_id)
 
+    org_wide = next((m for m in memberships if m.project_id is None), None)
+    if org_wide is None:
+        return None
+
+    return session.execute(
+        select(Project)
+        .where(Project.organization_id == org_wide.organization_id)
+        .order_by(Project.created_at.desc())
+    ).scalars().first()
+
+
+def default_project(session: Session, user: User) -> Project | None:
+    """The project to show when the caller did not name one, tenant bound.
+
+    The choice is ``preferred_project``; what this adds is the stage-2 GUCs, and
+    that is the whole difference between the two functions.
+    """
+    project = preferred_project(session, user)
     if project is None:
         return None
 
@@ -257,7 +273,16 @@ def visible_projects(
     """Every project the caller can reach, with the roles held on each.
 
     Feeds ``GET /api/v1/me``, and deliberately does **not** bind a tenant: the
-    listing spans projects while the stage-2 GUCs hold exactly one.
+    listing spans projects while the stage-2 GUCs hold exactly one. That is why
+    ``preferred_project`` is called here and ``default_project`` is not — the
+    question is the same, the binding is not.
+
+    **The list opens with the project the dashboard serves** (ADR 0062). The rest
+    keeps ``Project.created_at.desc()``. Which project ``default_project``
+    resolves does not change; only where it sits in this listing does. Until this
+    the two routes ordered by unrelated criteria, and with two homonymous projects
+    in one tenant the first item of ``/me`` was not the project on screen — the
+    divergence ADR 0061 published ``project_id`` to survive, and left standing.
     """
     memberships = list(
         session.execute(
@@ -276,6 +301,16 @@ def visible_projects(
             .order_by(Project.created_at.desc())
         ).scalars()
     )
+
+    preferred = preferred_project(session, user)
+    if preferred is not None:
+        # Moved, never added: a project the listing does not already carry is one
+        # the membership does not cover, and prepending it here would publish a
+        # row that `GET /me` has no basis to show.
+        projects = [p for p in projects if p.id == preferred.id] + [
+            p for p in projects if p.id != preferred.id
+        ]
+
     return [
         (
             project,

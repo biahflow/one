@@ -1000,9 +1000,32 @@ export default function DashboardClient({
           </button>
         </div>
 
-        <button className="project-switcher" aria-label="Trocar projeto" onClick={() => goTo("Trocar projeto")}>
-          <span className="project-logo">{(activeProject?.name ?? user.org).slice(0, 1)}</span>
-          <span><strong>{user.org}</strong><small>{activeProject?.name ?? overview.project}</small></span>
+        {/*
+          Os dois textos desta linha falam do **projeto**, e o fallback do logo dizia
+          outra coisa (ADR 0062): ele caía para `user.org` enquanto o `<small>` ao lado
+          caía para `overview.project`, de modo que o mesmo estado produzia a inicial da
+          organização sobre o nome do projeto. Os dois passam a ler `overview.project`,
+          que é factualmente o projeto que a API serviu. O nome segue sendo **rótulo** e
+          nunca identidade — a identidade é o `project_id` da ADR 0061, e é por isso que
+          unificar o fallback é seguro agora e não era antes.
+
+          Quando não há `activeProject`, a tela **diz**: o cliente vê o dashboard certo e
+          um seletor que não o contém, e sem sinal isso é indistinguível de escolha. O que
+          se afirma é só o que se sabe — que o projeto da tela não está na lista —, nunca
+          qual deveria ser.
+        */}
+        <button
+          className={`project-switcher ${activeProject ? "" : "project-switcher--unlisted"}`}
+          aria-label="Trocar projeto"
+          title={activeProject ? undefined : "Este projeto não está na sua lista de projetos."}
+          onClick={() => goTo("Trocar projeto")}
+        >
+          <span className="project-logo">{(activeProject?.name ?? overview.project).slice(0, 1)}</span>
+          <span>
+            <strong>{user.org}</strong>
+            <small>{activeProject?.name ?? overview.project}</small>
+            {!activeProject && <small className="project-unlisted">Fora da sua lista de projetos</small>}
+          </span>
           <ChevronDown size={16} />
         </button>
 

@@ -508,11 +508,28 @@ test("sem casamento de id nenhum projeto é o atual, e a tela não elege o prime
   // de `/me` é divergência real entre duas rotas, e eleger o primeiro escoparia sino,
   // busca e comentários por um projeto que ninguém afirmou. Sem casamento o parâmetro é
   // **omitido** e as rotas voltam a `access.default_project` — o projeto do dashboard.
+  //
+  // **E a tela diz** (ADR 0062): até aqui a degradação era muda dos dois lados, e o
+  // cliente via o dashboard certo debaixo de um seletor que não o continha — sem nada
+  // distinguindo isso de uma escolha. O nome do projeto sai da fixture de propósito:
+  // `ME.organization` é "Acme Brasil" e `DASHBOARD.project` é "Automação Financeira",
+  // de modo que o fallback errado do logo (a organização) e o certo (o projeto) dão a
+  // **mesma inicial**, e a asserção passaria verde com o defeito de volta.
   meOverride = { ...ME, projects: [{ ...ME.projects[0], id: HOMONYMS.first }] };
-  dashboardOverride = { ...DASHBOARD, project_id: HOMONYMS.second };
+  dashboardOverride = { ...DASHBOARD, project_id: HOMONYMS.second, project: "Zeta Operações" };
   try {
     const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
     assert.equal(currentFlag(html, HOMONYMS.first), false);
+
+    const markup = renderedMarkup(html);
+    assert.match(markup, /project-switcher--unlisted/);
+    assert.match(markup, /Fora da sua lista de projetos/);
+    // O que se afirma é só o que se sabe: que o projeto da tela não está na lista.
+    // Qual deveria ser, ninguém sabe, e inventá-lo é o `answerFor()` da ADR 0021.
+    assert.doesNotMatch(markup, /deveria ser|projeto correto/);
+    // Os dois textos da mesma linha falam do projeto que a API serviu.
+    assert.match(markup, /class="project-logo">Z</);
+    assert.match(markup, /<small>Zeta Operações<\/small>/);
   } finally {
     meOverride = null;
     dashboardOverride = null;

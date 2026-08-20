@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { demoShellEnabled } from "@/app/lib/demo";
-import { TracedError, logError } from "@/app/lib/log";
+import { TracedError, logError, logWarn } from "@/app/lib/log";
 import { authorizationHeader } from "@/app/lib/session";
 import { traceId } from "@/app/lib/trace";
 import DashboardClient, {
@@ -441,6 +441,31 @@ export default async function Page({
   const marked = projects.some((project) => project.current)
     ? projects
     : projects.map((project) => ({ ...project, current: project.id === servedProjectId }));
+
+  // Nenhum item casou: o projeto que está na tela não aparece em `me.projects`.
+  //
+  // A ADR 0061 desenhou isso como **degradação e não erro** — `activeProject` fica
+  // `null`, o `?project=` é omitido e as nove rotas caem em `default_project`, que é
+  // o mesmo projeto que o dashboard serviu, então o cliente vê uma tela coerente. O
+  // que faltava era alguém **saber**: duas rotas divergirem é fato sobre o servidor,
+  // e ele não tem por onde aparecer olhando a tela do cliente. Desde a ADR 0062 a
+  // lista abre pelo projeto servido, de modo que uma ocorrência aqui deixou de ser
+  // ordem divergente e passou a ser o caso mais estranho — `/me` e `/me/dashboard`
+  // discordando sobre a própria membership.
+  //
+  // A linha sai **daqui** e não do `DashboardClient`, que é `"use client"`: um
+  // `logWarn` lá roda no browser e nunca chega ao stdout do BFF.
+  if (!marked.some((project) => project.current)) {
+    logWarn("web.project_unmatched", {
+      trace_id: await traceId(),
+      // Nulo quando a URL não nomeou projeto — e é a distinção que importa: com
+      // `?project=`, quem respondeu foi `/projects/{id}/dashboard`, que por desenho
+      // não publica `project_id` (ADR 0061), então o id pedido é o que se tem.
+      requested_project_id: projectId ?? null,
+      served_project_id: servedProjectId,
+      listed: marked.length,
+    });
+  }
 
   // A caixa de avisos não derruba o dashboard: um 404 aqui só quer dizer que a
   // API não resolveu projeto para esta chamada, e o resto da tela já sabe disso.

@@ -159,8 +159,11 @@ class Homonyms:
     organization_id: uuid.UUID
     #: O que `access.default_project` resolve — membership mais recente.
     served_id: uuid.UUID
-    #: O primeiro de `GET /api/v1/me` — projeto mais recente. **Não** é o servido.
-    listed_first_id: uuid.UUID
+    #: O mais recente por `Project.created_at`, que é o outro critério. Era o
+    #: primeiro de `GET /api/v1/me` até a ADR 0062, e o nome do campo dizia isso;
+    #: agora a lista abre pelo servido e ele cai para a segunda posição. O campo
+    #: passou a nomear o **critério** e não a posição, senão ele mentiria.
+    newest_id: uuid.UUID
     name: str
     subject: str
     email: str
@@ -249,9 +252,19 @@ def test_my_dashboard_publishes_the_project_it_served(homonyms: Homonyms) -> Non
     listed = listing.json()["projects"]
     # O nome não distingue: é exatamente por isso que o id precisou ser publicado.
     assert [project["name"] for project in listed] == [homonyms.name, homonyms.name]
-    # E a ordem das duas rotas diverge de verdade — sem isto o teste passaria por sorte.
-    assert listed[0]["id"] == str(homonyms.listed_first_id)
-    assert listed[0]["id"] != body["project_id"]
+    # A lista abre pelo projeto que a API serviu (ADR 0062). Esta asserção dizia o
+    # contrário um dia antes — `listed[0] != project_id` era a prova de que as duas
+    # ordens divergiam —, e o que mudou não foi o defeito e sim a ordem de `/me`.
+    assert listed[0]["id"] == body["project_id"]
+    # E os dois critérios continuam distintos, que é o que aquela asserção cobria de
+    # verdade: o mais recente por `Project.created_at` **não** é o servido, e segue na
+    # lista — agora na segunda posição, e não sumido. Sem isto, igualar os dois
+    # critérios (fora de escopo por decisão) passaria verde aqui.
+    assert homonyms.newest_id != homonyms.served_id
+    assert [project["id"] for project in listed] == [
+        str(homonyms.served_id),
+        str(homonyms.newest_id),
+    ]
 
 
 @pytest.mark.integration
@@ -276,7 +289,7 @@ def test_the_project_route_does_not_publish_the_id(homonyms: Homonyms) -> None:
 
     Quem chama por lá escolheu o id e o tem no caminho; devolvê-lo é sedimento.
     """
-    response = client.get(f"/api/v1/projects/{homonyms.listed_first_id}/dashboard")
+    response = client.get(f"/api/v1/projects/{homonyms.newest_id}/dashboard")
 
     assert response.status_code == 200
     assert "project_id" not in response.json()

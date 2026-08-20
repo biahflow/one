@@ -210,9 +210,12 @@ function anchorTarget(link: string): { project: string | null; tab: string | nul
  *    interceptar isso quebraria a única coisa que um `<a>` promete;
  * 2. **o aviso é de outro projeto**: a tela de agora mostra o projeto corrente, e
  *    trocar de aba aqui deixaria o cliente lendo a lista de A achando que é de B.
- *    O href faz carga completa e honra o `?project=` — o que importa porque
- *    `GET /me/notifications` **não** aceita `?project=` e responde pelo projeto
- *    mais recente da pessoa (ponta aberta nomeada na ADR 0057);
+ *    O href faz carga completa e honra o `?project=`, que é o que troca de
+ *    projeto de verdade. Quando esta recusa nasceu ela era também a **defesa**
+ *    contra o item F1 da ADR 0057, fechado na ADR 0059 — `GET /me/notifications` não aceitava
+ *    `?project=` e respondia pelo projeto mais recente da pessoa. F1 está
+ *    fechado e a recusa continua, porque ela nunca foi só sobre isso: a lista
+ *    que já está na tela é a do projeto corrente, e nenhum `goTo` a recarrega;
  * 3. **aba que a navegação não conhece**: `onboarding_stuck` traz `/admin/funil`,
  *    que é outra rota e não uma aba deste componente.
  *
@@ -590,6 +593,19 @@ export default function DashboardClient({
   // Não há mais estado de projeto: quem manda é a URL, porque trocar de projeto
   // significa buscar outro dashboard na API (`/?project=<id>`).
   const activeProject = projects.find((project) => project.current) ?? projects[0] ?? null;
+  /**
+   * O projeto da tela, no formato de query (ADR 0059).
+   *
+   * As rotas de `/me/` resolviam `access.default_project` do outro lado — a
+   * membership **mais recente** —, enquanto o dashboard já vinha do projeto que a
+   * URL nomeia. Um cliente com dois projetos, vendo B, tinha o sino, a busca e o
+   * histórico de A, e a pendência de B respondia 404 por ser procurada sob o
+   * tenant de A.
+   *
+   * **Omitido quando não há projeto**, nunca mandado vazio: `?project=` sem valor
+   * é 422 do outro lado, e ausente é o padrão de sempre.
+   */
+  const projectParam = activeProject ? `?project=${encodeURIComponent(activeProject.id)}` : "";
 
   const toggleMenu = (target: typeof menu) => setMenu((current) => (current === target ? null : target));
   // Trocar de aba por vontade própria encerra o destaque, como "Nova conversa"
@@ -636,7 +652,8 @@ export default function DashboardClient({
     (async () => {
       try {
         const response = await fetch(
-          threadToLoad ? `/api/chat/history?conversation=${threadToLoad}` : "/api/chat/history",
+          (threadToLoad ? `/api/chat/history?conversation=${threadToLoad}` : "/api/chat/history") +
+            (activeProject ? `${threadToLoad ? "&" : "?"}project=${activeProject.id}` : ""),
           { cache: "no-store" },
         );
         if (!response.ok) return;
@@ -684,7 +701,7 @@ export default function DashboardClient({
     return () => {
       current = false;
     };
-  }, [chatOpen, threadToLoad]);
+  }, [chatOpen, threadToLoad, activeProject]);
 
   /** Começa do zero: sem id, a API abre outra thread no próximo turno. */
   function startNewConversation() {
@@ -703,7 +720,7 @@ export default function DashboardClient({
       ),
     );
     try {
-      await fetch("/api/chat/feedback", {
+      await fetch("/api/chat/feedback" + projectParam, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // O comentário é opcional e é **o campo mais informativo do conjunto**
@@ -755,7 +772,7 @@ export default function DashboardClient({
   async function openDocument(documentId: string): Promise<boolean> {
     setDownloadError(null);
     try {
-      const response = await fetch(`/api/documents/${documentId}/download`);
+      const response = await fetch(`/api/documents/${documentId}/download` + projectParam);
       if (!response.ok) throw new Error("download failed");
       const data = await response.json();
       window.location.assign(data.url);
@@ -796,7 +813,13 @@ export default function DashboardClient({
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: value, conversation_id: conversationId }),
+        body: JSON.stringify({
+          question: value,
+          conversation_id: conversationId,
+          // O campo existia no contrato desde a Fase 3 e esta tela **nunca o
+          // mandou** (ADR 0059): entrada publicada sem remetente.
+          project_id: activeProject?.id,
+        }),
       });
       if (response.status === 429) {
         // Ritmo, não permissão: o único não-ok que a tela sabe explicar (ADR 0021).
@@ -860,7 +883,7 @@ export default function DashboardClient({
     if (unreadCount === 0 || readPending) return;
     setOptimisticRead(true);
     startReading(async () => {
-      const ok = await markNotificationsReadAction();
+      const ok = await markNotificationsReadAction(activeProject?.id ?? null);
       if (!ok) setOptimisticRead(false); // a API recusou: o ponto volta
     });
   }
@@ -920,7 +943,7 @@ export default function DashboardClient({
       case "Reuniões":
         return <MeetingsView onAsk={askAi} overview={view} focusedItem={focusedItem} />;
       case "Pendências":
-        return <PendingView onAsk={askAi} overview={view} onOpenTurn={openTurn} focusedItem={focusedItem} />;
+        return <PendingView onAsk={askAi} overview={view} onOpenTurn={openTurn} focusedItem={focusedItem} projectId={activeProject?.id ?? null} />;
       case "Decisões":
         return <DecisionsView onAsk={askAi} overview={view} />;
       case "Resultados":
@@ -1016,7 +1039,9 @@ export default function DashboardClient({
           <div className="topbar-actions">
             <div className="topbar-menu">
               <button className="icon-button" aria-label="Pesquisar" onClick={() => toggleMenu("search")}><Search size={20} /></button>
-              {menu === "search" && <ProjectSearch onOpen={openSearchHit} />}
+              {menu === "search" && (
+              <ProjectSearch onOpen={openSearchHit} projectId={activeProject?.id ?? null} />
+            )}
             </div>
             <div className="topbar-menu">
               <button
@@ -1163,13 +1188,23 @@ export default function DashboardClient({
  *  do termo novo não chega, a lista antiga não é exibida como se fosse dele.
  *  E nenhum caminho aqui fabrica resultado — a lista vem da API ou não existe,
  *  pelo motivo pelo qual o `answerFor()` do chat foi apagado (ADR 0021). */
-function ProjectSearch({ onOpen }: { onOpen: (hit: SearchHit) => Promise<boolean> }) {
+function ProjectSearch({
+  onOpen,
+  projectId,
+}: {
+  onOpen: (hit: SearchHit) => Promise<boolean>;
+  /** O projeto da tela (ADR 0059). `null` deixa a API cair no padrão dela. */
+  projectId: string | null;
+}) {
   const [term, setTerm] = useState("");
   const [found, setFound] = useState<{ query: string; hits: SearchHit[] } | null>(null);
   const [failed, setFailed] = useState("");
   const [openFailed, setOpenFailed] = useState(false);
   const query = term.trim();
   const short = query.length < SEARCH_MIN_LENGTH;
+  // O projeto da tela (ADR 0059). Omitido quando não há um conhecido: vazio
+  // não é "sem parâmetro", é 422 do outro lado.
+  const scope = projectId ? `&project=${encodeURIComponent(projectId)}` : "";
 
   // Debounce mais `AbortController`: a tecla seguinte cancela a busca da
   // anterior, então a resposta que sobra é sempre a do último termo.
@@ -1178,7 +1213,7 @@ function ProjectSearch({ onOpen }: { onOpen: (hit: SearchHit) => Promise<boolean
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}` + scope, {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -1196,7 +1231,7 @@ function ProjectSearch({ onOpen }: { onOpen: (hit: SearchHit) => Promise<boolean
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, short]);
+  }, [query, short, scope]);
 
   const hits = found?.query === query ? found.hits : null;
 
@@ -1813,7 +1848,7 @@ function countBy<T>(items: T[], of: (item: T) => string | null): Record<string, 
   return counts;
 }
 
-function PendingView({ onAsk, overview, onOpenTurn, focusedItem }: { onAsk: () => void; overview: Overview; onOpenTurn: (messageId: string, conversationId: string | null) => void; focusedItem?: string | null }) {
+function PendingView({ onAsk, overview, onOpenTurn, focusedItem, projectId }: { onAsk: () => void; overview: Overview; onOpenTurn: (messageId: string, conversationId: string | null) => void; focusedItem?: string | null; projectId?: string | null }) {
   const [priority, setPriority] = useState<string | null>(null);
   const all = openPendings(overview);
   const counts = countBy(all, (item) => item.priority);
@@ -1844,14 +1879,14 @@ function PendingView({ onAsk, overview, onOpenTurn, focusedItem }: { onAsk: () =
                   : "Nenhuma pendência aberta com esta prioridade."}
               </p>
             )}
-            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread readOnly={readOnlyReason(overview)} focusedItem={focusedItem} />)}
+            {open.map((item) => <PendingItem key={item.id || item.title} item={item} onOpenTurn={onOpenTurn} withThread readOnly={readOnlyReason(overview)} focusedItem={focusedItem} projectId={projectId} />)}
           </div>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><p className="eyebrow">HISTÓRICO</p><h2>Resolvidas <span>{resolved.length}</span></h2></div></div>
           <div className="pending-list">
             {resolved.length === 0 && <p className="empty-state">Nenhuma pendência resolvida ainda.</p>}
-            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread readOnly={readOnlyReason(overview)} focusedItem={focusedItem} />)}
+            {resolved.map((item) => <PendingItem key={item.id || item.title} item={item} withThread readOnly={readOnlyReason(overview)} focusedItem={focusedItem} projectId={projectId} />)}
           </div>
         </article>
       </section>
@@ -2405,7 +2440,17 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
  * viram mural, e a contagem no botão é o que diz se vale abrir. Carrega ao abrir
  * e não no render da aba — a maioria das visitas não comenta nada.
  */
-function PendingThread({ item, readOnly }: { item: PendingItemView; readOnly: ReadOnlyReason }) {
+function PendingThread({
+  item,
+  readOnly,
+  projectId,
+}: {
+  item: PendingItemView;
+  readOnly: ReadOnlyReason;
+  /** O projeto da tela (ADR 0059): sem ele a pendência de B era procurada
+   *  sob o tenant de A, e o fio respondia 404 ao próprio dono. */
+  projectId?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<PendingComment[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -2414,7 +2459,7 @@ function PendingThread({ item, readOnly }: { item: PendingItemView; readOnly: Re
   const router = useRouter();
 
   async function load() {
-    const items = await listPendingCommentsAction(item.id);
+    const items = await listPendingCommentsAction(item.id, projectId);
     if (items === null) setFailed(true);
     else {
       setComments(items);
@@ -2433,7 +2478,7 @@ function PendingThread({ item, readOnly }: { item: PendingItemView; readOnly: Re
     const text = draft.trim();
     if (!text) return;
     startSending(async () => {
-      const ok = await addPendingCommentAction(item.id, text);
+      const ok = await addPendingCommentAction(item.id, text, projectId);
       if (!ok) {
         setFailed(true);
         return;
@@ -2516,6 +2561,7 @@ function PendingItem({
   withThread = false,
   readOnly = null,
   focusedItem = null,
+  projectId = null,
 }: {
   item: PendingItemView;
   onOpenTurn?: (messageId: string, conversationId: string | null) => void;
@@ -2526,6 +2572,8 @@ function PendingItem({
   /** A âncora do `?item=` (ADR 0056). O resumo da Visão geral não a recebe: o link
    *  da pendência abre a aba de Pendências, que é onde a lista está inteira. */
   focusedItem?: string | null;
+  /** O projeto da tela, repassado ao fio (ADR 0059). */
+  projectId?: string | null;
 }) {
   const tone = pendingTone[item.state] ?? "amber";
   const owner = item.owner ?? "Sem responsável definido";
@@ -2562,7 +2610,7 @@ function PendingItem({
       </div>
       {/* O fio fica **fora** da `.pending-row`, que é um flex de uma linha: pôr
           uma lista dentro dela desalinharia o avatar e o selo (ADR 0032). */}
-      {withThread && <PendingThread item={item} readOnly={readOnly} />}
+      {withThread && <PendingThread item={item} readOnly={readOnly} projectId={projectId} />}
     </div>
   );
 }

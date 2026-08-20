@@ -101,6 +101,35 @@ def scoped_project(
     return require_project(session, user, project_id, ANY_MEMBER)
 
 
+def chosen_project(
+    session: Session, user: User, project_id: uuid.UUID | None
+) -> Project | None:
+    """O projeto que o chamador nomeou, ou o padrão quando ele não nomeou nenhum.
+
+    A generalização literal do que ``POST /api/v1/chat`` já fazia à mão desde a
+    Fase 3, e que nenhuma das outras rotas de ``/me/`` tinha: com id, delega a
+    :func:`scoped_project`; sem id, a :func:`default_project`. Nenhuma política
+    nova nasce aqui — as duas metades já existiam, e o que faltava era o lugar
+    onde a escolha acontece.
+
+    **Projeto alheio ou inexistente é ``None``, nunca queda no padrão** (ADR
+    0059). Cair no padrão devolveria a lista de *outro* projeto com 200, que é o
+    ``.get(kind, _CLIENT_ONLY)`` da ADR 0040 na mesma forma: o esquecimento
+    entrega ao cliente a coisa errada em vez de recusar. Quem nomeia um projeto
+    que não alcança recebe o mesmo 404 opaco de sempre, com a negação registrada
+    por ``scoped_project``.
+
+    Existe porque onze rotas de ``/me/`` resolviam ``default_project`` — a
+    membership **mais recente** — enquanto a tela ao lado vinha de
+    ``/projects/{project_id}/dashboard`` com o ``?project=`` da URL. Um cliente
+    com dois projetos, vendo B, recebia o sino e a busca de A, e a pendência de B
+    respondia 404 por ser procurada sob o tenant de A.
+    """
+    if project_id is not None:
+        return scoped_project(session, user, project_id)
+    return default_project(session, user)
+
+
 def require_organization(
     session: Session,
     user: User,

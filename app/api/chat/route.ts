@@ -15,6 +15,17 @@ export async function POST(request: Request): Promise<Response> {
   // API, então aqui só repassamos: um id inválido não é erro do BFF.
   const conversationId =
     typeof payload?.conversation_id === "string" ? payload.conversation_id : undefined;
+  // O projeto que a tela está mostrando. `ChatIn.project_id` existe desde a Fase 3
+  // e esta rota **nunca o mandou** (ADR 0059): era campo de entrada publicado
+  // sem remetente — o espelho do campo de resposta sem leitor da ADR 0033, que a
+  // guarda de consumo não pega porque ela pergunta pelos campos de resposta.
+  //
+  // Ausente continua sendo o padrão do outro lado; um valor vazio não, então é
+  // `undefined` e não string vazia.
+  const projectId =
+    typeof payload?.project_id === "string" && payload.project_id
+      ? payload.project_id
+      : undefined;
   if (!question) {
     return Response.json({ error: "empty question" }, { status: 400 });
   }
@@ -31,7 +42,11 @@ export async function POST(request: Request): Promise<Response> {
     const response = await fetch(`${base}/api/v1/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authorization },
-      body: JSON.stringify({ question, conversation_id: conversationId }),
+      body: JSON.stringify({
+        question,
+        conversation_id: conversationId,
+        project_id: projectId,
+      }),
       cache: "no-store",
     });
     if (!response.ok) {

@@ -1043,6 +1043,35 @@ que ele respeita.
       *Fica declarado, e não corrigido: dois testes reprovam por resíduo do banco de
       desenvolvimento (passam isolados e em banco novo), e `_settings()` ainda deixa a variável de
       ambiente da janela entrar nos testes que afirmam sobre ela.*
+- [x] **O projeto que a tela mostra, e o parâmetro que ninguém mandava** *(FDD 018, FDD 021,
+      ADR 0059)*: o item F1 que a ADR 0057 mediu, nomeou e não corrigiu. `access.default_project`
+      devolve a membership **mais recente**, e onze rotas de cliente resolviam o projeto assim
+      enquanto o dashboard ao lado vinha de `/projects/{project_id}/dashboard` com o `?project=` da
+      URL — de modo que um cliente com dois projetos, vendo B, tinha o sino e a busca de A e recebia
+      **404** ao abrir os comentários de uma pendência de B, porque o item era procurado sob o
+      tenant de A. Agora nove rotas aceitam `?project=` (a décima não: o dashboard já tem caminho
+      por id, e um segundo caminho para a mesma coisa é sedimento), ausente continua sendo o padrão,
+      e projeto alheio é **404 e nunca queda silenciosa no padrão** — que devolveria a lista de
+      outro projeto com 200, o `.get(kind, _CLIENT_ONLY)` da ADR 0040 na mesma forma.
+      *De quebra, o achado que carrega a guarda: `POST /chat` **já** aceitava `project_id` no corpo
+      e o honrava desde a Fase 3, e o BFF **nunca o mandou** — campo de **entrada** publicado sem
+      remetente, o espelho exato do painel sobre campo sem escritor da ADR 0033, que a guarda de
+      consumo não pega porque ela pergunta pelos campos de resposta.*
+      **A guarda nova nasceu vermelha sobre esse campo, e três frouxidões independentes foram
+      medidas** — cada uma sozinha a deixa verde sobre defeito real: corpus único (o `.priority` da
+      ADR 0033 pela terceira vez, e ele erra nas duas direções ao mesmo tempo), nome solto casando
+      onde não há envio (`projects.map((project) =>`), e — as duas achadas na revisão, com a guarda
+      já verde — o corpus que inclui os consumidores da rota mais a aspa solta, que juntos dão como
+      enviado um parâmetro que o **proxy do BFF recebe e descarta**. Só com as duas últimas
+      corrigidas a mutação fica vermelha, e nenhuma delas é suficiente sozinha.
+      *E o teste que faltava no repositório inteiro era **um ator com duas memberships**: com um
+      projeto por pessoa, "o mais recente" e "o que está na tela" são sempre o mesmo projeto e a
+      diferença não tem como aparecer — foi assim que o defeito atravessou seis fases. O caso
+      negativo das nove rotas tem **controle positivo** com alvo real, senão um id inventado daria
+      404 pelos dois motivos ao mesmo tempo (a medida da ADR 0035).*
+      *Fica aberto e nomeado: `activeProject` cai em `projects[0]` quando o casamento por nome de
+      `app/page.tsx` falha — dois projetos homônimos no mesmo tenant fariam a tela nomear um projeto
+      diferente do que a API serviu. Pré-existente, não tocado.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já
@@ -1053,14 +1082,6 @@ que ele respeita.
 
 **Pontas abertas da fase, sem dono e sem prioridade** (seleção é gate humano):
 
-- **O sino e a busca não são do projeto na tela.** Medido na ADR 0057 e corrigido em **documento**,
-  não em código: `my_search` e `my_notifications` resolvem `access.default_project` — a membership
-  mais recente —, não aceitam `?project=` e o BFF não o manda, enquanto o dashboard ao lado vem de
-  `/projects/{id}/dashboard`. Um cliente com dois projetos, vendo B, recebe os avisos e os
-  resultados de busca de **A**. Hoje o dano é mudo (só troca de aba); com âncora deixaria de ser, e
-  é por isso que a ADR 0057 se **defende** dele em vez de ignorá-lo. Corrigir exige parâmetro novo
-  em duas rotas, que é mudança de contrato de outra superfície — seleção é gate humano.
-
 - **Intervalo mínimo por espécie de mensagem.** Medido na ADR 0042 e escrito na emenda da FDD 022:
   o teto global **não** satisfaz sozinho o critério (2) de lá, porque "um segundo evento na mesma
   semana não gera segundo convite" é afirmação sobre a **espécie** e não sobre o volume — com três
@@ -1070,8 +1091,9 @@ que ele respeita.
 0043 deixaram aberto e a ADR 0055 entregou em 19/08/2026, junto da varredura sem a qual ele seria
 um descarte; e **o link em granularidade de item**, que a ADR 0043 deixou nomeado e a ADR 0056
 entregou no mesmo dia — com o **popover do sino** e a **âncora na busca**, que aquela deixou
-nomeadas e a ADR 0057 fechou também em 19/08/2026. Ler aquelas três sem estas linhas as dá como
-pendentes.
+nomeadas e a ADR 0057 fechou também em 19/08/2026; e **o sino e a busca que não eram do projeto na
+tela**, que a ADR 0057 mediu e deixou aberto com todas as letras e a ADR 0059 fechou em 20/08/2026.
+Ler aquelas quatro sem estas linhas as dá como pendentes.
 
 **Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
 compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar

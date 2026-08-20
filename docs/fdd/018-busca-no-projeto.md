@@ -12,10 +12,13 @@ ser verdadeiro nas três camadas que ele nomeia: API, banco **e busca**.
 ruído sem ela, e é o que o chat já faz — a diferença entre as duas superfícies é que uma
 responde e a outra aponta (ADR 0024, alternativas). **Busca entre projetos**: o topbar é do
 projeto corrente, e trocar de projeto é a URL desde a Fase 2 — *emendado em 19/08/2026 (ADR 0057):
-**a frase descreve a intenção e não o código**. `GET /api/v1/me/search` resolve
-`access.default_project`, que devolve a membership mais recente, e não aceita `?project=`; o BFF
-tampouco o manda. Um cliente com dois projetos, vendo B por `?project=B`, recebe os resultados de
-**A**. Corrigir é mudança de contrato da rota e ficou nomeado no `ROADMAP.md` em vez de contornado.* **Decisões nos resultados**: não
+**a frase descrevia a intenção e não o código**. `GET /api/v1/me/search` resolvia
+`access.default_project`, que devolve a membership mais recente, e não aceitava `?project=`; o BFF
+tampouco o mandava. Um cliente com dois projetos, vendo B por `?project=B`, recebia os resultados de
+**A**. Corrigir era mudança de contrato da rota e ficou nomeado no `ROADMAP.md` em vez de
+contornado.* — **e foi corrigido em 20/08/2026 (ADR 0059)**: a rota aceita `?project=`, o BFF o
+manda, e projeto que o chamador não alcança é 404 e não a busca do projeto padrão. A emenda de
+ontem fica porque ela é a razão de o parâmetro existir. **Decisões nos resultados**: não
 havia aba de decisões, e um hit que leva a lugar nenhum é a classe de defeito que a ADR 0017
 corrigiu — *entrou na ADR 0049, junto com a aba, casando também o racional*. **Filtros nas abas**: item aberto da Fase 2, outro controle, outra fatia. **Histórico
 de buscas**: o termo é a pergunta de alguém e não é guardado em lugar nenhum, nem no log.
@@ -53,9 +56,10 @@ que falhou, na mesma forma que o chat passou a usar na ADR 0021.
 
 ## Permissões e estados
 
-A rota é `GET /api/v1/me/search`, escopada como o dashboard: o projeto sai de
-`access.default_project`, e quem não tem membership recebe **404** — nunca 403, nunca uma lista
-vazia que insinue que o projeto existe.
+A rota é `GET /api/v1/me/search`, escopada como o dashboard: o projeto é o que a tela nomeia em
+`?project=` e, na ausência dele, o de `access.default_project` (ADR 0059). Quem não tem membership
+recebe **404** — nunca 403, nunca uma lista vazia que insinue que o projeto existe —, e **projeto
+alheio recebe o mesmo 404**, nunca a busca do projeto padrão com 200.
 
 | Situação | Resultado |
 |---|---|

@@ -180,6 +180,12 @@ verdade —, o que mantém a degradação monotônica. A Central perdeu o `targe
 fatia: abrir uma segunda aba para chegar a uma lista já aberta era resto de quando o link era só
 uma URL a copiar.
 
+*E a recusa do meio deixou de ser defesa contra um defeito vivo em 20/08/2026 (ADR 0059)*: o
+`?project=` que o `deep_link` escreve passou a valer também para o sino e para o resto de `/me/`,
+então a lista que o clique abre é a do projeto do aviso. A recusa **fica**, e não vira sobra: o
+`href` continua sendo o caminho certo quando o aviso é de outro projeto, porque trocar de projeto é
+carga completa e não troca de aba.
+
 *A causa de aquela linha ter sobrevivido a duas ADRs que a nomearam virou guarda, e é a mesma da
 ADR 0026: todas as asserções sobre a âncora eram sobre **dado**, e um `<div className="popover-row">`
 renderiza HTML indistinguível de um `<a>`. A guarda nova olha a **forma do controle** — toda

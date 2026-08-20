@@ -6,6 +6,18 @@
 
 import { authorizationHeader } from "@/app/lib/session";
 
+/**
+ * O projeto que a tela está mostrando, quando ela sabe qual é (ADR 0059).
+ *
+ * Repassado como veio: quem valida o vínculo é a API (`access.chosen_project`),
+ * e o frontend não decide autorização. **Omitido quando não há projeto**, nunca
+ * mandado vazio — `?project=` sem valor é 422, não é "sem parâmetro".
+ */
+function projectQuery(request: Request): string {
+  const project = new URL(request.url).searchParams.get("project")?.trim();
+  return project ? `?project=${encodeURIComponent(project)}` : "";
+}
+
 export async function POST(request: Request): Promise<Response> {
   const base = process.env.API_BASE_URL;
 
@@ -26,7 +38,8 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const response = await fetch(
-      `${base}/api/v1/me/conversations/messages/${encodeURIComponent(messageId)}/feedback`,
+      `${base}/api/v1/me/conversations/messages/${encodeURIComponent(messageId)}/feedback` +
+        projectQuery(request),
       {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authorization },

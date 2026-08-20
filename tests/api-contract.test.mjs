@@ -447,3 +447,219 @@ test("uma exceção com prazo vencido reprova", () => {
       " Aceitar uma lacuna é decisão com prazo, não para sempre (ADR 0023/0035).",
   );
 });
+
+/**
+ * E o mesmo defeito na direção de **entrada**: um parâmetro que o contrato
+ * publica e que ninguém envia (ADR 0059).
+ *
+ * A guarda de consumo acima pergunta se o BFF **lê** o que a API entrega. Ela é
+ * cega para o outro sentido, e o custo disso foi medido: `ChatIn.project_id`
+ * existe desde a Fase 3, `POST /api/v1/chat` o usa para escolher o projeto por
+ * `access.scoped_project`, e **o BFF nunca o mandou** — o corpo saía com
+ * `{question, conversation_id}` e o projeto acabava sendo a membership mais
+ * recente. É o espelho exato do achado da ADR 0033 (painel sobre campo sem
+ * escritor); aqui é campo de entrada sem remetente.
+ *
+ * Alcance: `query` e `requestBody`. Parâmetro de **caminho** fica de fora — a
+ * URL o carrega por construção, e a guarda de rota acima já prova que a URL é
+ * montada.
+ *
+ * **Corpus por rota, nunca único, e isto foi medido** (a terceira vez, depois do
+ * `.priority` da ADR 0033 e do `date`/`dated_at` da ADR 0038): com um corpus
+ * único sobre `app/**`, `ChatIn.project_id` passa verde, porque as três
+ * ocorrências de `project_id` em `app/` são leitura de **resposta** — o painel de
+ * `/admin/assistente` e o callback do Drive —, nunca envio.
+ *
+ * **E o casamento é sobre a posição de envio, não sobre o nome solto.** Também
+ * medido: `\bproject\b` casa com `app/page.tsx` em `projects.map((project) =>` e
+ * em `project: (data.project as string)`, de modo que a guarda daria o
+ * `?project=` da caixa de avisos como enviado **antes de ele existir**. Um
+ * parâmetro de query só é enviado numa URL (`?nome=`/`&nome=`) ou por nome citado
+ * (`searchParams.get("nome")`); um campo de corpo só é enviado como chave de
+ * objeto (`nome:`, ou a forma curta `{ nome }`) ou por nome citado
+ * (`formData.append("nome", …)`). É a mesma razão pela qual a guarda de consumo
+ * casa `.chave` e não `chave`: o lugar onde o nome aparece de verdade.
+ */
+function requestBodySchemas(operation) {
+  return Object.values(operation.requestBody?.content ?? {}).map((media) => ({
+    name: media.schema?.$ref?.split("/").pop() ?? "(inline)",
+    schema: media.schema?.$ref
+      ? document.components.schemas[media.schema.$ref.split("/").pop()]
+      : media.schema,
+  }));
+}
+
+/** Os parâmetros de entrada de uma operação, cada um com o kind que o casa. */
+function inputsOf(operation) {
+  const inputs = (operation.parameters ?? [])
+    .filter((parameter) => parameter.in === "query")
+    .map((parameter) => ({ name: parameter.name, kind: "query", owner: "query" }));
+  for (const { name, schema } of requestBodySchemas(operation)) {
+    for (const key of Object.keys(schema?.properties ?? {})) {
+      inputs.push({ name: key, kind: "body", owner: name });
+    }
+  }
+  return inputs;
+}
+
+const quoted = (name) => new RegExp(`["'\`]${name}["'\`]`);
+
+function isSent(text, { name, kind }) {
+  if (kind === "query") {
+    // **Ler não é mandar, e isto foi medido.** Com a aspa solta valendo para
+    // query, apagar o repasse de `?project=` dentro de `app/api/search/route.ts`
+    // deixa a guarda verde: o proxy continua contendo `query.get("project")` — o
+    // parâmetro que ele recebe do navegador e **não** repassa à API. Um parâmetro
+    // de query só sai de dentro de uma URL, ou de quem a monta peça por peça.
+    return (
+      new RegExp(`[?&]${name}=`).test(text) ||
+      new RegExp(`(set|append)\\(\\s*["'\`]${name}["'\`]`).test(text)
+    );
+  }
+  if (quoted(name).test(text)) return true;
+  return (
+    // chave explícita: `folder_id: folderId`
+    new RegExp(`(^|[{,(\\s])${name}\\s*:`, "m").test(text) ||
+    // forma curta: `{ question, conversation_id: … }`
+    new RegExp(`[{,]\\s*${name}\\s*(,|\\}|$)`, "m").test(text)
+  );
+}
+
+/**
+ * O arquivo que **monta a requisição** de cada rota, e só ele.
+ *
+ * Deliberadamente mais estreito que o corpus da guarda de rota acima, que inclui
+ * os consumidores: lá a pergunta é "alguém chega a esta rota?", e um `fetch`
+ * numa tela que passa por `app/api/**` conta. Aqui a pergunta é "quem manda este
+ * parâmetro?", e a resposta é o arquivo que escreve a URL ou o corpo — o proxy,
+ * quando há um.
+ *
+ * **Medido**: com os consumidores no corpus, apagar o repasse de `?project=`
+ * **dentro** de `app/api/search/route.ts` deixa a guarda verde, porque o
+ * `&project=` do `DashboardClient.tsx` — que fala com o proxy, não com a API —
+ * satisfaz a busca do nome. O parâmetro sairia do navegador e morreria no BFF,
+ * que é exatamente o defeito desta fatia acontecendo um andar acima.
+ */
+function routeCorpus() {
+  const corpus = new Map(Object.keys(document.paths).map((path) => [path, new Set()]));
+  for (const [file, text] of SOURCE) {
+    const calls = apiCalls(text);
+    if (calls.length === 0) continue;
+    for (const path of Object.keys(document.paths)) {
+      if (!calls.some((call) => matches(path, call))) continue;
+      corpus.get(path).add(file);
+    }
+  }
+  return corpus;
+}
+
+/**
+ * Parâmetros que o BFF deliberadamente não envia, com o motivo escrito. Mesma
+ * regra das duas allowlists acima: a linha some quando o motivo some.
+ */
+const NOT_THE_BFF = {
+  reason:
+    "rota de agente, autenticada por chave: quem monta este corpo é o produtor de eventos, " +
+    "não o navegador (ADR 0013). Mesma isenção que a rota tem em NOT_CALLED.",
+};
+const NO_SCREEN_YET = {
+  reason:
+    "o recorte por período de `GET /projects/{id}/results`, que ainda não tem tela — a rota " +
+    "inteira está isenta em NOT_CALLED pelo mesmo motivo.",
+  review_by: "2027-02-01",
+};
+
+const NOT_SENT = {
+  "POST /api/v1/agent-events agent_key": NOT_THE_BFF,
+  "POST /api/v1/agent-events avoided_cost_cents": NOT_THE_BFF,
+  "POST /api/v1/agent-events event_id": NOT_THE_BFF,
+  "POST /api/v1/agent-events event_type": NOT_THE_BFF,
+  "POST /api/v1/agent-events human_intervention": NOT_THE_BFF,
+  "POST /api/v1/agent-events occurred_at": NOT_THE_BFF,
+  "POST /api/v1/agent-events outcome": NOT_THE_BFF,
+  "POST /api/v1/agent-events project_id": NOT_THE_BFF,
+  "POST /api/v1/agent-events run_reference": NOT_THE_BFF,
+  "POST /api/v1/agent-events time_saved_seconds": NOT_THE_BFF,
+  "GET /api/v1/projects/{project_id}/results from": NO_SCREEN_YET,
+  "GET /api/v1/projects/{project_id}/results to": NO_SCREEN_YET,
+  "GET /api/v1/me/notifications unread_only": {
+    reason:
+      "a caixa do sino mostra lidos e não lidos juntos, então o BFF fica com o padrão `false`; " +
+      "o filtro existe para quem quiser só o que falta ler, e ninguém quer ainda.",
+  },
+  "GET /api/v1/me/notifications limit": {
+    reason: "o padrão de 50 é a página inteira do popover; não há paginação na tela.",
+  },
+  "GET /api/v1/admin/projects/{project_id}/assistant-signal limit": {
+    reason:
+      "o painel de `/admin/assistente` mostra a janela padrão; recortá-la é pergunta que " +
+      "a tela ainda não faz.",
+  },
+  "POST /api/v1/admin/projects/{project_id}/keys expires_in_days": {
+    reason:
+      "a tela cria a chave com o vencimento padrão da API; escolher o prazo é decisão que " +
+      "o formulário de `/admin` ainda não oferece.",
+  },
+};
+
+const CORPUS_BY_ROUTE = routeCorpus();
+
+/** Todo par (rota, parâmetro) que o corpus da rota não mostra sendo enviado. */
+function unsentInputs() {
+  const missing = new Map();
+  for (const [path, operations] of Object.entries(document.paths)) {
+    const reachable = [...CORPUS_BY_ROUTE.get(path)]
+      .map((file) => SOURCE.get(file))
+      .join("\n");
+    for (const [method, operation] of Object.entries(operations)) {
+      if (!operation || typeof operation !== "object") continue;
+      for (const input of inputsOf(operation)) {
+        if (isSent(reachable, input)) continue;
+        missing.set(`${method.toUpperCase()} ${path} ${input.name}`, { path, ...input });
+      }
+    }
+  }
+  return missing;
+}
+
+const UNSENT = unsentInputs();
+
+for (const path of Object.keys(document.paths).sort()) {
+  const inputs = Object.values(document.paths[path]).flatMap((operation) =>
+    operation && typeof operation === "object" ? inputsOf(operation) : [],
+  );
+  if (inputs.length === 0) continue;
+
+  test(`o BFF envia todo parâmetro que ${path} recebe`, () => {
+    const orphans = [...UNSENT]
+      .filter(([key, input]) => input.path === path && !NOT_SENT[key])
+      .map(([key]) => key);
+
+    assert.deepEqual(
+      orphans,
+      [],
+      `estes parâmetros existem no contrato e nenhum chamador de ${path} os envia: ` +
+        `${orphans.join(", ")}. Mande-os, tire-os da API, ou declare o motivo em NOT_SENT` +
+        " — um parâmetro de entrada sem remetente é o espelho do campo sem leitor (ADR 0033/0059).",
+    );
+  });
+}
+
+test("a allowlist de parâmetros não guarda entrada que deixou de ser necessária", () => {
+  const obsolete = Object.keys(NOT_SENT).filter((key) => !UNSENT.has(key));
+
+  assert.deepEqual(
+    obsolete,
+    [],
+    `NOT_SENT guarda estas linhas e elas não são mais necessárias: ${obsolete.join(", ")}.`,
+  );
+});
+
+test("uma exceção de parâmetro com prazo vencido reprova", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const expired = Object.entries(NOT_SENT)
+    .filter(([, entry]) => entry.review_by && entry.review_by < today)
+    .map(([name, entry]) => `${name} (venceu em ${entry.review_by})`);
+
+  assert.deepEqual(expired, [], `estas exceções venceram: ${expired.join(", ")}.`);
+});

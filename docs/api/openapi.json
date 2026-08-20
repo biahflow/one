@@ -5754,8 +5754,27 @@
     },
     "/api/v1/me/conversations/latest": {
       "get": {
-        "description": "A thread corrente do projeto atual, para o chat voltar como estava.\n\nEscopada ao projeto pela mesma razão da caixa de avisos (:func:`my_notifications`):\nas policies leem as GUCs de organização/projeto, que só existem depois que\n``access.default_project`` resolveu *um* projeto.\n\nSem conversa nenhuma, devolve ``conversation_id: null`` e lista vazia — não é\n404, porque \"ainda não perguntei nada\" não é ausência de recurso.",
+        "description": "A thread corrente do projeto atual, para o chat voltar como estava.\n\nEscopada ao projeto pela mesma razão da caixa de avisos (:func:`my_notifications`):\nas policies leem as GUCs de organização/projeto, que só existem depois que\n``access.chosen_project`` resolveu *um* projeto — o que a tela nomeou em\n``?project=``, ou o padrão de quem não nomeou nenhum.\n\nSem conversa nenhuma, devolve ``conversation_id: null`` e lista vazia — não é\n404, porque \"ainda não perguntei nada\" não é ausência de recurso.",
         "operationId": "my_latest_conversation_api_v1_me_conversations_latest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5786,6 +5805,16 @@
               }
             },
             "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -5809,6 +5838,23 @@
               "format": "uuid",
               "title": "Message Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
             }
           }
         ],
@@ -5886,6 +5932,23 @@
               "title": "Conversation Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
           }
         ],
         "responses": {
@@ -5940,7 +6003,7 @@
     },
     "/api/v1/me/dashboard": {
       "get": {
-        "description": "Dashboard for the caller's own project (the BFF calls this).",
+        "description": "Dashboard for the caller's own project (the BFF calls this).\n\n**A única rota de ``/me/`` que deliberadamente não ganhou ``?project=``** ao\nfechar o item F1 da ADR 0057 (ADR 0059): o caminho por id já existe em ``/projects/{project_id}/dashboard``,\ne é ele que o BFF usa quando a URL traz ``?project=``. Publicar um segundo\ncaminho para a mesma coisa é sedimento (ADR 0029) — aqui ele já foi escolhido\numa vez, e as outras rotas ganharam o parâmetro justamente por **não** terem\nesse caminho.",
         "operationId": "my_dashboard_api_v1_me_dashboard_get",
         "responses": {
           "200": {
@@ -5984,7 +6047,7 @@
     },
     "/api/v1/me/documents/{document_id}/download": {
       "get": {
-        "description": "A URL temporária do documento que a IA citou (Fase 5, ADR 0017).\n\nRota do **cliente**, e não da administração, porque quem precisa abrir o\narquivo é quem leu \"Documento: Contrato — página 3\" e quer conferir a página\n3. Até aqui a citação apontava para uma evidência que só a equipe interna\nconseguia ver, o que é uma forma discreta de pedir confiança em vez de\nmostrar a fonte.\n\nEscopada em ``/me/`` como a caixa de avisos e o histórico da conversa, e pelo\nmesmo motivo prático: a citação nasce no chat, que já roda sobre o projeto\nque ``access.default_project`` resolve. O navegador não manda identificador\nde projeto nenhum — e o que ele não manda é o que ninguém precisa validar\n(regra 1 do `AGENTS.md`).\n\nDevolve endereço, não bytes (ver ``storage.presigned_get_url``).\n\n**Só entrega o que passou pela varredura.** Documento em `pending`, `error`\nou `infected` não tem URL — e a resposta é o mesmo 404 de sempre, sem\ndistinguir \"não existe\" de \"não passou\": o cliente não precisa saber que o\nportal recebeu um arquivo infectado, e a tela de administração já explica\nisso a quem é da casa.",
+        "description": "A URL temporária do documento que a IA citou (Fase 5, ADR 0017).\n\nRota do **cliente**, e não da administração, porque quem precisa abrir o\narquivo é quem leu \"Documento: Contrato — página 3\" e quer conferir a página\n3. Até aqui a citação apontava para uma evidência que só a equipe interna\nconseguia ver, o que é uma forma discreta de pedir confiança em vez de\nmostrar a fonte.\n\nEscopada em ``/me/`` como a caixa de avisos e o histórico da conversa, e pelo\nmesmo motivo prático: a citação nasce no chat, que roda sobre o mesmo projeto.\n**Dizia que \"o navegador não manda identificador de projeto nenhum — e o que\nele não manda é o que ninguém precisa validar\"**, e a segunda metade continua\nverdadeira enquanto a primeira deixou de ser: desde a ADR 0059 o ``?project=`` da tela\nchega aqui, e é validado contra a membership por\n``access.chosen_project`` antes de qualquer leitura — que é a regra 1 do\n`AGENTS.md` sendo cumprida, não dispensada.\n\nDevolve endereço, não bytes (ver ``storage.presigned_get_url``).\n\n**Só entrega o que passou pela varredura.** Documento em `pending`, `error`\nou `infected` não tem URL — e a resposta é o mesmo 404 de sempre, sem\ndistinguir \"não existe\" de \"não passou\": o cliente não precisa saber que o\nportal recebeu um arquivo infectado, e a tela de administração já explica\nisso a quem é da casa.",
         "operationId": "document_download_api_v1_me_documents__document_id__download_get",
         "parameters": [
           {
@@ -5995,6 +6058,23 @@
               "format": "uuid",
               "title": "Document Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
             }
           }
         ],
@@ -6070,7 +6150,7 @@
     },
     "/api/v1/me/notifications": {
       "get": {
-        "description": "Avisos de **um** projeto do chamador, do próprio destinatário (ADR 0012).\n\nEscopado ao projeto como o dashboard, e não à conta inteira: as policies de\nRLS leem as GUCs de organização/projeto, que só existem depois que\n``access.default_project`` resolveu *um* projeto. Uma listagem que\natravessasse projetos rodaria sem esse contexto — e sem contexto a policy\ndevolve zero linhas, que é o comportamento certo, mas não a tela certa.\n\n**Dizia \"do projeto atual\", e isso era falso** (medido na ADR 0057). Não há\n\"atual\" aqui: ao contrário do dashboard, que vem de\n``/projects/{project_id}/dashboard``, esta rota não aceita ``?project=`` e o\nBFF não o manda — o projeto é o que ``access.default_project`` escolhe, que é\na membership **mais recente**. Um cliente com dois projetos, vendo B na tela,\nrecebe os avisos de A. Corrigir é acrescentar o parâmetro aqui e no BFF, o que\né mudança de contrato desta superfície; ficou nomeado no ``ROADMAP.md`` em vez\nde contornado, e a tela se defende: o link do aviso carrega ``?project=`` e a\nnavegação in-app **recusa interceptar** quando ele não é o projeto desenhado,\ncaindo no ``href``, que faz carga completa e honra o parâmetro.",
+        "description": "Avisos de **um** projeto do chamador, do próprio destinatário (ADR 0012).\n\nEscopado ao projeto como o dashboard, e não à conta inteira: as policies de\nRLS leem as GUCs de organização/projeto, que só existem depois que\n``access.chosen_project`` resolveu *um* projeto. Uma listagem que\natravessasse projetos rodaria sem esse contexto — e sem contexto a policy\ndevolve zero linhas, que é o comportamento certo, mas não a tela certa.\n\n**\"Do projeto atual\" só passou a ser verdade agora**, e o registro do erro\nfica porque ele é a razão do parâmetro existir. Até esta fatia não havia\n\"atual\" aqui: ao contrário do dashboard, que vem de\n``/projects/{project_id}/dashboard``, esta rota **não aceitava** ``?project=``\ne o BFF não o mandava — o projeto era o que ``access.default_project`` escolhe,\nque é a membership **mais recente**. Um cliente com dois projetos, vendo B na\ntela, recebia os avisos de A — o item F1 da ADR 0057, fechado na ADR 0059, que a fatia anterior mediu,\nnomeou e não corrigiu.\n\n``?project=`` é o mesmo nome que a barra de endereço usa e que o ``deep_link``\nescreve, e é **opcional**: ausente, o padrão de sempre; de um projeto que o\nchamador não alcança, 404 — nunca queda silenciosa no padrão, que devolveria\na caixa de outro projeto com 200.",
         "operationId": "my_notifications_api_v1_me_notifications_get",
         "parameters": [
           {
@@ -6091,6 +6171,23 @@
               "default": 50,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
             }
           }
         ],
@@ -6148,6 +6245,25 @@
       "post": {
         "description": "Marca avisos como lidos. Sem ``ids``, marca todos os do projeto atual.",
         "operationId": "read_notifications_api_v1_me_notifications_read_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6222,6 +6338,23 @@
               "title": "Pending Item Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
           }
         ],
         "responses": {
@@ -6285,6 +6418,23 @@
               "format": "uuid",
               "title": "Pending Item Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
             }
           }
         ],
@@ -6414,7 +6564,7 @@
     },
     "/api/v1/me/search": {
       "get": {
-        "description": "A busca dentro do projeto do chamador (Fase 6, ADR 0024).\n\nSem identificador de projeto no caminho, como o dashboard, a caixa de avisos\ne o download da citação: o projeto sai de ``access.default_project``, que já\nfixa o contexto de tenant. O navegador não manda id de projeto — e o que ele\nnão manda é o que ninguém precisa validar (regra 1 do `AGENTS.md`).\n\nA regra da fatia está em ``search.py`` e não aqui: esta função resolve o\nprojeto e serializa. O termo digitado **não** entra no log — é conteúdo do\ncliente (`docs/data-classification.md`), e o evento leva só quantos\nresultados saíram e de que espécies.",
+        "description": "A busca dentro do projeto do chamador (Fase 6, ADR 0024).\n\nSem identificador de projeto no **caminho**, como o dashboard, a caixa de\navisos e o download da citação: quem nomeia o projeto é ``?project=``, e quem\nnão o nomeia cai em ``access.default_project``. O id que chega da barra de\nendereço é validado no servidor contra a membership (regra 1 do `AGENTS.md`)\n— ``access.chosen_project`` delega a ``scoped_project``, e um projeto alheio é\n404 e não a busca do projeto padrão.\n\n**A FDD 018 dizia \"o topbar é do projeto corrente\" e isso era falso** até aqui:\na rota resolvia a membership mais recente, então um cliente com dois projetos,\nvendo B, recebia os resultados de A. É o item F1 da ADR 0057, fechado na ADR 0059, medido lá e\nfechado nesta fatia; o erro fica registrado porque é a razão do parâmetro.\n\nA regra da fatia está em ``search.py`` e não aqui: esta função resolve o\nprojeto e serializa. O termo digitado **não** entra no log — é conteúdo do\ncliente (`docs/data-classification.md`), e o evento leva só quantos\nresultados saíram e de que espécies.",
         "operationId": "my_search_api_v1_me_search_get",
         "parameters": [
           {
@@ -6425,6 +6575,23 @@
               "default": "",
               "title": "Q",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
             }
           }
         ],

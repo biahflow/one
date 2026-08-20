@@ -853,9 +853,14 @@ def test_the_results_route_refuses_another_tenants_project(
     Ou seja, o caso literal da regra 1 do `AGENTS.md` — "nunca use um
     identificador fornecido pelo cliente sem validar o vínculo no servidor" — e
     não havia teste nenhum a exercitando: a guarda da regra 6 a encontrou junto
-    com o teto de IA. As demais rotas do cliente resolvem o projeto por
+    com o teto de IA.
+
+    **A frase que vinha aqui — "as demais rotas do cliente resolvem o projeto por
     `access.default_project`, e o que o navegador não manda é o que ninguém
-    precisa validar.
+    precisa validar" — deixou de valer** ao fechar o item F1 da ADR 0057 (ADR 0059): nove
+    rotas de `/me/` passaram a aceitar `?project=`, e o caso negativo delas está
+    em `test_naming_another_tenants_project_is_404_on_every_route_that_takes_one`.
+    O que continua único aqui é o id **no caminho**.
     """
     authenticated(world.acme.client)
 
@@ -1174,6 +1179,179 @@ def test_quem_nao_tem_vinculo_leva_404_mesmo_no_projeto_encerrado(
     with _read_only(migrated_engine, world.acme.project_id, "source_deleted_at"):
         apagado = client.post("/api/v1/chat", json={"question": "Qual é o status?"})
         assert apagado.status_code == 404
+
+
+# --- o projeto que o cliente nomeia (ADR 0059) ----------------------------
+
+
+@dataclass(frozen=True)
+class Reachable:
+    """Linhas reais do tenant do chamador, para o **controle positivo**.
+
+    Sem elas o 404 da negação não prova nada: um id inventado dá 404 pelos dois
+    motivos ao mesmo tempo, e a rota que negasse por engano — ou que nem
+    existisse — passaria igual. Com elas, a única coisa que muda entre as duas
+    chamadas é o ``?project=``.
+    """
+
+    document: uuid.UUID
+    pending: uuid.UUID
+    conversation: uuid.UUID
+    message: uuid.UUID
+
+
+@pytest.fixture
+def acme_rows(world: World, migrated_engine: Engine) -> Reachable:
+    from portal_api.models import (
+        Conversation,
+        ConversationMessage,
+        ConversationRole,
+    )
+    from portal_api.scanner import ScanState
+
+    with Session(migrated_engine) as session:
+        person = session.execute(
+            select(User).where(User.external_subject == world.acme.client.subject)
+        ).scalar_one()
+        conversation = Conversation(
+            organization_id=world.acme.organization_id,
+            project_id=world.acme.project_id,
+            user_id=person.id,
+            title="pergunta da acme",
+            last_message_at=datetime.now(timezone.utc),
+        )
+        session.add(conversation)
+        session.flush()
+        message = ConversationMessage(
+            organization_id=world.acme.organization_id,
+            project_id=world.acme.project_id,
+            conversation_id=conversation.id,
+            user_id=person.id,
+            ordinal=1,
+            role=ConversationRole.assistant,
+            text="Está no contrato, página 3.",
+        )
+        session.add(message)
+        session.commit()
+        built = (conversation.id, message.id)
+
+    return Reachable(
+        document=_document_of(migrated_engine, world.acme, scan_state=ScanState.clean),
+        pending=_pending_of(migrated_engine, world.acme),
+        conversation=built[0],
+        message=built[1],
+    )
+
+
+def _with_project(url: str, project_id: uuid.UUID) -> str:
+    return f"{url}{'&' if '?' in url else '?'}project={project_id}"
+
+
+def _project_aware_calls(rows: Reachable) -> dict[str, tuple[str, str, dict | None]]:
+    """As nove rotas que passaram a aceitar o projeto da tela, com um alvo real."""
+    return {
+        "GET /me/documents/{id}/download": (
+            "GET",
+            f"/api/v1/me/documents/{rows.document}/download",
+            None,
+        ),
+        "GET /me/notifications": ("GET", "/api/v1/me/notifications", None),
+        "GET /me/search": ("GET", "/api/v1/me/search?q=contrato", None),
+        "POST /me/notifications/read": (
+            "POST",
+            "/api/v1/me/notifications/read",
+            {},
+        ),
+        "GET /me/pendings/{id}/comments": (
+            "GET",
+            f"/api/v1/me/pendings/{rows.pending}/comments",
+            None,
+        ),
+        "POST /me/pendings/{id}/comments": (
+            "POST",
+            f"/api/v1/me/pendings/{rows.pending}/comments",
+            {"body": "Já enviei ontem."},
+        ),
+        "GET /me/conversations/latest": (
+            "GET",
+            "/api/v1/me/conversations/latest",
+            None,
+        ),
+        "GET /me/conversations/{id}": (
+            "GET",
+            f"/api/v1/me/conversations/{rows.conversation}",
+            None,
+        ),
+        "POST /me/conversations/messages/{id}/feedback": (
+            "POST",
+            f"/api/v1/me/conversations/messages/{rows.message}/feedback",
+            {"helpful": True},
+        ),
+    }
+
+
+def test_naming_another_tenants_project_is_404_on_every_route_that_takes_one(
+    world: World, authenticated, acme_rows: Reachable
+) -> None:
+    """O caso negativo das nove rotas que ganharam ``?project=`` (regra 6).
+
+    O id chega da barra de endereço, então é exatamente o "identificador
+    fornecido pelo cliente" da regra 1 — e a negação é 404, nunca 403, como todo
+    o resto deste contrato.
+
+    **O par com o controle positivo abaixo é o que dá sentido ao 404.** A ADR 0035
+    mediu o elo frouxo dando ``POST /chat`` como coberto por um 404 que era de
+    outra rota; aqui as duas chamadas são a **mesma** URL, o mesmo corpo e o mesmo
+    ator, e a única diferença é o projeto nomeado.
+    """
+    authenticated(world.acme.client)
+    calls = _project_aware_calls(acme_rows)
+
+    denied = {
+        label: client.request(
+            method, _with_project(url, world.globex.project_id), json=body
+        ).status_code
+        for label, (method, url, body) in calls.items()
+    }
+
+    assert denied == dict.fromkeys(calls, 404)
+
+
+def test_the_same_call_with_the_callers_own_project_is_not_a_404(
+    world: World, authenticated, acme_rows: Reachable
+) -> None:
+    """O controle positivo: sem ele o teste acima passaria com a URL errada.
+
+    Não afirma o código exato de propósito — o download depende do storage estar
+    de pé e responde 503 sem ele, e o comentário responde 201. O que importa é
+    que **não** é 404: a rota existe, o alvo existe, e o que a nega no teste
+    acima é o projeto e nada mais.
+    """
+    authenticated(world.acme.client)
+    calls = _project_aware_calls(acme_rows)
+
+    reached = {
+        label: client.request(
+            method, _with_project(url, world.acme.project_id), json=body
+        ).status_code
+        for label, (method, url, body) in calls.items()
+    }
+
+    assert [label for label, code in reached.items() if code == 404] == []
+
+
+def test_a_project_id_that_is_not_a_uuid_is_refused_and_not_ignored(
+    world: World, authenticated
+) -> None:
+    """Lixo no parâmetro recusa; não vira "sem parâmetro".
+
+    É por isso que o BFF **omite** o parâmetro quando não há projeto conhecido em
+    vez de mandá-lo vazio: um ``?project=`` sem valor é 422, não é o padrão.
+    """
+    authenticated(world.acme.client)
+
+    assert client.get("/api/v1/me/notifications?project=").status_code == 422
+    assert client.get("/api/v1/me/notifications?project=nada").status_code == 422
 
 
 # --- a regra 6, derivada do contrato (ADR 0035) -----------------------------

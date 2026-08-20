@@ -389,7 +389,16 @@ export default async function Page({
   const [meResponse, dashboardResponse, notificationsResponse] = await Promise.all([
     fetch(`${base}/api/v1/me`, { headers: authorization, cache: "no-store" }),
     fetch(dashboardUrl, { headers: authorization, cache: "no-store" }),
-    fetch(`${base}/api/v1/me/notifications`, { headers: authorization, cache: "no-store" }),
+    // O `?project=` da URL também escopa a caixa de avisos (ADR 0059): até aqui
+    // ela vinha de `access.default_project` — a membership mais recente — enquanto
+    // o dashboard ao lado já vinha do projeto que a URL nomeia. Um cliente com dois
+    // projetos, vendo B, recebia o sino de A. Omitido quando a URL não nomeia
+    // projeto, que é o caso em que o padrão continua sendo a resposta certa.
+    fetch(
+      `${base}/api/v1/me/notifications` +
+        (projectId ? `?project=${encodeURIComponent(projectId)}` : ""),
+      { headers: authorization, cache: "no-store" },
+    ),
   ]);
 
   // O token venceu entre o SSR e a chamada: volta para o login, não para o demo.

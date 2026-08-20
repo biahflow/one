@@ -10,7 +10,15 @@ import { authorizationHeader } from "@/app/lib/session";
 
 export async function GET(request: Request): Promise<Response> {
   const base = process.env.API_BASE_URL;
-  const q = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  const query = new URL(request.url).searchParams;
+  const q = query.get("q")?.trim() ?? "";
+  // O projeto que a tela está mostrando (ADR 0059). Até aqui a busca resolvia
+  // `access.default_project` do outro lado — a membership mais recente —, de modo
+  // que um cliente com dois projetos, vendo B, recebia os resultados de A.
+  //
+  // **Omitido quando não há projeto conhecido**, e não mandado vazio: um
+  // `?project=` sem valor não é "sem parâmetro", é 422.
+  const project = query.get("project")?.trim() || null;
 
   // Sem termo não se chama a API: a resposta é a mesma lista vazia, e uma tecla
   // apagada não precisa de ida ao servidor. Quem decide o mínimo é a API
@@ -29,7 +37,8 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const response = await fetch(
-      `${base}/api/v1/me/search?q=${encodeURIComponent(q)}`,
+      `${base}/api/v1/me/search?q=${encodeURIComponent(q)}` +
+        (project ? `&project=${encodeURIComponent(project)}` : ""),
       { headers: authorization, cache: "no-store" },
     );
     if (!response.ok) {

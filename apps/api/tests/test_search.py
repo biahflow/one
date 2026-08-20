@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from portal_api import search
@@ -214,8 +214,17 @@ def authenticated() -> Iterator[Callable[[Actor], None]]:
     app.dependency_overrides.clear()
 
 
-def _search(term: str) -> list[dict]:
-    response = client.get("/api/v1/me/search", params={"q": term})
+def _response(term: str, project: uuid.UUID | str | None = None):
+    params: dict[str, str] = {"q": term}
+    # Ausente é ausente: um ``?project=`` vazio não é "sem parâmetro" — ele
+    # chegaria à rota como string vazia e viraria 422 (ADR 0059).
+    if project is not None:
+        params["project"] = str(project)
+    return client.get("/api/v1/me/search", params=params)
+
+
+def _search(term: str, project: uuid.UUID | str | None = None) -> list[dict]:
+    response = _response(term, project)
     assert response.status_code == 200, response.text
     return response.json()["results"]
 
@@ -288,6 +297,90 @@ def test_the_document_text_is_found_without_its_accents_too(
     authenticated(world.mine.actor)
 
     assert [hit["kind"] for hit in _search("rescisao")] == ["chunk"]
+
+
+# --- o projeto que a tela está mostrando (ADR 0059) ----------------------
+
+
+@pytest.fixture
+def two_projects(world: World, migrated_engine: Engine) -> World:
+    """O ator que faltava neste arquivo: **uma pessoa com duas memberships**.
+
+    O ``world`` dá um projeto por pessoa, e é por isso que o defeito F1 podia
+    existir sem nenhum teste ficar vermelho: com um projeto só, "o mais recente"
+    e "o que está na tela" são sempre o mesmo projeto, e a diferença entre
+    ``default_project`` e ``chosen_project`` não tem como aparecer.
+
+    O vínculo novo nasce **depois** do do ``world``, em transação própria, então
+    é ele o mais recente — que é o que ``access.default_project`` responderia sem
+    o parâmetro.
+    """
+    with Session(migrated_engine) as session:
+        person = session.execute(
+            select(User).where(User.external_subject == world.mine.actor.subject)
+        ).scalar_one()
+        session.add(
+            Membership(
+                organization_id=world.theirs.organization_id,
+                project_id=world.theirs.project_id,
+                user_id=person.id,
+                role=MemberRole.client_member,
+            )
+        )
+        session.commit()
+    return world
+
+
+def test_the_search_answers_for_the_project_the_screen_names(
+    two_projects: World, authenticated
+) -> None:
+    """O parâmetro escolhe o projeto, e o cliente com dois projetos deixa de ver o outro.
+
+    Até a ADR 0057 a rota resolvia ``access.default_project`` — a membership mais
+    recente —, enquanto o dashboard ao lado vinha de
+    ``/projects/{project_id}/dashboard`` com o ``?project=`` da URL. Um cliente
+    vendo B recebia a busca de A, e os dois documentos que afirmavam o contrário
+    (a FDD 018 e o docstring da rota) não podiam estar certos ao mesmo tempo.
+    """
+    authenticated(two_projects.mine.actor)
+
+    meu = _search("rescisão", two_projects.mine.project_id)
+    assert [hit["title"] for hit in meu] == ["Contrato de Manutenção"]
+    assert _search(FOREIGN_TERM, two_projects.mine.project_id) == []
+
+    outro = _search(FOREIGN_TERM, two_projects.theirs.project_id)
+    assert [hit["kind"] for hit in outro] == ["chunk"]
+    assert _search("rescisão", two_projects.theirs.project_id) == []
+
+
+def test_without_the_parameter_the_search_still_answers_for_the_default(
+    two_projects: World, authenticated
+) -> None:
+    """Ausente é o comportamento de sempre: quem não nomeia projeto cai no padrão.
+
+    Compatível para trás de propósito — as onze rotas de ``/me/`` respondiam
+    assim desde a Fase 1, e o parâmetro é um acréscimo, não uma troca. O padrão é
+    a membership mais recente, que aqui é a do ``two_projects``.
+    """
+    authenticated(two_projects.mine.actor)
+
+    assert [hit["kind"] for hit in _search(FOREIGN_TERM)] == ["chunk"]
+    assert _search("rescisão") == []
+
+
+def test_a_project_the_caller_does_not_reach_is_404_and_never_the_default(
+    world: World, authenticated
+) -> None:
+    """Projeto alheio recusa; não cai no padrão em silêncio.
+
+    Cair no padrão seria o ``.get(kind, _CLIENT_ONLY)`` da ADR 0040 outra vez: o
+    esquecimento entrega ao cliente a coisa **errada** em vez de recusar. E é 404
+    e nunca 403, como toda negação deste contrato (regra 6 do `AGENTS.md`).
+    """
+    authenticated(world.mine.actor)
+
+    assert _response("contrato", world.theirs.project_id).status_code == 404
+    assert _response("contrato", uuid.uuid4()).status_code == 404
 
 
 # --- o que a busca não acha -------------------------------------------------

@@ -56,9 +56,28 @@ async function callApi(path: string, init: RequestInit): Promise<boolean> {
   }
 }
 
-/** Marca como lidos os avisos do projeto atual. Sem ids, marca todos. */
-export async function markNotificationsReadAction(ids?: string[]): Promise<boolean> {
-  const ok = await callApi("/api/v1/me/notifications/read", {
+/**
+ * O projeto que a tela está mostrando, no formato de query (ADR 0059).
+ *
+ * As três ações abaixo resolviam `access.default_project` do outro lado — a
+ * membership **mais recente** —, então um cliente com dois projetos marcava como
+ * lido o sino do projeto errado e abria os comentários de uma pendência do
+ * projeto certo recebendo 404, porque o item era procurado sob o tenant do outro.
+ *
+ * **Vazio é omitido, nunca mandado**: `?project=` sem valor é 422 do outro lado, e
+ * ausente é o padrão de sempre. Escrito aqui e não num módulo compartilhado de
+ * propósito — quem chama a rota é quem tem de mostrar que manda o parâmetro.
+ */
+function projectQuery(projectId?: string | null): string {
+  return projectId ? `?project=${encodeURIComponent(projectId)}` : "";
+}
+
+/** Marca como lidos os avisos do projeto na tela. Sem ids, marca todos. */
+export async function markNotificationsReadAction(
+  projectId?: string | null,
+  ids?: string[],
+): Promise<boolean> {
+  const ok = await callApi("/api/v1/me/notifications/read" + projectQuery(projectId), {
     method: "POST",
     body: JSON.stringify({ ids: ids ?? null }),
   });
@@ -217,9 +236,11 @@ async function readApi<T>(path: string): Promise<T | null> {
 
 export async function listPendingCommentsAction(
   pendingItemId: string,
+  projectId?: string | null,
 ): Promise<PendingComment[] | null> {
   const body = await readApi<{ items: PendingComment[] }>(
-    `/api/v1/me/pendings/${encodeURIComponent(pendingItemId)}/comments`,
+    `/api/v1/me/pendings/${encodeURIComponent(pendingItemId)}/comments` +
+      projectQuery(projectId),
   );
   return body ? body.items : null;
 }
@@ -227,11 +248,13 @@ export async function listPendingCommentsAction(
 export async function addPendingCommentAction(
   pendingItemId: string,
   body: string,
+  projectId?: string | null,
 ): Promise<boolean> {
   const text = body.trim();
   if (!text) return false;
   const ok = await callApi(
-    `/api/v1/me/pendings/${encodeURIComponent(pendingItemId)}/comments`,
+    `/api/v1/me/pendings/${encodeURIComponent(pendingItemId)}/comments` +
+      projectQuery(projectId),
     { method: "POST", body: JSON.stringify({ body: text }) },
   );
   // Revalida para a contagem do fio vir do servidor no próximo render, pela

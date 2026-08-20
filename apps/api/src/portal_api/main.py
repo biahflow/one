@@ -498,10 +498,11 @@ def chat(message: ChatIn, principal: CurrentPrincipal) -> dict:
 
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        if message.project_id is not None:
-            project = access.scoped_project(session, user, message.project_id)
-        else:
-            project = access.default_project(session, user)
+        # O projeto vem do corpo desde a Fase 3, e esta ramificação escrita à mão foi
+        # a origem do ``chosen_project`` (ADR 0059): as outras onze rotas de cliente
+        # não tinham como nomear projeto, e esta tinha e **ninguém a usava** — o BFF
+        # mandava só `question` e `conversation_id`.
+        project = access.chosen_project(session, user, message.project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
         # Depois do 404 e antes da quota (ADR 0036): não há o que cobrar por uma pergunta que
@@ -875,7 +876,11 @@ def project_results(
         },
     },
 )
-def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
+def document_download(
+    document_id: UUID,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
     """A URL temporária do documento que a IA citou (Fase 5, ADR 0017).
 
     Rota do **cliente**, e não da administração, porque quem precisa abrir o
@@ -885,10 +890,13 @@ def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
     mostrar a fonte.
 
     Escopada em ``/me/`` como a caixa de avisos e o histórico da conversa, e pelo
-    mesmo motivo prático: a citação nasce no chat, que já roda sobre o projeto
-    que ``access.default_project`` resolve. O navegador não manda identificador
-    de projeto nenhum — e o que ele não manda é o que ninguém precisa validar
-    (regra 1 do `AGENTS.md`).
+    mesmo motivo prático: a citação nasce no chat, que roda sobre o mesmo projeto.
+    **Dizia que "o navegador não manda identificador de projeto nenhum — e o que
+    ele não manda é o que ninguém precisa validar"**, e a segunda metade continua
+    verdadeira enquanto a primeira deixou de ser: desde a ADR 0059 o ``?project=`` da tela
+    chega aqui, e é validado contra a membership por
+    ``access.chosen_project`` antes de qualquer leitura — que é a regra 1 do
+    `AGENTS.md` sendo cumprida, não dispensada.
 
     Devolve endereço, não bytes (ver ``storage.presigned_get_url``).
 
@@ -901,7 +909,7 @@ def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
     settings = get_settings()
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
@@ -967,7 +975,15 @@ def document_download(document_id: UUID, principal: CurrentPrincipal) -> dict:
     responses=CLIENT_ERRORS,
 )
 def my_dashboard(principal: CurrentPrincipal) -> dict:
-    """Dashboard for the caller's own project (the BFF calls this)."""
+    """Dashboard for the caller's own project (the BFF calls this).
+
+    **A única rota de ``/me/`` que deliberadamente não ganhou ``?project=``** ao
+    fechar o item F1 da ADR 0057 (ADR 0059): o caminho por id já existe em ``/projects/{project_id}/dashboard``,
+    e é ele que o BFF usa quando a URL traz ``?project=``. Publicar um segundo
+    caminho para a mesma coisa é sedimento (ADR 0029) — aqui ele já foi escolhido
+    uma vez, e as outras rotas ganharam o parâmetro justamente por **não** terem
+    esse caminho.
+    """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
         project = access.default_project(session, user)
@@ -1006,30 +1022,36 @@ def my_dashboard(principal: CurrentPrincipal) -> dict:
     responses=CLIENT_ERRORS,
 )
 def my_notifications(
-    principal: CurrentPrincipal, unread_only: bool = False, limit: int = 50
+    principal: CurrentPrincipal,
+    unread_only: bool = False,
+    limit: int = 50,
+    project_id: UUID | None = Query(default=None, alias="project"),
 ) -> dict:
     """Avisos de **um** projeto do chamador, do próprio destinatário (ADR 0012).
 
     Escopado ao projeto como o dashboard, e não à conta inteira: as policies de
     RLS leem as GUCs de organização/projeto, que só existem depois que
-    ``access.default_project`` resolveu *um* projeto. Uma listagem que
+    ``access.chosen_project`` resolveu *um* projeto. Uma listagem que
     atravessasse projetos rodaria sem esse contexto — e sem contexto a policy
     devolve zero linhas, que é o comportamento certo, mas não a tela certa.
 
-    **Dizia "do projeto atual", e isso era falso** (medido na ADR 0057). Não há
+    **"Do projeto atual" só passou a ser verdade agora**, e o registro do erro
+    fica porque ele é a razão do parâmetro existir. Até esta fatia não havia
     "atual" aqui: ao contrário do dashboard, que vem de
-    ``/projects/{project_id}/dashboard``, esta rota não aceita ``?project=`` e o
-    BFF não o manda — o projeto é o que ``access.default_project`` escolhe, que é
-    a membership **mais recente**. Um cliente com dois projetos, vendo B na tela,
-    recebe os avisos de A. Corrigir é acrescentar o parâmetro aqui e no BFF, o que
-    é mudança de contrato desta superfície; ficou nomeado no ``ROADMAP.md`` em vez
-    de contornado, e a tela se defende: o link do aviso carrega ``?project=`` e a
-    navegação in-app **recusa interceptar** quando ele não é o projeto desenhado,
-    caindo no ``href``, que faz carga completa e honra o parâmetro.
+    ``/projects/{project_id}/dashboard``, esta rota **não aceitava** ``?project=``
+    e o BFF não o mandava — o projeto era o que ``access.default_project`` escolhe,
+    que é a membership **mais recente**. Um cliente com dois projetos, vendo B na
+    tela, recebia os avisos de A — o item F1 da ADR 0057, fechado na ADR 0059, que a fatia anterior mediu,
+    nomeou e não corrigiu.
+
+    ``?project=`` é o mesmo nome que a barra de endereço usa e que o ``deep_link``
+    escreve, e é **opcional**: ausente, o padrão de sempre; de um projeto que o
+    chamador não alcança, 404 — nunca queda silenciosa no padrão, que devolveria
+    a caixa de outro projeto com 200.
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         repository = NotificationRepository(
@@ -1060,13 +1082,24 @@ def my_notifications(
     response_model=schemas.SearchOut,
     responses=CLIENT_ERRORS,
 )
-def my_search(principal: CurrentPrincipal, q: str = "") -> dict:
+def my_search(
+    principal: CurrentPrincipal,
+    q: str = "",
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
     """A busca dentro do projeto do chamador (Fase 6, ADR 0024).
 
-    Sem identificador de projeto no caminho, como o dashboard, a caixa de avisos
-    e o download da citação: o projeto sai de ``access.default_project``, que já
-    fixa o contexto de tenant. O navegador não manda id de projeto — e o que ele
-    não manda é o que ninguém precisa validar (regra 1 do `AGENTS.md`).
+    Sem identificador de projeto no **caminho**, como o dashboard, a caixa de
+    avisos e o download da citação: quem nomeia o projeto é ``?project=``, e quem
+    não o nomeia cai em ``access.default_project``. O id que chega da barra de
+    endereço é validado no servidor contra a membership (regra 1 do `AGENTS.md`)
+    — ``access.chosen_project`` delega a ``scoped_project``, e um projeto alheio é
+    404 e não a busca do projeto padrão.
+
+    **A FDD 018 dizia "o topbar é do projeto corrente" e isso era falso** até aqui:
+    a rota resolvia a membership mais recente, então um cliente com dois projetos,
+    vendo B, recebia os resultados de A. É o item F1 da ADR 0057, fechado na ADR 0059, medido lá e
+    fechado nesta fatia; o erro fica registrado porque é a razão do parâmetro.
 
     A regra da fatia está em ``search.py`` e não aqui: esta função resolve o
     projeto e serializa. O termo digitado **não** entra no log — é conteúdo do
@@ -1076,7 +1109,7 @@ def my_search(principal: CurrentPrincipal, q: str = "") -> dict:
     started = perf_counter()
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         hits = search.search_project(
@@ -1104,11 +1137,15 @@ def my_search(principal: CurrentPrincipal, q: str = "") -> dict:
     response_model=schemas.NotificationsReadOut,
     responses=CLIENT_ERRORS,
 )
-def read_notifications(payload: NotificationsReadIn, principal: CurrentPrincipal) -> dict:
+def read_notifications(
+    payload: NotificationsReadIn,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
     """Marca avisos como lidos. Sem ``ids``, marca todos os do projeto atual."""
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         marked = NotificationRepository(
@@ -1187,7 +1224,9 @@ def _comment_payload(comment) -> dict:
     responses=CLIENT_ERRORS,
 )
 def list_pending_comments(
-    pending_item_id: UUID, principal: CurrentPrincipal
+    pending_item_id: UUID,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
 ) -> dict:
     """O fio de uma pendência do projeto atual (ADR 0032).
 
@@ -1197,7 +1236,7 @@ def list_pending_comments(
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         ctx = TenantContext(project.organization_id, project.id)
@@ -1217,7 +1256,10 @@ def list_pending_comments(
     responses={**CLIENT_ERRORS, **READ_ONLY_PROJECT_ERROR},
 )
 def add_pending_comment(
-    pending_item_id: UUID, payload: PendingCommentIn, principal: CurrentPrincipal
+    pending_item_id: UUID,
+    payload: PendingCommentIn,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
 ) -> dict:
     """Escreve um comentário. Cliente e equipe interna, os dois (ADR 0032).
 
@@ -1230,7 +1272,7 @@ def add_pending_comment(
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         _refuse_when_read_only(project)
@@ -1272,19 +1314,23 @@ def add_pending_comment(
     response_model_exclude_unset=True,
     responses=CLIENT_ERRORS,
 )
-def my_latest_conversation(principal: CurrentPrincipal) -> dict:
+def my_latest_conversation(
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
     """A thread corrente do projeto atual, para o chat voltar como estava.
 
     Escopada ao projeto pela mesma razão da caixa de avisos (:func:`my_notifications`):
     as policies leem as GUCs de organização/projeto, que só existem depois que
-    ``access.default_project`` resolveu *um* projeto.
+    ``access.chosen_project`` resolveu *um* projeto — o que a tela nomeou em
+    ``?project=``, ou o padrão de quem não nomeou nenhum.
 
     Sem conversa nenhuma, devolve ``conversation_id: null`` e lista vazia — não é
     404, porque "ainda não perguntei nada" não é ausência de recurso.
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         ctx = TenantContext(project.organization_id, project.id)
@@ -1307,7 +1353,11 @@ def my_latest_conversation(principal: CurrentPrincipal) -> dict:
     response_model_exclude_unset=True,
     responses=CLIENT_ERRORS,
 )
-def my_conversation(conversation_id: UUID, principal: CurrentPrincipal) -> dict:
+def my_conversation(
+    conversation_id: UUID,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
     """Uma thread nomeada, para o cliente voltar à pergunta que abriu a pendência.
 
     Existe por causa da ADR 0031: a pendência aberta pela IA aponta um turno, e
@@ -1322,7 +1372,7 @@ def my_conversation(conversation_id: UUID, principal: CurrentPrincipal) -> dict:
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         ctx = TenantContext(project.organization_id, project.id)
@@ -1346,7 +1396,12 @@ def my_conversation(conversation_id: UUID, principal: CurrentPrincipal) -> dict:
     response_model=schemas.FeedbackOut,
     responses=CLIENT_ERRORS,
 )
-def rate_answer(message_id: UUID, payload: FeedbackIn, principal: CurrentPrincipal) -> dict:
+def rate_answer(
+    message_id: UUID,
+    payload: FeedbackIn,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
     """Avalia uma resposta do assistente. Mensagem de outra pessoa é 404, como sempre.
 
     O id da mensagem basta: ele já pertence a uma conversa, que já pertence a uma
@@ -1355,7 +1410,7 @@ def rate_answer(message_id: UUID, payload: FeedbackIn, principal: CurrentPrincip
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)
-        project = access.default_project(session, user)
+        project = access.chosen_project(session, user, project_id)
         if project is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
         message = conversations.record_feedback(

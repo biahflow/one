@@ -87,7 +87,13 @@ _TENANCY_SQL = re.compile(
 #: `ADR-0010`, `RFC 001`). Procurada no arquivo **inteiro**, comentários e docstring
 #: incluídos, porque é lá que ela mora — o corpo executável não é lugar de citar
 #: decisão.
-_CITATION = re.compile(r"\b(ADR|RFC)[\s-]?(\d{3,4})\b")
+#:
+#: **Larguras diferentes, e não é descuido:** ADR tem quatro dígitos e RFC tem três,
+#: que é como este repositório os numera. Um casador único de três a quatro dígitos
+#: leria `RFC 7231` — o HTTP — como decisão daqui e reprovaria por ela não existir,
+#: transformando uma referência normativa correta em vermelho.
+_ADR_CITATION = re.compile(r"\bADR[\s-]?(\d{4})\b")
+_RFC_CITATION = re.compile(r"\bRFC[\s-]?(\d{3})\b")
 
 #: **Sem ocupante hoje, e a meta é que continue.** Uma migração que precise apagar
 #: dado entra aqui com o motivo em prosa e **sem prazo**, no precedente do
@@ -186,7 +192,8 @@ def touches_tenancy(text: str) -> bool:
 
 def citations(text: str) -> set[tuple[str, int]]:
     """As decisões que a migração cita, como `("ADR", 10)`."""
-    return {(kind, int(number)) for kind, number in _CITATION.findall(text)}
+    found = {("ADR", int(number)) for number in _ADR_CITATION.findall(text)}
+    return found | {("RFC", int(number)) for number in _RFC_CITATION.findall(text)}
 
 
 # --- as bordas impuras ------------------------------------------------------

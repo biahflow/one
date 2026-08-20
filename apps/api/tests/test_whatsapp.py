@@ -13,11 +13,13 @@ fala com fornecedor nenhum, e o que cada teste afirma é sobre **o pedido enviad
 
 from __future__ import annotations
 
+import ast
 import json
 import threading
 import uuid
 from collections.abc import Iterator
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 import pytest
@@ -161,7 +163,33 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> _Capture:
     return capture
 
 
-def _run(monkeypatch: pytest.MonkeyPatch, ids: dict, settings: Settings) -> dict:
+#: 23h30 em São Paulo. Escolhido em **UTC** porque é o que o worker passa, e a
+#: conversão é justamente o que está sob teste.
+_QUIET = datetime(2026, 8, 19, 2, 30, tzinfo=timezone.utc)
+#: 08h30 em São Paulo, o primeiro horário fora da janela padrão.
+_AWAKE = datetime(2026, 8, 19, 11, 30, tzinfo=timezone.utc)
+
+
+def _freeze(monkeypatch: pytest.MonkeyPatch, moment: datetime) -> None:
+    """Congela o relógio da passagem, na forma do ``retention.now`` (ADR 0017).
+
+    Uma indireção só: a task e o ``contact_budget`` leem o mesmo relógio, então
+    congelar um congela os dois — que é a razão de o worker ter deixado de chamar
+    ``datetime.now`` direto nesta fatia.
+    """
+    monkeypatch.setattr(retention, "now", lambda: moment)
+
+
+def _run(monkeypatch: pytest.MonkeyPatch, ids: dict, settings: Settings, *, at: datetime) -> dict:
+    """Roda a task com o relógio **sempre** congelado — nunca o da máquina.
+
+    ``at`` é obrigatório de propósito: sem ele, sete testes reprovavam de
+    madrugada (a janela de silêncio decidia por conta própria) e nenhum ficava
+    vermelho por isso, porque o relógio real só vira contra o produto em parte
+    do dia. A Guarda 1, no fim do arquivo, cobra a mesma declaração de quem
+    aciona o envio por outro caminho.
+    """
+    _freeze(monkeypatch, at)
     monkeypatch.setattr(worker, "get_settings", lambda: settings)
     return worker.send_whatsapp_notices(str(ids["project"]))
 
@@ -185,7 +213,7 @@ def test_without_consent_nothing_is_sent_even_with_the_channel_on(
         session.get(User, world["user"]).notify_by_whatsapp = False
         session.commit()
 
-    result = _run(monkeypatch, world, _settings())
+    result = _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     assert result["sent"] == 0
     assert sent.requests == []
@@ -213,7 +241,7 @@ def test_revoking_the_consent_cancels_what_is_already_queued(
         session.get(User, world["user"]).notify_by_whatsapp = False
         session.commit()
 
-    _run(monkeypatch, world, _settings())
+    _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     assert sent.requests == []
     with Session(migrated_engine) as session:
@@ -224,7 +252,7 @@ def test_revoking_the_consent_cancels_what_is_already_queued(
     with Session(migrated_engine) as session:
         session.get(User, world["user"]).notify_by_whatsapp = True
         session.commit()
-    _run(monkeypatch, world, _settings())
+    _run(monkeypatch, world, _settings(), at=_AWAKE)
     assert sent.requests == []
 
 
@@ -241,8 +269,8 @@ def test_a_change_sends_once_and_a_redelivery_does_not_send_again(
         _notify(session, world)
         session.commit()
 
-    first = _run(monkeypatch, world, _settings())
-    second = _run(monkeypatch, world, _settings())
+    first = _run(monkeypatch, world, _settings(), at=_AWAKE)
+    second = _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     assert first["sent"] == 1
     assert second["sent"] == 0
@@ -275,7 +303,7 @@ def test_the_link_lands_on_the_subject_and_not_on_the_home(
         _notify(session, world, kind=NotificationKind.pending_opened, dedupe_key="p:1")
         session.commit()
 
-    _run(monkeypatch, world, _settings())
+    _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     parameters = sent.bodies[0]["template"]["components"][0]["parameters"]
     url = parameters[1]["text"]
@@ -308,7 +336,7 @@ def test_the_message_url_points_at_the_row_and_not_at_the_tab(
         )
         session.commit()
 
-    _run(monkeypatch, world, _settings())
+    _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     url = sent.bodies[0]["template"]["components"][0]["parameters"][1]["text"]
     assert url == (
@@ -337,7 +365,7 @@ def test_a_dead_provider_leaves_the_notice_in_the_bell_and_retries_later(
 
     broken = _Capture(status_code=500)
     monkeypatch.setattr(whatsapp, "session_client", broken.client)
-    result = _run(monkeypatch, world, _settings())
+    result = _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     assert result["sent"] == 0
     with Session(migrated_engine) as session:
@@ -346,7 +374,7 @@ def test_a_dead_provider_leaves_the_notice_in_the_bell_and_retries_later(
     # O fornecedor volta: sai agora, e o teto foi debitado uma vez só.
     healthy = _Capture()
     monkeypatch.setattr(whatsapp, "session_client", healthy.client)
-    again = _run(monkeypatch, world, _settings())
+    again = _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     assert again["sent"] == 1
     with Session(migrated_engine) as session:
@@ -375,7 +403,7 @@ def test_the_message_carries_the_fact_and_the_link_and_nothing_else(
         _notify(session, world)
         session.commit()
 
-    _run(monkeypatch, world, _settings())
+    _run(monkeypatch, world, _settings(), at=_AWAKE)
 
     body = sent.bodies[0]
     raw = json.dumps(body, ensure_ascii=False)
@@ -407,7 +435,7 @@ def test_the_frequency_cap_suppresses_and_the_notice_stays_in_the_bell(
             _notify(session, world, dedupe_key=f"document:{index}")
         session.commit()
 
-    result = _run(monkeypatch, world, _settings(contact_cap_per_window=2))
+    result = _run(monkeypatch, world, _settings(contact_cap_per_window=2), at=_AWAKE)
 
     assert result["sent"] == 2
     assert result["suppressed"] == 1
@@ -451,22 +479,6 @@ def test_a_200_without_a_message_id_is_a_refusal(
 # varredura seria descarte com outro nome: até aqui a task de envio só rodava no
 # fim de um sync do Biahflow, e num projeto quieto o "depois" não chegava.
 
-#: 23h30 em São Paulo. Escolhido em **UTC** porque é o que o worker passa, e a
-#: conversão é justamente o que está sob teste.
-_QUIET = datetime(2026, 8, 19, 2, 30, tzinfo=timezone.utc)
-#: 08h30 em São Paulo, o primeiro horário fora da janela padrão.
-_AWAKE = datetime(2026, 8, 19, 11, 30, tzinfo=timezone.utc)
-
-
-def _freeze(monkeypatch: pytest.MonkeyPatch, moment: datetime) -> None:
-    """Congela o relógio da passagem, na forma do ``retention.now`` (ADR 0017).
-
-    Uma indireção só: a task e o ``contact_budget`` leem o mesmo relógio, então
-    congelar um congela os dois — que é a razão de o worker ter deixado de chamar
-    ``datetime.now`` direto nesta fatia.
-    """
-    monkeypatch.setattr(retention, "now", lambda: moment)
-
 
 def test_inside_the_quiet_window_nothing_is_sent_and_nothing_is_stamped(
     migrated_engine: Engine,
@@ -484,8 +496,7 @@ def test_inside_the_quiet_window_nothing_is_sent_and_nothing_is_stamped(
         notification_id = _notify(session, world)
         session.commit()
 
-    _freeze(monkeypatch, _QUIET)
-    result = _run(monkeypatch, world, _settings())
+    result = _run(monkeypatch, world, _settings(), at=_QUIET)
 
     assert result["sent"] == 0
     assert result["deferred"] == 1
@@ -510,8 +521,7 @@ def test_inside_the_quiet_window_the_contact_budget_is_not_spent(
         _notify(session, world)
         session.commit()
 
-    _freeze(monkeypatch, _QUIET)
-    _run(monkeypatch, world, _settings())
+    _run(monkeypatch, world, _settings(), at=_QUIET)
 
     with Session(migrated_engine) as session:
         spent = session.execute(
@@ -531,11 +541,9 @@ def test_after_the_quiet_window_the_same_notice_goes_out(
         notification_id = _notify(session, world)
         session.commit()
 
-    _freeze(monkeypatch, _QUIET)
-    assert _run(monkeypatch, world, _settings())["sent"] == 0
+    assert _run(monkeypatch, world, _settings(), at=_QUIET)["sent"] == 0
 
-    _freeze(monkeypatch, _AWAKE)
-    assert _run(monkeypatch, world, _settings())["sent"] == 1
+    assert _run(monkeypatch, world, _settings(), at=_AWAKE)["sent"] == 1
 
     assert len(sent.requests) == 1
     with Session(migrated_engine) as session:
@@ -597,11 +605,11 @@ def test_a_start_equal_to_the_end_silences_nothing(
         _notify(session, world)
         session.commit()
 
-    _freeze(monkeypatch, _QUIET)
     result = _run(
         monkeypatch,
         world,
         _settings(contact_quiet_hours_start=21, contact_quiet_hours_end=21),
+        at=_QUIET,
     )
 
     assert result["sent"] == 1
@@ -742,3 +750,67 @@ def test_a_notice_already_claimed_by_another_pass_is_skipped(
     # E o aviso continua pendente: a passagem que o tinha é que vai enviá-lo.
     with Session(migrated_engine) as session:
         assert session.get(Notification, notification_id).whatsapp_sent_at is None
+
+
+# --------------------------------------------------------------------------- #
+# Guarda: todo teste que aciona o envio declara a hora (ADR 0057-parceira)
+# --------------------------------------------------------------------------- #
+#
+# `_run` passou a exigir `at=`: sem ele, o relógio da máquina decide se o
+# envio sai ou é adiado, e os sete testes do baseline reprovavam de madrugada
+# por isso. A varredura é sobre o AST do próprio arquivo, na forma de
+# `test_telemetry.py` — e cobre também os dois testes que acionam a task
+# direto (`worker.send_whatsapp_notices`/`send_due_whatsapp_notices`), que
+# não passam por `_run` e continuariam livres para esquecer o `_freeze`.
+
+_SEND_CALL_NAMES = {"_run", "send_whatsapp_notices", "send_due_whatsapp_notices"}
+
+
+def _calls_named(node: ast.AST, names: set[str]) -> list[ast.Call]:
+    """Toda chamada a uma função de um dos nomes dados, em qualquer profundidade."""
+    found: list[ast.Call] = []
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.Call):
+            continue
+        func = sub.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if name in names:
+            found.append(sub)
+    return found
+
+
+def test_every_test_that_reaches_the_send_declares_the_moment() -> None:
+    """Todo `test_*` que alcança o envio declara o momento **antes** de acionar.
+
+    Sem essa declaração o teste fica sujeito ao relógio da máquina, e foi o que
+    fez sete deles reprovarem de madrugada (ADR 0058). O elo é com a **ordem** e
+    não com a presença: um `_freeze` depois do envio congelaria o relógio de
+    ninguém, e uma guarda que só perguntasse "existe um `_freeze` aqui?" daria
+    isso como coberto — a frouxidão que a ADR 0035 mediu ao dar `POST /chat`
+    como coberto por um 404 que era de outra rota.
+
+    ``ast.walk`` e não ``tree.body``: um teste dentro de classe é teste, e uma
+    guarda que só enxerga o topo do módulo nasce cega para ele.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+            continue
+        sends = _calls_named(node, _SEND_CALL_NAMES)
+        if not sends:
+            continue
+        first_send = min(call.lineno for call in sends)
+        declares = any(call.lineno < first_send for call in _calls_named(node, {"_freeze"})) or any(
+            keyword.arg == "at"
+            for call in _calls_named(node, {"_run"})
+            for keyword in call.keywords
+        )
+        if not declares:
+            violations.append(f"{node.name} (linha {node.lineno})")
+
+    assert not violations, (
+        "teste(s) que acionam o envio sem declarar o momento (`_freeze` ou "
+        "`_run(..., at=...)`): " + "; ".join(violations)
+    )

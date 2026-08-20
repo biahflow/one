@@ -1019,6 +1019,30 @@ que ele respeita.
       cliente com dois projetos, vendo B, recebe os avisos e os resultados de A. A FDD 018 e o
       docstring de `my_notifications` afirmavam o contrário, e as duas foram corrigidas com a
       medição escrita.*
+- [x] **O verde que dependia da hora** *(ADR 0058)*: defeito da ADR 0055, achado ao rodar a
+      bateria de madrugada. Aquela fatia fez o worker consultar a janela de silêncio de verdade e
+      criou o `_freeze`, usando-o **só nos testes que ela mesma acrescentou** — os anteriores
+      chamavam um `_run` que não congelava nada, de modo que a hora da máquina passou a decidir se
+      sete testes passam. O custo não era local: 21h–08h em São Paulo é **00:00–11:00 UTC**, então o
+      job `api-quality` ficava vermelho onze horas por dia, para qualquer branch, por motivo que não
+      tem a ver com o código empurrado. A ADR 0055 passou por ter sido commitada às 17h13.
+      Medido nas duas direções — de madrugada reprovam os sete; com a janela desligada por variável,
+      passam os sete e reprovam os cinco que afirmam sobre a janela.
+      Agora `_run` exige a hora **na assinatura** (padrão resolveria os sete de hoje e deixaria o
+      oitavo nascer errado amanhã), e `PRODUCT_TIMEZONE` mudou de casa para `clock.py` sem mudar de
+      valor, com `product_hour` e `product_date` — folha pela razão de `textfold.py` e `anchors.py`,
+      e havia **dois** lugares respondendo "que dia é hoje", já divergentes.
+      *De quebra, a mesma classe no código de produto: `_results_projection` decidia "marco
+      atrasado" com `date.today()` — a data da máquina, UTC no contêiner —, o que adiantava o corte
+      em três horas em relação ao dia que o cliente vê; e o teste de vigência de preço comparava
+      data local com um razão que conta em UTC.*
+      **A guarda nasceu vermelha com oito funções, e não com sete**: uma delas aciona o envio sem
+      declarar a hora e o relógio nunca a pegou. E o **elo é com a ordem**, medido: com a versão que
+      só perguntava "existe um `_freeze` aqui?", um `_freeze` **depois** do envio passa verde — a
+      frouxidão que a ADR 0035 mediu ao dar `POST /chat` como coberto por um 404 de outra rota.
+      *Fica declarado, e não corrigido: dois testes reprovam por resíduo do banco de
+      desenvolvimento (passam isolados e em banco novo), e `_settings()` ainda deixa a variável de
+      ambiente da janela entrar nos testes que afirmam sobre ela.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

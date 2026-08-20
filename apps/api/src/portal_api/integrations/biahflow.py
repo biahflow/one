@@ -19,7 +19,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from portal_api import notifications, pending_comments, results
+from portal_api import clock, notifications, pending_comments, results
 from portal_api.models import (
     ConversationMessage,
     Decision,
@@ -509,14 +509,21 @@ def _document_type(title: str) -> str | None:
     return extension.upper() if extension and extension != title else None
 
 
-def _results_projection(milestones: list[Milestone]) -> dict[str, Any]:
+def _results_projection(
+    milestones: list[Milestone], *, today: date | None = None
+) -> dict[str, Any]:
     """KPIs de andamento derivados dos marcos (o Biahflow envia os mesmos em ``resultados``).
 
     São recalculados aqui, e não denormalizados em colunas, para não divergirem do read model.
+
+    ``today`` entra por parâmetro, na forma de ``Period.last_days`` — o padrão é o dia
+    do produto (São Paulo) e não ``date.today()``: a data da máquina é UTC no contêiner,
+    o que adianta em até três horas o corte de "marco atrasado" em relação ao dia que o
+    cliente vê na tela.
     """
     total = len(milestones)
     done = sum(1 for milestone in milestones if milestone.state == MilestoneState.done)
-    today = date.today()
+    today = today or clock.product_date(datetime.now(timezone.utc))
     overdue = sum(
         1
         for milestone in milestones

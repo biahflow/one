@@ -450,6 +450,40 @@ def test_results_projection_counts_milestones_and_overdue(db_session: Session) -
     }
 
 
+# --- unit: o corte de "atrasado" é o dia de São Paulo, não o da máquina ----
+
+
+def test_a_milestone_due_today_in_sao_paulo_is_not_overdue_when_utc_has_rolled_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """23h30 em São Paulo já é 02h30 do dia seguinte em UTC.
+
+    Um marco cujo prazo é **hoje** para o cliente não pode aparecer atrasado só
+    porque o contêiner, em UTC, já entrou no dia seguinte — a mesma classe de erro
+    que levaria `date.today()` (a data da máquina) a adiantar o corte em até três
+    horas. Unitário e sem sessão: `_results_projection` é pura, e a única coisa que
+    precisa ser congelada é o relógio que ela lê por trás do `today=None`.
+    """
+    frozen_utc = datetime(2026, 8, 20, 2, 30, tzinfo=timezone.utc)  # 19/08 23h30 em SP
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: D102 — só o suficiente para o teste
+            return frozen_utc if tz else frozen_utc.replace(tzinfo=None)
+
+    monkeypatch.setattr(biahflow, "datetime", _FrozenDatetime)
+
+    milestone = Milestone(
+        title="Entrega final",
+        due_date=date(2026, 8, 19),  # hoje em São Paulo no instante congelado
+        state=MilestoneState.in_progress,
+    )
+
+    projection = biahflow._results_projection([milestone])
+
+    assert projection["overdue"] == 0
+
+
 @pytest.mark.integration
 @pytest.mark.parametrize("object_type", ["meeting", "pendencia"])
 def test_webhook_syncs_new_object_types(

@@ -26,10 +26,10 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 
+from portal_api.clock import product_hour
 from portal_api.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -95,14 +95,6 @@ def is_enabled(settings: Settings) -> bool:
     return settings.whatsapp_enabled and is_configured(settings)
 
 
-#: O fuso do produto, e ele é **constante** (ADR 0026). Fuso por organização ou por
-#: pessoa foi decidido contra: não há coluna, não há rota, e a tela já formata toda
-#: data nesta zona. Um segundo lugar respondendo "que horas são para esta pessoa"
-#: divergiria do primeiro no dia em que alguém editasse um só — que é o argumento
-#: do ``textfold.py``.
-PRODUCT_TIMEZONE = ZoneInfo("America/Sao_Paulo")
-
-
 def within_quiet_hours(settings: Settings, moment: datetime) -> bool:
     """A hora em que este canal não fala (FDD 021; o teto que a ADR 0042 deixou aberto).
 
@@ -124,7 +116,7 @@ def within_quiet_hours(settings: Settings, moment: datetime) -> bool:
     if start == end:
         return False
 
-    hour = moment.astimezone(PRODUCT_TIMEZONE).hour
+    hour = product_hour(moment)
     if start < end:
         return start <= hour < end
     # Atravessa a meia-noite: é silêncio dos dois lados da virada.

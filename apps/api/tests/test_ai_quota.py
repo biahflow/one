@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -195,7 +195,9 @@ def test_a_price_change_today_does_not_reprice_last_month(
     assert before.cost_cents == 500
 
     # Fecha a vigência corrente e abre outra, dez vezes mais cara, **amanhã**.
-    tomorrow = date.today() + timedelta(days=1)
+    # O dia é UTC e não o da máquina local: o razão conta por `func.date(occurred_at)`
+    # (ai/quota.py), que é UTC, e `date.today()` reprovaria entre 21h e meia-noite BRT.
+    tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
     with Session(migrated_engine) as session:
         current = session.execute(
             select(AiModelPrice).where(

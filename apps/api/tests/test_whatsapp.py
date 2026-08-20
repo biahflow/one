@@ -26,6 +26,7 @@ import pytest
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
+from conftest import NoisyNeighbour
 from portal_api import notifications, retention, worker
 from portal_api.config import Settings
 from portal_api.integrations import whatsapp
@@ -621,6 +622,7 @@ def test_the_sweep_sends_a_pending_notice_without_a_new_sync(
     migrated_engine: Engine,
     world: dict,
     sent: _Capture,
+    noisy_neighbour: NoisyNeighbour,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A metade sem a qual a guarda de horário seria um descarte.
@@ -656,6 +658,7 @@ def test_the_sweep_asks_the_clock_once_instead_of_waking_every_project(
     migrated_engine: Engine,
     world: dict,
     sent: _Capture,
+    noisy_neighbour: NoisyNeighbour,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A janela é a mesma para todos, e o tick pergunta por todos de uma vez.

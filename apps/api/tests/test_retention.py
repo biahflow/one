@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from conftest import captured
+from conftest import NoisyNeighbour, captured
 
 from portal_api import retention, worker
 from portal_api.config import Settings
@@ -565,7 +565,9 @@ def test_a_worker_that_died_mid_erasure_does_not_strand_the_request(
 
 @pytest.mark.integration
 def test_the_tick_picks_up_a_stranded_request_and_not_a_running_one(
-    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+    migrated_engine: Engine,
+    tenants: dict[str, uuid.UUID],
+    noisy_neighbour: NoisyNeighbour,
 ) -> None:
     """Reivindicar não basta: o tick também precisa **selecionar** o vencido.
 

@@ -451,8 +451,25 @@ def test_a_client_only_sees_and_reads_their_own_notifications(
     As linhas entram por uma sessão comitada de verdade, e não pela ``db_session``
     transacional: o app responde em outra conexão e não enxergaria uma transação
     ainda aberta — a mesma razão do fixture ``world``.
+
+    **As asserções são sobre as duas linhas que este teste criou** (ADR 0060). A
+    lista de títulos e o ``marked == 1`` que estavam aqui mediam a caixa inteira
+    de uma pessoa, e a caixa recebia visita: 89 linhas acima, no mesmo ``world``,
+    ``test_a_gap_in_the_chat_writes_a_pendencia_and_an_audit_entry`` faz ``POST
+    /chat`` de verdade, o que publica ``notify_pending_created``; com o contêiner
+    ``worker`` de pé, ele consome a task contra o **mesmo banco** e insere aqui
+    uma "Pendência aberta pela IA" — ``pending_opened`` é ``_EVERYONE``. Não era
+    resíduo de corrida anterior (o ``world`` é etiquetado com um ``uuid`` a cada
+    sessão): era o processo ao lado escrevendo durante a corrida.
+
+    O ``unread_count`` fica em **delta** em vez de sair: ele é campo publicado e
+    consumido (``app/page.tsx``), e apagar a única cobertura que tem seria o
+    defeito da ADR 0033 pelo avesso.
     """
     tag = uuid.uuid4().hex[:8]
+    authenticated(world.acme.client)
+    unread_before = client.get("/api/v1/me/notifications").json()["unread_count"]
+
     with Session(migrated_engine) as setup:
         owner = setup.execute(
             select(User).where(User.external_subject == world.acme.client.subject)
@@ -472,38 +489,48 @@ def test_a_client_only_sees_and_reads_their_own_notifications(
                 role=MemberRole.client_member,
             )
         )
+        notice_ids: dict[str, uuid.UUID] = {}
         for recipient, title in ((owner, "Para o cliente"), (colleague, "Para o colega")):
-            setup.add(
-                Notification(
-                    organization_id=world.acme.organization_id,
-                    project_id=world.acme.project_id,
-                    user_id=recipient.id,
-                    kind=NotificationKind.milestone_done,
-                    title=title,
-                    occurred_at=datetime.now(timezone.utc),
-                    dedupe_key=f"{title}-{tag}",
-                )
+            notice = Notification(
+                organization_id=world.acme.organization_id,
+                project_id=world.acme.project_id,
+                user_id=recipient.id,
+                kind=NotificationKind.milestone_done,
+                title=title,
+                occurred_at=datetime.now(timezone.utc),
+                dedupe_key=f"{title}-{tag}",
             )
+            setup.add(notice)
+            setup.flush()
+            notice_ids[title] = notice.id
         setup.commit()
         colleague_id = colleague.id
+        own_notice_id = notice_ids["Para o cliente"]
+        colleague_notice_id = notice_ids["Para o colega"]
 
     try:
-        authenticated(world.acme.client)
         listed = client.get("/api/v1/me/notifications").json()
+        listed_ids = {item["id"] for item in listed["items"]}
 
-        assert [item["title"] for item in listed["items"]] == ["Para o cliente"]
-        assert listed["unread_count"] == 1
+        assert str(own_notice_id) in listed_ids
+        assert str(colleague_notice_id) not in listed_ids
+        assert listed["unread_count"] == unread_before + 1
 
-        marked = client.post("/api/v1/me/notifications/read", json={}).json()
-        assert marked["marked"] == 1
-        assert client.get("/api/v1/me/notifications").json()["unread_count"] == 0
+        client.post("/api/v1/me/notifications/read", json={})
 
-        # A do colega continua não lida: marcar "todas" é todas *as suas*.
+        # A do colega continua não lida: marcar "todas" é todas *as suas*. Por id,
+        # e não por contagem: o que se prova aqui é qual linha foi alcançada.
         with Session(migrated_engine) as check:
-            others = check.execute(
-                select(Notification).where(Notification.user_id == colleague_id)
-            ).scalars().all()
-            assert [item.read_at for item in others] == [None]
+            read_at = {
+                row.id: row.read_at
+                for row in check.execute(
+                    select(Notification).where(
+                        Notification.id.in_([own_notice_id, colleague_notice_id])
+                    )
+                ).scalars()
+            }
+        assert read_at[own_notice_id] is not None
+        assert read_at[colleague_notice_id] is None
     finally:
         with Session(migrated_engine) as cleanup:
             cleanup.execute(

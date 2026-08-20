@@ -20,7 +20,7 @@ import pytest
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
-from conftest import captured
+from conftest import NoisyNeighbour, captured
 from portal_api import onboarding
 from portal_api.config import Settings
 from portal_api.models import OnboardingStep, OnboardingStepName
@@ -687,12 +687,24 @@ def test_an_organization_with_no_live_project_is_not_watched(
 
 
 def test_the_tick_keeps_going_when_one_organization_blows_up(
-    migrated_engine: Engine, cenario: Cenario, monkeypatch: pytest.MonkeyPatch
+    migrated_engine: Engine,
+    cenario: Cenario,
+    noisy_neighbour: NoisyNeighbour,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Uma organização que estoura não impede as outras, e a falha vira evento nomeado.
 
     É a forma de ``purge_expired_data``, e o limiar em ``alerts.md`` conta com ela: um erro
     isolado é recuperado no tick seguinte por construção, e o que merece alerta é a taxa.
+
+    As asserções são **por id** (ADR 0060). ``alerted == 1`` e ``enfileirados ==
+    [...]`` eram contagens de uma varredura que é global por desenho: ela visita
+    toda organização com projeto vivo. Aqui elas passavam por acidente do arranjo
+    — o ``falha_na_primeira`` levanta para toda organização que não é a do
+    ``cenario``, e o ``except`` do laço as tira da conta —, de modo que a
+    imunidade vinha do monkeypatch e não da asserção. O vizinho barulhento torna
+    isso verificável: ele existe, é encontrado pela varredura, e o que se afirma é
+    que o digest enfileirado é o **deste** projeto.
     """
     from portal_api import worker
 
@@ -711,10 +723,10 @@ def test_the_tick_keeps_going_when_one_organization_blows_up(
     monkeypatch.setattr(worker, "queue_project_digests", enfileirados.append)
 
     with captured("portal_api.worker") as linhas:
-        resultado = worker.alert_stuck_onboarding()
+        worker.alert_stuck_onboarding()
 
-    assert resultado["alerted"] == 1
-    assert enfileirados == [str(cenario.project_id)]
+    assert str(cenario.project_id) in enfileirados
+    assert str(noisy_neighbour.project_id) not in enfileirados
     if explodiu:
         assert "onboarding.stuck_scan_failed" in [
             linha.getMessage() for linha in linhas

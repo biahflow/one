@@ -23,11 +23,14 @@ import os
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from pydantic_settings import PydanticBaseSettingsSource
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -37,6 +40,136 @@ from portal_api.db.session import DbRole, get_engine
 API_ROOT = Path(__file__).resolve().parent.parent
 ALEMBIC_INI = API_ROOT / "alembic.ini"
 MIGRATIONS_DIR = API_ROOT / "src" / "portal_api" / "db" / "migrations"
+
+
+# --------------------------------------------------------------------------- #
+# A bateria não herda **configuração** (ADR 0060)
+#
+# Regra única: *a bateria lê o ambiente para saber **onde está um serviço**,
+# nunca para saber **como o produto se comporta***.
+#
+# A ADR 0058 fechou a porta do relógio e deixou esta aberta: `Settings` carrega
+# `env_file=".env"` e lê `os.environ`, de modo que **toda** variável de produto
+# atravessa para dentro do teste. Medido: `CONTACT_QUIET_HOURS_START=0
+# CONTACT_QUIET_HOURS_END=0 pytest test_whatsapp.py` reprova cinco testes, e um
+# `.env` no disco com as mesmas duas linhas reprova os mesmos cinco — são duas
+# portas, não uma.
+#
+# A saída **não** é fixar os dois campos no `base` de `_settings()`: aquilo
+# conserta 2 campos em 1 arquivo e deixa 101 campos de pé, que é a lista escrita
+# à mão que a ADR 0033 mediu. A saída é trocar as *fontes* da `Settings`.
+# --------------------------------------------------------------------------- #
+
+#: O que a bateria **pode** herdar do ambiente, com o motivo por linha.
+#:
+#: Cada nome aqui responde "onde está um serviço", nunca "como o produto se
+#: comporta", e cada um é passado ao processo de teste por um bloco `env:` do
+#: `.github/workflows/ci.yml` — as duas condições são cobradas por
+#: `test_battery_isolation.py`, que também reprova a linha que sobrou.
+INHERITED_FROM_THE_ENVIRONMENT: dict[str, str] = {
+    "DATABASE_URL": (
+        "onde está o Postgres pelo caminho de requisição; o CI o aponta para o "
+        "serviço do job (`ci.yml:48`) e a máquina de quem desenvolve, para o compose"
+    ),
+    "DATABASE_SYSTEM_URL": "o mesmo Postgres sob `portal_system` (`ci.yml:49`)",
+    "DATABASE_MIGRATION_URL": "o mesmo Postgres sob `portal_migrator` (`ci.yml:50`)",
+    "DATABASE_ADMIN_URL": "o mesmo Postgres sob `portal_admin` (`ci.yml:51`)",
+    "STORAGE_ENDPOINT_URL": (
+        "onde está o MinIO; o job `backup-restore` sobe o seu e o aponta (`ci.yml:119`)"
+    ),
+    "STORAGE_ACCESS_KEY": "credencial daquele MinIO, não comportamento (`ci.yml:120`)",
+    "STORAGE_SECRET_KEY": "idem (`ci.yml:121`)",
+}
+
+
+class _OnlyWhereAServiceLives(PydanticBaseSettingsSource):
+    """Envolve uma fonte do Pydantic e deixa passar só a allowlist.
+
+    **Envolve** em vez de reconstruir: a instância que o Pydantic montou já sabe
+    do ``env_file``, do ``case_sensitive`` e dos prefixos, e refazê-la aqui
+    criaria um segundo lugar decidindo como uma variável vira campo — que é a
+    divergência silenciosa contra a qual o ``textfold.py`` existe.
+
+    O ``__name__`` sai do envolvido porque o laço de ``_settings_build_values``
+    indexa o estado das fontes por esse nome: dois envelopes com o nome da classe
+    envelope fariam a segunda fonte sobrescrever a primeira.
+    """
+
+    def __init__(self, inner: PydanticBaseSettingsSource) -> None:
+        super().__init__(inner.settings_cls)
+        self._inner = inner
+        self.__name__ = type(inner).__name__
+
+    def get_field_value(self, field, field_name: str):  # type: ignore[no-untyped-def]
+        return self._inner.get_field_value(field, field_name)
+
+    def _set_current_state(self, state: dict) -> None:
+        super()._set_current_state(state)
+        self._inner._set_current_state(state)
+
+    def _set_settings_sources_data(self, states: dict) -> None:
+        super()._set_settings_sources_data(states)
+        self._inner._set_settings_sources_data(states)
+
+    def __call__(self) -> dict:
+        allowed = {name.lower() for name in INHERITED_FROM_THE_ENVIRONMENT}
+        return {name: value for name, value in self._inner().items() if name in allowed}
+
+
+def _seal_the_settings_sources() -> None:
+    """Filtra **as duas** fontes de ambiente da ``Settings``.
+
+    Duas e não uma: a variável exportada entra por ``env_settings`` e o ``.env``
+    do disco entra por ``dotenv_settings``, e cada porta reprova sozinha os
+    mesmos cinco testes de ``test_whatsapp.py`` (ADR 0060). Largar o ``dotenv``
+    inteiro também não serve — quebraria quem guarda ``STORAGE_ACCESS_KEY`` no
+    ``.env`` local, que é justamente o caso legítimo que a allowlist preserva.
+
+    Roda no **nível de módulo** do conftest, e isso é medível em vez de estilo:
+    ``worker.py`` chama ``get_settings()`` no import, monta o ``celery_app`` com
+    ``settings.redis_url`` e deriva o ``beat_schedule`` de flags de ``Settings``.
+    Uma fixture ``autouse``, ainda que de sessão, chegaria depois do import dos
+    módulos de teste — tarde demais.
+    """
+    from portal_api.config import Settings, get_settings
+
+    #: O arquivo **ambiente**: o `.env` que `Settings` lê sem ninguém pedir.
+    ambient_env_file = Settings.model_config.get("env_file")
+
+    @classmethod  # type: ignore[misc]
+    def _customise(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        # `init_settings` passa inteiro: `Settings(whatsapp_enabled=True)` é o
+        # teste **declarando** o comportamento, que é o oposto de herdá-lo.
+        #
+        # E uma subclasse que **nomeia o próprio arquivo** também declara: é o
+        # caso do `FromTemplate` de `test_homolog_config.py`, cuja pergunta
+        # inteira é "o `.env.homolog.example` seria recusado?". Filtrar ali
+        # responderia "sim, porque não li o arquivo", que é a resposta certa pela
+        # razão errada — e foi medido: o teste ficou vermelho. O ambiente
+        # continua filtrado mesmo para ela, porque `os.environ` nunca é uma
+        # declaração de ninguém.
+        declares_its_own_file = settings_cls.model_config.get("env_file") != ambient_env_file
+        return (
+            init_settings,
+            _OnlyWhereAServiceLives(env_settings),
+            dotenv_settings
+            if declares_its_own_file
+            else _OnlyWhereAServiceLives(dotenv_settings),
+            file_secret_settings,
+        )
+
+    Settings.settings_customise_sources = _customise
+    get_settings.cache_clear()
+
+
+_seal_the_settings_sources()
 
 
 def skip_unless_ci(reason: str) -> None:
@@ -313,6 +446,205 @@ def queued_ingestions(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setattr(worker, "queue_document_scan", queued.append)
     monkeypatch.setattr(worker, "queue_document_ingestion", queued.append)
     return queued
+
+
+@dataclass(frozen=True)
+class NoisyNeighbour:
+    """Os ids do vizinho, para o teste poder afirmar a **ausência** deles."""
+
+    organization_id: uuid.UUID
+    project_id: uuid.UUID
+    drive_connection_id: uuid.UUID
+    notification_id: uuid.UUID
+    internal_user_id: uuid.UUID
+    client_user_id: uuid.UUID
+
+
+@pytest.fixture
+def noisy_neighbour(migrated_engine: Engine) -> Iterator[NoisyNeighbour]:
+    """Uma organização estrangeira que **toda** varredura global encontra (ADR 0060).
+
+    As cinco varreduras do ``beat_schedule`` são globais por desenho — o
+    ``sync_due_drive_connections`` procura toda conexão habilitada, o
+    ``send_due_whatsapp_notices`` todo projeto com aviso pendente, o
+    ``alert_stuck_onboarding`` toda organização com projeto vivo. Não há o que
+    consertar nelas; o que estava errado eram as asserções que tratavam o
+    resultado de uma varredura global como se fosse do tenant do teste, e ficavam
+    verdes porque o banco de quem rodava estava vazio.
+
+    Este vizinho é o que torna essa frouxidão visível. Comitado de verdade, e não
+    por uma sessão transacional: a task abre conexão própria e não enxergaria uma
+    transação ainda aberta — a mesma razão do ``world`` de
+    ``test_authorization.py``.
+
+    O ``refresh_token_sealed`` **não** é um ciphertext de verdade, e é uma
+    escolha: nenhuma varredura o abre — o tick só seleciona ids e enfileira —, e
+    um teste que executasse o sync deste vizinho quebraria aqui. Quebrar é a
+    resposta certa: o vizinho existe para ser encontrado e ignorado, não para ser
+    processado.
+
+    A pessoa do cliente fica **sem** ``external_subject`` e com o convite recuado,
+    que é o que a deixa travada no primeiro degrau do funil — a corroboração de
+    login que a ADR 0040 acrescentou é justamente o ``external_subject``.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import delete
+
+    from portal_api.models import (
+        ContactEvent,
+        MemberRole,
+        Membership,
+        Notification,
+        NotificationKind,
+        OnboardingStep,
+        Organization,
+        Project,
+        ProjectDriveConnection,
+        ProjectStatus,
+        User,
+    )
+
+    tag = uuid.uuid4().hex[:8]
+    with Session(migrated_engine) as session:
+        organization = Organization(name="Vizinho Barulhento", slug=f"vizinho-{tag}")
+        session.add(organization)
+        session.flush()
+        project = Project(
+            organization_id=organization.id,
+            name="Projeto do Vizinho",
+            slug=f"vizinho-projeto-{tag}",
+            status=ProjectStatus.in_implementation,
+        )
+        internal = User(
+            email=f"interno-vizinho-{tag}@labs.test",
+            full_name="Interno do Vizinho",
+            is_internal=True,
+        )
+        client_person = User(
+            email=f"cliente-vizinho-{tag}@vizinho.test", full_name="Cliente do Vizinho"
+        )
+        session.add_all([project, internal, client_person])
+        session.flush()
+        session.add_all(
+            [
+                Membership(
+                    organization_id=organization.id,
+                    project_id=None,
+                    user_id=internal.id,
+                    role=MemberRole.internal_admin,
+                ),
+                Membership(
+                    organization_id=organization.id,
+                    project_id=project.id,
+                    user_id=client_person.id,
+                    role=MemberRole.client_member,
+                    # Convidado há muito tempo e nunca entrou: é o que o alerta do
+                    # funil procura, e o que faz esta organização aparecer na conta
+                    # de quem contar totais.
+                    created_at=datetime.now(timezone.utc) - timedelta(days=400),
+                ),
+            ]
+        )
+        connection = ProjectDriveConnection(
+            organization_id=organization.id,
+            project_id=project.id,
+            folder_id=f"pasta-do-vizinho-{tag}",
+            folder_name="Pasta do Vizinho",
+            google_account_email="vizinho@exemplo.test",
+            refresh_token_sealed="selado-do-vizinho-nunca-aberto",
+            granted_scope="https://www.googleapis.com/auth/drive.readonly",
+            connected_at=datetime.now(timezone.utc),
+            enabled=True,
+        )
+        notification = Notification(
+            organization_id=organization.id,
+            project_id=project.id,
+            user_id=client_person.id,
+            kind=NotificationKind.milestone_done,
+            title="Aviso do vizinho",
+            occurred_at=datetime.now(timezone.utc),
+            dedupe_key=f"vizinho-{tag}",
+        )
+        session.add_all([connection, notification])
+        session.commit()
+        built = NoisyNeighbour(
+            organization_id=organization.id,
+            project_id=project.id,
+            drive_connection_id=connection.id,
+            notification_id=notification.id,
+            internal_user_id=internal.id,
+            client_user_id=client_person.id,
+        )
+
+    yield built
+
+    with Session(migrated_engine) as cleanup:
+        cleanup.execute(
+            delete(ProjectDriveConnection).where(
+                ProjectDriveConnection.organization_id == built.organization_id
+            )
+        )
+        cleanup.execute(
+            delete(ContactEvent).where(ContactEvent.organization_id == built.organization_id)
+        )
+        cleanup.execute(
+            delete(Notification).where(Notification.organization_id == built.organization_id)
+        )
+        cleanup.execute(
+            delete(OnboardingStep).where(
+                OnboardingStep.organization_id == built.organization_id
+            )
+        )
+        cleanup.execute(
+            delete(Membership).where(Membership.organization_id == built.organization_id)
+        )
+        cleanup.execute(delete(Project).where(Project.id == built.project_id))
+        cleanup.execute(
+            delete(User).where(User.id.in_([built.internal_user_id, built.client_user_id]))
+        )
+        cleanup.execute(delete(Organization).where(Organization.id == built.organization_id))
+        cleanup.commit()
+
+
+@pytest.fixture(autouse=True)
+def published_tasks(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, tuple, dict]]:
+    """A bateria não alcança broker de verdade (ADR 0060).
+
+    ``autouse`` e na **porta única**: todo ``.delay()`` do repositório desce por
+    ``Task.apply_async`` até ``celery_app.send_task``, então interceptar ali cobre
+    os nove ``queue_*`` de hoje e o décimo que alguém escrever amanhã. É o padrão
+    da ADR 0035 — a lista escrita à mão vira predicado derivado.
+
+    O repositório já sabia do defeito e o consertou num sítio só: o docstring de
+    :func:`queued_ingestions` diz, com todas as letras, *"sem isto o upload
+    publicaria de verdade no Redis do compose, e o worker que estiver de pé
+    pegaria a task no meio do teste"*. O que faltava era a porta.
+
+    E o preço de não a ter foi medido: com o contêiner ``worker`` de pé,
+    ``test_a_client_only_sees_and_reads_their_own_notifications`` reprovava porque
+    outro teste do mesmo arquivo faz ``POST /chat`` de verdade, a pendência é
+    publicada, o worker a consome contra o **mesmo banco** e insere na caixa do
+    cliente uma notificação que aquele teste não criou. Parar o worker fazia o
+    mesmo teste, no mesmo banco, passar — logo não era resíduo de corrida
+    anterior, era o processo ao lado escrevendo durante a corrida.
+
+    A lista devolvida é o que o teste inspeciona quando quer afirmar sobre o
+    enfileiramento; quem não a declara continua protegido do mesmo jeito.
+    """
+    from portal_api import worker
+
+    published: list[tuple[str, tuple, dict]] = []
+
+    def _send_task(name, args=None, kwargs=None, **options):  # type: ignore[no-untyped-def]
+        published.append((name, tuple(args or ()), dict(kwargs or {})))
+        # Um objeto com `id`, que é o contrato que `AsyncResult` cumpre para quem
+        # guarda o retorno. Nenhum `queue_*` guarda hoje, e devolver `None` faria
+        # o primeiro que guardasse falhar por uma razão que não é a dele.
+        return SimpleNamespace(id=options.get("task_id") or str(uuid.uuid4()))
+
+    monkeypatch.setattr(worker.celery_app, "send_task", _send_task)
+    return published
 
 
 @pytest.fixture

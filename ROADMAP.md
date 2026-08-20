@@ -1040,9 +1040,10 @@ que ele respeita.
       declarar a hora e o relógio nunca a pegou. E o **elo é com a ordem**, medido: com a versão que
       só perguntava "existe um `_freeze` aqui?", um `_freeze` **depois** do envio passa verde — a
       frouxidão que a ADR 0035 mediu ao dar `POST /chat` como coberto por um 404 de outra rota.
-      *Fica declarado, e não corrigido: dois testes reprovam por resíduo do banco de
+      *~~Fica declarado, e não corrigido: dois testes reprovam por resíduo do banco de
       desenvolvimento (passam isolados e em banco novo), e `_settings()` ainda deixa a variável de
-      ambiente da janela entrar nos testes que afirmam sobre ela.*
+      ambiente da janela entrar nos testes que afirmam sobre ela.~~* **As duas pontas fechadas em
+      20/08/2026 (ADR 0060) — e a primeira estava diagnosticada errado: não era resíduo.**
 - [x] **O projeto que a tela mostra, e o parâmetro que ninguém mandava** *(FDD 018, FDD 021,
       ADR 0059)*: o item F1 que a ADR 0057 mediu, nomeou e não corrigiu. `access.default_project`
       devolve a membership **mais recente**, e onze rotas de cliente resolviam o projeto assim
@@ -1072,6 +1073,47 @@ que ele respeita.
       *Fica aberto e nomeado: `activeProject` cai em `projects[0]` quando o casamento por nome de
       `app/page.tsx` falha — dois projetos homônimos no mesmo tenant fariam a tela nomear um projeto
       diferente do que a API serviu. Pré-existente, não tocado.*
+- [x] **O verde que dependia do ambiente** *(ADR 0060)*: irmã da ADR 0058, e **retificação por
+      escrito** das duas pontas que ela deixou abertas — uma delas diagnosticada errado.
+      *Configuração:* a ADR 0058 viu uma porta e havia **duas**. Com `CONTACT_QUIET_HOURS_START/END`
+      em `0` reprovam cinco testes do canal; com um `.env` no disco trazendo **só aquelas duas
+      linhas**, reprovam **os mesmos cinco** — `Settings` carrega `env_file=".env"`, e são 103
+      campos, não dois. Agora `conftest.py` troca as **fontes** da `Settings` (filtra `env_settings`
+      **e** `dotenv_settings`) contra uma allowlist de sete nomes com motivo por linha, todos
+      passados pelo `env:` do `ci.yml`: *a bateria lê o ambiente para saber onde está um serviço,
+      nunca para saber como o produto se comporta*. Fixar os dois campos no `base` de `_settings()`
+      consertaria 2 campos em 1 arquivo e deixaria 101 de pé — a lista escrita à mão da ADR 0033.
+      *Estado:* **não era resíduo do banco**, e a prova é de dois passos —
+      `test_a_client_only_sees_and_reads_their_own_notifications` reprova com o contêiner `worker`
+      de pé e **passa, no mesmo banco**, com ele parado. Oitenta e nove linhas antes, no mesmo
+      `world` (que é etiquetado com `uuid` a cada sessão), outro teste faz `POST /chat` de verdade,
+      a pendência é publicada no Redis do compose e o worker a consome contra o **mesmo Postgres**,
+      inserindo na caixa do cliente uma notificação que aquele teste não criou. Agora uma fixture
+      `autouse` intercepta `celery_app.send_task` — a porta única por onde todo `.delay()` desce —,
+      o que o docstring de `queued_ingestions` já descrevia palavra por palavra para **um** sítio.
+      E as três asserções sobre varredura global (`assert queued == []`, `marked == 1`,
+      `alerted == 1`) passam a ser sobre **linhas identificadas**, com controle positivo: a
+      varredura é global por desenho e o defeito era da asserção, que só ficava verde num banco
+      vazio. `unread_count` fica em **delta** em vez de sair — é campo publicado e consumido, e
+      apagar sua única cobertura é a ADR 0033 pelo avesso.
+      **As sete guardas nasceram vermelhas** e a saída está transcrita na ADR: a do envenenamento
+      com **96 de 96** campos atravessando, nas duas portas; a de completude nomeando os três
+      `float` quando o envenenador é cegado; a da allowlist trazendo **de volta os cinco de M1** ao
+      admitir `CONTACT_QUIET_HOURS_START`; a do vizinho barulhento; a de AST com **cinco** funções,
+      arquivo e linha; e a do broker, vermelha nos **dois** ambientes por motivos opostos (com
+      broker foi publicada, sem broker o `except` engoliu).
+      **A medição que manda no desenho:** derivar as varreduras do `beat_schedule` **avaliado** em
+      vez do AST daria 3 em vez de 5 — `whatsapp_enabled` e `drive_sync_enabled` são `False` por
+      default —, e **três** testes escapariam em verde, incluindo o próprio defeito que a fatia
+      existe para pegar. A amostra seria a configuração da máquina, que é a herança que a outra
+      metade corta.
+      *De quebra, uma saída medida e escrita: a costura deixou `test_homolog_config.py` vermelho,
+      porque a pergunta dele é literalmente "este template seria recusado?" — uma subclasse que
+      **nomeia o próprio arquivo** declara, e por isso o `dotenv` dela passa, com allowlist e guarda
+      própria para a saída não ficar invisível. O `os.environ` continua filtrado até para ela.*
+      *Fica declarado, e não corrigido: os cinquenta sítios `Settings(` continuam onde estão (a
+      costura os cobre), e o Postgres de desenvolvimento **não** é limpo — o objetivo era um portão
+      que não dependa do estado do banco, e limpar entregaria o verde sem o portão.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

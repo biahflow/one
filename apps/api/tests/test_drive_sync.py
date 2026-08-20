@@ -20,6 +20,7 @@ import pytest
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
+from conftest import NoisyNeighbour
 from drive_fake import DOC_MIME, SHORTCUT_MIME, FakeDrive, FakeFile
 from portal_api import crypto, worker
 from portal_api.config import get_settings
@@ -592,15 +593,30 @@ def test_the_beat_tick_only_fans_out_enabled_connections(
     migrated_engine: Engine,
     project: Project,
     drive_settings: None,
+    noisy_neighbour: NoisyNeighbour,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _connect(migrated_engine, project, enabled=False)
+    """A pausada não sai, e a habilitada do vizinho sai (ADR 0060).
+
+    ``assert queued == []`` era a asserção daqui, e ela media o **produto
+    inteiro**: o tick é global por desenho — ele procura toda conexão habilitada —
+    e a lista vazia só acontecia num banco em que ninguém mais tinha Drive ligado.
+    Uma organização estrangeira com pasta conectada a derrubava, sem nada de
+    errado com o código que ela testa.
+
+    O controle positivo é obrigatório: um ``not in`` sozinho ficaria verde sobre
+    um tick que não enfileira coisa nenhuma — a frouxidão que a ADR 0035 mediu.
+    O vizinho serve de controle porque ``ProjectDriveConnection`` é única por
+    projeto, então a conexão habilitada não pode ser deste mesmo projeto.
+    """
+    disabled_id = _connect(migrated_engine, project, enabled=False)
     queued: list[str] = []
     monkeypatch.setattr(worker, "queue_drive_sync", queued.append)
 
     worker.sync_due_drive_connections()
 
-    assert queued == []
+    assert str(noisy_neighbour.drive_connection_id) in queued
+    assert str(disabled_id) not in queued
 
 
 # --- a chave de cifra ------------------------------------------------------------

@@ -39,6 +39,10 @@ listas são a mesma e que toda citação por número resolve.*
 ## Antes de abrir pull request
 
 - Atualize FDD, ADR ou RFC que fundamenta a mudança.
+- Atualize o [`ROADMAP.md`](ROADMAP.md) no mesmo commit quando a fatia mudar o estado publicado —
+  entrega nova, item que deixa de estar aberto, ou produto que sai do ar. Ele é o índice canônico
+  de descoberta: uma ADR aceita que ele não conhece é estado sem dono, e foi assim que dez delas
+  ficaram de fora entre 07 e 19/08/2026.
 - Rode lint, tipos, testes unitários e integração aplicáveis.
 - Adicione caso negativo de permissão para qualquer endpoint ou busca nova.
 - Adicione avaliações de IA para mudança de prompt, recuperador, modelo ou ferramenta.

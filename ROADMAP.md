@@ -2,6 +2,15 @@
 
 Este documento acompanha o plano de entrega. Itens concluídos permanecem aqui para dar visibilidade ao que já existe; cada nova funcionalidade deve ter FDD, testes e atualização deste roadmap.
 
+> **13/08/2026 — o portal do cliente está fora do ar, por decisão de produto.** A jornada do
+> cliente passa a ser conduzida no WhatsApp, e o portal volta quando houver quem o opere
+> (ADR 0053). Saíram da GCP `portal-web`, `portal-api`, `keycloak`, `portal-worker`, `portal-beat`
+> e `portal-migrate`, com o state `ambientes/hml-portal` e os vinte segredos que eram deles; o
+> `deploy-hml.yml` perdeu o gatilho de push e continua sendo a receita de como o portal sobe.
+> **Nada abaixo foi revogado:** as Fases 1 a 6 seguem entregues, testadas e verdes no CI — elas só
+> não estão servindo cliente. Isto muda o que cada `[x]` deste arquivo significa, e é por isso que
+> está no topo.
+
 ## Operação na Engineering OS
 
 Este arquivo é o índice canônico de descoberta de trabalho. Para funcionalidades com FDD, a FDD
@@ -18,6 +27,10 @@ contratos de tarefa e evidências, está em [`docs/features/README.md`](docs/fea
 
 `Não selecionada` não é prioridade implícita: exige seleção humana antes de especificação,
 planejamento ou execução.
+
+E as duas carregam, desde 13/08/2026, um bloqueio a mais que **não é de negócio**: os dois sinais
+da Fase 7 medem engajamento de cliente no portal, e não há portal no ar para medir. A condição
+escrita na tabela continua valendo; esta se soma a ela.
 
 ## Concluído — Fundação local
 
@@ -55,7 +68,7 @@ planejamento ou execução.
 - [x] Integrar Keycloak ao BFF Next.js e à API FastAPI com OIDC/PKCE e sessão segura.
       *(Realm com client confidencial e mapper de audiência; Auth.js v5 no BFF com `/login`,
       `proxy.ts` e o access token só no cookie cifrado; a API valida o JWT contra o JWKS e o
-      `X-Portal-User` não existe mais. ADR 0010, FDD 007.)*
+      `X-Portal-User` não existe mais. ADRs 0003 e 0010, FDD 007.)*
 - [x] Convite e verificação de e-mail via Mailpit.
       *(`POST /api/v1/admin/projects/{id}/members` cria a conta no realm e pede ao Keycloak o
       e-mail de definir senha + verificar endereço — `UPDATE_PASSWORD` e `VERIFY_EMAIL` numa
@@ -74,6 +87,16 @@ planejamento ou execução.
       snapshot do Biahflow, e originá-los aqui dividiria a fonte da verdade — mesma razão da
       ADR 0008 para status. Escrita em `membership` só pelo papel `portal_admin`, com policies
       próprias e a GUC de terceiro estágio; ADR 0011.)*
+- [x] **A corrida do primeiro login.** *(Defeito 7 da ADR 0052, corrigido em 12/08/2026 no commit
+      `58a831a`.)* `identity.resolve_user` seleciona e depois insere, e o BFF busca `/me` e o
+      dashboard **em paralelo** — é o desenho, e está escrito no `CLAUDE.md`. No primeiro login de
+      quem o banco não conhece, as duas requisições chegam a `_provision` com o mesmo `sub`: uma
+      ganha, a outra bate em `uq_user_email`, a tela diz "não conseguimos carregar seu projeto" e
+      recarregar resolve — porque aí a linha existe. **Ninguém tinha visto porque o compose semeia
+      os usuários**, então o caminho exercitado é sempre o de reivindicar linha semeada; "primeiro
+      login de quem o banco não conhece" só acontece contra banco de verdade sem seed, e foi a
+      primeira subida em HML (ADR 0052) que o produziu. `test_identity_concorrente.py` é a
+      regressão.
 
 **Aceite:** um cliente autenticado só consegue consultar os projetos aos quais pertence;
 tentativas de acesso cruzado falham na API, no banco e na busca. *Atendido nas três camadas.
@@ -338,6 +361,17 @@ atalho **não** entraram no índice.*
       verdade agora. O limite estrutural ficou declarado, não escondido: o portal não impede um
       modelo remoto de parafrasear a injeção dentro da resposta, e um filtro de saída foi recusado
       com argumento — falharia na primeira paráfrase enquanto criava a impressão contrária.)*
+      **E em 11/08/2026 a ADR 0047 achou, entre cinco e2e vermelhos parados desde 07/08, um
+      defeito que não era de teste:** o título da pendência que o assistente abre por lacuna
+      carrega a pergunta do cliente, e `collect_evidence` recolhia **toda** pendência aberta como
+      evidência — de modo que a pergunta de ontem casava a de hoje, o respondedor offline dava
+      `sufficient=True`, e a resposta citava a *própria lacuna anterior* como fonte. É o inverso
+      exato da regra 3 do `AGENTS.md`: em vez de declarar a lacuna, ela virava a evidência da
+      resposta seguinte — e vale em produção sempre que a Anthropic cair e o `offline_fallback`
+      assumir. A correção olha a **coluna** (`origin=biahflow`) e não o texto do título, porque só
+      dois sítios criam pendência e eles já se distinguem por ela. As outras duas causas eram de
+      teste, e a segunda tinha nascido assim: um ator `internal_member` abrindo uma tela que exige
+      `internal_admin` desde o commit que a criou — **nunca** tinha passado.
 - [x] Definir ambiente de homologação, variáveis/segredos de produção, domínio, TLS,
       observabilidade e plano de incidentes. *(ADR 0022, FDD 016. Entregue como **código e portão
       de CI**, não como infraestrutura provisionada: `docker-compose.homolog.yml`,
@@ -712,6 +746,23 @@ dashboard é uma casca de demo (`app/DashboardClient.tsx`, dados hardcoded); est
       `.priority` daquela ADR outra vez, e renomear para `dated_at` foi o que tornou o elo
       verificável.)*
 
+- [x] **A aba que esperava um escritor.** *(ADR 0049, FDD 003/018, mais emenda na ADR 0003 do
+      `biahflow-portal`.)* O padrão outra vez, e desta vez com a espera mais longa que ele já
+      teve: `Decision` tem modelo, RLS e `GRANT SELECT` desde a migração `0007` da Fase 1 e
+      **nunca teve uma linha** — `DecisionRepository` com corpo vazio, nenhum chamador, e
+      `build_dashboard` sem projetá-la. A terceira origem possível estava morta junto:
+      `transcript_text` aparece só no modelo e na migração `0002` e nunca teve escritor, porque o
+      texto da transcrição não atravessa o snapshot. O escritor nasceu **do outro lado** (FDD 032
+      de lá), e o que fez a aba valer a pena foi o `rationale`, que o snapshot cortava de
+      propósito. Duas decisões carregam o resto: a proveniência chega como pk e é projetada como
+      rótulo (`meeting_title`), porque `Meeting` é recriada por inteiro a cada sync e não guarda
+      id externo; e o `delete(Decision)` roda
+      **antes** do `delete(Meeting)`, com o mapa de ids montado depois do `flush()` — sem isso o
+      `ON DELETE SET NULL` apagaria a proveniência das decisões antigas "sem erro, sem log e sem
+      exceção", e o teste afirma sobre ela **depois de dois syncs**. De quebra, fechou a única
+      exceção que a regra 1 da busca carregava desde a ADR 0024 ("só entra o que alguma aba
+      mostra"): a decisão virou sexta fonte, casando `title` **e** `rationale`.
+
 **Aceite:** o cliente abre o portal e vê a jornada com "Você está aqui", clica numa fase e vê
 objetivo e ROI, os entregáveis desbloqueados e os funcionários digitais — tudo vindo da API,
 não de dados de demonstração. *E acha qualquer um deles pela lupa: `tests/e2e/search.spec.ts`
@@ -877,11 +928,183 @@ que ele respeita.
       prioriza detratores. E a regressão que a ADR 0033 deixou de herança: **painel só nasce
       depois do escritor**.
 
+**Pontas abertas da fase, sem dono e sem prioridade** (seleção é gate humano):
+
+- **Teto de horário de contato.** Declarado aberto nas ADRs 0042 e 0043: o teto que existe é de
+  frequência, e nada nele impede uma mensagem às três da manhã.
+- **O link em granularidade de item.** A ADR 0043 fez o aviso cair na aba certa — a mesma resolução
+  que a busca estabeleceu. Cair no item exato é o que o critério (4) da FDD 021 pede por inteiro.
+- **Intervalo mínimo por espécie de mensagem.** Medido na ADR 0042 e escrito na emenda da FDD 022:
+  o teto global **não** satisfaz sozinho o critério (2) de lá, porque "um segundo evento na mesma
+  semana não gera segundo convite" é afirmação sobre a **espécie** e não sobre o volume — com três
+  por semana, dois convites passam. Entra junto de `survey_invite`.
+
 **Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
 compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar
 e o time levar seis horas onde o WhatsApp levaria seis minutos, ele volta para o WhatsApp. E
 **sinal traz de volta, valor retém**: se ao voltar não houver algo que importa, nenhum alerta
 salva.
+
+## Homologação na nuvem — a implantação como código (07 a 19/08/2026)
+
+Registrada aqui em 19/08/2026, e o atraso é parte do assunto: dez ADRs foram aceitas entre 07 e
+13/08 sem que este arquivo — que é o índice canônico de descoberta — soubesse de nenhuma. **Não é
+uma fase.** As fases deste roadmap são de produto e entram na ordem recomendada; implantação é
+transversal, como a Fase 5 foi. O procedimento vive em `docs/runbooks/hml-gcp.md`; o que segue é o
+que cada decisão custou e o que ela mediu.
+
+O ambiente é a HML da GCP: Cloud Run para os serviços, worker pools para o Celery, Postgres no Neon
+e Redis no Upstash, com Terraform em `infra/terraform/` (dois estados hoje, `ambientes/hml` e
+`ambientes/hml-biahflow`) e um portão de Terraform sem credencial no CI — `fmt -check`,
+`init -backend=false` e `validate`, no job `infra-quality`. **Do portal do cliente não há nada de
+pé** desde 13/08 — a nota no topo deste arquivo explica por quê.
+
+- [x] **O bootstrap num Postgres que não tem superusuário.** *(ADR 0044, 07/08.)* O
+      `infra/postgres/bootstrap/roles.sql` nasceu contra o Postgres do compose, onde quem o executa
+      **nasce superusuário**, e por isso nunca houve razão para separar "o que o script quer" de "o
+      que só um superusuário pode fazer". O Neon separou, e o que ele recusa foi medido: das sete
+      cláusulas de `ALTER ROLE` ele aceita seis e nega `NOSUPERUSER` (`permission denied to alter
+      role`), e o `ALTER SCHEMA portal OWNER TO portal_migrator` falha com `must be able to SET
+      ROLE`. `NOSUPERUSER` passou a um bloco guardado por `current_user`, e o bootstrap concede
+      `portal_migrator` a si mesmo apenas para transferir a posse do schema — `portal_system` fica
+      de fora. Verificado nos dois alvos: contra o Neon real o script roda inteiro e os quatro
+      papéis saem com os atributos certos; contra o compose, as 55 asserções de RLS continuam
+      verdes, que é a prova de que a credencial de requisição não ganhou nada no caminho.
+- [x] **O worker que cabia no Cloud Run.** *(ADR 0045, 07/08 — substitui a VM da primeira versão do
+      Terraform.)* A justificativa da VM era verdadeira e a conclusão não: `celery worker` e
+      `celery beat` de fato não escutam porta, mas existe a primitiva **worker pool** do Cloud Run,
+      sem `ports`. A VM sai inteira, o Redis vai para o Upstash, e a VPC fica só para o ingress
+      interno fazer sentido, com Cloud NAT para a saída. O `polling_interval=5s` no `worker.py` é
+      medida e não estilo: derruba de ~86 mil para ~17 mil comandos por dia e por instância, num
+      Redis que cobra por comando. E três Cloud Run Jobs passaram a ser criados pelo próprio
+      Terraform — antes eram **invocados por workflows sem existir**.
+- [x] **Os nomes que não apontavam para nada.** *(ADR 0046, 08/08 — corrige as duas anteriores.)* O
+      Terraform e os dois workflows existiam como código e **nunca tinham rodado**: o CI parava em
+      `google-github-actions/auth` por não haver `WIF_PROVIDER`, e não havia porque não havia
+      projeto GCP. Um bloqueio de ação humana na primeira linha do primeiro job é o que mantinha
+      tudo sem execução e portanto sem medição — nove defeitos apareceram de uma vez. Entre eles: o
+      `tag_imagem` placeholder quebrava o **primeiro** apply, porque `ignore_changes` age em
+      *update* e não em *create*; a conta de deploy não tinha permissão nem para o `terraform
+      init`; o `nip.io` era montado sobre o IP de **saída** do Cloud NAT, endereço onde nada
+      escuta; o `preflight.py`, simulado contra o ambiente que aquele Terraform entregava,
+      recusaria a subida da API por sete variáveis caídas no default local; e o realm tinha um
+      **quarto** nome — `servicos.tf` dizia `/realms/portal`, que não era nome de coisa nenhuma,
+      enquanto o runbook manda criar `portal-homolog`.
+- [x] **A barreira que o navegador não atravessa.** *(ADR 0048, 12/08.)* Três defeitos achados ao
+      construir o que a ADR 0046 deixou aberto, e o segundo é o que ensina: a sonda
+      `^/(healthz|readyz)$` não casa barra final, enquanto o middleware do Django responde as duas
+      formas — o balanceador leria o `index.html` com 200 e chamaria de saudável um serviço que não
+      respondeu à pergunta. Junto veio o `scripts/redis_rate.py`, e ele mediu o que a ADR 0045
+      previra: o tráfego real do Celery ocioso é da ordem de **15x** a estimativa, porque gossip,
+      mingle, heartbeat e o result backend não estavam na conta. O `restore.sh` passou a saber
+      descrever um alvo gerenciado (`RESTORE_ADMIN_URL`, `POSTGRES_MAINTENANCE_DB` e a precondição
+      de pertencer a `portal_migrator`), fechando no código a lacuna que a ADR 0044 deixou.
+- [x] **O primeiro `apply`, e as três coisas que só ele podia dizer.** *(ADR 0050, 12/08.)*
+      Nenhuma das três se deduzia do HCL. `version = "latest"` de um segredo **sem versão** não
+      existe, e a revisão do Cloud Run é recusada na **criação** e não no boot — o que obrigou o
+      apply em dois tempos (fundação, preencher os 26 segredos, resto). A organização nasce com
+      Domain Restricted Sharing ligado, então as ligações públicas falhavam com "one or more users
+      named in the policy do not belong to a permitted customer", e a exceção teve de ser escopada
+      ao projeto por alguém com papel que **só existe em organização ou pasta**. E o `check
+      --deploy` do Django reprovava o boot por `NUM_PROXIES` ausente ao lado de um
+      `TRUST_X_FORWARDED_PROTO` que já estava lá.
+- [x] **Três states, um por dono.** *(ADR 0051, 12/08.)* O state único tinha **129 entradas**, e o
+      que ele escondia não era tamanho: `DATABASE_URL` e `REDIS_URL` eram **um segredo só, com um
+      valor só, montado nos dois produtos** — efeito colateral de `segredos` ser lista, nunca
+      decidido —, de modo que um merge na API do portal rodaria `alembic upgrade head` contra o
+      banco do Biahflow. Era essa a razão de o `WIF_PROVIDER` deste repositório estar desligado.
+      Três estados, prefixos diferentes no mesmo bucket, e só **16** recursos atravessaram; a
+      travessia foi `removed` + `import` e nunca `state mv`, e nenhum plano mostrou `must be
+      replaced` num serviço do Cloud Run. A borda ficou na fundação porque o NEG referencia o
+      serviço por **nome**, que é string e não cria ciclo entre estados.
+- [x] **O que a primeira subida do portal mostrou.** *(ADR 0052, 12/08.)* Sete defeitos, e **seis
+      da mesma família**: variável que o compose declara e o Terraform não reproduzia — com o
+      sintoma sendo silêncio, porque o código lê com default vazio e desliga o recurso que ela
+      habilitava. `KC_DB_SCHEMA` ausente faria o Keycloak migrar para `public`, ficando **fora do
+      `pg_dump -n portal`** do backup; `KC_PROXY` foi removido no Keycloak 26 e é ignorado em
+      silêncio, o que anunciava um `issuer` em `http://` e fazia a API recusar todo token; e
+      `KEYCLOAK_INTERNAL_URL` tem semânticas diferentes no BFF e na API, então um valor só acertava
+      um dos dois. O sétimo foi a corrida do primeiro login, registrada na Fase 1 acima. Login
+      fechou ponta a ponta, e a conta entrou e viu "nenhum projeto atribuído" — que é a resposta
+      certa, porque nenhum snapshot tinha rodado naquela HML.
+- [x] **A homologação dorme.** *(Commit `1062875`, 13/08 — sem ADR própria.)* Seis processos de
+      1 vCPU acesos 730h/mês sem ninguém usando. A investigação começou por outro alvo, a remoção
+      do Cloud NAT, e a medição a recusou: Private Google Access só cobre destinos do Google, e
+      Neon, Upstash, Anthropic, Voyage e o SMTP manteriam o NAT de pé de qualquer forma — o custo
+      estava nos processos, não na rede. Os serviços HTTP foram a `min = 0` com a previsão de "503
+      no primeiro acesso" **não se confirmando** (o Cloud Run segura a requisição até a sonda
+      passar: o que sobra é latência), e o Keycloak também, com boots reais de 43,6s e 115,7s e a
+      decisão explícita de que quem espera é a equipe. Desligar worker pool **não é escalar a
+      zero** — não há requisição que o acorde —, e por isso a armadilha registrada não é o custo, é
+      o esquecimento.
+- [x] **A borda que passou a servir um produto só.** *(ADR 0053, 13/08 — substitui a ADR 0048 na
+      parte do balanceador.)* O portal saiu do ar por decisão de produto, e levou junto metade da
+      borda: os três termos que justificavam o balanceador global eram sobre **dois** produtos, e
+      com um só não sobra o que dobrar, nem segundo IP a evitar, nem hostnames de outro produto a
+      não quebrar. O que restava era um balanceador global servindo uma aplicação a ~US$ 18/mês em
+      regras de encaminhamento mais ~US$ 7/mês de IP reservado — cuja tarifa, **fora de uso, é o
+      dobro** da de em uso. A borda passou para a Cloudflare, que já era autoridade da zona e já
+      terminava TLS para o site. O override de `Host` das Origin Rules era a ferramenta óbvia e a
+      API **recusa** por entitlement de plano (`not entitled to use the HostHeader override`), o
+      que foi resolvido com um Worker, onde o `Host` sai da URL da subrequisição — com
+      `redirect: "manual"`, porque o padrão engoliria o `Set-Cookie` de um 302 e devolveria um
+      login que responde "ok" sem autenticar ninguém. E a `deletion_protection` do provider 6.x,
+      ligada por default sem que arquivo nenhum dissesse isso, só apareceu no `destroy`: reprovou
+      **três vezes**, uma por tipo de recurso, cada uma depois de já ter derrubado o que não era
+      protegido.
+
+- [x] **O índice que não sabia.** *(ADR 0054, 19/08 — não é item de implantação, e está aqui
+      porque é o portão da lacuna que abre esta seção.)* As dez linhas acima chegaram com seis dias
+      a doze de atraso, e o `AGENTS.md` ganhou a regra de atualizar este arquivo no mesmo commit —
+      regra escrita à mão, que é onde a ADR 0034 já mostrou o que acontece: lá o `alerts.md` foi
+      corrigido à mão, ficou sem portão e **divergiu de novo em dois dias**. Agora
+      `test_roadmap_index.py` deriva a lista de ADRs aceitas de `docs/adr/` e cobra de cada uma uma
+      citação aqui — nas duas formas que este arquivo usa, a prosa `ADR 0009` e o caminho
+      `docs/adr/0009`. Nasceu vermelha com **catorze** contra o estado pré-conserto, dez delas as
+      da implantação. Quatro coisas foram medidas e não deduzidas: o casamento em prosa tem de
+      exigir o prefixo `ADR`, porque com quatro dígitos soltos as faltantes caem de 4 para 1 — os
+      tokens nus de migração (`0002`, `0004`, `0005`) comem as ADRs de mesmo número, que é o
+      `.priority` da ADR 0033; **reconhecer o caminho não é conveniência, é o que impede uma
+      allowlist falsa** — a primeira versão lia só a prosa e isentava a ADR 0009 com um motivo bem
+      escrito, sendo que a seção "Migração do runtime web" acima é sobre ela e aponta para o
+      arquivo dela desde sempre, e allowlist onde bastava reconhecer a citação é sedimento
+      (ADR 0029); a decisão de identidade parecia citada por duas menções que apontam para a
+      ADR 0003 **do `biahflow-portal`**, e ganhou na Fase 1 a citação que lhe faltava; e a leitura
+      do status é *fail-closed* — ADR sem linha de `**Status:**` conta como aceita, senão a `0021`,
+      a `0022` e a `0023` sairiam do corpus em silêncio. Fica declarado sem guarda o `CLAUDE.md`: o
+      índice canônico é este arquivo, e cobrar toda ADR lá o faria crescer sem limite.
+
+**Pontas abertas da implantação, sem dono e sem prioridade** (seleção é gate humano):
+
+- **Medir o `NUM_PROXIES`.** Aberto desde a ADR 0050, onde o valor `2` foi raciocínio e não
+  medição, e repetido na ADR 0053, que o deixou "mais errado, de propósito" ao alongar a cadeia —
+  trocar um palpite por outro não melhora nada. O sintoma de errar não é um erro: é todo mundo
+  dividindo o mesmo balde de limite de taxa. O procedimento está no `hml-gcp.md`.
+- **Restaurar de verdade contra o Neon.** A ADR 0044 abriu, a ADR 0048 entregou o **código** e a
+  execução nunca foi registrada. Um backup restaurável só na intenção é o defeito que a ADR 0019
+  existe para não repetir.
+- **Ler o painel do Upstash.** O instrumento (`scripts/redis_rate.py`) veio na ADR 0048; a leitura
+  real é a condição que a ADR 0045 escreveu para declarar a HML pronta.
+- **A `run.app` alcançável fora da Cloudflare.** Risco aceito por escrito na ADR 0053: o Access
+  protege o nome, não o serviço, e fechar isso exigiria mTLS ou túnel, que não se pagam em
+  homologação.
+- **A guarda que a ADR 0052 nomeou e deixou sem dono** para a família "variável que o compose
+  declara e o Terraform não reproduz". O commit `372b52a` registrou as **oito** ocorrências e o que
+  a guarda teria de comparar, e parou aí — que é exatamente a forma da ADR 0034: conserto à mão sem
+  portão volta a divergir. *Retificado em 19/08/2026, com medição: **neste repositório ela não é
+  construível hoje**, e não por falta de dono. O commit `9e2d61d` (13/08) apagou o
+  `infra/terraform/ambientes/hml-portal/` inteiro, então a comparação não tem lado direito — o
+  `docker-compose.homolog.yml` continua descrevendo `api`, `worker`, `beat`, `web`, `keycloak` e
+  `caddy` do portal, e nenhum `.tf` os declara (as únicas ocorrências de `portal-api` e `keycloak`
+  que restam em `infra/terraform/` são comentários de histórico). Uma guarda escrita aqui hoje
+  nasceria **verde por vacuidade**, que é o defeito da ADR 0033 — a mesma razão pela qual esta
+  ponta continua aberta em vez de ser apagada. Ela volta a ser possível quando o portal voltar, ou
+  mora no repositório onde os dois lados coexistem.*
+
+*Fechados, para não serem reabertos por leitura de ADR:* o `CLOUDFLARE_API_TOKEN` que a ADR 0053
+deixou aberto foi fiado no commit `6b781ae` e o `infra-hml` de 19/08 passou em `main`; e o defeito 7
+da ADR 0052 foi corrigido no commit `58a831a`, com regressão — está registrado na Fase 1. Ler as
+ADRs sem o histórico dá os dois como pendentes.
 
 ## Ordem recomendada
 
@@ -893,3 +1116,6 @@ salva.
    cliente e depende sobretudo do snapshot ampliado no Biahflow.
 6. Fase 7 depois da 6, e **um sinal por vez**: o funil primeiro, porque é onde se perde
    cliente cedo e barato; a satisfação só quando o time estiver respondendo ao primeiro.
+7. A homologação na nuvem não entra nesta ordem, e é de propósito: como a Fase 5, ela é
+   transversal e anda junto do que estiver sendo entregue. Hoje ela serve o CRM; para o portal do
+   cliente, ela é o que precisa ser religado antes de a Fase 7 voltar a ter o que medir.

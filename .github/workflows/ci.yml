@@ -16,8 +16,8 @@ jobs:
     # termina, então o job travado esconde a causa da falha dos outros.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.12.0
           cache: npm
@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
         env:
           POSTGRES_USER: portal
           POSTGRES_PASSWORD: portal_local_only
@@ -50,7 +50,7 @@ jobs:
       DATABASE_MIGRATION_URL: postgresql+psycopg://portal_migrator:portal_migrator_ci@localhost:5432/portal
       DATABASE_ADMIN_URL: postgresql+psycopg://portal_admin:portal_admin_ci@localhost:5432/portal
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Service containers start before the checkout, so the bootstrap cannot be
       # mounted as a volume the way compose does it — same script, run as a step.
       - name: Create the Postgres roles
@@ -62,7 +62,7 @@ jobs:
             -v migrator_password=portal_migrator_ci \
             -v admin_password=portal_admin_ci \
             -f infra/postgres/bootstrap/roles.sql
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
       - run: pip install -r apps/api/requirements-dev.txt
@@ -90,7 +90,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
         env:
           POSTGRES_USER: portal
           POSTGRES_PASSWORD: portal_local_only
@@ -120,7 +120,7 @@ jobs:
       STORAGE_ACCESS_KEY: portal-minio
       STORAGE_SECRET_KEY: portal-minio-local-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # MinIO não entra como `services:` porque a imagem precisa do comando
       # `server /data`, e um service container não aceita comando.
       - name: Boot MinIO
@@ -128,7 +128,7 @@ jobs:
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=portal-minio \
             -e MINIO_ROOT_PASSWORD=portal-minio-local-only \
-            minio/minio:latest server /data
+            minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null http://localhost:9000/minio/health/live && break
             sleep 2
@@ -151,7 +151,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-16
           pg_dump --version
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
       - run: pip install -r apps/api/requirements-dev.txt
@@ -190,8 +190,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: 1.14.3
 
@@ -228,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: docker compose config --quiet
       - run: docker compose build
 
@@ -272,8 +272,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.12.0
           cache: npm
@@ -378,12 +378,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.12.0
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
       - run: npm ci
@@ -413,8 +413,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
 
   # **Desligado, e não por escolha de qualidade.** O `analyze` falha com "Code
   # scanning is not enabled for this repository": é configuração do repositório
@@ -449,8 +449,8 @@ jobs:
       actions: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: github/codeql-action/init@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3
         with:
           languages: javascript-typescript, python
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3

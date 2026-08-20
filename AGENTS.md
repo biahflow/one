@@ -50,6 +50,12 @@ listas são a mesma e que toda citação por número resolve.*
   igual (ADR 0023). Aviso que não dá para consertar agora vira linha **com motivo
   e prazo** em `docs/security/advisories.json`; ela vence, e é a única forma de
   não reprovar. Ver `docs/runbooks/dependency-advisory.md`.
+- Mexeu em workflow ou em imagem de contêiner? **O pino vem junto** (ADR 0063): action por
+  SHA de commit com a versão ao lado (`# v4`), imagem por digest com a tag ao lado.
+  `npm run pins` lista as referências e `npm run pins -- --update` as resolve;
+  `test_supply_chain_pins.py` reprova quem despinar. Isenção é linha em `PINNED_BY_EXCEPTION`
+  com motivo e **sem prazo** — pino não caduca por calendário, e quem a vence é a asserção de
+  obsolescência.
 
 ## Comandos locais
 

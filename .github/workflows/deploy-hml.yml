@@ -44,9 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           project_id: biahflow-hml
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
@@ -63,7 +63,7 @@ jobs:
       # workflow **nunca tinha chegado até este passo**, porque morria na autenticação
       # por falta de `WIF_PROVIDER`. Um defeito atrás de outro não é dois defeitos —
       # é um que esconde o outro.
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
         with:
           install_components: beta
 

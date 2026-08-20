@@ -215,7 +215,7 @@ services:
   # `skipped`, que o EICAR ainda pega; aqui ela precisa devolver `clean` ou
   # `infected`, e para isso alguém tem de estar do outro lado do socket.
   clamav:
-    image: clamav/clamav:1.4
+    image: clamav/clamav:1.4@sha256:c3bfbf2a2c9abc1fc179e63832a9e8bfac901ede83853e3fa10acf6f1fb5c803
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "clamdcheck.sh"]
@@ -259,7 +259,7 @@ services:
   # nomes cabe em quatro linhas — um nginx aqui seria mais arquivo para a mesma
   # coisa.
   caddy:
-    image: caddy:2.10-alpine
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     restart: unless-stopped
     ports:
       - "80:80"

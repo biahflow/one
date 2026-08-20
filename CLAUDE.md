@@ -139,6 +139,26 @@ aviso é corrigido. Precisa do `pip-audit` no `PATH` (vem em `requirements-dev.t
 esta fatia mediu — a versão que o aviso nomeia pode não bastar, e subir o FastAPI só conserta o
 Starlette em instalação limpa.
 
+Pinagem de actions e imagens base (ADR 0063) — a outra fronteira, e a que o `npm audit` nunca vê:
+
+```bash
+npm run pins             # node scripts/pins.mjs — o inventário das quatro superfícies
+npm run pins -- --update # resolve SHA pela API do GitHub e digest pelo registro, e reescreve
+```
+
+Action por **SHA de commit** com a versão ao lado (`# v4`), imagem por **digest** com a tag ao
+lado — e `latest` reprova mesmo com digest, porque a tag existe para ser lida por uma pessoa. Quem
+reprova é `apps/api/tests/test_supply_chain_pins.py`, dentro do `api-quality`: sem rede, sem
+banco e sem job novo, com o corpus derivado por glob de workflows, `Dockerfile*`,
+`docker-compose*.yml` e as variáveis de imagem do Terraform — mais as imagens nomeadas dentro de
+um `docker run` de `run:`, que é onde o `ci.yml` puxava `minio/minio:latest` sem que casador
+nenhum de `image:` alcançasse. **Cada superfície é fail-closed**: glob vazio reprova, porque verde
+por não ter olhado é o `dependency-review` da ADR 0033. O `--update` **resolve, não escolhe**:
+referência sem tag ou em `latest` ele anuncia e deixa em paz, senão produziria um pino que o
+portão continua reprovando com razão. E o preço está declarado: digest **congela** — nenhum dos
+dois portões vê CVE de imagem base, e o descongelamento é aquele comando, rodado por uma pessoa,
+que é o que sobrou depois de a ADR 0062 desligar o robô.
+
 Backup e restore (ADR 0019) — o único código do repositório que é operação:
 
 ```bash
@@ -181,6 +201,11 @@ CI (`.github/workflows/ci.yml`) runs seven gates you should reproduce locally be
 
 - REST under `/api/v1`; Pydantic payloads and standardized errors. **A new client route ships with a `response_model` from `schemas.py` and `responses=CLIENT_ERRORS`**, and the schema artifact is regenerated in the same commit (`python -m portal_api.openapi --write`) — `test_openapi_contract.py` fails otherwise, and it also fails a route that declares 403 or a response field named like a secret.
 - **Prometeu 404, prova o 404** (ADR 0035). `test_authorization.py` deriva do contrato publicado a lista de rotas que declaram 404 e cobra, de cada uma, um teste que troque de ator e afirme a negação — a regra 6 do `AGENTS.md`, que até aqui era a única inegociável sem portão derivado (30 funções à mão contra 46 pares rota+método). Quem legitimamente não nega por tenant não declara 404 e se isenta sozinho; a ligação é entre o 404 e **a resposta daquela chamada**, e não com o corpo do teste, porque o elo frouxo foi medido dando `POST /chat` como coberto por um 404 que era de outra rota.
+- **Mexeu em workflow ou em imagem, o pino vem junto** (ADR 0063). Toda referência a código de
+  terceiro que este repositório executa é fixada por identidade imutável, e a versão fica legível
+  ao lado dela. A isenção é uma linha em `PINNED_BY_EXCEPTION` com motivo em prosa e **sem
+  prazo** — pino não caduca por calendário, e quem a vence é a asserção de obsolescência, no
+  precedente do `FOUNDATION_WITHOUT_A_LINE` e não no do `advisories.json`.
 - **Mexeu no prompt, muda a `PROMPT_VERSION`** (ADR 0021). Alterar o `SYSTEM_PROMPT`, o `OUTPUT_SCHEMA` ou a moldura de `build_user_prompt` sem trocar a versão reprova em `test_prompt_version.py`, e **regravar o registro não conserta** — `python -m portal_api.ai.prompt --record` recusa reescrever uma versão já gravada. É o terceiro gate de deriva, ao lado do `alembic check` e do `openapi.json`. Mudança de prompt, recuperador, modelo ou ferramenta também pede eval (`docs/ai/eval-dataset.md`), e a seção adversarial é a que roda contra o respondedor real — com o cliente injetado pelo ponto de costura, **sem chave e sem custo de token**.
 - Web tests assert against **server-rendered HTML** (`tests/rendered-html.test.mjs` boots `next start` and matches strings like the page title and dashboard copy). If you change dashboard text/structure, update these assertions. The second test scans every source file under `app/` and `components/` to guard against reintroducing hardcoded tab data (the Fase 2 regression) and starter leftovers.
 - **A mensagem do log é o nome do evento; o detalhe vai em `extra`** (ADR 0018/0034).

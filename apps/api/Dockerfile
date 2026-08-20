@@ -10,7 +10,7 @@
 # a segunda leva só o virtualenv e o código. O compilador e o cache do pip ficam
 # na primeira e não chegam à imagem final.
 
-FROM python:3.13-slim AS builder
+FROM python:3.13.15-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
@@ -22,7 +22,7 @@ COPY requirements.txt ./
 RUN python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt
 
 
-FROM python:3.13-slim AS runtime
+FROM python:3.13.15-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

@@ -125,10 +125,11 @@ conviveram meses com um CI de seis portões.
 roda `npm run audit` de novo e abre o PR à mão. Este job é o único mecanismo automático, e ele
 detecta — não corrige.
 
-E há duas coisas que ele **não** detecta, agora sem nada por trás: as actions do `ci.yml` e as
-duas imagens base do compose. `npm audit` e `pip-audit` não as conhecem, e as imagens estão
-fixadas em versão exata (ADR 0022) — congelam na CVE do dia em que foram escolhidas até alguém
-subir o pin. Quem revisa dependência revisa essas duas listas junto, porque nada mais o fará.
+E há duas coisas que ele **não** detecta, e que desde a ADR 0063 têm portão próprio: as actions
+dos workflows e as imagens base. `npm audit` e `pip-audit` continuam sem conhecê-las — nenhuma
+das duas é pacote de ecossistema —, e quem responde por elas é
+`apps/api/tests/test_supply_chain_pins.py`, que reprova toda referência sem pino, mais
+`npm run pins`, que **é** a lista que este parágrafo mandava revisar e que não existia.
 
 > *Corrigido em 20/08/2026 (ADR 0062). Este parágrafo dizia que "o Dependabot
 > (`.github/dependabot.yml`) abre o PR que conserta, semanalmente", e que ele era o mecanismo
@@ -141,6 +142,59 @@ subir o pin. Quem revisa dependência revisa essas duas listas junto, porque nad
 > arquivo previa a forma da falha ("um robô que abre vinte PRs por semana treina a equipe a
 > fechá-los sem ler, que é a forma de este mecanismo virar o oposto do que é"); o que ele não
 > previu é que o teto transformaria isso em bloqueio.*
+
+> *Corrigido em 20/08/2026 (ADR 0063). Este parágrafo dizia que "as imagens estão fixadas em
+> versão exata (ADR 0022)" e que "quem revisa dependência revisa essas duas listas junto, porque
+> nada mais o fará" — e as três afirmações estavam erradas ao mesmo tempo. **Não existia lista:**
+> eram 25 linhas `uses:` espalhadas por três workflows e 16 referências de imagem espalhadas por
+> cinco lugares, e quem fosse revisá-las não tinha o que abrir. **Nada verificava a instrução:**
+> ela era prosa, e prosa não reprova. E **"versão exata" era falso** — `docker-compose.yml:78`
+> era `minio/minio:latest`, e o job `backup-restore` puxava a mesma tag móvel num `docker run`
+> que nenhum casador de `image:` alcançava.*
+
+## Sintoma: `test_supply_chain_pins.py` ficou vermelho
+
+O outro portão da mesma fronteira (ADR 0063), e ele não roda no `dependency-audit`: é um teste do
+`pytest`, no job `api-quality`, sem rede e sem banco. Ele varre quatro superfícies por glob —
+workflows, Dockerfiles, `docker-compose*.yml` e as variáveis de imagem do Terraform — e reprova
+por um de quatro motivos:
+
+1. **Uma action está em tag ou branch.** `actions/checkout@v4` é um ponteiro que o dono daquele
+   repositório reescreve, e os workflows deste repositório rodam com credencial de nuvem
+   (`deploy-hml.yml`) e de registro (`infra-hml.yml`).
+2. **Um pino de action não diz de que versão é.** O SHA sozinho é ruído hexadecimal; a lista
+   existe para ser lida por uma pessoa.
+3. **Uma imagem não tem digest**, tem digest sem tag, ou está em `latest` — que reprova mesmo
+   acompanhada de digest, pelo mesmo motivo do item 2.
+4. **Uma linha de `PINNED_BY_EXCEPTION` deixou de ser necessária**, porque a referência sumiu do
+   repositório ou passou a estar corretamente pinada. Isenção de pino não tem prazo de propósito
+   — pino não caduca por calendário —, e essa asserção é o único vencimento que ela tem.
+
+Há um quinto vermelho, e ele não é sobre pino: **a superfície ficou sem arquivo nenhum**. O glob
+não achou nada, e a guarda reprova em vez de passar. Verde por não ter olhado é o defeito que a
+ADR 0033 achou no `dependency-review`.
+
+### Conserto
+
+```bash
+npm run pins             # a lista: onde está cada referência e se tem pino
+npm run pins -- --update # resolve SHA pela API do GitHub e digest pelo registro, e reescreve
+```
+
+O `--update` **resolve, não escolhe**: referência sem tag ou em `latest` ele anuncia e deixa em
+paz, porque pinar `minio/minio:latest@sha256:…` produziria um pino que o portão continua
+reprovando com razão. Nesse caso escolha a versão à mão, ponha a tag e rode de novo.
+
+Precisa de `gh` autenticado e do `docker buildx` — este último fala com o registro e **não**
+precisa do daemon de pé. Sem um dos dois, o script sai com código 2: falha de execução, não
+referência despinada, na mesma distinção que o `audit.mjs` faz.
+
+### O preço, que está declarado
+
+Pino por digest **congela**: `python:3.13.15-slim` não recebe mais patch de segurança ao
+rebuildar, e nenhum dos dois portões vê CVE de imagem base — o `npm audit`/`pip-audit` não
+conhece imagem, e este aqui só pergunta se há pino, nunca se o pino é recente. Quem revisa
+dependência roda `npm run pins` junto, e agora tem o que abrir.
 
 ## Se o aviso for grave e estiver em produção
 

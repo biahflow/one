@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-portal}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portal_local_only}
@@ -20,7 +20,7 @@ services:
   # (ADR 0010). Roda a cada `up` porque ./infra/postgres/init só é executado em
   # volume novo — este serviço cobre também quem já tem banco criado.
   db-bootstrap:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
     restart: "no"
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-portal_local_only}
@@ -65,7 +65,7 @@ services:
         condition: service_completed_successfully
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.10-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     ports:
       - "6379:6379"
     healthcheck:
@@ -75,7 +75,7 @@ services:
       retries: 15
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-portal-minio}
@@ -92,7 +92,7 @@ services:
       retries: 15
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1
+    image: quay.io/keycloak/keycloak:26.1@sha256:be6a86215213145bfb4fb3e2b3ab982a806d00262655abdcf3ffa6a38d241c7c
     command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
@@ -129,7 +129,7 @@ services:
         condition: service_healthy
 
   mailpit:
-    image: axllent/mailpit:v1.22
+    image: axllent/mailpit:v1.22@sha256:f7f7c31de4de59540ad6515a0ca057a77525bca2069b6e747d873ca66c10fe08
     ports:
       - "1025:1025"
       - "8025:8025"

@@ -47,6 +47,7 @@ técnico em feature de produto sem uma feature-pai explícita.
 | `build` | KNOWN | `npm run build`; `docker compose build` |
 | `infra-quality` | KNOWN | `.github/workflows/ci.yml` executa `terraform fmt` e `terraform validate` sem backend |
 | `security` | KNOWN | `npm run audit` |
+| `supply-chain-pins` | KNOWN | `PYTHONPATH=apps/api/src pytest apps/api/tests/test_supply_chain_pins.py` — roda dentro do perfil `api-unit-integration`, sem rede e sem banco; `npm run pins` imprime o inventário |
 | `codeql` | NOT_APPLICABLE | Requer `CODE_SCANNING_ENABLED=true` em configuração de repositório; não é gate atualmente |
 
 O contrato da tarefa seleciona apenas os perfis aplicáveis e registra ambiente, baseline e

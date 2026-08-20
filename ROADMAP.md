@@ -1184,6 +1184,29 @@ que ele respeita.
       posição mudou. *As duas direções da guarda de eventos foram medidas uma a uma, e um efeito
       colateral apareceu: `MeOut.organization` sai de `visible[0][0]`, então passa a nomear a
       organização do projeto **servido** — mesma linha para quem tem uma organização só.*
+- [x] **O pino que ninguém conferia** *(ADR 0063)*: a continuação direta da linha acima, e o
+      padrão pela enésima vez — só que desta vez a promessa quebrada é **a que a fatia anterior
+      acabara de escrever**. A ADR 0062 desligou o Dependabot e mandou o conserto para uma
+      pessoa, pelo `dependency-advisory.md`: *"as imagens estão fixadas em versão exata
+      (ADR 0022)"* e *"quem revisa dependência revisa essas duas listas junto, porque nada mais
+      o fará"*. **As três afirmações estavam erradas ao mesmo tempo.** Não existia lista — eram
+      25 linhas `uses:` em três workflows e 16 referências de imagem em cinco lugares, e quem
+      fosse revisá-las não tinha o que abrir; **nada verificava** a instrução, que é prosa, e
+      prosa não reprova (o argumento medido da ADR 0034: o `alerts.md` foi corrigido à mão e
+      divergiu de novo em dois dias); e *"versão exata"* era **falso**, porque
+      `docker-compose.yml:78` era `minio/minio:latest`. Agora **25 actions estão por SHA de
+      commit** com a versão legível ao lado e **15 imagens por digest** com a tag ao lado, e o
+      portão é `test_supply_chain_pins.py`: corpus derivado por glob de quatro superfícies,
+      **fail-closed** (superfície sem arquivo reprova — verde por não ter olhado é o
+      `dependency-review` da ADR 0033), com allowlist de motivo em prosa e **sem prazo**, pelo
+      argumento do `FOUNDATION_WITHOUT_A_LINE`. *O que a revisão achou e o levantamento não:* o
+      `ci.yml` puxava `minio/minio:latest` num **`docker run` dentro de um `run:`** — a imagem
+      que o job `backup-restore` realmente sobe, fora do alcance de qualquer casador de
+      `image:` —, de modo que o repositório passaria a afirmar "toda imagem pinada" com o CI
+      puxando tag móvel, e com o CI e o compose subindo MinIO diferentes. *E o preço está
+      declarado, não contornado:* digest **congela**, `python:3.13.15-slim` não recebe mais
+      patch ao rebuildar, e o descongelamento é `npm run pins -- --update` — um comando que uma
+      pessoa roda de propósito, e não o robô que abria vinte PRs por semana.
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

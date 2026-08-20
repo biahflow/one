@@ -154,33 +154,27 @@ _MOVING_TAG = "latest"
 #: recebem nome de contêiner, não de imagem.
 _DOCKER_RUN = re.compile(r"\bdocker[ \t]+(?:run|pull|create)\b")
 
-#: As flags de `docker run` que tomam **valor separado** — a única lista
-#: digitada à mão deste arquivo. Ela é detalhe de *parser* de linha de comando,
-#: não corpus: não envelhece com o repositório, envelhece com a forma da CLI
-#: do Docker. Uma flag que toma valor e não está aqui faria o valor dela ser
-#: tomado por imagem — por isso o token que sobra sem casar nada aqui é
-#: tratado como o fim da varredura (ver `docker_run_images`), nunca como
-#: imagem "provavelmente".
-_DOCKER_VALUE_FLAGS = frozenset(
-    {
-        "-e",
-        "--env",
-        "-p",
-        "--publish",
-        "--name",
-        "-v",
-        "--volume",
-        "--network",
-        "-w",
-        "--workdir",
-        "-u",
-        "--user",
-        "-l",
-        "--label",
-        "--entrypoint",
-        "--platform",
-    }
+#: A **forma** de uma referência de imagem, e não mais uma tabela de flags
+#: digitada à mão (ADR 0063, pendência medida e fechada nesta fatia). Nome com
+#: namespace opcional, tag opcional, digest opcional — e a exigência de conter
+#: `/` **ou** `@sha256:`, que é o que separa uma referência de imagem de um
+#: valor de flag: `9000:9000`, `512m` e `FOO=bar` casam "nome" ou "nome:tag" na
+#: sintaxe solta, mas nenhum tem `/` nem digest. Uma imagem oficial de nome
+#: curto sem digest (`postgres:17`) fica **de fora de propósito** por essa
+#: mesma exigência — a forma canônica é `library/postgres:17`, e é essa que a
+#: mensagem de erro abaixo ensina a escrever.
+_IMAGE_REFERENCE_FORM = re.compile(
+    r"^(?P<name>[\w.\-]+(?:/[\w.\-]+)*)"
+    r"(?::(?P<tag>[\w][\w.\-]*))?"
+    r"(?:@sha256:(?P<digest>[0-9a-f]{64}))?$"
 )
+
+
+def _looks_like_image_reference(token: str) -> bool:
+    """Se `token` tem a forma de uma referência de imagem — ver `_IMAGE_REFERENCE_FORM`."""
+    if "/" not in token and "@sha256:" not in token:
+        return False
+    return _IMAGE_REFERENCE_FORM.match(token) is not None
 
 
 #: Referência → por que ela **não** é pinada, em prosa longa e contestável.
@@ -313,17 +307,28 @@ def docker_run_images(text: str) -> list[Reference]:
 
     O comando pode se estender por continuação de linha (`\\` no fim), como o
     `Boot MinIO` do `ci.yml`. A partir do subcomando, os tokens são
-    percorridos: quem começa com `-` é flag; quem é **valor** de uma flag que
-    toma valor separado (`_DOCKER_VALUE_FLAGS`) também é pulado; o primeiro
-    token que sobra é a imagem. A linha reportada é a de onde a imagem está —
-    não a do início do comando, que pode ficar do outro lado de uma
-    continuação.
+    percorridos: quem começa com `-` é flag e consome **um** token — não há
+    mais tabela de flags de valor separado — e o primeiro token que não
+    começa com `-` é o candidato a imagem. A linha reportada é a de onde a
+    imagem está — não a do início do comando, que pode ficar do outro lado de
+    uma continuação.
 
-    **Fail-closed:** se nenhum token sobrar depois do subcomando, é erro deste
-    casador — flag nova que ele não conhece, ou forma de comando que não
-    previu — e não "não há imagem aqui". A guarda reprova nomeando o comando,
-    em vez de deixar passar em silêncio: é o mesmo argumento do `skipped` não
-    ser `clean` no `scanner.py`, e do fail-closed do `_files` acima.
+    O candidato só vira imagem se tiver **forma** de referência de imagem
+    (`_looks_like_image_reference`); do contrário a varredura reprova nomeando
+    o token, em vez de tomá-lo por imagem "provavelmente" — que era o defeito
+    medido na ADR 0063: `docker run --memory 512m minio/minio:…` tomava
+    `512m` por imagem e a imagem real saía do corpus sem que nada dissesse
+    isso. A saída legítima é escrever a flag na forma colada
+    (`--memory=512m`, `--env=FOO=bar`, `--publish=9000:9000`), que nunca
+    produz um token separado para confundir.
+
+    **Fail-closed, nas duas direções:** se nenhum token sobrar depois do
+    subcomando, é o comando que não nomeia imagem nenhuma; se um token sobrar
+    e não tiver forma de imagem, é o valor de uma flag que este casador não
+    reconheceu. Nos dois casos a guarda reprova nomeando o comando (e, no
+    segundo, o token), em vez de deixar passar em silêncio ou adivinhar qual
+    token é a imagem — é o mesmo argumento do `skipped` não ser `clean` no
+    `scanner.py`, e do fail-closed do `_files` acima.
     """
     lines = text.splitlines()
     found: list[Reference] = []
@@ -347,18 +352,18 @@ def docker_run_images(text: str) -> list[Reference]:
                 break
             remainder = lines[idx]
 
-        image: tuple[str, int] | None = None
+        candidate: tuple[str, int] | None = None
         i = 0
         while i < len(tokens):
             token, token_line = tokens[i]
             if token.startswith("-"):
-                i += 2 if token in _DOCKER_VALUE_FLAGS else 1
+                i += 1
                 continue
-            image = (token, token_line)
+            candidate = (token, token_line)
             break
 
         command_text = " ".join(token for token, _ in tokens)
-        assert image is not None, (
+        assert candidate is not None, (
             "não consegui achar a imagem depois de `docker run|pull|create` em "
             f"`{lines[first_line_idx].strip()}` (linha {first_line_idx + 1}): "
             f"`{command_text}`. Ou o comando não nomeia imagem nenhuma, ou usa uma "
@@ -367,12 +372,28 @@ def docker_run_images(text: str) -> list[Reference]:
             "imagem aqui\" (ADR 0063)."
         )
 
-        ref, ref_line = image
+        # As aspas saem **antes** da conferência de forma, e não depois: um
+        # `docker run "minio/minio:…"` é forma legítima, e conferir a forma com
+        # a aspa ainda no token reprovaria a imagem verdadeira — trocar um
+        # falso-verde por um falso-vermelho não é o negócio desta fatia.
+        candidate_token, candidate_line = candidate
+        ref = candidate_token.strip("\"'")
+        assert _looks_like_image_reference(ref), (
+            f"`{ref}` (linha {candidate_line}) não tem forma de referência de "
+            "imagem — nome com `/` ou digest `@sha256:` — e por isso não é a "
+            "imagem de `docker run|pull|create` em "
+            f"`{lines[first_line_idx].strip()}` (linha {first_line_idx + 1}): "
+            f"`{command_text}`. Provavelmente é o valor de uma flag escrita na "
+            "forma separada; escreva-a colada (`--memory=512m`, "
+            "`--env=FOO=bar`, `--publish=9000:9000`) para que o casador não "
+            "tome o valor por imagem (ADR 0063)."
+        )
+
         found.append(
             Reference(
-                line=ref_line,
-                ref=ref.strip("\"'"),
-                text=lines[ref_line - 1] if ref_line <= len(lines) else "",
+                line=candidate_line,
+                ref=ref,
+                text=lines[candidate_line - 1] if candidate_line <= len(lines) else "",
             )
         )
     return found

@@ -1293,6 +1293,34 @@ que ele respeita.
       aberto:** RAG e retenção não têm gatilho estrutural (cobrá-las seria a lista digitada
       da ADR 0033), e "revisadas" continua sem portão — prova-se que a decisão existe e
       está citada, nunca que alguém a leu.
+- [x] **A flag que o casador não conhecia** *(ADR 0067)*: a ponta que a ADR 0063 mediu e
+      deixou escrita — *"um `docker run` com flag de valor separado que o casador não
+      conhece toma o valor dela por imagem em vez de reprovar; o fail-closed cobre o caso
+      de nenhum token sobrar, não o de sobrar o token errado"*. **O mecanismo era uma lista
+      de dezesseis flags digitada à mão**, duplicada no portão em pytest e no
+      `scripts/pins.mjs`, e o comentário das duas a declarava: *"a única lista digitada à
+      mão deste arquivo"*. É o defeito das ADRs 0033 e 0035 sobrevivendo **dentro do portão
+      mais novo do repositório**, e a defesa escrita ali — a tabela envelhece com a CLI do
+      Docker, não com o repositório — é verdadeira e não salva: `docker run` tem dezenas de
+      flags de valor separado e a tabela tinha dezesseis. Escrito `--memory 512m`, o
+      casador tomava `512m` por imagem e **a imagem real saía do corpus sem que nada
+      dissesse isso**. Agora a decisão é pela **forma do token** — nome com `/` ou digest
+      `@sha256:`, o gatilho estrutural da ADR 0066 —, toda flag consome um token só, e o
+      candidato que não tem forma de imagem **reprova nomeando o token** em vez de virar
+      imagem "provavelmente". *A consequência na fonte é parte da decisão:* o único `docker
+      run` do repositório passou à **forma colada** (`--name=minio --publish=9000:9000`),
+      que é a que não produz token separado capaz de ser confundido com a imagem — exigida
+      por consequência da regra, não por uma segunda regra em cima dela. **As mutações
+      verdes provam mais que as vermelhas**, e são duas: a fila `-d --rm -it --init`, que
+      uma regra ingênua de dois tokens por flag comeria, e a imagem **entre aspas** — o
+      falso-vermelho que a revisão do diff encontrou, com a guarda acusando de "não ter
+      forma de imagem" uma imagem corretamente pinada, porque a aspa era conferida antes de
+      ser retirada. *De quebra, a armadilha pelo avesso:* a mutação das aspas reprovou a
+      asserção do próprio harness — envolver o token em aspas não faz o padrão sumir do
+      arquivo —, terceira ocorrência do tropeço das ADRs 0065 e 0066, agora com a mutação
+      correta parecendo malformada. **Fica aberto:** uma flag separada cujo valor *tenha
+      forma de imagem* (`--platform linux/amd64`) continua sendo tomada por imagem, e
+      fechá-lo exigiria de volta a tabela que a fatia removeu.
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

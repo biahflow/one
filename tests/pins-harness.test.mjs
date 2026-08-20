@@ -265,16 +265,17 @@ test("uma superfície desconhecida falha em vez de devolver lista vazia", () => 
 // --- `docker run`, a referência que nenhum `image:` alcança (ADR 0063) -------
 //
 // O recorte é o `Boot MinIO` do `ci.yml` reduzido: importa que o comando quebre
-// em continuação de linha e que a imagem venha depois de flags que tomam valor,
-// porque foi exatamente essa forma que passou despercebida.
+// em continuação de linha e que a imagem venha na forma **colada**, porque a
+// tabela de flags de valor separado saiu — o casador agora decide pela forma
+// do token, e é isso que este bloco mede.
 
 const DOCKER_RUN_WORKFLOW = `jobs:
   backup-restore:
     steps:
       - name: Boot MinIO
         run: |
-          docker run -d --name minio -p 9000:9000 \\
-            -e MINIO_ROOT_USER=portal-minio \\
+          docker run -d --name=minio --publish=9000:9000 \\
+            --env=MINIO_ROOT_USER=portal-minio \\
             minio/minio:latest server /data
 `;
 
@@ -288,13 +289,99 @@ test("acha a imagem de um `docker run` quebrado em continuação de linha", () =
   assert.equal(image.pinned, false);
 });
 
-test("o valor de `--name` e o de `-p` não são tomados por imagem", () => {
+test("na forma colada, só a imagem entra no corpus", () => {
   const found = references(DOCKER_RUN_WORKFLOW, "workflow");
   const refs = found.map((reference) => reference.ref);
 
   assert.deepEqual(refs, ["minio/minio:latest"]);
-  assert.ok(!refs.includes("minio"), "`--name minio` é valor de flag, não imagem");
-  assert.ok(!refs.includes("9000:9000"), "`-p 9000:9000` é valor de flag, não imagem");
+  assert.ok(!refs.includes("minio"), "`--name=minio` é uma flag só, não dois tokens");
+  assert.ok(!refs.includes("9000:9000"), "`--publish=9000:9000` é uma flag só, não dois tokens");
+  assert.ok(!refs.includes("server"), "`server /data`, depois da imagem, nunca vira candidato");
+});
+
+test("`--name minio` na forma separada reprova nomeando o token, em vez de virar imagem", () => {
+  const formaSeparada = `jobs:
+  backup-restore:
+    steps:
+      - name: Boot MinIO
+        run: |
+          docker run -d --name minio --publish 9000:9000 \\
+            minio/minio:latest server /data
+`;
+
+  assert.throws(
+    () => references(formaSeparada, "workflow"),
+    /`minio` \(linha 6\) não tem forma de referência de imagem/,
+    "o valor separado de `--name` tem de reprovar nomeando o token, não ser tomado por imagem",
+  );
+});
+
+test("`-e FOO=bar` na forma separada reprova nomeando o token", () => {
+  const formaSeparada = `jobs:
+  backup-restore:
+    steps:
+      - name: Boot MinIO
+        run: |
+          docker run -d -e FOO=bar \\
+            minio/minio:latest server /data
+`;
+
+  assert.throws(
+    () => references(formaSeparada, "workflow"),
+    /`FOO=bar` \(linha 6\) não tem forma de referência de imagem/,
+    "o valor separado de `-e` tem de reprovar nomeando o token, não ser tomado por imagem",
+  );
+});
+
+test("booleanas curtas e longas, em fila, não impedem a imagem de ser achada", () => {
+  // O caso que separa esta guarda de uma versão ingênua: **toda** flag consome
+  // um token só, então uma fila de booleanas tem de atravessar sem consumir a
+  // imagem. Uma regra que pulasse dois tokens por flag comeria `minio/minio`.
+  const booleanas = `jobs:
+  x:
+    steps:
+      - run: docker run -d --rm -it --init --privileged minio/minio:latest server /data
+`;
+
+  const found = references(booleanas, "workflow");
+
+  assert.deepEqual(
+    found.map((reference) => reference.ref),
+    ["minio/minio:latest"],
+  );
+});
+
+test("uma imagem entre aspas é conferida sem a aspa, e não reprova por forma", () => {
+  // A aspa sai **antes** da conferência de forma. Conferi-la com a aspa no
+  // token trocaria o falso-verde que esta fatia fecha por um falso-vermelho
+  // sobre a imagem verdadeira.
+  const comAspas = `jobs:
+  x:
+    steps:
+      - run: docker run -d "minio/minio:latest" server /data
+`;
+
+  const found = references(comAspas, "workflow");
+
+  assert.deepEqual(
+    found.map((reference) => reference.ref),
+    ["minio/minio:latest"],
+  );
+  assert.equal(found[0].pinned, false, "sem digest continua sem pino, aspas ou não");
+});
+
+test("`--memory 512m` — o exemplo que a ADR 0063 mediu — reprova nomeando o token", () => {
+  const separada = `jobs:
+  x:
+    steps:
+      - run: docker run -d --memory 512m minio/minio:latest server /data
+`;
+
+  assert.throws(
+    () => references(separada, "workflow"),
+    /`512m` \(linha 4\) não tem forma de referência de imagem/,
+    "era este o token que a guarda antiga tomava por imagem, deixando a imagem real fora do corpus",
+  );
 });
 
 test("um `docker run` sem imagem alguma falha em vez de passar em silêncio", () => {
@@ -311,6 +398,16 @@ test("um `docker run` sem imagem alguma falha em vez de passar em silêncio", ()
   );
 });
 
+test("um `docker build` continua fora do corpus de `docker run`", () => {
+  const build = `jobs:
+  x:
+    steps:
+      - run: docker build -t alguma-coisa .
+`;
+
+  assert.deepEqual(references(build, "workflow"), []);
+});
+
 test("o pino de um `docker run` é reescrito como o de qualquer outra imagem", () => {
   const alvo = "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:" + "1".repeat(64);
   const saida = rewrite(DOCKER_RUN_WORKFLOW, {
@@ -318,5 +415,5 @@ test("o pino de um `docker run` é reescrito como o de qualquer outra imagem", (
   });
 
   assert.match(saida, /^ {12}minio\/minio:RELEASE[^\s]+ server \/data$/m);
-  assert.ok(saida.includes("--name minio -p 9000:9000"), "o resto do comando não se mexe");
+  assert.ok(saida.includes("--name=minio --publish=9000:9000"), "o resto do comando não se mexe");
 });

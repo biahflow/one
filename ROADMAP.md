@@ -1184,6 +1184,115 @@ que ele respeita.
       posição mudou. *As duas direções da guarda de eventos foram medidas uma a uma, e um efeito
       colateral apareceu: `MeOut.organization` sai de `visible[0][0]`, então passa a nomear a
       organização do projeto **servido** — mesma linha para quem tem uma organização só.*
+- [x] **O pino que ninguém conferia** *(ADR 0063)*: a continuação direta da linha acima, e o
+      padrão pela enésima vez — só que desta vez a promessa quebrada é **a que a fatia anterior
+      acabara de escrever**. A ADR 0062 desligou o Dependabot e mandou o conserto para uma
+      pessoa, pelo `dependency-advisory.md`: *"as imagens estão fixadas em versão exata
+      (ADR 0022)"* e *"quem revisa dependência revisa essas duas listas junto, porque nada mais
+      o fará"*. **As três afirmações estavam erradas ao mesmo tempo.** Não existia lista — eram
+      25 linhas `uses:` em três workflows e 16 referências de imagem em cinco lugares, e quem
+      fosse revisá-las não tinha o que abrir; **nada verificava** a instrução, que é prosa, e
+      prosa não reprova (o argumento medido da ADR 0034: o `alerts.md` foi corrigido à mão e
+      divergiu de novo em dois dias); e *"versão exata"* era **falso**, porque
+      `docker-compose.yml:78` era `minio/minio:latest`. Agora **25 actions estão por SHA de
+      commit** com a versão legível ao lado e **15 imagens por digest** com a tag ao lado, e o
+      portão é `test_supply_chain_pins.py`: corpus derivado por glob de quatro superfícies,
+      **fail-closed** (superfície sem arquivo reprova — verde por não ter olhado é o
+      `dependency-review` da ADR 0033), com allowlist de motivo em prosa e **sem prazo**, pelo
+      argumento do `FOUNDATION_WITHOUT_A_LINE`. *O que a revisão achou e o levantamento não:* o
+      `ci.yml` puxava `minio/minio:latest` num **`docker run` dentro de um `run:`** — a imagem
+      que o job `backup-restore` realmente sobe, fora do alcance de qualquer casador de
+      `image:` —, de modo que o repositório passaria a afirmar "toda imagem pinada" com o CI
+      puxando tag móvel, e com o CI e o compose subindo MinIO diferentes. *E o preço está
+      declarado, não contornado:* digest **congela**, `python:3.13.15-slim` não recebe mais
+      patch ao rebuildar, e o descongelamento é `npm run pins -- --update` — um comando que uma
+      pessoa roda de propósito, e não o robô que abria vinte PRs por semana.
+- [x] **O documento que não conhecia a nuvem** *(ADR 0064)*: a irmã da ADR 0054 no outro
+      documento. Lá o **índice canônico** não sabia das dez ADRs da implantação (0044–0053) e
+      ganhou portão; aqui quem não sabia era o documento de **arquitetura**, que abria a
+      topologia com *"fisicamente há **dois ambientes**"* e descrevia dois composes — sem conter
+      as palavras `Terraform`, `Cloud Run`, `Cloudflare`, `Neon` nem `Upstash`, e sem saber que
+      o portal tinha saído do ar. O `infra/terraform/README.md` repetia o defeito **no parágrafo
+      que registra tê-lo tido antes**: a linha sobre o `modulos/maquina-fila/` que *"sobreviveu à
+      remoção do diretório"* foi conserto à mão sem portão, e em 13/08 aconteceu de novo duas
+      vezes — `ambientes/hml-portal/` e `modulos/borda/` continuaram desenhados depois de
+      apagados, junto de um `cd ../hml-portal` que **falha**, de dois contadores errados e de uma
+      tabela cujos **seis** serviços nenhum `servicos.tf` declara. Agora quem confere é
+      `test_architecture_doc.py`, com quatro asserções e **corpus derivado em todas**: ambiente é
+      `docker-compose*.yml` mais quem tem `backend.tf`, e a fence de estrutura é achada pela
+      **forma do bloco** — o que faz a nota histórica, que mora na prosa, ficar fora do alcance
+      da guarda por construção, em vez de exigir que o repositório apague o registro do próprio
+      erro. *A regra que a fatia deixa escrita:* **guarde o número cujo denominador é artefato
+      contável; apague o número cujo denominador é escolha narrativa** — o "dois ambientes" não
+      virou "três", foi apagado, e as topologias passaram a ser nomeadas. *E três defeitos que só
+      apareceram por medir:* o casador de crases atravessava a cerca do diagrama e faria (a)
+      reprovar um documento que já nomeava o ambiente; `hml/` nu na fence deixava a guarda
+      **verde**, porque token de um segmento era ignorado e não reprovado; e o `_HISTORICAL_NOTE`
+      do precedente **trunca no negrito**, deixando o número velho dentro do texto que a guarda
+      lê. Mais um braço inteiro **recusado com o número**: a leitura de crases inline rende zero
+      achados únicos e 32 falso-positivos das classes `try/except` e `application/octet-stream`,
+      que é o `.priority` da ADR 0033 comprado de propósito.
+- [x] **O nome que a borda não soube que mudou** *(ADR 0065)*: a continuação da linha
+      acima, e a primeira vez que uma dessas guardas acha defeito que **não é de
+      documento**. A ADR 0064 corrigiu `cd ../hml-portal` no `infra/terraform/README.md`
+      e chamou a linha de *"uma instrução que **falha**"* — e o mesmo comando sobreviveu
+      em `docs/runbooks/hml-gcp.md`, porque o corpus de (b) são as fences de **estrutura**
+      e um runbook não desenha diretório, navega até ele. Aquela ADR já tinha escrito a
+      ponta: *"fica aberto o alcance de (b)"*. **Perseguindo isso apareceu a borda.** Em
+      19/08 os serviços do CRM viraram `cockpit-*` (`b4e0471`, *"registra o que já está na
+      nuvem"*), o rename tocou **um arquivo só**, e `ambientes/hml/cloudflare.tf:47`
+      continuava montando a origem da Cloudflare como `biahflow-web-<número>.run.app` —
+      nome que nenhum `servicos.tf` declara — com o registro DNS e o template do worker
+      saindo daquela `local`. O commit de acerto seguinte (`6a0e45f`) alinhou **outro**
+      espelho e não passou por ali, e a mensagem dele nomeia o modo de falha: *"divergir
+      faz os dois states se desfazerem em turnos"*. Agora há duas asserções novas em
+      `test_architecture_doc.py` — o arquivo **não** foi renomeado, porque seis documentos
+      o nomeiam e renomeá-lo criaria de uma vez seis referências obsoletas, que é a classe
+      de defeito que a fatia fecha. *O sinal que dispensa allowlist é estrutural:* o
+      primeiro segmento de um hostname `run.app` é um serviço por construção da URL, e o
+      argumento de `gcloud run <espécie> <verbo>` é posicional — uma regra, duas espécies
+      de arquivo. **Nasceu vermelha com doze achados e zero falso-positivo**, e das sete
+      referências a serviço que existem no repositório inteiro, **as sete estavam
+      erradas**. *E três defeitos da própria guarda só apareceram por rodá-la:* o escopo
+      era o arquivo e tinha de ser a fence (uma fence de `gcloud` herdava o escopo de
+      outra e reprovava `git -C ../biahflow-portal`), o casador de `../` disparava nas
+      **reticências** de `POST .../clients/<id>`, e sem exigir fence ```` ```bash ```` a
+      guarda cobrava que a **ADR 0064 fosse apagada** — a seção Medição dela cita a saída
+      literal do próprio vermelho. *Mais um ramo acrescentado e retirado de propósito:* a
+      prosa dizia "29" em algarismo e o parser só conhecia numeral por extenso; a saída
+      foi corrigir a prosa para "dez" e deixar o parser fail-closed, porque ramo que
+      nenhuma frase percorre é ramo que ninguém testa. **O `apply` não foi rodado — o
+      `plan` não pôde nem ser gerado**, porque o backend GCS pede reauth, e autenticar é
+      ato de pessoa.
+- [x] **O `drop_column` que nenhum portão veria** *(ADR 0066)*: a regra 4 do
+      `AGENTS.md` — *"migrações são aditivas e revisadas; alterações de tenant,
+      autenticação, RAG ou retenção exigem ADR/RFC"* — era **a única das seis sem
+      portão**, e a ADR 0035 deixou o motivo escrito: *"'migrações são aditivas' não é
+      verificável por `alembic check` — nada impede um `op.drop_column` dentro de um
+      `upgrade()` — e 'exige ADR/RFC' é julgamento."* **A primeira metade está certa e a
+      segunda não sobrevive à medição.** O `alembic check` compara modelos com migrações,
+      então a coluna apagada nos dois lados passa verde nele — ele existe contra *deriva*,
+      não contra *perda* —, mas o que ele não vê o **AST** vê, no sítio que aquela ADR
+      nomeia. E "exige ADR/RFC" deixa de ser julgamento quando o gatilho é **estrutural**:
+      policy, RLS e privilégio são as três formas de o Postgres dizer *quem alcança qual
+      linha*, e é o mesmo sinal que dispensou allowlist em (f) da ADR 0065. *O que decide
+      o desenho é um número:* **23 das 30 migrações** derrubam no `downgrade()` o que
+      criaram acima, de modo que um predicado de arquivo inteiro nasceria vermelho **sobre
+      o comportamento correto** — o escopo tem de ser a função, que é a lição do "corpus de
+      um predicado é o bloco em que ele vale". *E a fatia não achou defeito, o que está
+      dito antes de tudo:* zero `upgrade()` destrutivo e **15 de 15** migrações de tenancy
+      citando decisão que existe. **As quatro asserções nascem verdes, e o que as sustenta
+      é a mutação** — dez, e as **quatro verdes provam mais que as seis vermelhas**: o
+      mesmo `drop_column` movido para o `downgrade()` fica verde, `DROP INDEX` e `DROP
+      DEFAULT` ficam verdes (regime não é dado, e a amostra é o `0013`, que recria um enum
+      inteiro sem perder linha), e um docstring que menciona `DROP COLUMN` fica verde,
+      senão a guarda acusaria justamente quem documentou bem. *De quebra, a armadilha que
+      vale registrar:* uma mutação **malformada** se disfarça de guarda fraca — tirar só a
+      primeira das duas citações de `0009_notifications.py` passou verde e parecia buraco
+      no predicado; a segunda continuava lá, satisfazendo a asserção com razão. **Fica
+      aberto:** RAG e retenção não têm gatilho estrutural (cobrá-las seria a lista digitada
+      da ADR 0033), e "revisadas" continua sem portão — prova-se que a decisão existe e
+      está citada, nunca que alguém a leu.
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já

@@ -18,8 +18,8 @@ variable "acesso" {
       `balanceador`     — só de dentro da VPC e pelo balanceador de aplicação da GCP.
 
     O terceiro e o quarto existem porque o segundo não serve a um serviço **cujo
-    cliente não sabe assinar**. A `biahflow-api` é chamada pelo nginx que a
-    `biahflow-web` executa e pelo relay do site de marketing; nginx não emite ID
+    cliente não sabe assinar**. A `cockpit-api` é chamada pelo nginx que a
+    `cockpit-web` executa e pelo relay do site de marketing; nginx não emite ID
     token, e aquele relay autentica por `X-Intake-Token`, não por IAM. Sob `interno`
     os dois tomariam 403 — o IAM invoker nunca chega a ser atravessado, e a barreira
     efetiva seria uma só com a aparência de duas. Era o item que a ADR 0046 deixou
@@ -100,7 +100,7 @@ resource "google_cloud_run_v2_service" "servico" {
   deletion_protection = var.protegido
 
   # **O ingress é a decisão de segurança deste módulo.** `INGRESS_TRAFFIC_ALL` é o
-  # default do Cloud Run e para a `biahflow-api` estaria errado: quem a chama é o
+  # default do Cloud Run e para a `cockpit-api` estaria errado: quem a chama é o
   # nginx do SPA e o relay do site, os dois de dentro da VPC. Publicá-la daria à
   # internet um caminho que o produto não usa.
   #
@@ -220,7 +220,7 @@ moved {
 # `allUsers` significa "sem autenticação IAM na frente" — e significa coisas
 # diferentes conforme o ingress, que é o par que decide de verdade:
 #
-#   `publico`         → qualquer um na internet invoca. É o caso da `biahflow-web`,
+#   `publico`         → qualquer um na internet invoca. É o caso da `cockpit-web`,
 #                       que precisa ser alcançada pela Cloudflare — e a Cloudflare
 #                       chega pela internet, como qualquer outro cliente.
 #   `interno-sem-iam` → só quem está na VPC chega, e não sabe assinar: o nginx do SPA

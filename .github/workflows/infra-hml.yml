@@ -60,7 +60,7 @@ jobs:
       # faltam — `Zone → Zone → Read` ausente responde "0 found", e não "negado".
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # **Conta própria, diferente da do deploy.** A `hml-deploy` tem as quatro
       # permissões de trocar revisão e publicar imagem, e nenhuma delas cria uma
@@ -68,13 +68,13 @@ jobs:
       # falhava em `permission denied` no primeiro recurso. A `hml-infra` tem o
       # que um `apply` exige, que é quase o projeto inteiro, e é justamente por ser
       # tanto que ela não pode ser a conta que roda a cada push na `main`.
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           project_id: biahflow-hml
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: hml-infra@biahflow-hml.iam.gserviceaccount.com
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: 1.14.3
 

@@ -214,7 +214,7 @@ variable "segredos" {
   # valor que existia aqui não volta.
   #
   # `PORTAL_READ_TOKEN` e `PORTAL_WEBHOOK_SECRET` **ficam**, e não é esquecimento: o
-  # dono deles é `biahflow`, quem os lê é a `biahflow-api`, e removê-los quebraria o
+  # dono deles é `biahflow`, quem os lê é a `cockpit-api`, e removê-los quebraria o
   # `secret_key_ref` daquele serviço para economizar centavos. O webhook em direção ao
   # portal se desliga sozinho — `apps/core/flags.py` exige as duas variáveis
   # preenchidas, e `settings.py` as lê com default vazio.
@@ -229,7 +229,7 @@ variable "segredos" {
     GOOGLE_OAUTH_REFRESH_TOKEN = "biahflow"
     EMAIL_HOST_PASSWORD        = "biahflow"
     # Token compartilhado da captação de leads: quem o apresenta em `X-Intake-Token`
-    # pode postar em `/api/v1/leads/intake/`. O leitor é a `biahflow-api`; o emissor
+    # pode postar em `/api/v1/leads/intake/`. O leitor é a `cockpit-api`; o emissor
     # é o relay do site de marketing (repo `biahflow-site`), que o guarda do lado
     # servidor para ele nunca chegar ao navegador.
     #

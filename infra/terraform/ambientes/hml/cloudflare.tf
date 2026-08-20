@@ -13,11 +13,20 @@
 # não tem log nenhum. A Cloudflare no plano free dá analytics agregado, não log por
 # requisição. Quem for depurar um 502 daqui em diante começa pelo log do Cloud Run.
 #
-# **A direção continua fundação → produto.** Este arquivo nomeia `biahflow-web`, que é
+# **A direção continua fundação → produto.** Este arquivo nomeia `cockpit-web`, que é
 # recurso do outro state, pela mesma razão que `backends_da_borda` o nomeava: um
 # hostname de borda referencia o serviço **por nome**, que é uma string e não um
 # recurso. É o que permite declarar a borda inteira sem ler state de produto nenhum, e
 # sem ciclo.
+#
+# **E o preço dessa string está pago desde a ADR 0065.** Uma string não é referência:
+# quando os serviços do CRM foram renomeados de `biahflow-*` para `cockpit-*` em
+# 19/08/2026 (`b4e0471`), o rename tocou só o `servicos.tf` do outro state e esta linha
+# ficou apontando para um serviço que deixara de existir — sem nada ficar vermelho, que
+# é o modo de falha que o próprio commit de acerto seguinte (`6a0e45f`) descreve. Quem
+# confere agora é `test_every_service_name_the_repository_builds_or_invokes_is_declared`,
+# em `apps/api/tests/test_architecture_doc.py`: o primeiro segmento de um hostname
+# `run.app` tem de ser chave de algum `servicos.tf`.
 
 # **A zona entra por id e não por busca, e isso é uma permissão a menos.** O repo do
 # site descobre a zona com `data "cloudflare_zone"` filtrando por nome, o que exige
@@ -44,7 +53,7 @@ locals {
   # antiga com hash: é a que o Django do CRM tem em `DJANGO_ALLOWED_HOSTS`. Construída
   # e não lida do serviço pelo mesmo motivo de sempre — o número do projeto torna a URL
   # previsível antes de o serviço existir, e ler o serviço fecharia ciclo entre states.
-  origem_do_crm = "biahflow-web-${data.google_project.este.number}.${var.regiao}.run.app"
+  origem_do_crm = "cockpit-web-${data.google_project.este.number}.${var.regiao}.run.app"
 }
 
 resource "cloudflare_dns_record" "crm" {
@@ -95,7 +104,7 @@ resource "cloudflare_workers_route" "proxy_do_crm" {
 # --- Access ---------------------------------------------------------------------
 # Mesmo padrão já validado em `biahflow-site/infra/terraform/access.tf`.
 #
-# **E o que ele não resolve, dito por extenso.** O `biahflow-web` é `publico` — precisa
+# **E o que ele não resolve, dito por extenso.** O `cockpit-web` é `publico` — precisa
 # ser, porque quem o alcança é a Cloudflare, que chega pela internet como qualquer
 # outro cliente. Então a `run.app` dele continua aberta, e o Access protege o nome
 # bonito, não o serviço. A barreira que vale para quem descobrir a `run.app` continua

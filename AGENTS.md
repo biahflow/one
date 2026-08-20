@@ -50,6 +50,27 @@ listas são a mesma e que toda citação por número resolve.*
   igual (ADR 0023). Aviso que não dá para consertar agora vira linha **com motivo
   e prazo** em `docs/security/advisories.json`; ela vence, e é a única forma de
   não reprovar. Ver `docs/runbooks/dependency-advisory.md`.
+- Mexeu em workflow ou em imagem de contêiner? **O pino vem junto** (ADR 0063): action por
+  SHA de commit com a versão ao lado (`# v4`), imagem por digest com a tag ao lado.
+  `npm run pins` lista as referências e `npm run pins -- --update` as resolve;
+  `test_supply_chain_pins.py` reprova quem despinar. Isenção é linha em `PINNED_BY_EXCEPTION`
+  com motivo e **sem prazo** — pino não caduca por calendário, e quem a vence é a asserção de
+  obsolescência.
+- Escreveu migração? **Ela é aditiva, e cita a decisão** (ADR 0066). `test_migration_rules.py`
+  lê o AST do `upgrade()` — e só dele, porque `downgrade()` é destrutivo por definição — e
+  reprova o que apaga dado (`drop_table`, `drop_column`, `DROP TABLE/COLUMN`, `TRUNCATE`);
+  `DROP INDEX`, `DROP TYPE`, `DROP POLICY` e `DROP DEFAULT` passam, porque mudam regime e não
+  linhas. Migração que toca policy, RLS ou privilégio cita ADR ou RFC **que existe e não foi
+  recusada**, que é a regra 4 na parte em que o gatilho é estrutural. Isenção é linha em
+  `ADDITIVE_BY_EXCEPTION` com motivo e sem prazo. O `alembic check` **não** cobre isto: ele
+  existe contra deriva, não contra perda.
+- Apagou um diretório, criou um ambiente ou mudou o que a pilha tem? **O documento de
+  arquitetura vem junto** (ADR 0064): `test_architecture_doc.py` cobra que todo ambiente
+  declarado (`docker-compose*.yml`, `infra/terraform/ambientes/*/` com `backend.tf`) seja nomeado
+  na topologia de `docs/architecture.md`, que todo caminho desenhado num bloco de estrutura
+  exista, que todo serviço nomeado na tabela de HML seja chave de algum `servicos.tf`, e que
+  número escrito case com o contado. **Guarde o número cujo denominador é artefato contável;
+  apague o número cujo denominador é escolha narrativa.**
 
 ## Comandos locais
 

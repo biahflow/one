@@ -9,11 +9,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "npm run build && node --test tests/api-contract.test.mjs tests/audit-harness.test.mjs tests/rendered-html.test.mjs",
+    "test": "npm run build && node --test tests/api-contract.test.mjs tests/audit-harness.test.mjs tests/pins-harness.test.mjs tests/rendered-html.test.mjs",
     "test:contract": "node --test tests/api-contract.test.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint .",
-    "audit": "node scripts/audit.mjs"
+    "audit": "node scripts/audit.mjs",
+    "pins": "node scripts/pins.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.28.0",

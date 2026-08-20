@@ -66,6 +66,15 @@ function startMetadataStub() {
 let dashboardOverride = null;
 
 /**
+ * Idem para `GET /api/v1/me`, e existe por um caso só: dois projetos **homônimos**
+ * no mesmo tenant (ADR 0061). É a única forma de provar que a tela marca o projeto
+ * atual pelo `project_id` que a API serviu, e não pelo nome nem pelo primeiro da
+ * lista — com um projeto por pessoa, que é como esta fixture nasceu, os dois
+ * critérios dão sempre a mesma resposta.
+ */
+let meOverride = null;
+
+/**
  * Stands in for the FastAPI. Lets the SSR path be exercised for real — the same
  * fetches, the same projection — without Postgres, Keycloak or Python.
  */
@@ -80,7 +89,7 @@ function startApiStub() {
         : request.url?.startsWith("/api/v1/me/search")
           ? SEARCH
           : request.url?.startsWith("/api/v1/me")
-            ? ME
+            ? (meOverride ?? ME)
             : null;
     if (!body) {
       response.writeHead(404).end("{}");
@@ -435,6 +444,77 @@ test("encerrado e removido juntos mostram o motivo mais forte", async () => {
     assert.match(html, /Projeto removido na origem/);
     assert.doesNotMatch(html, /Projeto encerrado/);
   } finally {
+    dashboardOverride = null;
+  }
+});
+
+/**
+ * O projeto atual é o que a API **disse** que serviu, e não o que tem o mesmo nome
+ * (ADR 0061).
+ *
+ * É a primeira asserção deste repositório sobre a marca `current`, e ela precisou de
+ * um mundo que nenhuma fixture tinha: **dois projetos homônimos no mesmo tenant**. Com
+ * um projeto por pessoa, "o do nome igual", "o primeiro da lista" e "o que a API
+ * serviu" são sempre a mesma linha, e o defeito não tem como aparecer — que é
+ * exatamente por que ele atravessou sete fases.
+ *
+ * A marca não chega ao DOM (a `ProjectsView` só existe depois de o cliente trocar de
+ * aba, e os dois cartões teriam o mesmo texto de qualquer forma): o que se lê aqui é o
+ * payload de hidratação que o SSR embute, que é onde `projects` viaja para o cliente.
+ * As duas direções são exercitadas de propósito — servindo ora o segundo, ora o
+ * primeiro —, senão "sempre o último" passaria verde numa delas.
+ */
+const HOMONYMS = {
+  first: "aaaaaaaa-2222-4333-8444-555555555555",
+  second: "bbbbbbbb-2222-4333-8444-555555555555",
+};
+
+/** A marca `current` que o payload de hidratação carrega para um id. */
+function currentFlag(html, id) {
+  const at = html.indexOf(id);
+  assert.notEqual(at, -1, `o projeto ${id} não chegou ao payload de hidratação`);
+  const found = /current\\?":(true|false)/.exec(html.slice(at));
+  assert.ok(found, `o payload não declara \`current\` para ${id}`);
+  return found[1] === "true";
+}
+
+for (const [rotulo, served] of [["o segundo", HOMONYMS.second], ["o primeiro", HOMONYMS.first]]) {
+  test(`entre dois projetos homônimos, a tela marca ${rotulo} — o que a API serviu`, async () => {
+    meOverride = {
+      ...ME,
+      projects: [
+        { ...ME.projects[0], id: HOMONYMS.first },
+        { ...ME.projects[0], id: HOMONYMS.second },
+      ],
+    };
+    dashboardOverride = { ...DASHBOARD, project_id: served };
+    try {
+      const response = await render("/", { headers: { cookie: await sessionCookie() } });
+      assert.equal(response.status, 200);
+      const html = await response.text();
+
+      assert.equal(currentFlag(html, served), true);
+      const other = served === HOMONYMS.first ? HOMONYMS.second : HOMONYMS.first;
+      assert.equal(currentFlag(html, other), false);
+    } finally {
+      meOverride = null;
+      dashboardOverride = null;
+    }
+  });
+}
+
+test("sem casamento de id nenhum projeto é o atual, e a tela não elege o primeiro", async () => {
+  // O `?? projects[0]` caiu com a ADR 0061: um id servido que não casa com nenhum item
+  // de `/me` é divergência real entre duas rotas, e eleger o primeiro escoparia sino,
+  // busca e comentários por um projeto que ninguém afirmou. Sem casamento o parâmetro é
+  // **omitido** e as rotas voltam a `access.default_project` — o projeto do dashboard.
+  meOverride = { ...ME, projects: [{ ...ME.projects[0], id: HOMONYMS.first }] };
+  dashboardOverride = { ...DASHBOARD, project_id: HOMONYMS.second };
+  try {
+    const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+    assert.equal(currentFlag(html, HOMONYMS.first), false);
+  } finally {
+    meOverride = null;
     dashboardOverride = null;
   }
 });

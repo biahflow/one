@@ -592,7 +592,14 @@ export default function DashboardClient({
 
   // Não há mais estado de projeto: quem manda é a URL, porque trocar de projeto
   // significa buscar outro dashboard na API (`/?project=<id>`).
-  const activeProject = projects.find((project) => project.current) ?? projects[0] ?? null;
+  // **Sem queda no primeiro da lista** (ADR 0061). O `?? projects[0]` que estava aqui era
+  // a mesma heurística do casamento por nome com outro nome: se o id que a API serviu não
+  // casa com nenhum item de `me.projects`, isso é divergência real entre duas rotas, e
+  // escolher o primeiro escoparia o sino, a busca e os comentários por um projeto que
+  // ninguém afirmou. Sem casamento, `activeProject` fica `null`, `projectParam` fica vazio,
+  // o parâmetro é **omitido** e as nove rotas voltam a `access.default_project` — que é
+  // justamente o projeto que o dashboard serviu. A degradação aponta para o lugar certo.
+  const activeProject = projects.find((project) => project.current) ?? null;
   /**
    * O projeto da tela, no formato de query (ADR 0059).
    *

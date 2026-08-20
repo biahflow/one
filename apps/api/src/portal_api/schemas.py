@@ -357,7 +357,7 @@ class DashboardOut(Out):
 
 
 class MyDashboardOut(DashboardOut):
-    """O mesmo dashboard, mais o nome da organização.
+    """O mesmo dashboard, mais o nome da organização e o id do projeto servido.
 
     A assimetria é real e é anterior a esta fatia: ``GET /me/dashboard``
     acrescenta a chave (`main.py`) e ``GET /projects/{id}/dashboard`` não. Está
@@ -366,6 +366,21 @@ class MyDashboardOut(DashboardOut):
     """
 
     organization: str | None
+    #: Qual projeto esta resposta serviu (ADR 0061). Até aqui o BFF descobria isso
+    #: comparando o **nome** com a lista de ``GET /me`` — e as duas rotas ordenam por
+    #: critérios diferentes (`Membership.created_at` contra `Project.created_at`), de
+    #: modo que o nome era a única coisa que as ligava: dois projetos homônimos no
+    #: mesmo tenant faziam a tela escopar sino, busca e comentários pelo projeto errado.
+    #:
+    #: **Publicado só aqui, e não em ``DashboardOut``**: quem chama
+    #: ``/projects/{project_id}/dashboard`` **escolheu** o id e o tem no caminho —
+    #: devolvê-lo é o sedimento que a docstring de ``my_dashboard`` já recusa citando a
+    #: ADR 0029. O id é publicado exatamente no caminho em que o cliente não pôde
+    #: escolhê-lo.
+    #:
+    #: ``str`` e não ``UUID`` pela regra deste módulo: o produtor já entregou texto
+    #: (``str(project.id)``), e o tipo rico faria o Pydantic reserializar.
+    project_id: str
 
 
 # --- notificações (ADR 0012) ------------------------------------------------

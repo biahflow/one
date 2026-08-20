@@ -30,6 +30,10 @@ export const ME = {
 
 export const DASHBOARD = {
   project: "Automação Financeira",
+  // Qual projeto a resposta serviu (ADR 0061) — o mesmo id que `ME.projects[0]` traz,
+  // porque é o mesmo cliente semeado. É o que a tela lê para marcar o projeto atual, em
+  // vez de compará-lo pelo nome.
+  project_id: "11111111-2222-4333-8444-555555555555",
   organization: "Acme Brasil",
   status: "in_implementation",
   completion: 68,

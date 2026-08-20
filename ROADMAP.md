@@ -1070,9 +1070,8 @@ que ele respeita.
       diferença não tem como aparecer — foi assim que o defeito atravessou seis fases. O caso
       negativo das nove rotas tem **controle positivo** com alvo real, senão um id inventado daria
       404 pelos dois motivos ao mesmo tempo (a medida da ADR 0035).*
-      *Fica aberto e nomeado: `activeProject` cai em `projects[0]` quando o casamento por nome de
-      `app/page.tsx` falha — dois projetos homônimos no mesmo tenant fariam a tela nomear um projeto
-      diferente do que a API serviu. Pré-existente, não tocado.*
+      *Ficou aberto e nomeado — `activeProject` caindo em `projects[0]` quando o casamento por nome
+      de `app/page.tsx` falha — e a **ADR 0061 fechou no mesmo dia**; ver a linha abaixo.*
 - [x] **O verde que dependia do ambiente** *(ADR 0060)*: irmã da ADR 0058, e **retificação por
       escrito** das duas pontas que ela deixou abertas — uma delas diagnosticada errado.
       *Configuração:* a ADR 0058 viu uma porta e havia **duas**. Com `CONTACT_QUIET_HOURS_START/END`
@@ -1114,6 +1113,36 @@ que ele respeita.
       *Fica declarado, e não corrigido: os cinquenta sítios `Settings(` continuam onde estão (a
       costura os cobre), e o Postgres de desenvolvimento **não** é limpo — o objetivo era um portão
       que não dependa do estado do banco, e limpar entregaria o verde sem o portão.*
+- [x] **O projeto que a tela adivinhava pelo nome** *(ADR 0061)*: fecha a ponta que a ADR 0059
+      deixou escrita. Ela consertou *quem recebe* o `?project=` e deixou intacto *quem escolhe o
+      valor*: sem `?project=` na URL, `app/page.tsx` decidia o projeto atual comparando o **nome**,
+      porque `MyDashboardOut` não publicava o id do projeto servido. **E o nome era a única coisa
+      ligando duas rotas que ordenam por critérios diferentes** — `GET /me` por
+      `Project.created_at`, `GET /me/dashboard` pela membership mais recente. Com dois projetos
+      **homônimos** no mesmo tenant o casamento pega o primeiro da lista, e a escolha errada é
+      herdada pelas nove rotas que a ADR 0059 acabou de escopar: sino do outro projeto, busca do
+      outro projeto, e a pendência do projeto servido respondendo **404**, indistinguível da negação
+      de um estranho. Agora `GET /me/dashboard` publica `project_id` — **só ela**, porque quem chama
+      `/projects/{id}/dashboard` escolheu o id e já o tem no caminho (sedimento, ADR 0029) —, a tela
+      **lê** em vez de adivinhar, e o `?? projects[0]` cai: id servido que não casa com nada é
+      divergência real entre duas rotas, e eleger o primeiro é a mesma heurística com outro nome.
+      Sem casamento o parâmetro é **omitido** e as rotas voltam a `default_project`, que é o projeto
+      do dashboard — a degradação aponta para o lugar certo.
+      **A guarda de consumo nasceu falso-verde nesta fatia**, e é o `.priority` da ADR 0033 pela
+      quarta vez: `reachable.includes(".project_id")` satisfaz `.project`. Só que desta vez renomear
+      — a saída das ADRs 0038 e 0057 — custaria um vocabulário novo, e a guarda foi apertada.
+      **E a correção prevista não bastou:** exigir que o caractere seguinte não seja `\w` deixou a
+      mutação verde do mesmo jeito, porque `...project` — o *spread* da variável de iteração, uma
+      linha ao lado — também contém `.project`. Com as duas âncoras a mutação nomeia o campo
+      (`fail 2`); com uma só, `pass 92`.
+      *A marca `current` não tinha **uma asserção sequer** no repositório — medido por ausência —, e
+      o teste novo precisou de um mundo que nenhuma fixture tinha: dois projetos homônimos no mesmo
+      tenant, o irmão exato do "ator com duas memberships" da ADR 0059. Do lado da API o carimbo
+      explícito de `created_at` é parte do teste: `server_default=func.now()` é o relógio da
+      **transação**, e sem datas escritas à mão as quatro linhas empatam e a divergência que o teste
+      existe para provar não acontece.*
+      *Fica registrado e **não** corrigido: `default_project` e `visible_projects` continuam com
+      ordens diferentes. Igualá-las mudaria o projeto que clientes existentes veem ao entrar.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já
@@ -1134,8 +1163,10 @@ que ele respeita.
 um descarte; e **o link em granularidade de item**, que a ADR 0043 deixou nomeado e a ADR 0056
 entregou no mesmo dia — com o **popover do sino** e a **âncora na busca**, que aquela deixou
 nomeadas e a ADR 0057 fechou também em 19/08/2026; e **o sino e a busca que não eram do projeto na
-tela**, que a ADR 0057 mediu e deixou aberto com todas as letras e a ADR 0059 fechou em 20/08/2026.
-Ler aquelas quatro sem estas linhas as dá como pendentes.
+tela**, que a ADR 0057 mediu e deixou aberto com todas as letras e a ADR 0059 fechou em 20/08/2026;
+e **o projeto que a tela adivinhava pelo nome**, que a ADR 0059 deixou nomeado na própria
+`Consequências` e a ADR 0061 fechou no mesmo dia — junto do `activeProject` que caía em
+`projects[0]`. Ler aquelas cinco sem estas linhas as dá como pendentes.
 
 **Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
 compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar

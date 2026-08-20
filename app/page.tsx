@@ -423,11 +423,24 @@ export default async function Page({
     throw await apiFailure(dashboardUrl, dashboardResponse.status);
   }
 
-  const overview = toOverview(await dashboardResponse.json(), user.org);
-  // Sem `?project=`, o atual é o que a API escolheu — marcado pelo nome.
+  const dashboard: Record<string, unknown> = await dashboardResponse.json();
+  const overview = toOverview(dashboard, user.org);
+  // Sem `?project=`, o atual é o que a API **disse** que serviu (ADR 0061).
+  //
+  // Até aqui isto era um casamento por **nome**, porque `MyDashboardOut` não publicava
+  // o id. E o nome era a única coisa ligando duas rotas que ordenam por critérios
+  // diferentes: `GET /me` lista por `Project.created_at`, `GET /me/dashboard` resolve
+  // por `Membership.created_at` com prioridade ao vínculo direto. Dois projetos
+  // homônimos no mesmo tenant faziam a tela marcar o errado — e o `?project=` que a ADR
+  // 0059 passou a mandar em nove rotas herdava a escolha errada, com a pendência do
+  // projeto certo respondendo 404, indistinguível da negação de um estranho.
+  //
+  // O id só vem de `/me/dashboard`: quem chega por `?project=` já foi marcado acima,
+  // pelo id que ele mesmo nomeou.
+  const servedProjectId = (dashboard.project_id as string | undefined) ?? null;
   const marked = projects.some((project) => project.current)
     ? projects
-    : projects.map((project) => ({ ...project, current: project.name === overview.project }));
+    : projects.map((project) => ({ ...project, current: project.id === servedProjectId }));
 
   // A caixa de avisos não derruba o dashboard: um 404 aqui só quer dizer que a
   // API não resolveu projeto para esta chamada, e o resto da tela já sabe disso.

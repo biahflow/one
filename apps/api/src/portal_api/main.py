@@ -992,6 +992,15 @@ def my_dashboard(principal: CurrentPrincipal) -> dict:
         organization = session.get(Organization, project.organization_id)
         data = biahflow.build_dashboard(session, project)
         data["organization"] = organization.name if organization else None
+        # **Qual projeto esta resposta serviu** (ADR 0061), ao lado da organização e pelo
+        # mesmo mecanismo: acrescentado aqui, nunca em `build_dashboard`. O BFF descobria
+        # isso comparando o *nome* com a lista de `GET /me`, e as duas ordenam por
+        # critérios diferentes — dois projetos homônimos no mesmo tenant faziam a tela
+        # escopar o sino, a busca e os comentários pelo projeto errado, com a pendência do
+        # projeto certo respondendo 404. O id sai daqui e não de `/projects/{id}/dashboard`
+        # porque lá o cliente **escolheu** o id e já o tem no caminho: devolvê-lo é o
+        # sedimento que a docstring acima recusa (ADR 0029).
+        data["project_id"] = str(project.id)
         organization_id, user_id, internal = project.organization_id, user.id, user.is_internal
         roi_seen = bool((data.get("roi") or {}).get("net") is not None)
 

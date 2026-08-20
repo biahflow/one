@@ -2149,7 +2149,7 @@
       },
       "MyDashboardOut": {
         "additionalProperties": false,
-        "description": "O mesmo dashboard, mais o nome da organização.\n\nA assimetria é real e é anterior a esta fatia: ``GET /me/dashboard``\nacrescenta a chave (`main.py`) e ``GET /projects/{id}/dashboard`` não. Está\ndeclarada em vez de corrigida porque corrigi-la muda um payload, e esta\nfatia descreve o que existe.",
+        "description": "O mesmo dashboard, mais o nome da organização e o id do projeto servido.\n\nA assimetria é real e é anterior a esta fatia: ``GET /me/dashboard``\nacrescenta a chave (`main.py`) e ``GET /projects/{id}/dashboard`` não. Está\ndeclarada em vez de corrigida porque corrigi-la muda um payload, e esta\nfatia descreve o que existe.",
         "properties": {
           "archived_at": {
             "anyOf": [
@@ -2249,6 +2249,10 @@
             "title": "Project",
             "type": "string"
           },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
           "results": {
             "$ref": "#/components/schemas/MilestoneCountsOut"
           },
@@ -2289,7 +2293,8 @@
           "pendings",
           "results",
           "measured",
-          "organization"
+          "organization",
+          "project_id"
         ],
         "title": "MyDashboardOut",
         "type": "object"

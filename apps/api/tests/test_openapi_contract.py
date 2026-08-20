@@ -271,6 +271,9 @@ def test_the_dashboard_model_describes_the_dashboard_exactly(
     )
     payload = biahflow.build_dashboard(db_session, project)
     payload["organization"] = "Acme Brasil"
+    # As duas chaves que a rota acrescenta a `build_dashboard` (ADR 0061 para a segunda);
+    # sem elas o ida-e-volta abaixo reprovaria por chave faltante.
+    payload["project_id"] = str(project.id)
 
     model = schemas.MyDashboardOut.model_validate(payload)
 

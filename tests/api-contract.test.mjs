@@ -346,13 +346,38 @@ const NOT_CALLED = {
 
 const CORPUS_BY_SCHEMA = schemaCorpus();
 
+/**
+ * `.<campo>` desreferenciado, e **não** só contido (ADR 0061).
+ *
+ * `String.includes(".${key}")` dá um campo por consumido quando o corpus contém outro
+ * campo cujo nome o **prefixa**: `.project_id` contém `.project`. É a quarta vez que
+ * esta família aparece — o `.priority` da ADR 0033, o `date`/`dated_at` da ADR 0038, o
+ * `.item`/`.items` da ADR 0057 — e as duas últimas foram resolvidas renomeando o
+ * campo, o que aqui não serve: `project_id` é o nome que `AssistantSignalOut` e
+ * `PendingCommentsOut` já usam, e um sinônimo seria um segundo vocabulário.
+ *
+ * **E o sufixo sozinho não bastou** — a medição achou uma segunda frouxidão, esta
+ * anterior à fatia: `...project` é um *spread* da variável, não uma leitura do JSON, e
+ * contém `.project`. `app/page.tsx` tem um, e com ele a mutação abaixo continuava
+ * verde. Daí as duas âncoras: nada de `.` antes (exclui o spread) e nada de `\w`
+ * depois (exclui o prefixo). Um acesso encadeado — `a.b.project` — segue casando,
+ * porque ali o caractere anterior ao ponto é uma letra.
+ *
+ * Medido no commit que publicou `MyDashboardOut.project_id`, apagando o `data.project`
+ * de `app/page.tsx` — o único consumidor de `DashboardOut.project`: por `includes`,
+ * verde; só com o sufixo, verde; com as duas, `project`.
+ */
+function dereferences(text, key) {
+  return new RegExp(`(?<!\\.)\\.${key}(?![A-Za-z0-9_])`).test(text);
+}
+
 for (const [schema, files] of [...CORPUS_BY_SCHEMA].sort(([a], [b]) => a.localeCompare(b))) {
   test(`o BFF consome todo campo que ${schema} entrega`, () => {
     const properties = document.components.schemas[schema]?.properties ?? {};
     const reachable = [...files].map((file) => SOURCE.get(file)).join("\n");
 
     const dropped = Object.keys(properties).filter(
-      (key) => !NOT_CONSUMED[`${schema}.${key}`] && !reachable.includes(`.${key}`),
+      (key) => !NOT_CONSUMED[`${schema}.${key}`] && !dereferences(reachable, key),
     );
 
     assert.deepEqual(

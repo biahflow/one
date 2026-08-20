@@ -780,3 +780,91 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   await assert.rejects(readFile(new URL("app/_sites-preview/SkeletonPreview.tsx", projectRoot)));
   await assert.rejects(readFile(new URL("worker/index.ts", projectRoot)));
 });
+
+/**
+ * Do `(` em `at` até o parêntese que o fecha, pulando strings.
+ *
+ * Irmão do balanceamento de `inertButtons`, e existe pela mesma razão: o corpo
+ * de um `.map(…)` tem parênteses dentro de template strings e de JSX, e um
+ * `indexOf(")")` cortaria no primeiro deles.
+ */
+function balancedCall(source, at) {
+  let depth = 0;
+  let quote = "";
+  for (let end = at; end < source.length; end += 1) {
+    const char = source[end];
+    if (quote) {
+      if (char === quote && source[end - 1] !== "\\") quote = "";
+    } else if (char === '"' || char === "'" || char === "`") quote = char;
+    else if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) return source.slice(at, end + 1);
+    }
+  }
+  throw new Error("parêntese sem fechamento em app/DashboardClient.tsx");
+}
+
+/** Todo `notifications.items…map(…)` cujo corpo não passa por `NotificationLink`. */
+function unlinkedNotificationRows(source) {
+  const found = [];
+  const pattern = /notifications\.items(?:\.[a-zA-Z]+\([^)]*\))*\.map\(/g;
+  for (let match; (match = pattern.exec(source)); ) {
+    const at = match.index + match[0].length - 1;
+    if (balancedCall(source, at).includes("<NotificationLink")) continue;
+    found.push(`linha ${source.slice(0, match.index).split("\n").length}`);
+  }
+  return found;
+}
+
+test("toda lista de avisos rende a linha como link, e não como um <div>", async () => {
+  // A guarda é sobre a **forma do controle**, como o `inertButtons()` da ADR 0026,
+  // e pela mesma razão exata: um `<div className="popover-row">` renderiza HTML
+  // indistinguível de um `<a>` para quem só olha strings, e o Playwright clica nele
+  // sem observar nada acontecer. Foi assim que o popover do sino atravessou a ADR
+  // 0043 e a ADR 0056 inteiras sendo o único lugar do produto onde o
+  // `Notification.link` existia e não virava destino — nomeado nas duas, corrigido
+  // em nenhuma.
+  //
+  // Duas listas hoje (o popover e a Central), e a asserção é sobre **toda**
+  // ocorrência: uma terceira superfície que renderize avisos nasce coberta, que é
+  // o que separa esta guarda da lista escrita à mão da ADR 0033.
+  const source = await readFile(new URL("app/DashboardClient.tsx", projectRoot), "utf8");
+
+  assert.deepEqual(
+    unlinkedNotificationRows(source),
+    [],
+    "estas listas de aviso não passam por <NotificationLink>. O `link` existe e a" +
+      " tela o descarta — o cliente vê a linha e o clique não leva a lugar nenhum" +
+      " (FDD 021 critério (4), ADR 0057).",
+  );
+});
+
+test("só o goTo troca de aba, e é ele quem apaga a âncora", async () => {
+  // O defeito da própria ADR 0056: o comentário do `goTo` declara que "trocar de
+  // aba por vontade própria encerra o destaque", e a barra lateral — que é *o*
+  // caminho de trocar de aba por vontade própria — chamava `setActiveNav` direto.
+  // A âncora sobrevivia à navegação, e o efeito de rolagem tem `activeNav` nas
+  // dependências: cada clique na barra re-rolava para uma linha que o cliente já
+  // tinha dispensado, com a nota "O item deste aviso não está mais nesta lista."
+  // seguindo para todas as abas indefinidamente.
+  //
+  // A asserção é sobre o **escritor** e não sobre a chamada da barra lateral: um
+  // quarto escritor amanhã tem o mesmo defeito, e uma guarda que olhasse só a
+  // barra nasceria cega para ele.
+  const source = await readFile(new URL("app/DashboardClient.tsx", projectRoot), "utf8");
+  const goTo = source.match(/const goTo = \([^)]*\) => \{[^}]*\};/);
+  assert.ok(goTo, "não achei a definição de `goTo` em app/DashboardClient.tsx");
+
+  const outside = [...source.matchAll(/setActiveNav\(/g)]
+    .filter((match) => match.index < source.indexOf(goTo[0]) || match.index > source.indexOf(goTo[0]) + goTo[0].length)
+    .map((match) => `linha ${source.slice(0, match.index).split("\n").length}`);
+
+  assert.deepEqual(
+    outside,
+    [],
+    "estes pontos trocam de aba sem passar pelo `goTo`, e por isso não apagam a" +
+      " âncora: a nota do aviso segue para as outras abas e o efeito de rolagem" +
+      " re-destaca uma linha que o cliente já dispensou (ADR 0057).",
+  );
+});

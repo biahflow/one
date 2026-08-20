@@ -517,6 +517,7 @@ class SearchHitOut(Out):
     location: str
     tab: str
     document_id: str
+    item_anchor: str
 
 
 class SearchOut(Out):

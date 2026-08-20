@@ -151,8 +151,6 @@ test("o aviso leva à linha do documento, e não só à aba", async ({ page }) =
   await signIn(page, CLIENT);
 
   await page.getByRole("button", { name: /^Notificações/ }).click();
-  // Pelo botão "Ver todas": o popover mostra a linha como `<div>`, e o `<a>` com o
-  // link só existe na Central. Ligá-lo lá é fatia à parte, e está nomeada na ADR.
   await page.locator(".popover--notifications").getByRole("button", { name: /Ver todas/ }).click();
 
   const aviso = page
@@ -160,19 +158,46 @@ test("o aviso leva à linha do documento, e não só à aba", async ({ page }) =
     .filter({ hasText: lastChange! })
     .first();
   await expect(aviso).toBeVisible();
+  // O `href` continua sendo o caminho compartilhável, e é o que a recusa da
+  // interceptação usa quando o aviso é de outro projeto (ADR 0057).
+  await expect(aviso).toHaveAttribute(
+    "href",
+    new RegExp(`item=document%3A${encodeURIComponent(lastChange!)}`),
+  );
 
-  // A Central abre em nova aba (`target="_blank"`), que continua sendo o
-  // comportamento de lá — esta fatia mudou o destino, não a forma de abrir.
-  const abriu = page.context().waitForEvent("page");
+  // Navega **na mesma aba** desde a ADR 0057: a Central perdeu o `target="_blank"`,
+  // e chegar a uma lista que já está aberta não pede janela nova. O `waitForEvent`
+  // que este caso tinha era a prova de que ela abria — e é o que muda aqui.
   await aviso.click();
-  const destino = await abriu;
-  await destino.waitForLoadState("domcontentloaded");
-
-  expect(destino.url()).toContain("tab=Documentos");
-  expect(destino.url()).toContain(`item=document%3A${encodeURIComponent(lastChange!)}`);
 
   // E a linha daquele documento chega destacada, não só a aba.
-  const linha = destino.locator(`[data-item="document:${lastChange!}"]`);
+  const linha = page.locator(`[data-item="document:${lastChange!}"]`);
+  await expect(linha).toBeVisible();
+  await expect(linha).toHaveClass(/is-anchored/);
+});
+
+test("o popover do sino também leva à linha, sem passar por 'Ver todas'", async ({ page }) => {
+  // O caminho de menor atrito para quem **já está no portal**, e a ponta que a ADR
+  // 0043 nomeou, a ADR 0056 renomeou e nenhuma das duas fechou: a linha do popover
+  // era um `<div>`. Duas superfícies mostravam o mesmo aviso e só uma o levava a
+  // algum lugar (ADR 0057).
+  await signIn(page, CLIENT);
+
+  await page.getByRole("button", { name: /^Notificações/ }).click();
+  const popover = page.locator(".popover--notifications");
+  const linhaDoAviso = popover.locator("a.popover-row").filter({ hasText: lastChange! }).first();
+  await expect(linhaDoAviso).toBeVisible();
+
+  // Nenhuma aba nova: o clique é interceptado e vira troca de aba, porque o
+  // `?project=` do link é o projeto que já está na tela.
+  const abasAntes = page.context().pages().length;
+  await linhaDoAviso.click();
+  expect(page.context().pages().length).toBe(abasAntes);
+
+  // A aba do assunto abriu, o popover fechou, e a linha veio destacada.
+  await expect(popover).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Documentos do projeto" })).toBeVisible();
+  const linha = page.locator(`[data-item="document:${lastChange!}"]`);
   await expect(linha).toBeVisible();
   await expect(linha).toHaveClass(/is-anchored/);
 });

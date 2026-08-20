@@ -169,6 +169,7 @@ export const SEARCH = {
       location: "",
       tab: "Documentos",
       document_id: "cccccccc-1111-4222-8333-444444444444",
+      item_anchor: "document:Contrato de manutenção",
     },
     {
       kind: "chunk",
@@ -177,6 +178,7 @@ export const SEARCH = {
       location: "página 2",
       tab: "Documentos",
       document_id: "cccccccc-1111-4222-8333-444444444444",
+      item_anchor: "document:Contrato de manutenção",
     },
   ],
 };

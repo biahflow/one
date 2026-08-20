@@ -1008,13 +1008,24 @@ def my_dashboard(principal: CurrentPrincipal) -> dict:
 def my_notifications(
     principal: CurrentPrincipal, unread_only: bool = False, limit: int = 50
 ) -> dict:
-    """Avisos do projeto atual, do próprio destinatário (ADR 0012).
+    """Avisos de **um** projeto do chamador, do próprio destinatário (ADR 0012).
 
     Escopado ao projeto como o dashboard, e não à conta inteira: as policies de
     RLS leem as GUCs de organização/projeto, que só existem depois que
     ``access.default_project`` resolveu *um* projeto. Uma listagem que
     atravessasse projetos rodaria sem esse contexto — e sem contexto a policy
     devolve zero linhas, que é o comportamento certo, mas não a tela certa.
+
+    **Dizia "do projeto atual", e isso era falso** (medido na ADR 0057). Não há
+    "atual" aqui: ao contrário do dashboard, que vem de
+    ``/projects/{project_id}/dashboard``, esta rota não aceita ``?project=`` e o
+    BFF não o manda — o projeto é o que ``access.default_project`` escolhe, que é
+    a membership **mais recente**. Um cliente com dois projetos, vendo B na tela,
+    recebe os avisos de A. Corrigir é acrescentar o parâmetro aqui e no BFF, o que
+    é mudança de contrato desta superfície; ficou nomeado no ``ROADMAP.md`` em vez
+    de contornado, e a tela se defende: o link do aviso carrega ``?project=`` e a
+    navegação in-app **recusa interceptar** quando ele não é o projeto desenhado,
+    caindo no ``href``, que faz carga completa e honra o parâmetro.
     """
     with get_session(principal) as session:
         user = resolve_user(session, principal)

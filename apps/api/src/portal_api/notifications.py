@@ -31,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from portal_api import tabs
+from portal_api import anchors, tabs
 from portal_api.models import (
     DeliverableState,
     Document,
@@ -124,18 +124,12 @@ LINK_TAB: dict[NotificationKind, str] = {
     # e já traz `link` próprio. Uma linha aqui o mandaria para a tela do cliente.
 }
 
-#: O espaço de nomes da âncora, um por lista que a tela desenha (ADR 0056).
-#:
-#: Em inglês porque é identificador de código (`AGENTS.md`); o que vem depois do
-#: `:` é o rótulo em PT-BR que o cliente lê. Existe por uma ambiguidade real e só
-#: uma: a "Visão geral" hospeda **duas** listas — as fases da jornada e os
-#: entregáveis de cada fase —, e um rótulo solto não diria qual delas.
-ANCHOR_PHASE = "phase"
-ANCHOR_DELIVERABLE = "deliverable"
-ANCHOR_MILESTONE = "milestone"
-ANCHOR_DOCUMENT = "document"
-ANCHOR_MEETING = "meeting"
-ANCHOR_PENDING = "pending"
+# Os seis espaços de nomes moram em `portal_api.anchors` desde a ADR 0057.
+# Nasceram aqui na ADR 0056, quando os consumidores eram dois; a busca virou o
+# terceiro (`search.HIT_ANCHOR`), e a essa altura o vocabulário deixou de ser do
+# aviso. É mudança de casa e **nenhum valor mudou**, como a dos rótulos de aba na
+# ADR 0043. O que fica aqui é o mapa por espécie de notificação, que é vocabulário
+# de aviso e não de âncora.
 
 #: Que **linha** daquela tela o aviso abre (FDD 021 critério (4), ADR 0056).
 #:
@@ -158,15 +152,15 @@ ANCHOR_PENDING = "pending"
 #: de existir**. É a terceira vez que o repositório decide isso: a busca (ADR 0024)
 #: e as abas (ADR 0043) mandam o rótulo pronto pelo mesmo motivo.
 ITEM_ANCHOR: dict[NotificationKind, str] = {
-    NotificationKind.phase_advanced: ANCHOR_PHASE,
-    NotificationKind.deliverable_delivered: ANCHOR_DELIVERABLE,
-    NotificationKind.milestone_done: ANCHOR_MILESTONE,
-    NotificationKind.document_added: ANCHOR_DOCUMENT,
-    NotificationKind.meeting_scheduled: ANCHOR_MEETING,
-    NotificationKind.transcript_ready: ANCHOR_MEETING,
-    NotificationKind.pending_opened: ANCHOR_PENDING,
-    NotificationKind.pending_resolved: ANCHOR_PENDING,
-    NotificationKind.pending_commented: ANCHOR_PENDING,
+    NotificationKind.phase_advanced: anchors.ANCHOR_PHASE,
+    NotificationKind.deliverable_delivered: anchors.ANCHOR_DELIVERABLE,
+    NotificationKind.milestone_done: anchors.ANCHOR_MILESTONE,
+    NotificationKind.document_added: anchors.ANCHOR_DOCUMENT,
+    NotificationKind.meeting_scheduled: anchors.ANCHOR_MEETING,
+    NotificationKind.transcript_ready: anchors.ANCHOR_MEETING,
+    NotificationKind.pending_opened: anchors.ANCHOR_PENDING,
+    NotificationKind.pending_resolved: anchors.ANCHOR_PENDING,
+    NotificationKind.pending_commented: anchors.ANCHOR_PENDING,
 }
 
 #: Quem legitimamente **não** aponta para uma linha, com o motivo escrito.

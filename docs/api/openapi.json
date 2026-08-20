@@ -3304,6 +3304,10 @@
             "title": "Document Id",
             "type": "string"
           },
+          "item_anchor": {
+            "title": "Item Anchor",
+            "type": "string"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -3327,7 +3331,8 @@
           "detail",
           "location",
           "tab",
-          "document_id"
+          "document_id",
+          "item_anchor"
         ],
         "title": "SearchHitOut",
         "type": "object"
@@ -6065,7 +6070,7 @@
     },
     "/api/v1/me/notifications": {
       "get": {
-        "description": "Avisos do projeto atual, do próprio destinatário (ADR 0012).\n\nEscopado ao projeto como o dashboard, e não à conta inteira: as policies de\nRLS leem as GUCs de organização/projeto, que só existem depois que\n``access.default_project`` resolveu *um* projeto. Uma listagem que\natravessasse projetos rodaria sem esse contexto — e sem contexto a policy\ndevolve zero linhas, que é o comportamento certo, mas não a tela certa.",
+        "description": "Avisos de **um** projeto do chamador, do próprio destinatário (ADR 0012).\n\nEscopado ao projeto como o dashboard, e não à conta inteira: as policies de\nRLS leem as GUCs de organização/projeto, que só existem depois que\n``access.default_project`` resolveu *um* projeto. Uma listagem que\natravessasse projetos rodaria sem esse contexto — e sem contexto a policy\ndevolve zero linhas, que é o comportamento certo, mas não a tela certa.\n\n**Dizia \"do projeto atual\", e isso era falso** (medido na ADR 0057). Não há\n\"atual\" aqui: ao contrário do dashboard, que vem de\n``/projects/{project_id}/dashboard``, esta rota não aceita ``?project=`` e o\nBFF não o manda — o projeto é o que ``access.default_project`` escolhe, que é\na membership **mais recente**. Um cliente com dois projetos, vendo B na tela,\nrecebe os avisos de A. Corrigir é acrescentar o parâmetro aqui e no BFF, o que\né mudança de contrato desta superfície; ficou nomeado no ``ROADMAP.md`` em vez\nde contornado, e a tela se defende: o link do aviso carrega ``?project=`` e a\nnavegação in-app **recusa interceptar** quando ele não é o projeto desenhado,\ncaindo no ``href``, que faz carga completa e honra o parâmetro.",
         "operationId": "my_notifications_api_v1_me_notifications_get",
         "parameters": [
           {

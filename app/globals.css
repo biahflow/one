@@ -435,6 +435,13 @@
   .popover-row strong { @apply text-xs; }
   .popover-row span { @apply text-[10px] text-slate-400; }
   .popover-row span b { @apply px-0.5 font-normal text-slate-300; }
+  /* A linha do sino virou link (ADR 0057). Espelha o `a.notification-row` da
+     Central de propósito: as duas são a mesma linha em duas superfícies, e dois
+     estados de hover diferentes para o mesmo aviso ensinariam a ler dois
+     vocabulários — o argumento do `.is-anchored`, que reusa o anel do turno em
+     foco. `text-ink` porque o `<a>` traz a cor de link do navegador e a linha
+     não é um link de texto: o alvo é a linha inteira. */
+  a.popover-row { @apply text-ink no-underline transition-colors hover:bg-slate-50; }
   .popover-all {
     @apply flex w-full items-center justify-center gap-1.5 border-0 border-t border-line bg-transparent px-3.5 py-2.5 text-[11px] font-semibold text-brand-600 transition-colors hover:bg-brand-50;
   }

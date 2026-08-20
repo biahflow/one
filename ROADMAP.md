@@ -976,8 +976,49 @@ que ele respeita.
       não depois. A varredura de `Change` é por AST e alcança as **quatro** origens, que é o ponto
       cego que deixou dez ramificações sem `link` até a ADR 0043. *De quebra: a fixture do SSR
       trazia `link: null` nas duas notificações, contradizendo a garantia da ADR 0043 sem que nada
-      pegasse — o ramo `<a>` da Central era código morto nos testes. Fica aberto e nomeado: o
-      popover do sino, cuja linha é `<div>` e não `<a>`, e a âncora na busca.*
+      pegasse — o ramo `<a>` da Central era código morto nos testes. ~~Fica aberto e nomeado: o
+      popover do sino, cuja linha é `<div>` e não `<a>`, e a âncora na busca.~~ **As duas foram
+      fechadas em 19/08/2026 (ADR 0057), no mesmo dia.***
+- [x] **A âncora nas duas superfícies internas, e a que não morria** *(FDD 021, FDD 018, ADR 0057)*:
+      as duas pontas que a ADR 0056 deixou nomeadas, e um defeito dela. O link do WhatsApp caía na
+      **linha** e a navegação de dentro do portal ainda caía na **aba** — o cliente que recebia a
+      mensagem chegava melhor no assunto do que o cliente que já estava com o portal aberto, o que
+      inverte a ordem de esforço que justifica o canal. Agora o popover do sino é `<a>` com o mesmo
+      componente da Central, e a busca manda `item_anchor` junto do `tab`.
+      **O popover foi nomeado como ponta aberta duas vezes e sobreviveu às duas**, e a causa virou
+      guarda: toda asserção sobre a âncora era sobre **dado**, e um `<div className="popover-row">`
+      renderiza HTML indistinguível de um `<a>` — é o `inertButtons()` da ADR 0026 num controle que
+      aquela guarda não alcança, porque ali o defeito é um `<button>` sem handler e aqui é uma linha
+      que nunca chegou a ser controle.
+      **A interceptação recusa em três casos e cai no `href`**, e a recusa do meio é a que importa:
+      o `link` carrega `?project=`, e um `goTo(tab, item)` puro o descartaria em silêncio. É a
+      defesa contra a ponta aberta abaixo, e a queda é monotônica — recusar devolve o comportamento
+      de antes da fatia, nunca um clique morto. A Central perdeu o `target="_blank"` junto: abrir
+      aba nova para chegar a uma lista já aberta era resto de quando o link era só URL a copiar.
+      **O nome do campo foi medido, não escolhido:** chamado `item`, ele passa **verde** na guarda
+      de consumo do `api-contract.test.mjs` **sem consumidor nenhum**, porque ela casa por substring
+      e `DashboardClient.tsx` contém `notifications.items` — `".items"` contém `".item"`. É o
+      achado `date`→`dated_at` da ADR 0038, na mesma guarda e pelo mesmo mecanismo; renomear para
+      `item_anchor` foi o que tornou o elo verificável. A âncora da busca é **derivada** (`Hit.title`
+      *é* o rótulo nas seis espécies, ao contrário do rótulo do aviso, que é do evento), o namespace
+      é explícito por espécie e nunca derivado do `kind` — derivá-lo daria a `chunk` um namespace
+      inexistente e a `decision` um que a ADR 0056 recusou —, e `decision` tem frase assinada em
+      `ANCHORLESS_HITS`. Os seis espaços de nomes mudaram de casa para `anchors.py` ao ganhar o
+      terceiro consumidor, **sem mudar de valor**, como os rótulos de aba na ADR 0043.
+      *De quebra, um defeito **da ADR 0056**: a barra lateral chamava `setActiveNav` direto e não
+      passava pelo `goTo`, de modo que a âncora sobrevivia à navegação — a nota "O item deste aviso
+      não está mais nesta lista." seguia o cliente por todas as abas e o efeito de rolagem
+      re-destacava uma linha já dispensada. A promessa estava escrita no comentário da função que
+      deveria cumpri-la, e não tinha teste em nível nenhum: as asserções de HTML renderizado veem um
+      render, e o defeito só aparece no segundo.*
+      **Toda guarda nova foi vista falhando antes do código**, com a mutação que a prova registrada
+      na ADR — e a mais cara: a igualdade de espaços de nomes virou **união** e não subconjunto,
+      porque a versão antiga passa verde com `HIT_ANCHOR["milestone"]="marco"` (medido).
+      *Fica aberto e nomeado: **`GET /me/search` e `GET /me/notifications` não aceitam `?project=`**
+      e respondem pelo projeto mais recente da pessoa, enquanto o dashboard ao lado vem por id — um
+      cliente com dois projetos, vendo B, recebe os avisos e os resultados de A. A FDD 018 e o
+      docstring de `my_notifications` afirmavam o contrário, e as duas foram corrigidas com a
+      medição escrita.*
 - [ ] **Pesquisa de satisfação por evento.** *(FDD 022.)* **Segundo sinal — só depois que o
       laço do funil estiver fechado.** Uma pergunta no momento com significado (fase concluída,
       entregável aceito), não NPS de calendário, com teto de frequência por pessoa. A forma já
@@ -988,6 +1029,14 @@ que ele respeita.
 
 **Pontas abertas da fase, sem dono e sem prioridade** (seleção é gate humano):
 
+- **O sino e a busca não são do projeto na tela.** Medido na ADR 0057 e corrigido em **documento**,
+  não em código: `my_search` e `my_notifications` resolvem `access.default_project` — a membership
+  mais recente —, não aceitam `?project=` e o BFF não o manda, enquanto o dashboard ao lado vem de
+  `/projects/{id}/dashboard`. Um cliente com dois projetos, vendo B, recebe os avisos e os
+  resultados de busca de **A**. Hoje o dano é mudo (só troca de aba); com âncora deixaria de ser, e
+  é por isso que a ADR 0057 se **defende** dele em vez de ignorá-lo. Corrigir exige parâmetro novo
+  em duas rotas, que é mudança de contrato de outra superfície — seleção é gate humano.
+
 - **Intervalo mínimo por espécie de mensagem.** Medido na ADR 0042 e escrito na emenda da FDD 022:
   o teto global **não** satisfaz sozinho o critério (2) de lá, porque "um segundo evento na mesma
   semana não gera segundo convite" é afirmação sobre a **espécie** e não sobre o volume — com três
@@ -996,7 +1045,9 @@ que ele respeita.
 *Fechadas, para não serem reabertas por leitura de ADR:* o **teto de horário**, que as ADRs 0042 e
 0043 deixaram aberto e a ADR 0055 entregou em 19/08/2026, junto da varredura sem a qual ele seria
 um descarte; e **o link em granularidade de item**, que a ADR 0043 deixou nomeado e a ADR 0056
-entregou no mesmo dia. Ler aquelas duas sem estas linhas as dá como pendentes.
+entregou no mesmo dia — com o **popover do sino** e a **âncora na busca**, que aquela deixou
+nomeadas e a ADR 0057 fechou também em 19/08/2026. Ler aquelas três sem estas linhas as dá como
+pendentes.
 
 **Fora do recorte, e registrado porque nenhuma feature resolve:** velocidade de resposta é
 compromisso operacional, não código — o portal pode ser impecável, mas se o cliente perguntar

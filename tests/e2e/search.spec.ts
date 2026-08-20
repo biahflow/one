@@ -44,6 +44,13 @@ test("a busca acha a pendência do projeto e o clique leva à aba dela", async (
   // O clique navega por rótulo de aba, e o rótulo veio da API — não há segundo
   // mapa no navegador para envelhecer.
   await expect(page.getByRole("heading", { name: "Pendências do projeto" })).toBeVisible();
+
+  // E cai na **linha**, não só na aba (ADR 0057). O `item_anchor` vem pronto da
+  // API pelo mesmo motivo do `tab`, e a comparação é contra o `data-item` que a
+  // ADR 0056 pôs na lista — a mesma âncora que o link do WhatsApp usa.
+  const linha = page.locator('[data-item="pending:Aprovar fluxo de exceções"]');
+  await expect(linha).toBeVisible();
+  await expect(linha).toHaveClass(/is-anchored/);
 });
 
 test("um termo que o projeto não tem não vira resultado inventado", async ({ page }) => {
@@ -120,4 +127,14 @@ test("a busca acha a decisão pelo racional, e não só pelo título", async ({ 
 
   await expect(results.getByRole("listitem").filter({ hasText: "Decisão" })).toBeVisible();
   await expect(results).toContainText("Adotar fila gerenciada em vez de instância própria");
+
+  // A isenção assinada em `ANCHORLESS_HITS`, na tela (ADR 0057). A aba de Decisões
+  // **não** desenha `data-item`, por decisão da ADR 0056 — publicar um namespace
+  // que só existe de um lado é construir o atributo antes do escritor. O clique
+  // leva à aba, e é isso: nenhum realce, e **nenhuma nota** de âncora perdida, que
+  // é a diferença entre "não há linha a destacar" e "a linha sumiu".
+  await results.getByRole("button", { name: /Adotar fila gerenciada/ }).click();
+  await expect(page.getByRole("heading", { name: "Decisões do projeto" })).toBeVisible();
+  await expect(page.locator(".is-anchored")).toHaveCount(0);
+  await expect(page.getByText("O item deste aviso não está mais nesta lista.")).toHaveCount(0);
 });

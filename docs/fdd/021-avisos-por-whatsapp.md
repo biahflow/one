@@ -170,6 +170,18 @@ estabeleceu — toda espécie de cliente tem link —, e o único controle que c
 morto nos testes. A segunda: o e2e desta FDD provava que o aviso **existe**, não que ele leva a
 algum lugar; o critério (4) só passou a ter prova ponta a ponta agora.
 
-*Fica aberto: o **popover do sino** renderiza a linha como `<div>` e não como `<a>`, então o
+~~*Fica aberto: o **popover do sino** renderiza a linha como `<div>` e não como `<a>`, então o
 caminho de menor atrito para quem já está no portal continua sem link — o percurso provado passa
-por "Ver todas".*
+por "Ver todas".*~~ **Fechado em 19/08/2026 (ADR 0057).** As duas superfícies internas passaram a
+usar o mesmo componente, e "o que o `Notification.link` faz quando clicado" voltou a ter uma
+resposta só no repositório. A linha é `<a href>` e o clique é interceptado **só quando pode** —
+modificador, projeto diferente do que está na tela e aba fora do `navItems` caem no href de
+verdade —, o que mantém a degradação monotônica. A Central perdeu o `target="_blank"` na mesma
+fatia: abrir uma segunda aba para chegar a uma lista já aberta era resto de quando o link era só
+uma URL a copiar.
+
+*A causa de aquela linha ter sobrevivido a duas ADRs que a nomearam virou guarda, e é a mesma da
+ADR 0026: todas as asserções sobre a âncora eram sobre **dado**, e um `<div className="popover-row">`
+renderiza HTML indistinguível de um `<a>`. A guarda nova olha a **forma do controle** — toda
+renderização de `notifications.items` passa por `NotificationLink` —, e nasceu vermelha nomeando as
+duas listas.*

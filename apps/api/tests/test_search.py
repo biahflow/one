@@ -415,6 +415,65 @@ def test_a_decision_is_reachable_now_that_a_tab_shows_one(
     assert decision["tab"] == "Decisões"
 
 
+def test_the_hit_carries_the_row_it_points_at_and_not_only_the_tab(
+    world: World, authenticated
+) -> None:
+    """A âncora vem pronta da rota, no mesmo formato do ``?item=`` do aviso (ADR 0057).
+
+    O par do ``test_the_hit_carries_the_tab_it_belongs_to`` um degrau abaixo: até
+    a ADR 0056 a resolução do clique era a **aba**, dos dois lados; o link do
+    WhatsApp passou a cair na linha e a navegação de dentro do portal ficou
+    para trás. Aqui é a rota que fecha a diferença.
+
+    O formato é afirmado **inteiro** e não por prefixo, de propósito: é
+    ``<namespace>:<rótulo>``, o rótulo é o ``title`` que a tela usa como chave de
+    lista, e trocar ``title`` por ``detail`` na derivação produziria uma âncora bem
+    formada que não casa com linha nenhuma — o defeito silencioso desta família.
+    """
+    authenticated(world.mine.actor)
+
+    anchors = {hit["kind"]: hit["item_anchor"] for hit in _search("faturamento")}
+    assert anchors["pending"] == "pending:Revisar a integração de faturamento"
+    assert anchors["milestone"] == "milestone:Migração do faturamento"
+
+    assert _search("kickoff")[0]["item_anchor"] == "meeting:Reunião de Kickoff"
+
+    por_espécie = {hit["kind"]: hit["item_anchor"] for hit in _search("rescisão")}
+    # O trecho ancora no **documento**: "a âncora é do objeto, não do fato"
+    # (ADR 0056), e a aba de Documentos desenha a linha do documento, não a do
+    # trecho — que não tem linha nenhuma lá.
+    assert por_espécie["chunk"] == "document:Contrato de Manutenção"
+
+
+def test_the_decision_says_it_has_no_row_instead_of_inventing_one(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """A isenção assinada em ``ANCHORLESS_HITS``, do lado da resposta.
+
+    Vazio é "não há o que ancorar", nunca "ancore por sua conta" — a mesma
+    convenção do ``document_id`` ao lado. A aba de Decisões **não** desenha
+    ``data-item``, e isso é decisão da ADR 0056: publicar um namespace que só
+    existe de um lado é construir o atributo antes do escritor.
+    """
+    from portal_api.models import Decision
+
+    authenticated(world.mine.actor)
+    with Session(migrated_engine) as session:
+        session.add(
+            Decision(
+                organization_id=world.mine.organization_id,
+                project_id=world.mine.project_id,
+                title="Decisão sobre o faturamento",
+                rationale="O cliente prefere nota mensal por centro de custo.",
+            )
+        )
+        session.commit()
+
+    decision = next(hit for hit in _search("faturamento") if hit["kind"] == "decision")
+    assert decision["item_anchor"] == ""
+    assert decision["tab"] == "Decisões"
+
+
 def test_a_decision_is_found_by_its_rationale_not_only_its_title(
     world: World, authenticated, migrated_engine: Engine
 ) -> None:

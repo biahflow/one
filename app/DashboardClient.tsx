@@ -43,7 +43,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   addPendingCommentAction,
@@ -162,6 +162,103 @@ function screenAnchors(overview: Overview): Set<string> {
   return anchors;
 }
 
+/**
+ * O que o `link` de um aviso pede: projeto, aba e linha (ADR 0057).
+ *
+ * Puro e sem `window` de propósito — o link é **relativo**, e a origem falsa
+ * existe só para o `URL` aceitar analisá-lo. Isso é o que permite ao componente
+ * abaixo decidir antes de qualquer efeito, e o que faz esta função ser a mesma
+ * no servidor e no navegador.
+ *
+ * **Não re-deriva vocabulário nenhum.** Ele lê a URL que `deep_link` escreveu, e
+ * é `test_item_anchor.py` quem cobra que os três nomes de parâmetro sejam os
+ * mesmos dos dois lados. O `item` volta já decodificado pelo `URLSearchParams` e
+ * é comparado **inteiro** — nunca partido no `:`, porque rótulo de cliente contém
+ * dois-pontos e o separador não tem escape, por decisão da ADR 0056.
+ */
+function anchorTarget(link: string): { project: string | null; tab: string | null; item: string | null } {
+  try {
+    const url = new URL(link, "https://portal.invalid");
+    return {
+      project: url.searchParams.get("project"),
+      tab: url.searchParams.get("tab"),
+      item: url.searchParams.get("item"),
+    };
+  } catch {
+    // Um `link` que o `URL` recusa não é caminho de navegação nenhum. A linha
+    // continua sendo `<a href>` e quem decide o que fazer com ela é o navegador.
+    return { project: null, tab: null, item: null };
+  }
+}
+
+/**
+ * A linha de um aviso, clicável (FDD 021 critério (4), ADR 0057).
+ *
+ * Um componente só para as duas superfícies — o popover do sino e a Central —
+ * porque "o que o `Notification.link` faz quando clicado" precisa ter **uma**
+ * resposta neste repositório. Até esta fatia tinha duas: a Central abria o link
+ * numa aba nova, e o popover era um `<div>` que não fazia nada. Aquele `<div>` foi
+ * nomeado como ponta aberta na ADR 0043 e de novo na ADR 0056, e sobreviveu às
+ * duas porque nenhuma guarda olhava a **forma do controle** (ADR 0026).
+ *
+ * **O elemento é `<a href>` e a interceptação é o caso feliz, não o mecanismo.**
+ * Um `onClick` que só chamasse `goTo(tab, item)` descartaria em silêncio o
+ * `?project=` que o link carrega — e há três casos em que ele precisa mesmo cair
+ * no href:
+ *
+ * 1. **modificador ou botão do meio**: abrir em aba nova é do navegador, e
+ *    interceptar isso quebraria a única coisa que um `<a>` promete;
+ * 2. **o aviso é de outro projeto**: a tela de agora mostra o projeto corrente, e
+ *    trocar de aba aqui deixaria o cliente lendo a lista de A achando que é de B.
+ *    O href faz carga completa e honra o `?project=` — o que importa porque
+ *    `GET /me/notifications` **não** aceita `?project=` e responde pelo projeto
+ *    mais recente da pessoa (ponta aberta nomeada na ADR 0057);
+ * 3. **aba que a navegação não conhece**: `onboarding_stuck` traz `/admin/funil`,
+ *    que é outra rota e não uma aba deste componente.
+ *
+ * A degradação é monotônica, e é o mesmo critério que sustentou o drop do
+ * `_MAX_LINK`: recusar a interceptação devolve exatamente o comportamento
+ * anterior a esta fatia, nunca um clique morto.
+ */
+function NotificationLink({
+  notification,
+  className,
+  currentProjectId,
+  onNavigate,
+  children,
+}: {
+  notification: NotificationView;
+  className: string;
+  currentProjectId: string | null;
+  onNavigate: (tab: string, item?: string) => void;
+  children: ReactNode;
+}) {
+  const link = notification.link;
+  if (!link) return <div className={className}>{children}</div>;
+
+  const target = anchorTarget(link);
+  const navigable =
+    target.tab !== null &&
+    navItems.some((item) => item.label === target.tab) &&
+    target.project !== null &&
+    target.project === currentProjectId;
+
+  return (
+    <a
+      className={className}
+      href={link}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (!navigable) return;
+        event.preventDefault();
+        onNavigate(target.tab!, target.item ?? undefined);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 // Mapeia o estado do marco para as classes de cor já existentes no CSS
 const stateStyle: Record<string, string> = {
   "Concluído": "done",
@@ -207,6 +304,13 @@ export type SearchHit = {
   location: string;
   tab: string;
   document_id: string;
+  /** A linha da aba que este resultado aponta, no formato do `?item=` (ADR 0057).
+   *
+   *  Vem pronta da API pelo motivo do `tab` ao lado, e é o mesmo motivo há três
+   *  fatias: um segundo mapa aqui envelheceria sozinho. Vazio quer dizer "não há
+   *  o que ancorar" — a decisão, cuja aba não desenha `data-item` —, nunca
+   *  "componha a âncora por sua conta". */
+  item_anchor: string;
 };
 
 /** Rótulo por espécie de resultado. O mesmo vocabulário de `search.py`. */
@@ -491,7 +595,17 @@ export default function DashboardClient({
   // Trocar de aba por vontade própria encerra o destaque, como "Nova conversa"
   // encerra o turno em foco: o cliente saiu do assunto que o aviso abriu, e um
   // realce que sobrevive à navegação passa a apontar para uma pergunta antiga.
-  const goTo = (label: string) => { setActiveNav(label); setFocusedItem(null); setMenu(null); setMobileNavOpen(false); };
+  //
+  // **E é o único escritor de `activeNav` fora do estado inicial** (ADR 0057). Até
+  // aqui a barra lateral chamava `setActiveNav` direto: o comentário acima já
+  // prometia isto e o caminho mais óbvio de cumpri-lo não passava por aqui, de
+  // modo que a âncora sobrevivia à navegação — a nota "O item deste aviso não está
+  // mais nesta lista." seguia o cliente por todas as abas, e o efeito de rolagem,
+  // que tem `activeNav` nas dependências, re-destacava uma linha já dispensada.
+  //
+  // `item` chega de quem **abriu** o assunto (o aviso, a busca) e é ausente em
+  // todos os outros chamadores, que é o que faz navegar limpar.
+  const goTo = (label: string, item?: string) => { setActiveNav(label); setFocusedItem(item ?? null); setMenu(null); setMobileNavOpen(false); };
   const selectProject = (project: ProjectSummary) => router.push(`/?project=${project.id}`);
 
   const suggestedQuestions = useMemo(
@@ -608,6 +722,23 @@ export default function DashboardClient({
     }
   }
 
+  // A visão do projeto = o que veio do servidor + as pendências abertas pela IA nesta sessão.
+  const view = useMemo<Overview>(
+    () => (aiPendings.length === 0 ? overview : { ...overview, pendings: [...aiPendings, ...overview.pendings] }),
+    [overview, aiPendings],
+  );
+  const openCount = openPendings(view).length;
+  // Toda linha que esta tela consegue destacar. Memoizado porque passou a ter dois
+  // leitores (a nota do aviso e o clique da busca) e a lista percorre cinco coleções
+  // do `overview` — antes era uma chamada por render, dentro do próprio `if`.
+  //
+  // **Declarado acima de quem o lê**, e não junto da nota como estava: o
+  // `openSearchHit` abaixo é uma declaração de função, que sobe, mas o `const` não
+  // — e o compilador do React recusa preservar uma memoização usada antes de ser
+  // criada. O lint reprova, o que é a resposta certa: o que ele descreve é uma
+  // ordem que só funciona porque ninguém chama a função durante o render.
+  const anchors = useMemo(() => screenAnchors(view), [view]);
+
   // Abre o documento por trás da citação (ADR 0017). A URL é assinada e curta, e
   // por isso é pedida no clique e não junto da resposta: uma URL emitida com a
   // mensagem já teria vencido quando alguém rolasse a conversa até ela.
@@ -644,7 +775,12 @@ export default function DashboardClient({
       if (opened) setMenu(null);
       return opened;
     }
-    goTo(hit.tab);
+    // A âncora só entra se a tela **desenha** aquela linha (ADR 0057). A mesma
+    // função que responde "o rótulo ainda está no projeto?" para a nota do aviso,
+    // reusada aqui — e é o que mantém a copy daquela nota literalmente correta:
+    // ela fala de "aviso", e só continua alcançável por âncora vinda de um aviso.
+    // Uma âncora sem linha na tela viria da busca e produziria a frase errada.
+    goTo(hit.tab, anchors.has(hit.item_anchor) ? hit.item_anchor : undefined);
     return true;
   }
 
@@ -729,15 +865,9 @@ export default function DashboardClient({
     });
   }
 
-  // A visão do projeto = o que veio do servidor + as pendências abertas pela IA nesta sessão.
-  const view = useMemo<Overview>(
-    () => (aiPendings.length === 0 ? overview : { ...overview, pendings: [...aiPendings, ...overview.pendings] }),
-    [overview, aiPendings],
-  );
-  const openCount = openPendings(view).length;
   // Derivado no render, e não num efeito: a nota tem de estar no HTML do servidor
   // (ver o efeito de rolagem abaixo).
-  const anchorMissing = focusedItem !== null && !screenAnchors(view).has(focusedItem);
+  const anchorMissing = focusedItem !== null && !anchors.has(focusedItem);
 
   useEffect(() => {
     if (!focusedTurn || !chatOpen) return;
@@ -796,7 +926,14 @@ export default function DashboardClient({
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
       case "Notificações":
-        return <NotificationsView onAsk={askAi} notifications={notifications} />;
+        return (
+          <NotificationsView
+            currentProjectId={activeProject?.id ?? null}
+            notifications={notifications}
+            onAsk={askAi}
+            onNavigate={goTo}
+          />
+        );
       case "Meu perfil":
         return <ProfileView onAsk={askAi} user={user} projectName={overview.project} />;
       case "Configurações":
@@ -845,7 +982,7 @@ export default function DashboardClient({
             <button
               className={`nav-item ${activeNav === label ? "nav-item--active" : ""}`}
               key={label}
-              onClick={() => { setActiveNav(label); setMobileNavOpen(false); }}
+              onClick={() => goTo(label)}
             >
               <Icon size={18} strokeWidth={1.9} />
               <span>{label}</span>
@@ -897,10 +1034,16 @@ export default function DashboardClient({
                     <p className="popover-hint">Nada novo por aqui. Avisamos quando o projeto andar.</p>
                   )}
                   {notifications.items.slice(0, 5).map((item) => (
-                    <div className="popover-row" key={item.id}>
+                    <NotificationLink
+                      className="popover-row"
+                      currentProjectId={activeProject?.id ?? null}
+                      key={item.id}
+                      notification={item}
+                      onNavigate={goTo}
+                    >
                       <strong>{item.title}</strong>
                       <span>{[item.detail, item.age].filter(Boolean).join(" • ")}</span>
-                    </div>
+                    </NotificationLink>
                   ))}
                   {notifications.items.length > 0 && (
                     <button className="popover-all" onClick={() => goTo("Notificações")}>
@@ -1986,8 +2129,28 @@ function ProfileView({ onAsk, user, projectName }: { onAsk: () => void; user: Po
   );
 }
 
-/** A central: o histórico completo do projeto atual, do mais recente ao mais antigo. */
-function NotificationsView({ onAsk, notifications }: { onAsk: () => void; notifications: NotificationCenter }) {
+/**
+ * A central: o histórico completo do projeto atual, do mais recente ao mais antigo.
+ *
+ * Perdeu o `target="_blank"` na ADR 0057, e isso é a fatia e não um efeito
+ * colateral: o link agora navega **dentro** do portal, na mesma aba, como qualquer
+ * outra troca de aba faz desde a Fase 2. Abrir uma segunda aba para chegar a uma
+ * lista que já está aberta era o resto de quando o link era só uma URL a copiar. O
+ * `<a href>` continua ali inteiro para quem quiser a aba nova — `Ctrl`/`Cmd` e o
+ * botão do meio recaem nele, e é por isso que a linha continua sendo uma âncora e
+ * não um controle sem href.
+ */
+function NotificationsView({
+  onAsk,
+  notifications,
+  currentProjectId,
+  onNavigate,
+}: {
+  onAsk: () => void;
+  notifications: NotificationCenter;
+  currentProjectId: string | null;
+  onNavigate: (tab: string, item?: string) => void;
+}) {
   return (
     <>
       <ViewHero
@@ -2019,10 +2182,16 @@ function NotificationsView({ onAsk, notifications }: { onAsk: () => void; notifi
                   </>
                 );
                 const className = `notification-row ${item.read ? "" : "notification-row--unread"}`;
-                return item.link ? (
-                  <a className={className} key={item.id} href={item.link} target="_blank" rel="noreferrer">{body}</a>
-                ) : (
-                  <div className={className} key={item.id}>{body}</div>
+                return (
+                  <NotificationLink
+                    className={className}
+                    currentProjectId={currentProjectId}
+                    key={item.id}
+                    notification={item}
+                    onNavigate={onNavigate}
+                  >
+                    {body}
+                  </NotificationLink>
                 );
               })}
             </div>

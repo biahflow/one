@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from sqlalchemy import ColumnElement, func, or_
 from sqlalchemy.orm import Session
 
+from portal_api import anchors
 from portal_api.tabs import (
     TAB_DOCUMENTS,
     TAB_DECISIONS,
@@ -88,6 +89,56 @@ TOTAL_LIMIT = 20
 #: de falha do ``textfold.py``: divergem sem nada ficar vermelho.
 
 
+#: Qual **linha** da aba cada espécie de resultado aponta (ADR 0057).
+#:
+#: Irmão do ``ITEM_ANCHOR`` de :mod:`portal_api.notifications`, e a divisão entre
+#: os dois é a mesma que o ``LINK_TAB`` já fazia: o ``tab`` acima responde "que
+#: tela?", este responde "qual linha daquela tela?". A diferença com o aviso é que
+#: aqui a resposta **inteira** cabe numa tabela, e por um motivo verificável: no
+#: aviso o rótulo é do evento (só quem comparou os dois estados sabe qual marco
+#: ficou pronto), e aqui ``Hit.title`` **é** o rótulo nas seis espécies — daí a
+#: âncora ser derivada em :meth:`Hit.anchor` em vez de escrita em cada construção.
+#:
+#: **Explícito por espécie, nunca derivado do ``kind``.** Derivar parece a saída
+#: óbvia e produziria duas âncoras erradas: ``chunk`` viraria um namespace que não
+#: existe em lado nenhum, e ``decision`` ganharia um que a ADR 0056 recusou de
+#: propósito (a aba de Decisões não desenha ``data-item``).
+#:
+#: ``chunk`` recebe ``document``, e é a aplicação literal do *"a âncora é do
+#: objeto, não do fato"* da ADR 0056: o trecho é do documento, e a linha que a aba
+#: de Documentos desenha é a do documento — como ``transcript_ready`` e
+#: ``meeting_scheduled`` compartilham ``meeting``.
+#:
+#: **Sem teto de tamanho, ao contrário do ``deep_link``.** O ``_MAX_LINK`` é
+#: orçamento da *mensagem do canal*; aqui o valor viaja em JSON para uma tela que
+#: já recebeu o título inteiro. Logo não há queda a registrar — **nenhum evento
+#: novo e nenhuma linha em ``docs/runbooks/alerts.md``**.
+HIT_ANCHOR: dict[str, str] = {
+    "document": anchors.ANCHOR_DOCUMENT,
+    "meeting": anchors.ANCHOR_MEETING,
+    "pending": anchors.ANCHOR_PENDING,
+    "milestone": anchors.ANCHOR_MILESTONE,
+    "chunk": anchors.ANCHOR_DOCUMENT,
+}
+
+#: Quem legitimamente **não** aponta para uma linha, com o motivo escrito.
+#:
+#: Na forma do ``ANCHORLESS`` do aviso, do ``NOT_AN_ALERT`` de
+#: ``test_telemetry.py`` e do ``NOT_CONSUMED`` de ``tests/api-contract.test.mjs``:
+#: a isenção existe, e ela é uma frase que alguém assinou.
+#: ``test_item_anchor.py`` cobra as duas direções, e proíbe uma espécie de estar
+#: nas duas tabelas — estando, a isenção passaria a cobrir quem não precisa dela.
+ANCHORLESS_HITS: dict[str, str] = {
+    "decision": (
+        "a aba de Decisões **não** desenha `data-item`, e isso é decisão da ADR "
+        "0056: namespace que só existe de um lado é atributo construído antes do "
+        "escritor, o defeito da ADR 0033 escrito ao contrário. O clique leva à "
+        "aba, que é a resolução que a ADR 0024 estabeleceu e continua correta — a "
+        "decisão é lida inteira ali, não é uma linha de lista que se procura"
+    ),
+}
+
+
 @dataclass(frozen=True)
 class Hit:
     """Uma linha do resultado, já no formato que a tela mostra.
@@ -104,6 +155,23 @@ class Hit:
     tab: str
     document_id: str = ""
 
+    @property
+    def anchor(self) -> str:
+        """A linha da aba que este resultado aponta, no formato do ``?item=``.
+
+        Vazio é uma resposta legítima e quer dizer "não há o que ancorar" — nunca
+        "ancore por sua conta", que é a mesma convenção do ``document_id`` ao
+        lado. Quem cai nela está declarado em :data:`ANCHORLESS_HITS`.
+
+        **Derivada, e aqui isso é correto** — ao contrário do ``Change.item``, que
+        é escrito em cada construção. Lá o rótulo é do evento e não há tabela
+        possível; aqui ``title`` **é** o rótulo nas seis espécies, então não há
+        como esquecê-la numa construção nova: uma espécie sem linha no
+        ``HIT_ANCHOR`` reprova em ``test_item_anchor.py`` em vez de sair vazia.
+        """
+        namespace = HIT_ANCHOR.get(self.kind)
+        return f"{namespace}:{self.title}" if namespace else ""
+
     def to_payload(self) -> dict[str, str]:
         return {
             "kind": self.kind,
@@ -112,6 +180,7 @@ class Hit:
             "location": self.location,
             "tab": self.tab,
             "document_id": self.document_id,
+            "item_anchor": self.anchor,
         }
 
 

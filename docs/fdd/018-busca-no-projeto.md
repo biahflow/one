@@ -11,7 +11,11 @@ ser verdadeiro nas três camadas que ele nomeia: API, banco **e busca**.
 **Não objetivos.** **Busca semântica**: cobraria por tecla com chave configurada e devolveria
 ruído sem ela, e é o que o chat já faz — a diferença entre as duas superfícies é que uma
 responde e a outra aponta (ADR 0024, alternativas). **Busca entre projetos**: o topbar é do
-projeto corrente, e trocar de projeto é a URL desde a Fase 2. **Decisões nos resultados**: não
+projeto corrente, e trocar de projeto é a URL desde a Fase 2 — *emendado em 19/08/2026 (ADR 0057):
+**a frase descreve a intenção e não o código**. `GET /api/v1/me/search` resolve
+`access.default_project`, que devolve a membership mais recente, e não aceita `?project=`; o BFF
+tampouco o manda. Um cliente com dois projetos, vendo B por `?project=B`, recebe os resultados de
+**A**. Corrigir é mudança de contrato da rota e ficou nomeado no `ROADMAP.md` em vez de contornado.* **Decisões nos resultados**: não
 havia aba de decisões, e um hit que leva a lugar nenhum é a classe de defeito que a ADR 0017
 corrigiu — *entrou na ADR 0049, junto com a aba, casando também o racional*. **Filtros nas abas**: item aberto da Fase 2, outro controle, outra fatia. **Histórico
 de buscas**: o termo é a pergunta de alguém e não é guardado em lugar nenhum, nem no log.
@@ -23,8 +27,15 @@ cada linha com o rótulo do que é ("Documento", "Reunião", "Pendência", "Marc
 documento"), o título e um detalhe.
 
 Clicar leva ao destino, e o destino depende do que foi achado: uma linha do read model abre a
-**aba** onde ela mora; um trecho de documento **abre a fonte**, pela mesma URL assinada de vida
-curta que a citação do chat usa (ADR 0017).
+**aba** onde ela mora e **destaca a linha** (ADR 0057); um trecho de documento **abre a fonte**,
+pela mesma URL assinada de vida curta que a citação do chat usa (ADR 0017).
+
+A âncora vem pronta da API em `item_anchor`, pelo mesmo motivo do `tab` ao lado: a tela navega por
+rótulo desde a Fase 2, e um segundo mapa no navegador envelheceria sozinho. É o mesmo formato
+`<namespace>:<rótulo>` que o link do aviso usa (ADR 0056), e é a mesma âncora — o vocabulário mora
+em `anchors.py` e nenhuma das duas superfícies o redefine. Ela só é aplicada se a tela **desenha**
+aquela linha; uma decisão não ancora, e a aba abre sem realce e sem nota, o que está declarado em
+`ANCHORLESS_HITS` com o motivo escrito.
 
 Fechar a lupa esquece o termo. Não há histórico, não há sugestões e não há "buscas recentes".
 
@@ -76,6 +87,9 @@ por tecla afogaria a trilha que o `incident-response.md` manda ler.
 |---|---|
 | As quatro espécies que as abas mostram são achadas | `test_search.py::test_each_kind_the_tabs_show_is_reachable` |
 | O clique leva à aba certa, com o rótulo vindo da API | `test_the_hit_carries_the_tab_it_belongs_to`, `tests/e2e/search.spec.ts` |
+| **E à linha, não só à aba** (ADR 0057) | `test_the_hit_carries_the_row_it_points_at_and_not_only_the_tab`, `tests/e2e/search.spec.ts` |
+| **A decisão diz que não tem linha, em vez de inventar uma** | `test_the_decision_says_it_has_no_row_instead_of_inventing_one`, `tests/e2e/search.spec.ts` |
+| **O espaço de nomes da busca é um que a tela desenha, na aba que o clique abre** | `test_item_anchor.py` — as quatro guardas que a ADR 0057 provou por mutação |
 | "reuniao" acha "Reunião", e "MIGRAÇÃO" acha "Migração" | `test_the_search_folds_accents_and_case` |
 | Um termo dentro do documento é achado, com a página e o id | `test_a_term_inside_a_document_is_found_with_the_page` |
 | O texto do documento também é achado sem acento | `test_the_document_text_is_found_without_its_accents_too` |

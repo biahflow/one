@@ -16,7 +16,8 @@ Engineering OS (`workflows/design-approval.md`, `workflows/browser-runtime-valid
 Design Approval Package está `Approved` — visual e cópia — em
 [`design-approval.md`](../features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md).
 A revisão 1 levou duas direções de marca ao gate; a escolha foi o **wordmark sem selo**, com o
-descender em inglês, e a revisão 2 é o artefato que renderiza o que foi decidido. O gate fica **antes do planejamento**, não antes da construção: um
+descender em inglês, e o descritor `Portal do Cliente` saiu na revisão 3 — que é o artefato que
+renderiza o que foi decidido. O gate fica **antes do planejamento**, não antes da construção: um
 plano que decompõe superfície não aprovada produz tarefas que precisam ser recortadas de novo
 quando o desenho muda.
 
@@ -194,7 +195,7 @@ A guarda bidirecional de `test_telemetry.py` continua verde por não ter o que c
 - [x] O pacote traz **captura congelada**, não só prosa.
 - [x] A relação Biahflow ⟂ One está explícita.
 - [x] Todo valor visual está declarado como **retido**, **corrigido por medição** ou **novo**, com procedência.
-- [x] Um humano aprovou a revisão exata — revisão 2, visual e cópia, em 25/08/2026 — antes de o Builder começar.
+- [x] Um humano aprovou a revisão exata — revisão 3, visual e cópia, em 25/08/2026 — antes de o Builder começar.
 
 ### Fundação do One
 
@@ -245,7 +246,7 @@ A guarda bidirecional de `test_telemetry.py` continua verde por não ter o que c
 | `workflows/design-approval.md` (Engineering OS) | O gate, e o que o pacote precisa conter |
 | `workflows/browser-runtime-validation.md` (Engineering OS) | O que `BROWSER_REQUIRED` exige |
 | `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md` | **O Design Approval Package** — registro de aprovação, procedência valor a valor e questões em aberto |
-| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r2.html` | O artefato aprovado; as capturas em `design/captures-r2/` são o que a aprovação referencia |
+| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r3.html` | O artefato aprovado; as capturas em `design/captures-r3/` são o que a aprovação referencia |
 
 ## Testes e avaliações de IA
 

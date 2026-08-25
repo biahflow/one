@@ -1,7 +1,7 @@
 # Design Approval Package — F-025 · Identidade do One e fundação de design
 
 Classification: INTERFACE_CHANGE
-Revision: 2
+Revision: 3
 Status: Approved
 Date: 2026-08-25
 Produced by: Claude Opus 5 (1M context), sob a Engineering OS
@@ -16,25 +16,29 @@ Produced by: Claude Opus 5 (1M context), sob a Engineering OS
 | What was approved | **visual e cópia** |
 | Approved by | Daniel Campos |
 | Date | 25/08/2026 |
-| Revision approved | **2** |
-| Explicitly **not** approved | A direção de marca com selo (considerada e recusada) · tema escuro · redesenho de tela existente · o laço de aceite da ADR 0067 · renomear o repositório · qualquer coisa listada em *Open questions* |
+| Revision approved | **3** |
+| Explicitly **not** approved | A direção de marca com selo (considerada e recusada) · o descritor `Portal do Cliente` (retirado na revisão 3) · tema escuro · redesenho de tela existente · o laço de aceite da ADR 0067 · renomear o repositório · qualquer coisa listada em *Open questions* |
 
 ### Histórico de revisões
 
-| Rev | O que aconteceu |
-| --- | --- |
-| 1 | Levada ao gate com **duas** direções de marca renderizadas lado a lado, para escolha. Superseded by revision 2. |
-| 2 | O que foi **decidido**: Direção B (só wordmark), descender em inglês (`by Biahflow`), e o símbolo do `favicon`/`og.png` resolvido como tile com a inicial. O artefato foi refeito para renderizar a decisão. |
+| Rev | O que aconteceu | Artefato |
+| --- | --- | --- |
+| 1 | Levada ao gate com **duas** direções de marca renderizadas lado a lado, para escolha. | `design/one-dap-r1.html` + `design/captures/` — **preservados** |
+| 2 | Direção B (só wordmark), descender em inglês, e o símbolo do `favicon`/`og.png` resolvido como tile com a inicial. | superseded antes de qualquer implementação consumi-la — não preservada |
+| 3 | Sai o descritor `Portal do Cliente`: o produto se apresenta pelo nome, sem aposto. Some do `<title>`, do cartão de compartilhamento e do rodapé do painel de autenticação. | `design/one-dap-r3.html` + `design/captures-r3/` — **a revisão que vale** |
 
-A revisão 1 e suas capturas ficam no repositório: são o que a pessoa olhou quando decidiu, e
-apagá-las tornaria a decisão não verificável depois. **A revisão 2 é a que vale** — é contra ela
-que a revisão de código compara o que foi construído.
+**A revisão 1 fica.** É o que a pessoa olhou quando escolheu entre as duas direções de marca, e
+apagá-la tornaria aquela decisão não verificável depois. **A revisão 2 não fica**, e a diferença é
+que ninguém agiu sobre ela: ela existiu por vinte minutos entre duas emendas do mesmo gate, nenhuma
+implementação a consumiu e nenhuma revisão de código dependeu dela. O que ela decidiu está nesta
+tabela e no corpo deste registro; guardar cinco megabytes de captura de um estado intermediário
+seria confundir histórico com evidência.
 
-Duas das três emendas **não estavam** na revisão 1: `by Biahflow` (o artefato renderizava `por
-Biahflow` em seis lugares) e o símbolo do favicon (a revisão 1 não o desenhava, e a direção
-escolhida o exigia, porque sem selo não há marca que caiba em 16 px). Por isso houve revisão nova
-em vez de aprovação com nota de rodapé: aprovação de um pacote que não mostra o que foi decidido
-não é evidência de nada.
+Cada emenda virou revisão nova em vez de nota de rodapé, e a razão é a mesma nas três vezes:
+**aprovação de um pacote que não mostra o que foi decidido não é evidência de nada.** A revisão 1
+renderizava `por Biahflow` em seis lugares e não desenhava símbolo algum; a 2 ainda estampava o
+descritor em dois. É contra o artefato que a revisão de código compara o que foi construído, então
+ele precisa ser o que vale.
 
 A aprovação desta revisão não é aprovação de uma posterior. Um pacote materialmente alterado é
 uma revisão nova e precisa do seu próprio registro. **Aprovação de visual não é aprovação de
@@ -44,8 +48,8 @@ cópia**, e vice-versa: se só uma das duas for aprovada, diga qual.
 
 | File | What it is |
 | --- | --- |
-| `design/one-dap-r2.html` | **A revisão aprovada.** Renderização auto-contida: abre com duplo clique — sem build, sem toolchain, sem rede. Um arquivo, CSS embutido e ícones em SVG inline. |
-| `design/captures-r2/` | **Captura congelada do que foi aprovado** — é a isto que a aprovação se refere. Catorze imagens: capa, uma por seção, e o pacote inteiro. |
+| `design/one-dap-r3.html` | **A revisão aprovada.** Renderização auto-contida: abre com duplo clique — sem build, sem toolchain, sem rede. Um arquivo, CSS embutido e ícones em SVG inline. |
+| `design/captures-r3/` | **Captura congelada do que foi aprovado** — é a isto que a aprovação se refere. Catorze imagens: capa, uma por seção, e o pacote inteiro. |
 | `design/one-dap-r1.html` + `design/captures/` | Histórico: o que foi levado ao gate, com as duas direções de marca. Não é a revisão aprovada. |
 
 A captura existe porque uma renderização depende de fonte, navegador e plataforma. As capturas
@@ -121,7 +125,8 @@ Fonte lida em 25/08/2026: `app/globals.css`, bloco `@theme` e `@layer components
 | O ponto vira `brand-200` sobre o gradiente | medição: `brand-500` sobre `brand-600` dá 1,06:1 | **sim — decidido aqui** |
 | Tile com a inicial `O`, em `brand-500` | é o wordmark comprimido; o raio é o de controle | **sim — decidido aqui**, e só onde não cabe texto |
 | `favicon.svg` = o tile | hoje é azul `#68C4FF`, fora da paleta | **sim — decidido aqui** |
-| `og.png` = tile + wordmark + descritor | hoje estampa `portal labs` e o monograma "P" | **sim — decidido aqui** |
+| `og.png` = tile + wordmark + a frase do produto | hoje estampa `portal labs` e o monograma "P" | **sim — decidido aqui** |
+| O produto se apresenta **sem aposto** — sai `Portal do Cliente` | — | **sim — decidido na revisão 3** |
 | Ícone junto do texto em toda pastilha de estado | hoje é cor + texto | **sim — sendo decidido aqui** |
 
 Se este pacote e `app/globals.css` divergirem, **a fonte vence e o pacote está velho**.
@@ -220,19 +225,24 @@ onze deles sobreviveram assim. No artefato ele está visualmente marcado com hac
     distinguir "não existe" de "existe e não é seu" — essa indistinção é o produto da regra, não
     um descuido de texto.
 
+11. **O produto se apresenta pelo nome, sem aposto.** `Portal do Cliente` sai do `<title>`, do
+    cartão de compartilhamento e do rodapé do painel de autenticação. Um nome que precisa de
+    legenda ao lado é um nome que ainda não está confiando em si — e o aposto era herança do
+    tempo em que "portal" era o produto. O `<title>` passa a ser `One`.
+
 ## Open questions
 
 Tudo abaixo **continua sendo decisão em aberto depois desta aprovação**, e não pode ser resolvido
 por um agente durante a implementação.
 
-*Fechadas na revisão 2, e registradas para não serem reabertas por leitura:* a direção de marca
+*Fechadas no gate, e registradas para não serem reabertas por leitura:* a direção de marca
 (wordmark, sem selo); o descender em inglês; o símbolo do `favicon`; o remetente
 `Biahflow <one@biahflow.ai>` com os e-mails semeados locais em `@biahflow.ai`; e o descritor, que
-**continua** sendo `Portal do Cliente`.
+**sai** — o produto se apresenta como `One`, sem aposto.
 
-- **A mistura de idioma no par marca/descritor** — `by Biahflow` em inglês ao lado de
-  `Portal do Cliente` em PT-BR — é decisão tomada, não descuido. Se um dia incomodar, é revisão
-  nova; a implementação não a resolve por conta própria.
+- **O descender em inglês dentro de um produto em PT-BR.** `by Biahflow` é decisão tomada, não
+  descuido: ele pertence à marca, e marca não se traduz. A cópia do produto continua toda em
+  PT-BR. Se um dia incomodar, é revisão nova — a implementação não a resolve por conta própria.
 - **O domínio real de envio em produção.** `one@biahflow.ai` está aprovado como o valor do
   repositório; publicar dele é decisão de operação (SPF, DKIM), não de design.
 - **Tipografia de marca.** O wordmark usa Inter, a fonte do produto. Uma fonte de display própria

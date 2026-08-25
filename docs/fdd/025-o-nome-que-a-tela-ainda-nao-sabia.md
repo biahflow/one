@@ -13,7 +13,9 @@ Engineering OS (`workflows/design-approval.md`, `workflows/browser-runtime-valid
 ## Status
 
 `SPEC_IN_PROGRESS` → `READY_FOR_PLANNING` **somente depois** de o humano aprovar a revisão exata
-do Design Approval Package. O gate fica **antes do planejamento**, não antes da construção: um
+do Design Approval Package — hoje a **revisão 1**, em
+[`design-approval.md`](../features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md),
+estado `Awaiting approval`. O gate fica **antes do planejamento**, não antes da construção: um
 plano que decompõe superfície não aprovada produz tarefas que precisam ser recortadas de novo
 quando o desenho muda.
 
@@ -241,6 +243,8 @@ A guarda bidirecional de `test_telemetry.py` continua verde por não ter o que c
 | `docs/project-context.md` | Perfis de validação e fontes de verdade |
 | `workflows/design-approval.md` (Engineering OS) | O gate, e o que o pacote precisa conter |
 | `workflows/browser-runtime-validation.md` (Engineering OS) | O que `BROWSER_REQUIRED` exige |
+| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md` | **O Design Approval Package**, revisão 1 — registro, procedência e questões em aberto |
+| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r1.html` | O artefato auto-contido que o gate aprova |
 
 ## Testes e avaliações de IA
 

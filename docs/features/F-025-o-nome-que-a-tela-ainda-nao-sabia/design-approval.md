@@ -1,0 +1,240 @@
+# Design Approval Package — F-025 · Identidade do One e fundação de design
+
+Classification: INTERFACE_CHANGE
+Revision: 1
+Status: Awaiting approval
+Date: 2026-08-25
+Produced by: Claude Opus 5 (1M context), sob a Engineering OS
+
+> Governado por `workflows/design-approval.md`. Este artefato é evidência para um gate humano.
+> Não é implementação e não deve ser copiado para dentro do código da aplicação.
+
+## Approval record
+
+| Field | Value |
+| --- | --- |
+| What was approved | *(nada ainda — aguardando decisão humana)* |
+| Approved by | *(pendente)* |
+| Date | *(pendente)* |
+| Revision approved | *(pendente)* |
+| Explicitly **not** approved | Tema escuro · redesenho de tela existente · o laço de aceite da ADR 0067 · renomear o repositório · qualquer coisa listada em *Open questions* |
+
+A aprovação desta revisão não é aprovação de uma posterior. Um pacote materialmente alterado é
+uma revisão nova e precisa do seu próprio registro. **Aprovação de visual não é aprovação de
+cópia**, e vice-versa: se só uma das duas for aprovada, diga qual.
+
+## Artifact
+
+| File | What it is |
+| --- | --- |
+| `design/one-dap-r1.html` | Renderização auto-contida. Abre com duplo clique — sem build, sem toolchain, sem rede. 76 KB, um arquivo, CSS embutido e ícones em SVG inline. |
+| `design/captures/` | Captura congelada do que foi renderizado — **é a isto que a aprovação se refere**. Treze imagens: capa, uma por seção, e o pacote inteiro. |
+
+A captura existe porque uma renderização depende de fonte, navegador e plataforma. As capturas
+foram feitas com Chromium headless (Playwright 1.62.1), 1280 px de largura, escala 1,5×, sobre o
+mesmo arquivo desta revisão — validação determinística, sem modelo no laço.
+
+**Sobre a fonte:** o artefato pede `Inter` e cai para a pilha de sistema quando ela não está
+instalada. A captura foi feita numa máquina com Inter disponível; é o que a aprovação enxerga, e
+é a fonte que o produto carrega por `next/font/google`.
+
+## Surfaces and states included
+
+| Surface | State | In package |
+| --- | --- | --- |
+| Shell do cliente — desktop | sucesso | sim (§06) |
+| Shell do cliente — mobile 390×844 | sucesso | sim (§07) |
+| Shell do cliente | carregando | sim (§09) |
+| Shell do cliente | vazio (sem projeto atribuído) | sim (§09) |
+| Shell do cliente | erro (assistente indisponível) | sim (§09) |
+| Shell do cliente | não autorizado (404, nunca 403) | sim (§09) |
+| Autenticação `/login` | sucesso + erro | sim (§08) |
+| Marca | claro, escuro, três tamanhos, duas direções | sim (§01) |
+| Estados semânticos | sucesso, atenção, falha, informativo — e em tons de cinza | sim (§04) |
+| Controles | repouso, hover, **foco de teclado**, desabilitado | sim (§05) |
+| Revisão/decisão do cliente | `client_review` + os cinco rótulos de aceite | sim (§10) — **reservado** |
+| Notificação | lista com não lida + envelope do e-mail | sim (§11) |
+
+Deliberadamente **fora** do pacote, com o motivo:
+
+| Surface | Por que não está aqui |
+| --- | --- |
+| Chat e citações | Nada muda de forma nem de cópia; a única mudança é a frase de apresentação do assistente, que é texto e não desenho. |
+| Telas de `/admin/*` | São superfície interna. Herdam os tokens; nenhuma decisão visual nova. |
+| Aba Resultados, Documentos, Cronograma | Mesma linguagem já provada pelo shell e pelos painéis de §06. Desenhá-las de novo seria pedir aprovação de coisa que não muda. |
+| Tema escuro | Não existe neste produto e não está sendo proposto. |
+| E-mail em HTML completo | Só o envelope entra (§11). O corpo do digest não muda de forma nesta fatia. |
+
+## Provenance of visual values
+
+Design system referenced: **nenhum documentado** — este é o achado. `docs/project-context.md`
+não declara onde vive o design system, e a linguagem existe apenas dentro de `app/globals.css`.
+Por isso este pacote é o que a Engineering OS descreve: *"um projeto nessa posição deve esperar que
+seu primeiro pacote aprovado estabeleça a linguagem que os pacotes seguintes citam — e deve
+extrair essa linguagem para um documento em vez de deixá-la no artefato."* A extração é
+`docs/design/one-design-system.md`, e ela é parte do que se está aprovando.
+
+Fonte lida em 25/08/2026: `app/globals.css`, bloco `@theme` e `@layer components`.
+
+| Value | Source | New? |
+| --- | --- | --- |
+| `--color-ink: #17243a` | `app/globals.css` | não — retido, explicitamente |
+| `--color-line: #e8edf4` | `app/globals.css` | não — retido |
+| `--color-canvas: #f6f8fc` | `app/globals.css` | não — retido |
+| `--color-navy: #16233a` | `app/globals.css` | não — retido |
+| `--color-brand-50…900` (oito degraus) | `app/globals.css` | não — retido, e é a decisão de marca do One |
+| `--color-danger-50/600` | `app/globals.css` | não — retido |
+| Três sombras em camadas | `app/globals.css` | não — retido |
+| Inter, por `next/font/google` | `app/layout.tsx` | não — retido |
+| Três pontos de quebra (761 / 980 / 760 px) | `app/globals.css` | não — retido |
+| `--color-muted: #6b7a91` → **`#657389`** | medição de contraste | **sim — corrigido aqui** |
+| `--color-success-600: #1c8a63` → **`#1a7e5b`** | medição de contraste | **sim — corrigido aqui** |
+| `--color-warning-600: #b06a1a` → **`#a16118`** | medição de contraste | **sim — corrigido aqui** |
+| `--color-info-50: #e9f1fd` / `--color-info-600: #1d5fb4` | — | **sim — novo, não existia estado informativo** |
+| `--color-accent-green: #1c8665` | era `rgba(33,161,121,.05)` à mão | **sim — novo, o valor existia sem nome** |
+| `--color-focus` | era o literal de `:focus-visible` | **sim — novo, o valor existia sem nome** |
+| `--color-surface: #ffffff` / `--color-surface-sunken: #f8fafc` | eram `bg-white` / `bg-slate-50` | **sim — novo, nomeia a hierarquia de superfície** |
+| `--radius-card: 16px` / `--radius-control: 12px` / `--radius-pill: full` | eram `rounded-2xl` / `xl` / `full` | **sim — novo, vira política citável** |
+| Escala de espaço: 4 · 8 · 12 · 16 · 20 · 24 · 36 · 44 | base de 4 px do Tailwind v4 | não — a base é retida; **novo** é fixar os oito degraus |
+| Wordmark `One` + descender `por Biahflow` | — | **sim — sendo decidido aqui** |
+| Selo: anel com ponto central | — | **sim — sendo decidido aqui (Direção A)** |
+| Ponto final em `brand-500` (Direção B) | gesto do wordmark antigo | **sim — sendo decidido aqui** |
+| `favicon.svg` na cor da marca | hoje é azul `#68C4FF`, fora da paleta | **sim — sendo decidido aqui** |
+| `og.png` regenerado | hoje estampa `portal labs` e o monograma "P" | **sim — sendo decidido aqui** |
+| Ícone junto do texto em toda pastilha de estado | hoje é cor + texto | **sim — sendo decidido aqui** |
+
+Se este pacote e `app/globals.css` divergirem, **a fonte vence e o pacote está velho**.
+
+### As medições de contraste
+
+Feitas com a fórmula de luminância relativa da WCAG 2.1, sobre os hexes exatos. O critério é
+**AA para texto normal (4,5:1)**, e não AA-large, porque nada aqui é texto grande: o corpo
+secundário é 14 px e a pastilha de estado é 10 px em negrito.
+
+| Par | Antes | Depois |
+| --- | --- | --- |
+| `muted` sobre branco | 4,36:1 ✗ | 4,81:1 ✓ |
+| `muted` sobre `canvas` | 4,10:1 ✗ | 4,52:1 ✓ |
+| `.eyebrow` (`slate-400`) sobre branco | **2,56:1 ✗✗** | 4,81:1 ✓ (passa a usar `muted`) |
+| `success-600` sobre `success-50` | 3,90:1 ✗ | 4,54:1 ✓ |
+| `warning-600` sobre `warning-50` | 3,88:1 ✗ | 4,51:1 ✓ |
+| `danger-600` sobre `danger-50` | 4,76:1 ✓ | inalterado |
+| `info-600` sobre `info-50` | não existia | 5,51:1 ✓ |
+| `brand-700` sobre `brand-50` | 7,52:1 ✓ | inalterado |
+| branco sobre `brand-500` | 5,39:1 ✓ | inalterado |
+| `brand-200` sobre `brand-900` (ponta escura do gradiente) | 7,71:1 ✓ | inalterado |
+| `brand-200` sobre `brand-600` (ponta clara do gradiente) | 4,04:1 — AA-large | inalterado, e é onde ele é usado: rótulo curto de 10,5 px |
+
+O pior caso do produto era o `.eyebrow`: 10 px, caixa alta, `slate-400`, **2,56:1**. Ele reprova
+até o critério de texto grande, e é o rótulo que fica acima de cada título de painel.
+
+## Delivered vs reserved
+
+| Element | This feature | Reserved for | Becomes real when |
+| --- | --- | --- | --- |
+| Tokens (cor, raio, superfície, foco) | entrega | — | — |
+| Marca — wordmark, selo, descender | entrega | — | — |
+| `favicon.svg` e `og.png` | entrega | — | — |
+| Primitivas: marca, pastilha de estado, botão | entrega | — | — |
+| Vitrine interna `/admin/design` | entrega | — | — |
+| `docs/design/one-design-system.md` | entrega | — | — |
+| Terminologia One em toda superfície do cliente | entrega | — | — |
+| **Superfície de revisão/aceite do cliente (§10)** | **desenha, não entrega** | o laço de aceite da ADR 0067 | quando existir contrato de projeção com `approvals` chegando de verdade e evento `client.accepted` de volta |
+| Tema escuro | não desenha | — | pacote e aprovação próprios |
+| Estados de aceite no shell (aba, contador, aviso) | não desenha | mesma fatia futura | idem |
+
+**Como o elemento reservado se comporta antes de ser real: ele não é renderizado.** Não entra na
+tela do cliente desabilitado, nem "só para mostrar". Um controle inerte é defeito, não
+*placeholder* — e há guarda no repositório que reprova `<button>` sem `onClick` justamente porque
+onze deles sobreviveram assim. No artefato ele está visualmente marcado com hachura e selo
+`reservado`, para que ninguém confunda desenho com entrega.
+
+## Decisions this package carries
+
+1. **Biahflow é a empresa; One é o produto — e a regra de uso é explícita.** O produto aparece na
+   marca, na aba e no assunto do e-mail; a empresa aparece onde a cópia fala do *time*. Sem essa
+   distinção, "Pendência criada para Portal Labs" não tem substituto óbvio, porque nunca foi sobre
+   o produto: era sobre quem responde.
+
+2. **A marca do One, entre duas direções.** Direção A (recomendada): selo — anel com ponto central,
+   o "O" de One e a convergência que o produto promete — mais wordmark e descender. Direção B: só
+   wordmark, com o ponto final em `brand-500`, herdando o gesto do wordmark antigo, cujo sufixo ia
+   em roxo. O monograma "P" antigo **não é portável**: existe embutido no `og.png` e em nenhum
+   outro lugar; a aplicação nunca o usou.
+
+3. **O roxo fica, e passa a ter procedência.** Não por inércia: é o que distingue esta tela da
+   identidade clay do Pulse sem ler uma palavra, e seus pares de contraste já estavam pagos.
+   Retê-lo é decisão declarada, não herança.
+
+4. **Três cores mudam porque foram medidas e reprovaram** — `muted`, `success-600`, `warning-600` —
+   e o `.eyebrow` troca `slate-400` por `muted`. É a única mudança visual que atinge tela existente,
+   e ela é de contraste, não de gosto: o maior deslocamento é de 0,02 em luminância relativa.
+
+5. **O estado informativo passa a existir.** Eram três; a Issue cobra quatro. Sem ele, contexto
+   vira cinza neutro e se perde entre o que está pendente.
+
+6. **Toda pastilha de estado carrega ícone junto do texto.** É o que faz o estado sobreviver a
+   daltonismo, a captura em tons de cinza e a impressão — e a §04 mostra as quatro em cinza para
+   provar que a afirmação é verificável, não retórica.
+
+7. **Raio vira política de três valores com dono**, e a escala de espaçamento é **fixada sem ser
+   redefinida**: redefinir a base de 4 px do Tailwind deslocaria todo utilitário já escrito na
+   tela, que é redesenho disfarçado de token.
+
+8. **O foco é desenhado.** Anel de 2 px na cor da marca com 2 px de afastamento; no campo, borda
+   `brand-500` mais halo `brand-100`. E nunca `outline: none` cru — no Tailwind v4 ele grava
+   `--tw-outline-style: none` no elemento e faz toda regra de foco escrita depois resolver para
+   nada, em silêncio.
+
+9. **`done` é cinza na escada de aceite.** Quem o declara é o lifecycle de Delivery, não o cliente.
+   Dar a ele a cor de "concluído" faria a tela sugerir que o aceite do cliente encerra a entrega, e
+   a ADR 0067 diz exatamente o contrário.
+
+10. **A cópia de erro passa a mandar falar com o *time da Biahflow***, e a de 404 continua sem
+    distinguir "não existe" de "existe e não é seu" — essa indistinção é o produto da regra, não
+    um descuido de texto.
+
+## Open questions
+
+Tudo abaixo **continua sendo decisão em aberto depois desta aprovação**, e não pode ser resolvido
+por um agente durante a implementação.
+
+- **Qual das duas direções de marca** (A ou B). Aprovar o pacote sem escolher deixa a implementação
+  sem instrução; a decisão precisa vir nomeada no registro acima.
+- **O endereço do remetente.** `one@biahflow.ai` é proposta. O domínio real de envio é decisão de
+  operação, não de design.
+- **O domínio dos e-mails semeados** do ambiente local (`@biahflow.ai` é a proposta). É dado de
+  desenvolvimento, mas aparece em runbook e em tela de convite local.
+- **Se `Portal do Cliente` continua sendo o descritor** ao lado de `One` no `<title>` e no rodapé
+  do painel de autenticação, ou se ele também muda. O pacote mantém o texto atual.
+- **Tipografia de marca.** O wordmark usa Inter, a fonte do produto. Uma fonte de display própria
+  seria decisão nova e não está proposta.
+- **Tema escuro.** Não proposto.
+- **Qualquer estado de aceite fora da superfície reservada da §10** — aba, contador no nav, aviso
+  no sino. Não desenhados.
+
+## Notes for the implementer
+
+**O que é intencional e precisa sobreviver.** Os valores exatos de token da tabela de procedência.
+A política de raio. O ícone **junto** do texto em toda pastilha de estado. O anel de foco em ambos
+os formatos (botão e campo). O descender "por Biahflow" andando com o wordmark, inclusive nas
+reduções. E a hachura do reservado existindo **só** no artefato: no produto, o que é reservado
+simplesmente não é renderizado.
+
+**O que é ilustrativo e não é especificação.** Todo dado de exemplo: "Marina Farias", "Acme
+Brasil", "Automação Financeira", `+142%`, `328h`, `68%`, "18 set", "Plano de implantação v3.pdf",
+os avatares e as contagens. A tela real só desenha o que a API entregou — não há caminho na tela
+que fabrique resposta, data ou citação, e há guarda que reprova a volta disso.
+
+**O que o artefato não consegue mostrar e a implementação deve garantir.** Ordem de foco e
+navegação por teclado. Comportamento de leitor de tela — `aria-current="page"` no item ativo do
+nav, `role="alert"` no erro, `aria-label` no sino com a contagem de não lidas. Movimento: nada
+nesta fatia anima, e `prefers-reduced-motion` continua respeitado. Internacionalização: a cópia é
+PT-BR e não há segunda língua.
+
+**Duas armadilhas do repositório que o desenho encosta.**
+`components/` entra no corpus varrido por `tests/rendered-html.test.mjs`, então todo `<button>` de
+primitiva precisa de `onClick` ou `type="submit"` — a vitrine demonstra estado mexendo em estado,
+não desenhando botão morto. E `components/` **não** entra no corpus de `tests/api-contract.test.mjs`,
+que só varre `app/`: mapeamento de JSON da API não pode migrar para lá, ou a guarda de consumo cai.
+Primitiva é apresentação; o mapeamento fica onde está.

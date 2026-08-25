@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Restore do Portal Labs (Fase 5, ADR 0019).
+# Restore do One (Fase 5, ADR 0019).
 #
 #   ./scripts/restore.sh <dir-do-backup> --database NOME [--with-objects]
 #

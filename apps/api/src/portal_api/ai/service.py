@@ -66,7 +66,7 @@ def _create_pendencia(
         PendingItem(
             title=f"Responder dúvida do cliente: {question[:160]}",
             description="Pergunta sem evidência suficiente no contexto do projeto (chat).",
-            owner_label="Portal Labs",
+            owner_label="Biahflow",
             priority=PendingPriority.medium,
         )
     )

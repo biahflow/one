@@ -52,8 +52,8 @@ porque este ambiente é descartável por construção — e o sufixo `_local_onl
 | Usuário | E-mail | Senha | Papel | O que alcança |
 |---|---|---|---|---|
 | `marina.farias` | `marina.farias@acme.com.br` | `portal_local_only` | `client_member` | o portal do cliente. **Não** alcança `/admin` |
-| `helena.dias` | `helena.dias@portallabs.com.br` | `portal_local_only` | `internal_admin` | tudo, incluindo as três telas de administração |
-| `rafael.costa` | `rafael.costa@portallabs.com.br` | `portal_local_only` | `internal_member` | o projeto, sem administrar |
+| `helena.dias` | `helena.dias@biahflow.ai` | `portal_local_only` | `internal_admin` | tudo, incluindo as três telas de administração |
+| `rafael.costa` | `rafael.costa@biahflow.ai` | `portal_local_only` | `internal_member` | o projeto, sem administrar |
 
 **O Keycloak pede o usuário, não o e-mail.** O e-mail está aí porque é por ele que a pessoa
 aparece no Mailpit (passo 3.5) e é ele que se digita ao convidar alguém (passo 3.11) — na tela de
@@ -133,7 +133,7 @@ with get_session(role=DbRole.system) as session:
 snapshot["milestones"][0]["status"] = "done"
 snapshot["documents"].append({
     "id": marker, "name": "Ata do comite " + marker, "type": "PDF",
-    "author": "Portal Labs", "link": "", "created_at": "2026-08-04T12:00:00+00:00",
+    "author": "Biahflow", "link": "", "created_at": "2026-08-04T12:00:00+00:00",
 })
 with get_session(role=DbRole.system) as session:                  # 2. algo mudou
     project = biahflow.sync_snapshot(session, snapshot)

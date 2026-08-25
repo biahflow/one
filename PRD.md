@@ -1,8 +1,8 @@
-# PRD — Portal Labs
+# PRD — One
 
 ## Problema e objetivo
 
-Clientes não devem depender de reuniões ou mensagens avulsas para saber o estado de uma iniciativa de IA. O Portal Labs reúne andamento, entregas, resultados, documentos, decisões e pendências de cada projeto.
+Clientes não devem depender de reuniões ou mensagens avulsas para saber o estado de uma iniciativa de IA. O One reúne andamento, entregas, resultados, documentos, decisões e pendências de cada projeto.
 
 O objetivo do MVP é permitir que um cliente responda, em poucos segundos e com fonte verificável: o que acontece agora, qual a próxima entrega, quanto valor foi gerado e o que ainda depende dele ou da equipe.
 

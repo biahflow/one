@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>One — cartão de compartilhamento (og.png)</title>
+<!--
+  A FONTE do `public/og.png` (F-025 T03).
+
+  Existe porque o `og.png` é binário e um binário sem fonte não se corrige: o que
+  ele substituiu estampava o nome antigo e um monograma "P" que — nas palavras do
+  Design Approval Package — "não é portável: ele existe embutido nesse arquivo e
+  em nenhum outro lugar". Guardar o HTML é o que impede o próximo nome, a próxima
+  frase ou o próximo token de exigir que alguém redesenhe a imagem à mão.
+
+  A forma é a do cartão da §01 de
+  `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r3.html`.
+  Lá o cartão é uma prévia de 640 px de largura; aqui ele é o tamanho real, então
+  cada medida daquela seção aparece multiplicada por 1200/640 = 1,875. Duas
+  diferenças deliberadas em relação à prévia, e as duas são sobre ela ser prévia:
+  o cartão real não tem borda nem canto arredondado — a imagem é servida inteira,
+  e um canto arredondado vira artefato contra o fundo de quem a exibe.
+
+  Os tokens abaixo são cópia dos de `app/globals.css`; se os dois divergirem,
+  `app/globals.css` vence e este arquivo está velho (a mesma regra que o pacote
+  de design declara para si).
+
+  Regenerar:
+
+    node scripts/brand/capture-og.mjs
+
+  A captura é a 1×, com viewport de 1200×630 — o tamanho exato do cartão. O
+  arquivo abre com duplo clique, sem build e sem rede.
+-->
+<style>
+:root {
+  --ink: #17243a;
+  --muted: #657389;
+  --brand-300: #b3a3ef;
+  --brand-500: #6e56cf;
+  --brand-600: #5f47c4;
+  --brand-900: #342478;
+  --success-600: #1a7e5b;
+  --sans: Inter, "Inter var", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  width: 1200px;
+  height: 630px;
+  overflow: hidden;
+  font-family: var(--sans);
+  font-feature-settings: "cv02", "cv03", "cv11";
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.ogcard {
+  width: 1200px;
+  height: 630px;
+  background: #fbfcfe;
+  display: grid;
+  grid-template-columns: 1.1fr .9fr;
+}
+
+.ogcard .copy {
+  padding: 45px 49px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 22.5px;
+}
+.ogcard .copy h3 {
+  margin: 0;
+  font-size: 48.75px;
+  font-weight: 600;
+  letter-spacing: -.035em;
+  line-height: 1.1;
+}
+/* O ponto final é o acento da marca (DAP §01), e é a única cor do wordmark. */
+.ogcard .copy h3 em { font-style: normal; color: var(--brand-500); }
+.ogcard .copy p {
+  margin: 0;
+  font-size: 21.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 26ch;
+}
+.ogcard .copy .sub {
+  font-size: 20.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* O tile: o wordmark comprimido até caber num quadrado. Aparece aqui, no
+   favicon e no atalho de tela — e em nenhum outro lugar. */
+.tile {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 33.75px;
+  background: var(--brand-500);
+  color: #fff;
+  font-size: 75px;
+  font-weight: 800;
+  letter-spacing: -.04em;
+  flex: none;
+  box-shadow: 0 7.5px 22.5px color-mix(in srgb, var(--brand-500) 32%, transparent);
+}
+
+.ogcard .art {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(150deg, var(--brand-900) 0%, var(--brand-600) 100%);
+}
+.ogcard .art:before {
+  content: "";
+  position: absolute;
+  right: -101px;
+  bottom: -101px;
+  width: 281px;
+  height: 281px;
+  border-radius: 50%;
+  border: 64px solid rgba(255, 255, 255, .07);
+}
+
+/* Uma insinuação do produto, não uma captura dele: dois traços, um número e uma
+   barra. Os valores são ilustrativos — a tela real só desenha o que a API deu. */
+.ogcard .mock {
+  position: relative;
+  width: 74%;
+  display: grid;
+  gap: 13px;
+  background: rgba(255, 255, 255, .96);
+  border-radius: 20.5px;
+  padding: 22.5px 24.5px;
+  box-shadow: 0 34px 75px -34px rgba(23, 36, 58, .55);
+}
+.ogcard .mock .l { height: 13px; border-radius: 999px; background: #e2e8f0; }
+.ogcard .mock .l--wide { width: 82%; }
+.ogcard .mock .l--short { width: 46%; }
+.ogcard .mock .b { height: 11px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
+.ogcard .mock .b i {
+  display: block;
+  height: 100%;
+  width: 68%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand-500), var(--brand-300));
+}
+.ogcard .mock .n { font-size: 32px; font-weight: 700; letter-spacing: -.03em; color: var(--ink); }
+.ogcard .mock .n span { color: var(--success-600); font-size: 18.75px; font-weight: 700; margin-left: 11px; }
+</style>
+</head>
+<body>
+<div class="ogcard">
+  <div class="copy">
+    <span class="tile">O</span>
+    <h3>One<em>.</em></h3>
+    <p>Projetos, resultados e decisões — com um assistente que responde só com evidências do seu projeto.</p>
+    <span class="sub">by Biahflow</span>
+  </div>
+  <div class="art">
+    <div class="mock">
+      <div class="l l--short"></div>
+      <div class="n">+142%<span>&#8593; 2,1 p.p.</span></div>
+      <div class="b"><i></i></div>
+      <div class="l l--wide"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

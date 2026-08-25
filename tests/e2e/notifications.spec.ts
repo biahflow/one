@@ -43,7 +43,7 @@ with get_session(role=DbRole.system) as session:
 snapshot["milestones"][0]["status"] = "done"
 snapshot["documents"].append({
     "id": marker, "name": "Ata do comite " + marker, "type": "PDF",
-    "author": "Portal Labs", "link": "", "created_at": "2026-08-04T12:00:00+00:00",
+    "author": "Biahflow", "link": "", "created_at": "2026-08-04T12:00:00+00:00",
 })
 with get_session(role=DbRole.system) as session:
     project = biahflow.sync_snapshot(session, snapshot)

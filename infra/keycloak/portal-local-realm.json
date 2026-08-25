@@ -1,7 +1,7 @@
 {
   "realm": "portal-local",
   "enabled": true,
-  "displayName": "Portal Labs (Local)",
+  "displayName": "One (Local)",
   "sslRequired": "none",
   "bruteForceProtected": true,
   "quickLoginCheckMilliSeconds": 0,
@@ -22,7 +22,7 @@
   "clients": [
     {
       "clientId": "portal-web",
-      "name": "Portal Labs local web (BFF)",
+      "name": "One local web (BFF)",
       "enabled": true,
       "publicClient": false,
       "secret": "portal-web-local-only",
@@ -54,7 +54,7 @@
     },
     {
       "clientId": "portal-api",
-      "name": "Portal Labs API (resource server)",
+      "name": "One API (resource server)",
       "enabled": true,
       "bearerOnly": true,
       "publicClient": false,
@@ -63,7 +63,7 @@
     },
     {
       "clientId": "portal-admin",
-      "name": "Portal Labs API (convite de acesso)",
+      "name": "One API (convite de acesso)",
       "description": "Service account usado só para criar usuario e disparar o e-mail de convite.",
       "enabled": true,
       "publicClient": false,
@@ -96,7 +96,7 @@
     {
       "id": "00000000-0000-4000-8000-000000000002",
       "username": "helena.dias",
-      "email": "helena.dias@portallabs.com.br",
+      "email": "helena.dias@biahflow.ai",
       "emailVerified": true,
       "enabled": true,
       "firstName": "Helena",
@@ -115,7 +115,7 @@
     {
       "id": "00000000-0000-4000-8000-000000000003",
       "username": "rafael.costa",
-      "email": "rafael.costa@portallabs.com.br",
+      "email": "rafael.costa@biahflow.ai",
       "emailVerified": true,
       "enabled": true,
       "firstName": "Rafael",
@@ -146,8 +146,8 @@
   "smtpServer": {
     "host": "mailpit",
     "port": "1025",
-    "from": "portal@portallabs.local",
-    "fromDisplayName": "Portal Labs",
+    "from": "one@biahflow.ai",
+    "fromDisplayName": "Biahflow",
     "ssl": "false",
     "starttls": "false",
     "auth": "false"

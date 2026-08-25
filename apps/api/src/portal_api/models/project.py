@@ -248,7 +248,7 @@ class PendingItemComment(Base, _ProjectChildMixin, TimestampMixin):
     #: Denormalizado no momento da escrita, pela razão acima: sem ele, um autor
     #: removido deixaria o comentário sem procedência nenhuma.
     author_label: Mapped[str] = mapped_column(String(160), nullable=False)
-    #: ``True`` quando quem escreveu era da Portal Labs. Guardado e não derivado
+    #: ``True`` quando quem escreveu era da Biahflow. Guardado e não derivado
     #: do papel atual: alguém que deixa de ser interno não muda o lado de quem
     #: falou naquele dia.
     author_is_internal: Mapped[bool] = mapped_column(

@@ -47,8 +47,8 @@ const PENDING_PRIORITY_LABELS: Record<string, string> = {
 };
 // Papel exibido no perfil. Vem da `membership` (a autoridade), não do realm.
 const ROLE_LABELS: Record<string, string> = {
-  internal_admin: "Administrador Portal Labs",
-  internal_member: "Time Portal Labs",
+  internal_admin: "Administrador Biahflow",
+  internal_member: "Time Biahflow",
   client_member: "Cliente",
 };
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -296,7 +296,7 @@ function toUser(me: ApiMe): PortalUser {
     name: me.full_name,
     initials: initialsOf(me.full_name),
     email: me.email,
-    role: ROLE_LABELS[role] ?? (me.is_internal ? "Time Portal Labs" : "Cliente"),
+    role: ROLE_LABELS[role] ?? (me.is_internal ? "Time Biahflow" : "Cliente"),
     org: me.organization ?? "",
     isInternal: me.is_internal,
     notifyByEmail: me.notify_by_email,
@@ -330,7 +330,7 @@ function NoProject({ user }: { user: PortalUser }) {
         <h1>Você ainda não tem um projeto atribuído.</h1>
         <p>
           Sua conta ({user.email}) está ativa, mas ainda não foi vinculada a um projeto. O time
-          da Portal Labs precisa fazer esse vínculo — assim que ele existir, o painel aparece aqui.
+          da Biahflow precisa fazer esse vínculo — assim que ele existir, o painel aparece aqui.
         </p>
       </div>
     </main>

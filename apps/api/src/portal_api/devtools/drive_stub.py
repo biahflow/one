@@ -131,7 +131,7 @@ async def token(request: Request) -> JSONResponse:
 
 @app.get("/drive/v3/about")
 def about() -> JSONResponse:
-    return JSONResponse({"user": {"emailAddress": "equipe@portallabs.local"}})
+    return JSONResponse({"user": {"emailAddress": "equipe@biahflow.ai"}})
 
 
 @app.get("/drive/v3/files")

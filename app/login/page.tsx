@@ -1,7 +1,8 @@
-import { Building2, Sparkles } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { auth, signIn } from "@/auth";
+import { Brand } from "@/components/one/Brand";
 
 /**
  * A entrada do portal. Server Component: o botão dispara uma Server Action que
@@ -27,25 +28,23 @@ export default async function LoginPage({
     <main className="auth-shell">
       <aside className="auth-brand">
         <div className="brand-row auth-brand-row">
-          <div className="brand-mark"><Sparkles size={17} /></div>
-          <span>portal<span>labs</span></span>
+          <Brand />
         </div>
         <div className="auth-brand-copy">
           <h1>Acompanhe seus projetos de IA em um só lugar.</h1>
           <p>Status, resultados, decisões e um assistente que responde só com evidências do seu projeto.</p>
         </div>
-        <p className="auth-brand-foot">Portal do Cliente</p>
       </aside>
       <section className="auth-form-wrap">
         <form className="auth-form" action={enter}>
           <p className="eyebrow">BEM-VINDO DE VOLTA</p>
           <h2>Entrar na sua conta</h2>
           <p className="auth-lead">
-            O acesso ao portal é feito pelo login corporativo da sua organização.
+            O acesso ao One é feito pelo login corporativo da sua organização.
           </p>
           {error && (
             <p className="auth-error" role="alert">
-              Não foi possível entrar. Tente novamente ou fale com o time da Portal Labs.
+              Não foi possível entrar. Tente novamente ou fale com o time da Biahflow.
             </p>
           )}
           <button type="submit" className="auth-sso">

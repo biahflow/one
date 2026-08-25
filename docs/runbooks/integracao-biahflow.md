@@ -219,7 +219,7 @@ Por isso existe o bootstrap (ADR 0025), que roda **uma vez por organização**:
 
 ```bash
 docker compose exec api python -m portal_api.grant_access \
-  --email helena.dias@portallabs.com.br \
+  --email helena.dias@biahflow.ai \
   --organization biahflow-client-1 --role internal_admin
 ```
 

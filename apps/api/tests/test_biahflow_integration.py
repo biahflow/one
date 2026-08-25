@@ -341,15 +341,15 @@ def test_sync_snapshot_mirrors_documents_meetings_and_pendings(db_session: Sessi
 
 @pytest.mark.integration
 def test_party_becomes_owner_label(db_session: Session) -> None:
-    """``provider`` é a Portal Labs; ``client`` é a organização do próprio cliente."""
+    """``provider`` é a Biahflow; ``client`` é a organização do próprio cliente."""
     project = biahflow.sync_snapshot(db_session, _snapshot(biahflow_project_id=18, client_id=16))
     dashboard = biahflow.build_dashboard(db_session, project)
 
     owners = {m["title"]: m["owner_label"] for m in dashboard["milestones"]}
-    assert owners == {"Validação": "Portal Labs", "Treinamento": "Acme Brasil"}
+    assert owners == {"Validação": "Biahflow", "Treinamento": "Acme Brasil"}
     pendings = {p["title"]: p["owner_label"] for p in dashboard["pendings"]}
     assert pendings["Aprovar fluxo de exceções"] == "Acme Brasil"
-    assert pendings["Definir alçada de aprovação"] == "Portal Labs"
+    assert pendings["Definir alçada de aprovação"] == "Biahflow"
 
 
 @pytest.mark.integration

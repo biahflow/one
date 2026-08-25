@@ -1,0 +1,231 @@
+{
+  "feature": "F-025",
+  "task": "T05",
+  "generated_at": "2026-08-25T13:39:25.860Z",
+  "generated_by": "node scripts/capture-browser-evidence.mjs",
+  "model_in_the_loop": false,
+  "revision": {
+    "sha": "58f4892f31a8bcf97c256bebcb5486c834658585",
+    "short": "58f4892",
+    "subject": "feat: a vitrine do One, desenhada num navegador de verdade",
+    "committed_at": "2026-08-25T10:21:19-03:00",
+    "branch": "o-nome-que-a-tela-ainda-nao-sabia",
+    "pending_outside_this_task": [],
+    "note": "É a revisão do código de produto que produziu as imagens. A T05 não toca código de produto — acrescenta scripts/capture-browser-evidence.mjs e este diretório —, então o commit que congela esta evidência tem 58f4892 como pai e nada entre os dois muda o que foi fotografado."
+  },
+  "design_approval": {
+    "package": "docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r4.html",
+    "revision": 4,
+    "approved_on": "2026-08-25",
+    "record": "docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md"
+  },
+  "runtime": {
+    "base_url": "http://localhost:3000",
+    "stack": "docker compose local (web, api, worker, beat, postgres+pgvector, redis, minio, keycloak, mailpit, drive-stub)",
+    "browser": "chromium 151.0.7922.34",
+    "engine": "playwright",
+    "device_scale_factor": 1,
+    "locale": "pt-BR",
+    "emulation": "apenas viewport — sem emulação de toque, para que a diferença capturada seja a do CSS",
+    "data": "o seed local (`seed_data/biahflow-snapshot.json`), pelas contas de `docs/runbooks/passeio-local.md`"
+  },
+  "captures": [
+    {
+      "id": "01-login-1440x900",
+      "requirement": "`/login`",
+      "file": "01-login-1440x900.png",
+      "route": "/login",
+      "actor": "sem sessão",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "crop": null,
+      "full_page": false,
+      "bytes": 327471,
+      "sha256": "08f5f7da67f5f47bb8fc430991874cf4ed3a448fe5d9a96c8d5e57f76c7810cd",
+      "notes": "Wordmark `One.` com o ponto em brand-500 sobre claro, e em brand-200 sobre o gradiente escuro (DAP §01 e §08)."
+    },
+    {
+      "id": "02-login-390x844",
+      "requirement": "`/login`",
+      "file": "02-login-390x844.png",
+      "route": "/login",
+      "actor": "sem sessão",
+      "viewport": "390×844",
+      "device_scale_factor": 1,
+      "crop": null,
+      "full_page": false,
+      "bytes": 20245,
+      "sha256": "2b73df9ca91ae755a522a04a4f0d7d4f33d1b634dde68d221a6aefee2e42240d",
+      "notes": "Abaixo de 760px o painel de marca sai (`.auth-brand { display: none }`), como o DAP §08 desenhou."
+    },
+    {
+      "id": "03-shell-cliente-1440x900",
+      "requirement": "shell do cliente — desktop",
+      "file": "03-shell-cliente-1440x900.png",
+      "route": "/",
+      "actor": "marina.farias (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "crop": null,
+      "full_page": false,
+      "bytes": 152727,
+      "sha256": "0731a4c429867378e2fd607ca05df6ffc2d2f47976dfd57b6f2a28d2402a97e2",
+      "notes": "Sidebar, topbar com sino e busca, e a Visão geral. O nome do projeto e o do cliente vêm da API e do token — não há caminho na tela que fabrique dado (DAP §06)."
+    },
+    {
+      "id": "04-shell-cliente-390x844",
+      "requirement": "shell do cliente — mobile",
+      "file": "04-shell-cliente-390x844.png",
+      "route": "/",
+      "actor": "marina.farias (client_member)",
+      "viewport": "390×844",
+      "device_scale_factor": 1,
+      "crop": null,
+      "full_page": false,
+      "bytes": 99948,
+      "sha256": "df97bc4bae59ddd6f98cc54d3b4cd72e6f1f8797d7333299f8d3dc4f2f142bd8",
+      "notes": "Abaixo de 760px a sidebar sai da coluna e vira gaveta atrás do botão de menu; o conteúdo ocupa a largura inteira (DAP §07)."
+    },
+    {
+      "id": "05-dashboard-do-seed-1440x900",
+      "requirement": "dashboard/projeto com dado do seed",
+      "file": "05-dashboard-do-seed-1440x900.png",
+      "route": "/",
+      "actor": "marina.farias (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "crop": {
+        "x": 282,
+        "y": 919,
+        "width": 1130,
+        "height": 280,
+        "unit": "css px, coordenadas do documento"
+      },
+      "full_page": true,
+      "bytes": 34540,
+      "sha256": "d47fb284722536c1aafe1856525e1143c1f4ddee647524e5e8472ea511734c3e",
+      "notes": "Recorte por elemento, e não a página inteira: os cartões começam abaixo da dobra. São os números de `seed_data/biahflow-snapshot.json` que `docs/runbooks/passeio-local.md` §3.2 manda conferir — Em implementação, No prazo, 68%, Treinamento da operação · 18 set, ROI +142%."
+    },
+    {
+      "id": "06-foco-de-teclado-1440x900",
+      "requirement": "foco de teclado visível num controle real",
+      "file": "06-foco-de-teclado-1440x900.png",
+      "route": "/",
+      "actor": "marina.farias (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "crop": {
+        "x": 282,
+        "y": 88,
+        "width": 1130,
+        "height": 123,
+        "unit": "css px, coordenadas do documento"
+      },
+      "full_page": true,
+      "bytes": 38640,
+      "sha256": "63268c43afd5ce032d340c5d3a8fed0d4457c441f1e7e86554c381cd9cf6b496",
+      "notes": "O anel apareceu sozinho, por tabulação: nenhuma classe injetada e nenhum `element.focus()`. O controle é o botão primário real do produto (DAP §05, anel de 2px na cor da marca com 2px de afastamento).",
+      "keyboard_focus": {
+        "tab_presses": 15,
+        "reached_by": "page.keyboard.press(\"Tab\")",
+        "control": "ai-button",
+        "accessible_name": "Perguntar à IA",
+        "matches_focus_visible": true,
+        "outline_color": "rgb(110, 86, 207)",
+        "outline_width": "2px",
+        "outline_offset": "2px",
+        "focus_token": "#6e56cf",
+        "settled": true
+      }
+    },
+    {
+      "id": "07-estados-semanticos-1440x900",
+      "requirement": "os quatro estados semânticos com ícone + texto + cor",
+      "file": "07-estados-semanticos-1440x900.png",
+      "route": "/admin/design",
+      "actor": "helena.dias (internal_admin)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "crop": {
+        "x": 208,
+        "y": 246,
+        "width": 1024,
+        "height": 394,
+        "unit": "css px, coordenadas do documento"
+      },
+      "full_page": true,
+      "bytes": 50461,
+      "sha256": "bb8bca7150bf97f2f00b184c6ca8bb9b089cd065f79f3d19af9b403e36dcbed0",
+      "notes": "sucesso, atenção, falha e informativo — cada um com ícone junto do texto, que é o que faz o estado sobreviver a daltonismo e à impressão em cinza (DAP §04, decisão 6)."
+    },
+    {
+      "id": "08-vitrine-1440x900",
+      "requirement": "a vitrine `/admin/design`",
+      "file": "08-vitrine-1440x900.png",
+      "route": "/admin/design",
+      "actor": "helena.dias (internal_admin)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "crop": null,
+      "full_page": true,
+      "bytes": 597854,
+      "sha256": "a01b7df119cd5556f759ca6402dc4d9fab0cd3c4e196f430b79090083ef5c4e4",
+      "notes": "A página inteira: estados, as quatro variantes de botão com o desabilitado, o campo em repouso e com foco, os três raios, a paleta lida da folha de estilo e as razões de contraste recalculadas no navegador. Ela responde 404 para quem não é interno."
+    }
+  ],
+  "reserved": [
+    {
+      "requirement": "estado de revisão/decisão do cliente",
+      "product_surface": null,
+      "status": "reservado — não renderizado",
+      "why": "O DAP §10 desenha a superfície e a declara reservada: ela vira real quando existir contrato de projeção com `approvals` chegando de verdade e evento `client.accepted` de volta (ADR 0067). Até lá o pacote é explícito — “ele não é renderizado; não entra na tela do cliente desabilitado, nem só para mostrar”, porque controle inerte é defeito e não placeholder (ADR 0026). Não há tela no produto a fotografar, e encenar uma faria esta evidência afirmar que ela existe.",
+      "design_evidence": "docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/captures-r4/10-revisao-e-aceite.png",
+      "product_evidence": [
+        "07-estados-semanticos-1440x900",
+        "08-vitrine-1440x900"
+      ],
+      "product_evidence_means": "o que existe no produto é a linguagem com que aquela superfície será construída — as pastilhas de estado e as variantes de botão da vitrine. É isso que estas duas capturas mostram, e nada além."
+    }
+  ],
+  "coverage": {
+    "total_bytes": 1321886,
+    "requirements": [
+      {
+        "requirement": "`/login`",
+        "evidence": "01-login-1440x900"
+      },
+      {
+        "requirement": "`/login`",
+        "evidence": "02-login-390x844"
+      },
+      {
+        "requirement": "shell do cliente — desktop",
+        "evidence": "03-shell-cliente-1440x900"
+      },
+      {
+        "requirement": "shell do cliente — mobile",
+        "evidence": "04-shell-cliente-390x844"
+      },
+      {
+        "requirement": "dashboard/projeto com dado do seed",
+        "evidence": "05-dashboard-do-seed-1440x900"
+      },
+      {
+        "requirement": "foco de teclado visível num controle real",
+        "evidence": "06-foco-de-teclado-1440x900"
+      },
+      {
+        "requirement": "os quatro estados semânticos com ícone + texto + cor",
+        "evidence": "07-estados-semanticos-1440x900"
+      },
+      {
+        "requirement": "a vitrine `/admin/design`",
+        "evidence": "08-vitrine-1440x900"
+      },
+      {
+        "requirement": "estado de revisão/decisão do cliente",
+        "evidence": "ver `reserved`"
+      }
+    ]
+  }
+}

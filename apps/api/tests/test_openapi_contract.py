@@ -115,7 +115,7 @@ def test_the_published_schema_matches_the_code() -> None:
 
 def test_the_artifact_is_valid_json_and_says_which_api_it_is() -> None:
     document = json.loads(openapi.ARTIFACT.read_text(encoding="utf-8"))
-    assert document["info"]["title"] == "Portal Labs API"
+    assert document["info"]["title"] == "One API"
     assert document["openapi"].startswith("3.")
 
 

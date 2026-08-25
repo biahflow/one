@@ -117,7 +117,7 @@ def world(migrated_engine: Engine) -> Iterator[dict[str, Tenant]]:
         session.flush()
 
         admin_user = User(
-            email=f"admin-{name}-{tag}@portallabs.test",
+            email=f"admin-{name}-{tag}@biahflow.test",
             full_name=f"Admin {name.title()}",
             external_subject=f"sub-admin-{name}-{tag}",
             is_internal=True,
@@ -131,7 +131,7 @@ def world(migrated_engine: Engine) -> Iterator[dict[str, Tenant]]:
         # que "tem permissão" e "é a mesma pessoa" precisam ser distinguidos — o
         # `state` do OAuth é o primeiro deles (ADR 0016).
         second_admin_user = User(
-            email=f"admin2-{name}-{tag}@portallabs.test",
+            email=f"admin2-{name}-{tag}@biahflow.test",
             full_name=f"Admin {name.title()} II",
             external_subject=f"sub-admin2-{name}-{tag}",
             is_internal=True,
@@ -1056,7 +1056,7 @@ def test_connecting_stores_the_account_and_never_returns_the_token(
 
     body = response.json()
     assert body["connected"] is True
-    assert body["google_account_email"] == "interno@portallabs.local"
+    assert body["google_account_email"] == "interno@biahflow.ai"
     assert "refresh" not in response.text.lower()
     assert "refresh-token-do-google" not in response.text
 

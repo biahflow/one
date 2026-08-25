@@ -328,7 +328,7 @@ test("server-renders the login page", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
 
-  assert.match(html, /<title>Portal Labs \| Portal do Cliente<\/title>/i);
+  assert.match(html, /<title>One<\/title>/i);
   assert.match(html, /Acompanhe seus projetos de IA em um só lugar\./);
   assert.match(html, /Entrar com SSO da empresa/);
   // Sem campo de senha: a credencial nunca chega a este domínio (ADR 0010).
@@ -344,7 +344,7 @@ test("server-renders the dashboard for an authenticated session", async () => {
 
   // Nome e organização vêm de `GET /api/v1/me`; o resto, do dashboard. Antes
   // desta fase eram constantes no componente e um fallback de demonstração.
-  assert.match(html, /<title>Portal Labs \| Portal do Cliente<\/title>/i);
+  assert.match(html, /<title>One<\/title>/i);
   assert.match(html, /Bom dia, Marina\./);
   assert.match(html, /Acme Brasil/);
   assert.match(html, /Automação Financeira/);
@@ -752,7 +752,7 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   // suíte existe para impedir, na forma que a ADR 0020 achou nas asserções de
   // backup que pulavam em silêncio. Um chat que falhou agora diz que falhou.
   assert.doesNotMatch(dashboard, /function answerFor/);
-  assert.match(dashboard, /Pendência criada para Portal Labs/);
+  assert.match(dashboard, /Pendência criada para o time Biahflow/);
   // Projeto sem escrita fecha as duas do cliente (ADR 0036/0037). É guarda de forma, como
   // a de citação abaixo: o formulário de pergunta e o de comentário têm de estar atrás da
   // condição, e não apenas escondidos por CSS ou desabilitados no submit — a API responde
@@ -799,7 +799,7 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   // sem este ramo, um limite atingido cairia no `catch` e viraria erro genérico.
   assert.match(dashboard, /response\.status === 429/);
   assert.match(dashboard, /muitas perguntas em pouco tempo/);
-  assert.match(layout, /Portal Labs \| Portal do Cliente/);
+  assert.match(layout, /title: "One"/);
   assert.match(layout, /lang="pt-BR"/);
 
   // A aba Resultados não aparece no HTML do SSR (só a ativa é renderizada), então
@@ -963,5 +963,230 @@ test("só o goTo troca de aba, e é ele quem apaga a âncora", async () => {
     "estes pontos trocam de aba sem passar pelo `goTo`, e por isso não apagam a" +
       " âncora: a nota do aviso segue para as outras abas e o efeito de rolagem" +
       " re-destaca uma linha que o cliente já dispensou (ADR 0057).",
+  );
+});
+
+/* ==========================================================================
+ * A regra de admissão de token, com portão (F-025 T04, PLAN_DEVIATION 01)
+ * ==========================================================================
+ *
+ * `docs/design/one-design-system.md` publica, desde a T01, que "um token só entra no
+ * `@theme` se algum seletor de `@layer components` (ou um utilitário do Tailwind) o
+ * consumir". No mesmo commit em que a frase foi publicada, **sete tokens não tinham
+ * consumidor nenhum** — `--color-info-50/600`, `--color-surface`, `--color-surface-sunken`
+ * e os três raios. É o defeito da ADR 0033 dentro da própria fatia que o descreve: um
+ * documento publicado sobre o que não existe.
+ *
+ * A T02 deu consumidor aos sete. Isto aqui é o que impede o oitavo: regra publicada sem
+ * portão volta a divergir, e esse é o argumento inteiro da ADR 0034 — lá o `alerts.md`
+ * tinha sido corrigido à mão e divergiu de novo pelo outro lado em dois dias.
+ *
+ * Três decisões, todas com precedente medido neste repositório:
+ *
+ * 1. **O corpus é derivado, não digitado.** Ele sai do próprio bloco `@theme`. Um `for`
+ *    sobre nomes escritos à mão é o que a ADR 0033 achou e generalizou: a guarda anterior
+ *    de consumo de contrato era um laço sobre oito nomes num contrato de 56 esquemas, e a
+ *    allowlist dela seguia vazia porque nada a consultava.
+ *
+ * 2. **Fail-closed.** `@theme` ilegível ou vazio reprova. Verde por não ter conseguido
+ *    olhar é a forma do `dependency-review` da ADR 0023, que passou meses parecendo
+ *    varredura enquanto olhava só o diff de um PR.
+ *
+ * 3. **O elo é medido, não argumentado.** Um token é consumido por `var(--token)` no CSS
+ *    **ou** pelo utilitário que o Tailwind v4 gera a partir dele — `--color-info-600` vira
+ *    `text-info-600`/`bg-info-600`/`border-info-600`, `--radius-card` vira `rounded-card`,
+ *    `--shadow-pop` vira `shadow-pop`. O casador é estreito nas duas pontas de propósito:
+ *    exige prefixo de utilitário na frente e recusa continuação de palavra atrás. Sem a
+ *    segunda metade, `--color-brand-5` passaria verde por causa de `bg-brand-500` — que é
+ *    o `.priority` da ADR 0033 e o `date` da ADR 0038, os dois casos em que um nome casou
+ *    por substring e a guarda deu por consumido o que ninguém consumia.
+ */
+
+/**
+ * O bloco `@theme` inteiro, com as chaves balanceadas. `null` quando não existe.
+ *
+ * A âncora é `^@theme` em início de linha, e isso foi medido: a busca solta casava a
+ * menção a `@theme` **dentro de um comentário** de `@layer components`, e daí em diante a
+ * varredura balanceava as chaves de outro bloco e devolvia zero token. Renomear o bloco
+ * de verdade continuaria reprovando — mas pela asserção errada, dizendo "o `@theme`
+ * existe e está vazio" sobre um arquivo onde ele não existe mais.
+ */
+function themeBlock(css) {
+  const at = css.search(/^@theme\b/m);
+  if (at === -1) return null;
+  const open = css.indexOf("{", at);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let end = open; end < css.length; end += 1) {
+    if (css[end] === "{") depth += 1;
+    else if (css[end] === "}") {
+      depth -= 1;
+      if (depth === 0) return css.slice(at, end + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * O texto sem comentário.
+ *
+ * Um token citado em prosa não é um token consumido — é justamente como um documento
+ * afirma o que o código não faz. O erro possível aqui é só numa direção: apagar demais
+ * derruba um consumidor de verdade e a guarda fica **vermelha**, nunca verde por engano.
+ * O `[^:\w]` antes de `//` é o que preserva `https://` dentro de string.
+ */
+function withoutComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:\w])\/\/[^\n]*/g, "$1 ");
+}
+
+/** Os utilitários que o Tailwind v4 gera a partir de um token, por família. */
+function utilityPattern(family, value) {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const side = "(?:x-|y-|t-|r-|b-|l-|s-|e-)?";
+  const corner = "(?:t-|r-|b-|l-|s-|e-|tl-|tr-|br-|bl-|ss-|se-|es-|ee-)?";
+  if (family === "color") {
+    return (
+      `(?:text|bg|fill|stroke|from|via|to|accent|caret|decoration|placeholder|ring|` +
+      `outline|shadow|ring-offset)-${escaped}|(?:border|divide)-${side}${escaped}`
+    );
+  }
+  if (family === "radius") return `rounded-${corner}${escaped}`;
+  if (family === "shadow") return `(?:shadow|inset-shadow|drop-shadow)-${escaped}`;
+  if (family === "font") return `font-${escaped}`;
+  return null;
+}
+
+/** Os arquivos que consomem um token, por `var(--token)` ou pelo utilitário dele. */
+function consumersOf(token, sources) {
+  const [, family, value] = /^--([a-z]+)-(.+)$/.exec(token);
+  // As duas pontas são fechadas por asserção de largura zero, para que o trecho relatado
+  // seja exatamente o utilitário: `(?<![\w-])` recusa continuação de palavra na frente e
+  // `(?![\w-])` atrás — é o segundo que separa `brand-50` de `brand-500`.
+  const utility = new RegExp(`(?<![\\w-])(?:${utilityPattern(family, value)})(?![\\w-])`);
+  const variable = new RegExp(`var\\(\\s*${token}\\s*[,)]`);
+  const found = [];
+  for (const [path, source] of sources) {
+    const hit = source.match(variable) ?? source.match(utility);
+    if (hit) found.push(`${path} (${hit[0].trim()})`);
+  }
+  return found;
+}
+
+/**
+ * Token que o `@theme` declara e que ninguém consome, com o motivo por extenso.
+ *
+ * A isenção **não tem prazo**, no precedente do `PINNED_BY_EXCEPTION` de
+ * `test_supply_chain_pins.py` e pelo argumento que ele já escreveu: token não caduca por
+ * calendário. O vencimento dela é a asserção de obsolescência abaixo, que reprova no dia
+ * em que o token ganhar consumidor ou sair do `@theme`.
+ *
+ * Nasce **vazia**, e isso é medição e não sorte: os 32 tokens de hoje têm consumidor, os
+ * sete órfãos que a T01 deixou foram fechados pela T02, e o valor da linha vazia é a
+ * asserção que a mantém assim.
+ */
+const TOKEN_WITHOUT_A_CONSUMER = {};
+
+/** O `@theme`, os tokens dele e o corpus onde se procura consumidor. */
+async function themeAndCorpus() {
+  const sources = await readSources();
+  const css = sources.get("app/globals.css");
+  assert.ok(css, "app/globals.css sumiu do corpus varrido");
+
+  const block = themeBlock(css);
+  assert.ok(
+    block,
+    "não achei o bloco `@theme` em app/globals.css. A guarda de consumo de token" +
+      " depende dele para existir, e um corpus que não deu para ler reprova em vez de" +
+      " passar (ADR 0023).",
+  );
+
+  const tokens = [...block.matchAll(/^\s*(--(?:color|radius|shadow|font)-[\w-]+)\s*:/gm)].map(
+    (match) => match[1],
+  );
+
+  // O consumidor tem de ser **fora** do `@theme`: um token que só aparece na própria
+  // declaração não é consumido, e `--color-focus: var(--color-brand-500)` provaria o
+  // contrário se o bloco entrasse no corpus.
+  const corpus = new Map();
+  for (const [path, source] of sources) {
+    corpus.set(
+      path,
+      withoutComments(path === "app/globals.css" ? source.replace(block, " ") : source),
+    );
+  }
+  return { tokens, corpus };
+}
+
+test("todo token do @theme tem consumidor, e o corpus sai do próprio @theme", async () => {
+  const { tokens, corpus } = await themeAndCorpus();
+
+  // Fail-closed nas duas pontas: um `@theme` que a varredura não conseguiu ler e um
+  // corpus vazio produzem exatamente o mesmo verde de "nenhum token sem consumidor".
+  assert.ok(
+    tokens.length > 0,
+    "o bloco `@theme` existe e a varredura não extraiu token nenhum dele. Isto é a" +
+      " guarda cega, não um `@theme` limpo.",
+  );
+  assert.ok(corpus.size > 0, "o corpus de `app/` e `components/` voltou vazio");
+
+  const orphans = tokens.filter(
+    (token) => !(token in TOKEN_WITHOUT_A_CONSUMER) && consumersOf(token, corpus).length === 0,
+  );
+
+  assert.deepEqual(
+    orphans,
+    [],
+    "estes tokens do `@theme` não têm consumidor em `app/` nem em `components/`: " +
+      orphans.join(", ") +
+      ". `docs/design/one-design-system.md` publica que um token só entra no `@theme` se" +
+      " algum seletor o consumir — dê consumidor ao token, tire-o do `@theme`, ou" +
+      " declare a isenção em `TOKEN_WITHOUT_A_CONSUMER` com o motivo por extenso" +
+      " (F-025 T04, PLAN_DEVIATION 01).",
+  );
+});
+
+test("a isenção de token não guarda linha que deixou de ser necessária", async () => {
+  const { tokens, corpus } = await themeAndCorpus();
+
+  const obsolete = [];
+  for (const token of Object.keys(TOKEN_WITHOUT_A_CONSUMER).sort()) {
+    if (!tokens.includes(token)) {
+      obsolete.push(`${token}: não está mais no @theme`);
+      continue;
+    }
+    const consumers = consumersOf(token, corpus);
+    if (consumers.length > 0) obsolete.push(`${token}: já é consumido em ${consumers[0]}`);
+  }
+
+  assert.deepEqual(
+    obsolete,
+    [],
+    "estas linhas de `TOKEN_WITHOUT_A_CONSUMER` deixaram de ser necessárias: " +
+      obsolete.join("; ") +
+      ". Apague-as. A isenção não tem prazo de propósito — token não caduca por" +
+      " calendário —, então esta asserção é o único vencimento que ela tem" +
+      " (precedente do `PINNED_BY_EXCEPTION`, ADR 0063).",
+  );
+});
+
+test("o casador de consumo separa um token do irmão mais longo", async () => {
+  // A medição que sustenta a guarda acima, e ela mora no arquivo porque um casador
+  // frouxo é o defeito de que a ADR 0033 e a ADR 0038 são feitas: lá `.priority` e
+  // `date` passaram verdes por substring, sem consumidor nenhum. Aqui o caso é
+  // `--color-brand-5`, que não existe e cujo nome é prefixo de dois tokens que existem e
+  // são usados o tempo todo.
+  const corpus = new Map([["falso.css", ".x { @apply bg-brand-50 text-brand-500; }"]]);
+
+  assert.deepEqual(consumersOf("--color-brand-5", corpus), []);
+  assert.deepEqual(consumersOf("--color-brand-50", corpus), ["falso.css (bg-brand-50)"]);
+  assert.deepEqual(consumersOf("--color-brand-500", corpus), ["falso.css (text-brand-500)"]);
+  // E o utilitário tem de estar mesmo escrito: o nome do token solto na prosa não conta.
+  assert.deepEqual(
+    consumersOf("--radius-card", new Map([["prosa.tsx", "o raio de cartão é radius-card"]])),
+    [],
+  );
+  assert.deepEqual(
+    consumersOf("--radius-card", new Map([["uso.tsx", '<div className="rounded-card" />']])),
+    ["uso.tsx (rounded-card)"],
   );
 });

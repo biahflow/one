@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
-/* Tokens do Portal Labs. A marca segue roxa/navy; o que mudou é a consistência:
+/* Tokens do One. A marca segue roxa/navy; o que mudou é a consistência:
    tudo abaixo (e o markup) referencia estes tokens em vez de literais soltos. */
 @theme {
   --color-ink: #17243a;
-  --color-muted: #6b7a91;
+  --color-muted: #657389;
   --color-line: #e8edf4;
   --color-canvas: #f6f8fc;
   --color-navy: #16233a;
@@ -19,11 +19,22 @@
   --color-brand-900: #342478;
 
   --color-success-50: #e7f7f0;
-  --color-success-600: #1c8a63;
+  --color-success-600: #1a7e5b;
   --color-warning-50: #fdf3e4;
-  --color-warning-600: #b06a1a;
+  --color-warning-600: #a16118;
   --color-danger-50: #fdecea;
   --color-danger-600: #c0392b;
+  --color-info-50: #e9f1fd;
+  --color-info-600: #1d5fb4;
+
+  --color-accent-green: #1c8665;
+  --color-focus: var(--color-brand-500);
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f8fafc;
+
+  --radius-card: 1rem;
+  --radius-control: 0.75rem;
+  --radius-pill: 9999px;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
@@ -41,8 +52,8 @@
   body {
     margin: 0;
     background:
-      radial-gradient(circle at 6% -4%, rgba(110, 86, 207, 0.07), transparent 26rem),
-      radial-gradient(circle at 96% 2%, rgba(33, 161, 121, 0.05), transparent 22rem),
+      radial-gradient(circle at 6% -4%, color-mix(in srgb, var(--color-brand-500) 7%, transparent), transparent 26rem),
+      radial-gradient(circle at 96% 2%, color-mix(in srgb, var(--color-accent-green) 5%, transparent), transparent 22rem),
       var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
@@ -65,7 +76,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand-500);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
   }
 }
@@ -75,13 +86,18 @@
   .panel,
   .state-card,
   .metric-card {
-    @apply rounded-2xl border border-line bg-white;
+    @apply border border-line;
+    /* O cartão é a superfície e o raio que as primitivas do One citam por nome
+       (F-025 T02, DAP §"Decisions this package carries" item 7): mesmo valor de
+       `rounded-2xl`/`bg-white` de antes, só que agora o token é a fonte. */
+    background: var(--color-surface);
+    border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
   }
 
   .eyebrow,
   .nav-label {
-    @apply m-0 text-[10px] font-extrabold uppercase tracking-[0.11em] text-slate-400;
+    @apply m-0 text-[10px] font-extrabold uppercase tracking-[0.11em] text-muted;
   }
 
   .state {
@@ -93,6 +109,37 @@
   /* Um expurgo que falhou é obrigação contratual não cumprida (ADR 0027), e o
      cinza de `state--2` o esconderia entre os pendentes. */
   .state--3 { @apply bg-danger-50 text-danger-600; }
+
+  /* `<StatePill />` (F-025 T02, DAP §04) — ícone e cor juntos, nas quatro
+     variantes semânticas. Primitiva nova, classes novas: trocar `.state--0..3`
+     por ela em todo o produto não é desta fatia. */
+  .state-pill {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-[10.5px] font-extrabold;
+    border-radius: var(--radius-pill);
+  }
+  .state-pill svg { @apply shrink-0; }
+  .state-pill--success { @apply bg-success-50 text-success-600; }
+  .state-pill--warning { @apply bg-warning-50 text-warning-600; }
+  .state-pill--danger { @apply bg-danger-50 text-danger-600; }
+  .state-pill--info { background: var(--color-info-50); color: var(--color-info-600); }
+
+  /* `<Button />` (F-025 T02, DAP §05) — as quatro variantes; `disabled` e o
+     anel de foco de teclado vêm de `:focus-visible` no `@layer base` acima. */
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 border border-transparent px-4 py-2.5 text-[13px] font-bold transition-colors;
+    border-radius: var(--radius-control);
+  }
+  .btn--primary {
+    @apply bg-brand-500 text-white hover:bg-brand-600;
+    box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--color-brand-500) 50%, transparent);
+  }
+  .btn--secondary {
+    @apply border-line text-ink hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700;
+    background: var(--color-surface);
+  }
+  .btn--ghost { @apply bg-transparent text-muted hover:bg-brand-50 hover:text-ink; }
+  .btn--danger { @apply bg-danger-600 text-white hover:opacity-90; }
+  .btn:disabled { @apply cursor-not-allowed opacity-55; }
 
   .empty-state {
     @apply rounded-xl border border-dashed border-line px-4 py-6 text-center text-xs text-muted;
@@ -114,18 +161,27 @@
   .sidebar--menu-open { @apply z-60; }
 
   .brand-row {
-    @apply flex items-center gap-2 px-2 pb-6 text-[19px] font-bold tracking-[-0.03em] text-ink;
+    @apply flex items-center gap-2 px-2 pb-6;
   }
-  .brand-row > span span { @apply text-brand-500; }
-  .brand-mark {
-    @apply grid h-6.5 w-6.5 place-items-center rounded-lg bg-brand-500 text-white;
-    box-shadow: 0 4px 12px rgba(110, 86, 207, 0.32);
-  }
+  /* `<Brand />` — wordmark em duas linhas dentro de uma `.brand-row` que é
+     `flex`; o `grid` interno é o que evita as duas linhas lado a lado. Os três
+     filhos são `<span>` (nunca `<div>`, revisão da T02 achado 1), e cada um tem
+     regra de cor própria — nada aqui depende de um seletor `> span span`
+     genérico, que era frágil por construção e existia só para o antigo sufixo
+     `labs`. */
+  .one-brand { @apply grid gap-px; }
+  .one-brand-word { @apply text-[19px] font-bold tracking-[-0.03em] text-ink; }
+  .one-brand-dot { @apply text-brand-500; }
+  .one-brand-sub { @apply text-[10px] font-semibold tracking-[0.04em] text-muted; }
   .sidebar-close { @apply hidden border-0 bg-transparent text-slate-500; }
   .sidebar-toggle { @apply ml-auto grid rounded-lg transition-colors hover:bg-slate-100; }
 
   .project-switcher {
-    @apply flex w-full items-center gap-2.5 rounded-xl border border-line bg-slate-50/70 p-2.5 text-left text-ink transition-colors hover:border-brand-200 hover:bg-brand-50/40;
+    @apply flex w-full items-center gap-2.5 rounded-xl border border-line p-2.5 text-left text-ink transition-colors hover:border-brand-200 hover:bg-brand-50/40;
+    /* Era `bg-slate-50/70` — mesmo hex (F-025 T02, DAP §"Decisions this package
+       carries" item 7: `--color-surface-sunken` nomeia o que já era escrito à
+       mão). */
+    background: color-mix(in srgb, var(--color-surface-sunken) 70%, transparent);
   }
   .project-switcher > span:nth-child(2) { @apply grid min-w-0 flex-1 gap-0.5; }
   .project-switcher strong, .profile-card strong { @apply text-xs; }
@@ -194,7 +250,7 @@
   .hero-copy { @apply mt-2 mb-0 text-sm text-muted; }
   .ai-button {
     @apply flex items-center gap-2 rounded-xl border-0 bg-brand-500 px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-600;
-    box-shadow: 0 8px 18px -6px rgba(110, 86, 207, 0.5);
+    box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--color-brand-500) 50%, transparent);
   }
 
   .status-card {
@@ -278,7 +334,7 @@
   .comment-row { @apply grid gap-0.5 border-b border-line/70 pb-2 last:border-b-0 last:pb-0; }
   .comment-row p { @apply m-0 text-xs leading-relaxed text-ink; }
   .comment-row small { @apply text-[10px] text-slate-400; }
-  /* Quem falou de cada lado. O cliente lê "Portal Labs" em roxo e o próprio time
+  /* Quem falou de cada lado. O cliente lê "Biahflow" em roxo e o próprio time
      em cinza: a cor diz o lado, não a importância. */
   .comment-side { @apply text-[10px] font-bold text-slate-500; }
   .comment-side--internal { @apply text-brand-600; }
@@ -671,6 +727,48 @@
   .field-hint { @apply text-[10px] leading-relaxed text-muted; }
   .admin-head h2 svg, .panel-heading h2 svg { @apply mr-1.5 inline-block align-[-3px]; }
 
+  /* ---------- Vitrine do sistema de design (F-025 T04) ---------- */
+  /* Classes só desta tela. Elas existem porque a vitrine desenha o sistema, e não o
+     produto: não há painel de projeto que já tenha a forma de "uma amostra ao lado do
+     nome do token". Nenhuma introduz token novo — o `@theme` fecha na T01, e acrescentar
+     cor aqui reprovaria na guarda de consumo de `tests/rendered-html.test.mjs`. */
+  .design-brand { @apply mb-5 inline-flex; }
+  .design-note { @apply mt-0 mb-4 max-w-[70ch] text-[12.5px] leading-relaxed text-muted; }
+  .design-row { @apply flex flex-wrap items-center gap-2.5; }
+  .design-cell { @apply grid content-start gap-1.5; }
+  .design-live { @apply mt-4 grid gap-2.5 border-t border-line pt-4; }
+  .design-pill-live { @apply flex min-h-11 flex-wrap items-center gap-2.5; }
+  .design-slot { @apply inline-flex; }
+  /* O mesmo anel do `:focus-visible`, num invólucro: destacar a variante escolhida com
+     outra cor ensinaria um segundo vocabulário de "isto está em foco". */
+  .design-spot {
+    @apply rounded-xl;
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  .design-fields { @apply grid max-w-[560px] gap-3 sm:grid-cols-2; }
+  .design-field-label { @apply grid gap-1.5 text-[11px] font-semibold text-slate-600; }
+  .design-field {
+    @apply rounded-xl border border-line bg-white px-3 py-2.5 text-[13px] text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  }
+  /* O estado de foco desenhado, ao lado do campo em repouso: o foco de verdade só existe
+     num campo por vez, e a comparação é o que a vitrine precisa mostrar. O botão ao lado
+     leva o foco real ao outro campo, para que a amostra possa ser conferida contra ele. */
+  .design-field--focus { @apply border-brand-500 ring-4 ring-brand-100; }
+  .design-figure {
+    @apply block h-13 w-20 border border-line;
+    background: var(--color-surface-sunken);
+  }
+  .design-token { @apply font-mono text-[11px] font-semibold text-ink; }
+  .design-meta { @apply max-w-[46ch] text-[10.5px] leading-relaxed text-muted; }
+  .design-swatches { @apply grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2.5; }
+  .design-swatch { @apply grid content-start gap-1 rounded-xl border border-line p-2.5; }
+  .design-chip {
+    @apply grid h-11 w-full place-items-center rounded-lg border border-line text-base;
+    background: var(--color-surface);
+  }
+  .design-pair { @apply inline-block rounded-md px-2 py-1 text-[13px] font-semibold; }
+
   /* ---------- Login ---------- */
   .auth-shell { @apply grid min-h-screen grid-cols-[1.05fr_1fr] bg-canvas; }
   .auth-brand {
@@ -682,12 +780,15 @@
     @apply absolute -right-30 -bottom-30 h-65 w-65 rounded-full border-[60px] border-white/6;
   }
   .auth-brand-row { @apply p-0 text-white; }
-  .auth-brand-row > span span { @apply text-brand-200; }
-  .auth-brand-row .brand-mark { @apply bg-white/15 shadow-none; }
+  /* O wordmark sobre o gradiente escuro (DAP §01): branco, com o ponto e o
+     descender em `brand-200` — `brand-500` sobre `brand-600` dá 1,06:1, e as
+     duas medições de contraste do pacote coincidem no mesmo tom. */
+  .auth-brand-row .one-brand-word { @apply text-white; }
+  .auth-brand-row .one-brand-dot { @apply text-brand-200; }
+  .auth-brand-row .one-brand-sub { @apply text-brand-200; }
   .auth-brand-copy { @apply relative z-1 max-w-100; }
   .auth-brand-copy h1 { @apply mt-0 mb-3.5 text-3xl leading-tight font-semibold tracking-[-0.035em]; }
   .auth-brand-copy p { @apply text-sm leading-relaxed text-brand-100; }
-  .auth-brand-foot { @apply text-[11px] text-brand-200; }
   .auth-form-wrap { @apply grid place-items-center p-10; }
   .auth-form { @apply flex w-full max-w-90 flex-col; }
   .auth-form .eyebrow { @apply mb-2 text-brand-600; }
@@ -706,7 +807,12 @@
 @media (min-width: 761px) {
   .portal-shell--collapsed .sidebar { width: 72px; flex-basis: 72px; padding-left: 10px; padding-right: 10px; }
   .portal-shell--collapsed .brand-row { justify-content: center; padding: 0 0 25px; }
-  .portal-shell--collapsed .brand-row > span:nth-child(2) { display: none; }
+  /* O DAP proíbe o tile na tela do produto, não o wordmark reduzido (revisão
+     da T02, achado 2): a 72 px com 10 px de padding de cada lado sobram ~52 px,
+     e "One." a 15 px em Inter bold mede ~33 px — cabe. Some só o descender e
+     encolhe o wordmark, em vez de esconder a marca inteira. */
+  .portal-shell--collapsed .one-brand-sub { display: none; }
+  .portal-shell--collapsed .one-brand-word { font-size: 15px; }
   .portal-shell--collapsed .sidebar-toggle { margin-left: 0; }
   .portal-shell--collapsed .project-switcher { justify-content: center; padding: 9px 0; }
   .portal-shell--collapsed .project-switcher > span:nth-child(2),

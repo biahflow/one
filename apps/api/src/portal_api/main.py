@@ -73,7 +73,7 @@ configure_logging()
 # importação e não numa rota de saúde — um processo que já respondeu uma
 # requisição com a senha do `.env.example` não tem como desfazer isso.
 preflight(settings)
-app = FastAPI(title="Portal Labs API", version="0.1.0", docs_url="/docs")
+app = FastAPI(title="One API", version="0.1.0", docs_url="/docs")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_origin],

@@ -120,8 +120,8 @@ def world(migrated_engine: Engine) -> Iterator[World]:
         # Staff: organization-wide membership, no project — the case that used to
         # resolve to nothing at all.
         staff = User(
-            email=f"ops-{tag}@portallabs.test",
-            full_name="Ops Portal Labs",
+            email=f"ops-{tag}@biahflow.test",
+            full_name="Ops Biahflow",
             external_subject=f"sub-ops-{tag}",
             is_internal=True,
         )

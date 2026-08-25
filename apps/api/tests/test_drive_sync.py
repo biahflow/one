@@ -99,7 +99,7 @@ def _connect(engine: Engine, project: Project, **overrides: object) -> uuid.UUID
             project_id=project.id,
             folder_id=ROOT,
             folder_name="Contratos",
-            google_account_email="interno@portallabs.local",
+            google_account_email="interno@biahflow.ai",
             refresh_token_sealed=crypto.seal("refresh-token", aad=aad, settings=settings),
             granted_scope=settings.google_drive_scope,
             connected_at=datetime.now(timezone.utc),

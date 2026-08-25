@@ -1,7 +1,8 @@
 # ADR 0067 — One como projeção client-facing, não SoR de Delivery
 
-**Status:** Accepted  
-**Data:** 2026-08-24
+**Status:** aceito
+**Data:** 24/08/2026
+**Fase:** 7
 
 ## Contexto
 
@@ -43,3 +44,8 @@ Quando uma entrega entra em `CLIENT_REVIEW`, One pode apresentar a pendência ao
 - O webhook/snapshot existente evolui para contrato de projeção versionado.
 - One não precisa consultar ClickUp ou GitHub diretamente.
 - A experiência continua disponível mesmo que uma ferramenta interna seja substituída, desde que o contrato de projeção permaneça.
+
+*Retificado em 25/08/2026 (ADR 0069), no cabeçalho: esta ADR e a 0068 nasceram com
+`**Status:** Accepted` e data em ISO, e o vocabulário da guarda de índice é `{aceito, aceita}`
+com data `DD/MM/AAAA` (ADR 0054). O texto da decisão não foi tocado — o que estava errado era o
+cabeçalho, e ele deixava `test_roadmap_index.py` vermelho a cada push desde 24/08/2026.*

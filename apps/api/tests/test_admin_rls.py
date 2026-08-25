@@ -84,7 +84,7 @@ def world(migrated_engine: Engine) -> Iterator[World]:
         db_session.flush()
 
         admin_user = User(
-            email=f"admin-{name}-{tag}@portallabs.test",
+            email=f"admin-{name}-{tag}@biahflow.test",
             full_name=f"Admin {name.title()}",
             external_subject=f"sub-admin-{name}-{tag}",
             is_internal=True,

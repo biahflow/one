@@ -93,8 +93,9 @@ PENDING_PRIORITY_MAP: dict[str, PendingPriority] = {
 }
 
 # Quem responde pelo item, no vocabulário do Biahflow (``party``). "provider" é sempre a
-# Portal Labs; "client" é a própria organização do cliente, resolvida no sync.
-PROVIDER_LABEL = "Portal Labs"
+# Biahflow — é o time que responde, não o produto; "client" é a própria organização do
+# cliente, resolvida no sync.
+PROVIDER_LABEL = "Biahflow"
 
 _SIGNATURE_PREFIX = "sha256="
 

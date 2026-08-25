@@ -86,8 +86,8 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_starttls: bool = False
-    notifications_from_email: str = "portal@portallabs.local"
-    notifications_from_name: str = "Portal Labs"
+    notifications_from_email: str = "one@biahflow.ai"
+    notifications_from_name: str = "Biahflow"
     # Desligado por padrão: um ambiente sem SMTP configurado não deve empilhar
     # falha de conexão a cada webhook. O compose liga.
     notifications_email_enabled: bool = False

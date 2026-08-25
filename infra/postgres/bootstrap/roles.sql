@@ -1,4 +1,4 @@
--- Papéis do Portal Labs (ADR 0010) — fonte única, idempotente.
+-- Papéis do One (ADR 0010) — fonte única, idempotente.
 --
 -- Motivo: o role `portal` é criado pelo entrypoint do Postgres a partir de
 -- POSTGRES_USER e nasce SUPERUSER. Superusuário ignora Row-Level Security
@@ -206,7 +206,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE portal_migrator IN SCHEMA portal
   GRANT SELECT ON TABLES TO portal_admin;
 
 -- 7. Relatório ----------------------------------------------------------------
-\echo 'Papéis do Portal Labs:'
+\echo 'Papéis do One:'
 SELECT rolname, rolsuper, rolbypassrls, rolcanlogin
 FROM pg_roles
 WHERE rolname IN ('portal', 'portal_migrator', 'portal_app', 'portal_system', 'portal_admin')

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Portal Labs — a multi-tenant client portal where customers track AI project progress, results, and decisions, with a context-aware assistant that answers **only** with evidence from the project (citations, never invention). Product docs are PT-BR; code, API, and DB identifiers are English.
+One — a multi-tenant client portal where customers track AI project progress, results, and decisions, with a context-aware assistant that answers **only** with evidence from the project (citations, never invention). Product docs are PT-BR; code, API, and DB identifiers are English.
 
 **Read the present tense above as design, not as deployment: since 13/08/2026 the portal is off the air, by a product decision** (ADR 0053). The client journey is conducted on WhatsApp, and the portal comes back when there is someone to operate it — `portal-web`, `portal-api`, `keycloak`, `portal-worker`, `portal-beat` and `portal-migrate` left the GCP along with their Terraform state and their twenty secrets. **Nothing was revoked:** Fases 1 through 6 remain delivered, tested and green in CI; they simply are not serving a client. Which changes what a session may plan: the two Fase 7 signals measure client engagement *in the portal*, and there is no portal up to measure. `ROADMAP.md` carries the same note at the top, and it is the canonical index — a decision it does not know is state without an owner, which is why `test_roadmap_index.py` now fails a build whose accepted ADR has no line there (ADR 0054).
 
@@ -84,7 +84,7 @@ Demo data has exactly one door left, `demoShellEnabled()` in `app/lib/demo.ts`: 
 
 ## Styling
 
-Tailwind CSS v4, configured entirely in `app/globals.css` (no `tailwind.config.js`). The `@theme` block is the single source of design tokens — brand scale (`brand-50…900`, the Portal Labs purple), `ink`/`muted`/`line`/`canvas`/`navy`, state colors and the layered shadows. Recurring UI (`.panel`, `.nav-item`, `.milestone`, `.journey-*`, …) lives in `@layer components` built from Tailwind utilities via `@apply`, so the markup stays readable and the tokens stay authoritative; the three responsive breakpoints (761px collapsed sidebar, 980px, 760px mobile) are plain media queries at the end of the file. Never hardcode a hex in a component — add or use a token.
+Tailwind CSS v4, configured entirely in `app/globals.css` (no `tailwind.config.js`). The `@theme` block is the single source of design tokens — brand scale (`brand-50…900`, the One purple), `ink`/`muted`/`line`/`canvas`/`navy`, state colors and the layered shadows. Recurring UI (`.panel`, `.nav-item`, `.milestone`, `.journey-*`, …) lives in `@layer components` built from Tailwind utilities via `@apply`, so the markup stays readable and the tokens stay authoritative; the three responsive breakpoints (761px collapsed sidebar, 980px, 760px mobile) are plain media queries at the end of the file. Never hardcode a hex in a component — add or use a token.
 
 ## Non-negotiable rules (from `AGENTS.md`)
 

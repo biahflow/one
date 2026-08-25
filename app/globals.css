@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Tokens do Portal Labs. A marca segue roxa/navy; o que mudou é a consistência:
+/* Tokens do One. A marca segue roxa/navy; o que mudou é a consistência:
    tudo abaixo (e o markup) referencia estes tokens em vez de literais soltos. */
 @theme {
   --color-ink: #17243a;
@@ -334,7 +334,7 @@
   .comment-row { @apply grid gap-0.5 border-b border-line/70 pb-2 last:border-b-0 last:pb-0; }
   .comment-row p { @apply m-0 text-xs leading-relaxed text-ink; }
   .comment-row small { @apply text-[10px] text-slate-400; }
-  /* Quem falou de cada lado. O cliente lê "Portal Labs" em roxo e o próprio time
+  /* Quem falou de cada lado. O cliente lê "Biahflow" em roxo e o próprio time
      em cinza: a cor diz o lado, não a importância. */
   .comment-side { @apply text-[10px] font-bold text-slate-500; }
   .comment-side--internal { @apply text-brand-600; }
@@ -747,7 +747,6 @@
   .auth-brand-copy { @apply relative z-1 max-w-100; }
   .auth-brand-copy h1 { @apply mt-0 mb-3.5 text-3xl leading-tight font-semibold tracking-[-0.035em]; }
   .auth-brand-copy p { @apply text-sm leading-relaxed text-brand-100; }
-  .auth-brand-foot { @apply text-[11px] text-brand-200; }
   .auth-form-wrap { @apply grid place-items-center p-10; }
   .auth-form { @apply flex w-full max-w-90 flex-col; }
   .auth-form .eyebrow { @apply mb-2 text-brand-600; }

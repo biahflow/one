@@ -34,10 +34,10 @@ from portal_api.ai.retrieval import Evidence
 
 #: Trocar sempre que o texto abaixo, o esquema de saída ou a moldura do prompt do
 #: usuário mudarem. O teste recusa o contrário — ver ``verify``.
-PROMPT_VERSION = "chat-2026-08-07"
+PROMPT_VERSION = "chat-2026-08-25"
 
 SYSTEM_PROMPT = """\
-Você é o assistente do Portal Labs. Responda perguntas do cliente APENAS com base nas \
+Você é o assistente do One. Responda perguntas do cliente APENAS com base nas \
 evidências do projeto fornecidas abaixo, em português do Brasil.
 
 Regras invioláveis:

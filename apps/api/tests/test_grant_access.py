@@ -69,7 +69,7 @@ def orphan(migrated_engine: Engine) -> Iterator[Orphan]:
         # A pessoa existe (já entrou no portal alguma vez) e **não** tem vínculo
         # nesta organização — é o estado real depois do primeiro sync.
         person = User(
-            email=f"helena-{tag}@portallabs.com.br",
+            email=f"helena-{tag}@biahflow.ai",
             full_name="Helena Dias",
             external_subject=f"sub-bootstrap-{tag}",
             is_internal=True,
@@ -237,7 +237,7 @@ def test_it_refuses_when_the_organization_already_has_an_administrator(
     """
     with Session(migrated_engine) as session:
         outra_pessoa = User(
-            email=f"outro-{uuid.uuid4().hex[:8]}@portallabs.com.br",
+            email=f"outro-{uuid.uuid4().hex[:8]}@biahflow.ai",
             full_name="Outro Interno",
             external_subject=f"sub-outro-{uuid.uuid4().hex[:8]}",
             is_internal=True,

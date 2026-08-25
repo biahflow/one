@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Backup do Portal Labs — Postgres e objetos do storage (Fase 5, ADR 0019).
+# Backup do One — Postgres e objetos do storage (Fase 5, ADR 0019).
 #
 #   ./scripts/backup.sh [--out DIR] [--prefix org/<uuid>/] [--allow-plaintext]
 #

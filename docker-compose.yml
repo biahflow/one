@@ -174,8 +174,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
-      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
-      NOTIFICATIONS_FROM_NAME: ${NOTIFICATIONS_FROM_NAME:-Portal Labs}
+      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-one@biahflow.ai}
+      NOTIFICATIONS_FROM_NAME: ${NOTIFICATIONS_FROM_NAME:-Biahflow}
       # Fonte da verdade do status (ADR 0006). O seed entra por `sync_snapshot`
       # direto, então a stack local sobe sem estas — o que é justamente o motivo
       # de elas terem passado despercebidas.
@@ -276,7 +276,7 @@ services:
       NOTIFICATIONS_EMAIL_ENABLED: ${NOTIFICATIONS_EMAIL_ENABLED:-true}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
-      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-portal@portallabs.local}
+      NOTIFICATIONS_FROM_EMAIL: ${NOTIFICATIONS_FROM_EMAIL:-one@biahflow.ai}
       PORTAL_WEB_URL: ${PORTAL_WEB_URL:-http://localhost:3000}
       # Varredura antes de indexar (ADR 0017). Vazio = veredito `skipped`, e
       # nunca `clean` — o caminho sem ClamAV ainda reconhece o EICAR, que é o

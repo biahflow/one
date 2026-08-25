@@ -1,4 +1,4 @@
-# Portal Labs
+# One
 
 Portal multiempresa para clientes acompanharem projetos, resultados e decisões, com uma IA contextual que responde somente com evidências do projeto.
 

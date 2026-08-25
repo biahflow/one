@@ -20,8 +20,8 @@ type ProjectOption = { id: string; name: string; current: boolean };
 
 const ROLE_OPTIONS = [
   { value: "client_member", label: "Cliente" },
-  { value: "internal_member", label: "Time Portal Labs" },
-  { value: "internal_admin", label: "Administrador Portal Labs" },
+  { value: "internal_member", label: "Time Biahflow" },
+  { value: "internal_admin", label: "Administrador Biahflow" },
 ];
 
 export default function MembersClient({

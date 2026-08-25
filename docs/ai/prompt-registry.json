@@ -12,5 +12,12 @@
     "schema_sha256": "a0e68083cf217d9afb05a6636083ca42af62da7f60b69a7dda1a54a8da9b5673",
     "template_sha256": "4fce9d5a993ced2eb06a1f710598f80678677e46191727c03cddd6130bbd2b3d",
     "recorded_at": "2026-08-07T12:03:30Z"
+  },
+  {
+    "version": "chat-2026-08-25",
+    "system_sha256": "b2e739bf027d4cc1bd9d5c51187da4e0b425f39f67baa21e35f5ffdb714505be",
+    "schema_sha256": "a0e68083cf217d9afb05a6636083ca42af62da7f60b69a7dda1a54a8da9b5673",
+    "template_sha256": "4fce9d5a993ced2eb06a1f710598f80678677e46191727c03cddd6130bbd2b3d",
+    "recorded_at": "2026-08-25T12:46:06Z"
   }
 ]

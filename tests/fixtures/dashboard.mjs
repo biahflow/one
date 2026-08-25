@@ -44,7 +44,7 @@ export const DASHBOARD = {
   source_deleted_at: null,
   milestones: [
     { title: "Validação de integrações", state: "in_progress", due_date: "2026-09-09", owner_label: "Acme Brasil" },
-    { title: "Treinamento da operação", state: "planned", due_date: "2026-09-18", owner_label: "Portal Labs" },
+    { title: "Treinamento da operação", state: "planned", due_date: "2026-09-18", owner_label: "Biahflow" },
     { title: "Entrada em produção", state: "planned", due_date: "2026-09-30", owner_label: "Acme Brasil" },
   ],
   journey: {
@@ -71,7 +71,7 @@ export const DASHBOARD = {
     },
   ],
   documents: [
-    { title: "Plano de implantação v3.pdf", type: "PDF", author: "Portal Labs", link: null, updated_at: "2026-08-03T12:00:00+00:00" },
+    { title: "Plano de implantação v3.pdf", type: "PDF", author: "Biahflow", link: null, updated_at: "2026-08-03T12:00:00+00:00" },
   ],
   meetings: [
     { title: "Comitê de projeto", date: "2026-08-28", recording_url: null, has_transcript: false, status: "scheduled" },

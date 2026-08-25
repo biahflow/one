@@ -61,7 +61,7 @@ class FakeDrive:
     """Acervo + transporte. ``media_requests`` é o que prova a fronteira."""
 
     files: dict[str, FakeFile] = field(default_factory=dict)
-    account: str = "interno@portallabs.local"
+    account: str = "interno@biahflow.ai"
     granted_scope: str = "https://www.googleapis.com/auth/drive.readonly"
     refresh_token: str | None = "refresh-token-do-google"
     #: Quando ligado, o token endpoint responde `invalid_grant` — o consentimento

@@ -68,13 +68,13 @@ SEED_USERS: tuple[SeedUser, ...] = (
     ),
     SeedUser(
         subject="00000000-0000-4000-8000-000000000002",
-        email="helena.dias@portallabs.com.br",
+        email="helena.dias@biahflow.ai",
         full_name="Helena Dias",
         role=MemberRole.internal_admin,
     ),
     SeedUser(
         subject="00000000-0000-4000-8000-000000000003",
-        email="rafael.costa@portallabs.com.br",
+        email="rafael.costa@biahflow.ai",
         full_name="Rafael Costa",
         role=MemberRole.internal_member,
     ),

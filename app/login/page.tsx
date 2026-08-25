@@ -34,18 +34,17 @@ export default async function LoginPage({
           <h1>Acompanhe seus projetos de IA em um só lugar.</h1>
           <p>Status, resultados, decisões e um assistente que responde só com evidências do seu projeto.</p>
         </div>
-        <p className="auth-brand-foot">Portal do Cliente</p>
       </aside>
       <section className="auth-form-wrap">
         <form className="auth-form" action={enter}>
           <p className="eyebrow">BEM-VINDO DE VOLTA</p>
           <h2>Entrar na sua conta</h2>
           <p className="auth-lead">
-            O acesso ao portal é feito pelo login corporativo da sua organização.
+            O acesso ao One é feito pelo login corporativo da sua organização.
           </p>
           {error && (
             <p className="auth-error" role="alert">
-              Não foi possível entrar. Tente novamente ou fale com o time da Portal Labs.
+              Não foi possível entrar. Tente novamente ou fale com o time da Biahflow.
             </p>
           )}
           <button type="submit" className="auth-sso">

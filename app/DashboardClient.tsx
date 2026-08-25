@@ -472,8 +472,8 @@ function greeting(user: PortalUser): ChatMessage[] {
 // devolvia data inventada, decisão inventada, contagem de pendência inventada e
 // **rótulos de citação inventados** — nomes de documento e de reunião que nunca
 // existiram — a um cliente autenticado de verdade cuja chamada falhou. E marcava
-// `pending: true`, de modo que a tela dizia "Pendência criada para Portal Labs"
-// para uma pendência que ninguém gravou. O `CLAUDE.md` afirmava que não havia
+// `pending: true`, de modo que a tela anunciava uma pendência criada para o
+// time — uma pendência que ninguém gravou. O `CLAUDE.md` afirmava que não havia
 // mais fallback para dado inventado; era falso justamente aqui, na única tela
 // onde a regra 3 do `AGENTS.md` vale por escrito.
 const CHAT_UNAVAILABLE: ChatMessage = {
@@ -499,7 +499,7 @@ function chatRateLimited(retryAfter: number | null): ChatMessage {
       text:
         "O limite de uso do assistente para a sua organização foi atingido neste mês, " +
         `então não tenho resposta para dar. A cota é renovada em ${dias} dia(s), e a ` +
-        "equipe da Portal Labs pode ampliá-la antes disso. Nada foi registrado.",
+        "equipe da Biahflow pode ampliá-la antes disso. Nada foi registrado.",
     };
   }
   const espera = retryAfter && retryAfter > 0 ? ` Tente de novo em ${retryAfter}s.` : "";
@@ -860,7 +860,7 @@ export default function DashboardClient({
             id: "",
             title: `Responder dúvida do cliente: ${value.slice(0, 160)}`,
             description: "Pergunta sem evidência suficiente no contexto do projeto (chat).",
-            owner: "Portal Labs",
+            owner: "Biahflow",
             state: "open",
             stateLabel: "Aberta",
             // `medium` é o default da coluna, e é o que `ai/service.py` grava:
@@ -1177,7 +1177,7 @@ export default function DashboardClient({
                     Sem evidência suficiente no contexto do projeto
                   </small>
                 )}
-                {message.pending && <small className="pending-created"><Check size={13} /> Pendência criada para Portal Labs</small>}
+                {message.pending && <small className="pending-created"><Check size={13} /> Pendência criada para o time Biahflow</small>}
                 {/* Só a resposta gravada aceita polegar: sem id não há o que avaliar. */}
                 {message.role === "assistant" && message.id && (
                   <AnswerFeedback

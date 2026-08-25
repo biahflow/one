@@ -328,7 +328,7 @@ test("server-renders the login page", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
 
-  assert.match(html, /<title>Portal Labs \| Portal do Cliente<\/title>/i);
+  assert.match(html, /<title>One<\/title>/i);
   assert.match(html, /Acompanhe seus projetos de IA em um só lugar\./);
   assert.match(html, /Entrar com SSO da empresa/);
   // Sem campo de senha: a credencial nunca chega a este domínio (ADR 0010).
@@ -344,7 +344,7 @@ test("server-renders the dashboard for an authenticated session", async () => {
 
   // Nome e organização vêm de `GET /api/v1/me`; o resto, do dashboard. Antes
   // desta fase eram constantes no componente e um fallback de demonstração.
-  assert.match(html, /<title>Portal Labs \| Portal do Cliente<\/title>/i);
+  assert.match(html, /<title>One<\/title>/i);
   assert.match(html, /Bom dia, Marina\./);
   assert.match(html, /Acme Brasil/);
   assert.match(html, /Automação Financeira/);
@@ -752,7 +752,7 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   // suíte existe para impedir, na forma que a ADR 0020 achou nas asserções de
   // backup que pulavam em silêncio. Um chat que falhou agora diz que falhou.
   assert.doesNotMatch(dashboard, /function answerFor/);
-  assert.match(dashboard, /Pendência criada para Portal Labs/);
+  assert.match(dashboard, /Pendência criada para o time Biahflow/);
   // Projeto sem escrita fecha as duas do cliente (ADR 0036/0037). É guarda de forma, como
   // a de citação abaixo: o formulário de pergunta e o de comentário têm de estar atrás da
   // condição, e não apenas escondidos por CSS ou desabilitados no submit — a API responde
@@ -799,7 +799,7 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
   // sem este ramo, um limite atingido cairia no `catch` e viraria erro genérico.
   assert.match(dashboard, /response\.status === 429/);
   assert.match(dashboard, /muitas perguntas em pouco tempo/);
-  assert.match(layout, /Portal Labs \| Portal do Cliente/);
+  assert.match(layout, /title: "One"/);
   assert.match(layout, /lang="pt-BR"/);
 
   // A aba Resultados não aparece no HTML do SSR (só a ativa é renderizada), então

@@ -36,7 +36,7 @@ export const DEMO_OVERVIEW: Overview = {
   nextDelivery: { title: "Treinamento da operação", detail: "18 de setembro • Em 12 dias" },
   milestones: [
     { title: "Validação de integrações", owner: "Time Acme", state: "Em andamento", date: "09 set" },
-    { title: "Treinamento da operação", owner: "Portal Labs", state: "Próxima entrega", date: "18 set" },
+    { title: "Treinamento da operação", owner: "Biahflow", state: "Próxima entrega", date: "18 set" },
     { title: "Entrada em produção", owner: "Time Acme", state: "Planejado", date: "30 set" },
   ],
   journey: {
@@ -57,7 +57,7 @@ export const DEMO_OVERVIEW: Overview = {
     { name: "Agente de Atendimento", area: "Atendimento", description: "Responde dúvidas frequentes no WhatsApp.", status: "building", kpiLabel: "Cobertura", kpiValue: "—", hoursSavedMonth: null, roiMonth: null },
   ],
   documents: [
-    { title: "Plano de implantação v3.pdf", type: "PDF", author: "Portal Labs", link: null, updated: "há 1 dia" },
+    { title: "Plano de implantação v3.pdf", type: "PDF", author: "Biahflow", link: null, updated: "há 1 dia" },
     { title: "Mapa de integrações", type: null, author: "Time Acme", link: null, updated: "há 3 dias" },
     { title: "Política de exceções financeiras.docx", type: "DOCX", author: "Mariana Farias", link: null, updated: "há 5 dias" },
   ],
@@ -73,8 +73,8 @@ export const DEMO_OVERVIEW: Overview = {
   pendings: [
     { id: "demo-pend-1", title: "Aprovar fluxo de exceções", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", priority: "high", priorityLabel: "Alta", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 2 dias" },
     { id: "demo-pend-2", title: "Enviar lista de usuários piloto", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", priority: "medium", priorityLabel: "Média", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 4 dias" },
-    { id: "demo-pend-3", title: "Validar cálculo de economia", description: null, owner: "Portal Labs", state: "open", stateLabel: "Aberta", priority: "low", priorityLabel: "Baixa", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 5 dias" },
-    { id: "demo-pend-4", title: "Definir alçada de aprovação", description: null, owner: "Portal Labs", state: "resolved", stateLabel: "Resolvida", priority: "medium", priorityLabel: "Média", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 9 dias" },
+    { id: "demo-pend-3", title: "Validar cálculo de economia", description: null, owner: "Biahflow", state: "open", stateLabel: "Aberta", priority: "low", priorityLabel: "Baixa", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 5 dias" },
+    { id: "demo-pend-4", title: "Definir alçada de aprovação", description: null, owner: "Biahflow", state: "resolved", stateLabel: "Resolvida", priority: "medium", priorityLabel: "Média", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 9 dias" },
   ],
   results: { milestonesTotal: 5, milestonesDone: 2, overdue: 0, onTimePercent: 100 },
   // A casca de demonstração não inventa apuração: sem eventos e sem premissa,

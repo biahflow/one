@@ -9,8 +9,8 @@ import MembersClient, { type Member } from "./MembersClient";
 export const dynamic = "force-dynamic";
 
 const ROLE_LABELS: Record<string, string> = {
-  internal_admin: "Administrador Portal Labs",
-  internal_member: "Time Portal Labs",
+  internal_admin: "Administrador Biahflow",
+  internal_member: "Time Biahflow",
   client_member: "Cliente",
 };
 

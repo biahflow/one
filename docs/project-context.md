@@ -1,4 +1,4 @@
-# Contexto do projeto — Portal Labs
+# Contexto do projeto — One
 
 ## Finalidade e autoridade
 

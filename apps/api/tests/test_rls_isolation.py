@@ -700,7 +700,7 @@ def drive_connections(
                 project_id=tenant.project_id,
                 folder_id=f"folder-{tenant.organization_id}",
                 folder_name="Contratos",
-                google_account_email="interno@portallabs.local",
+                google_account_email="interno@biahflow.ai",
                 refresh_token_sealed="v1.deadbeef.bm9uY2U.Y2lwaGVy",
                 granted_scope=DRIVE_READONLY_SCOPE,
             )

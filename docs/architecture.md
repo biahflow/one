@@ -1,6 +1,6 @@
 # Arquitetura
 
-O Portal Labs é um monorepo com frontend Next.js, API FastAPI e worker Celery. O navegador usa uma sessão OIDC protegida e o frontend atua como BFF; regras de permissão, acesso a dados e chamadas de IA permanecem no servidor.
+O One é um monorepo com frontend Next.js, API FastAPI e worker Celery. O navegador usa uma sessão OIDC protegida e o frontend atua como BFF; regras de permissão, acesso a dados e chamadas de IA permanecem no servidor.
 
 ```text
               ┌──────────────┐

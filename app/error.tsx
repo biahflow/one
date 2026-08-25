@@ -26,7 +26,7 @@ export default function Error({
         <h1>Não conseguimos carregar seu projeto agora.</h1>
         <p>
           A falha foi registrada. Tente novamente em instantes; se persistir, fale com o time
-          da Portal Labs.
+          da Biahflow.
         </p>
         {error.digest && (
           <p className="state-code">

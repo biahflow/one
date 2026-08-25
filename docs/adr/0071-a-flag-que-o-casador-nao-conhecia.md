@@ -1,4 +1,4 @@
-# ADR 0070 — A flag que o casador não conhecia
+# ADR 0071 — A flag que o casador não conhecia
 
 **Status:** aceito
 **Data:** 20/08/2026
@@ -177,8 +177,21 @@ nenhum comportamento de produto mudou, nenhuma imagem ou action trocou de versã
 defeito de dependência foi encontrado — o que a fatia entrega é o portão deixando de olhar
 para o token errado.
 
-*Retificado em 25/08/2026: esta ADR nasceu com o número 0067, que `main` já usava para outra
-decisão (`0067-one-como-projecao-client-facing.md`) — a branch desta ADR foi aberta antes de a
-outra existir e mergeada depois, e `test_roadmap_index.py` não via a colisão porque `_adrs()`
-chaveia por número e o arquivo mais novo sobrescrevia o mais antigo em silêncio. Renumerada para
-0070, o próximo número livre; o texto da decisão não foi tocado.*
+*Retificado duas vezes em 25/08/2026, e a segunda vez é a que vale a pena registrar.*
+
+*Esta ADR nasceu com o número **0067**, que `main` já usava para outra decisão
+(`0067-one-como-projecao-client-facing.md`): a branch foi aberta antes de a outra existir e
+mergeada depois. `test_roadmap_index.py` não via a colisão, porque `_adrs()` chaveia por número e
+o arquivo que ordena depois sobrescrevia o outro em silêncio. Renumerada para **0070**, e a fatia
+daquele conserto acrescentou a asserção que faz número duplicado reprovar.*
+
+***E a asserção pegou esta mesma ADR, horas depois.*** *O `0070` foi verificado livre contra
+`main` num commit que ainda não continha o PR #51 — que criou o seu próprio
+`0070-o-rename-que-a-guarda-atravessou.md` e entrou primeiro. Duas branches, cada uma conferindo o
+próximo número livre contra um `main` que envelheceu antes do merge: **é o mesmo modo de falha da
+primeira colisão, um nível acima**, e desta vez ele nasceu vermelho no CI em vez de ficar invisível.
+Renumerada para **0071**; quem chegou primeiro em `main` fica com o número, e a outra tem duas
+citações contra uma desta. O texto da decisão não foi tocado nas duas vezes.*
+
+*A lição não é sobre número: conferir "o próximo livre" contra um `main` que pode ter envelhecido entre
+a verificação e o merge é uma corrida, e o que resolve corrida não é cuidado — é portão.*

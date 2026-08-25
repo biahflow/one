@@ -16,6 +16,15 @@ Um token só entra no `@theme` se algum seletor de `@layer components` (ou um ut
 Tailwind) o consumir. A mesma regra que já vale para classes de CSS — "o que ninguém usa não
 entra" — vale para token. Não se acrescenta cor, raio ou sombra "para quando alguém precisar".
 
+**A regra tem portão** (F-025 T04, `PLAN_DEVIATION 01`): `tests/rendered-html.test.mjs` deriva
+o corpus do próprio bloco `@theme` e exige, de cada token, um consumidor fora dele — `var(--token)`
+no CSS ou o utilitário que o Tailwind v4 gera a partir dele (`--color-info-600` →
+`text-info-600`, `--radius-card` → `rounded-card`). `@theme` ilegível ou vazio **reprova**, e a
+isenção é linha em `TOKEN_WITHOUT_A_CONSUMER` com motivo em prosa e **sem prazo**, no precedente
+do `PINNED_BY_EXCEPTION` — quem a vence é a asserção de obsolescência, não o calendário. A frase
+acima foi publicada quando sete tokens ainda não tinham consumidor nenhum; regra publicada sem
+portão volta a divergir, que é o argumento da ADR 0034.
+
 ## Tokens de cor
 
 | Token | Valor | Papel |

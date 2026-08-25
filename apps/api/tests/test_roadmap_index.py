@@ -171,6 +171,19 @@ FOUNDATION_WITHOUT_A_LINE: dict[int, str] = {
 }
 
 
+def _adr_number(name: str) -> int:
+    """O número que o nome do arquivo declara.
+
+    Mora numa função porque **duas** asserções dependem dele e precisam concordar:
+    `_adrs()`, que chaveia o corpus por número, e
+    `test_no_two_adr_files_share_the_same_number`, que existe justamente para achar
+    dois arquivos que produzam a mesma chave. Se as duas extraíssem o número cada uma
+    por conta própria, uma divergência entre elas deixaria a segunda cega para
+    exatamente o caso que ela procura — e nada ficaria vermelho.
+    """
+    return int(name.split("-", 1)[0])
+
+
 def _adrs(files: dict[str, str]) -> dict[int, str]:
     """Número da ADR → a palavra de status, em minúsculas.
 
@@ -188,9 +201,8 @@ def _adrs(files: dict[str, str]) -> dict[int, str]:
     """
     statuses: dict[int, str] = {}
     for name, text in files.items():
-        number = int(name.split("-", 1)[0])
         found = _STATUS.search(text)
-        statuses[number] = found.group(1).lower() if found else ""
+        statuses[_adr_number(name)] = found.group(1).lower() if found else ""
     return statuses
 
 
@@ -267,7 +279,7 @@ def test_every_adr_the_roadmap_cites_exists() -> None:
 def test_no_two_adr_files_share_the_same_number() -> None:
     """Duas ADRs com o mesmo número são uma decisão que a outra apaga em silêncio.
 
-    `_adrs()` chaveia por `int(name.split("-", 1)[0])`: um número repetido faz o
+    `_adrs()` chaveia por `_adr_number()`: um número repetido faz o
     arquivo que ordena depois sobrescrever o que ordena antes dentro do dicionário,
     e as duas podem dizer `aceito` sem que `test_every_accepted_adr_has_a_line_in_the_roadmap`
     veja a duplicata — ela só enxerga o número, nunca o nome do arquivo. Foi
@@ -289,8 +301,7 @@ def test_no_two_adr_files_share_the_same_number() -> None:
 
     by_number: dict[int, list[str]] = {}
     for name in files:
-        number = int(name.split("-", 1)[0])
-        by_number.setdefault(number, []).append(name)
+        by_number.setdefault(_adr_number(name), []).append(name)
 
     duplicated = {
         number: sorted(names) for number, names in by_number.items() if len(names) > 1

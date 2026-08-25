@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portal_local_only}
       POSTGRES_DB: ${POSTGRES_DB:-portal}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -46,7 +46,7 @@ services:
     restart: "no"
     command: alembic upgrade head
     environment:
-      DATABASE_MIGRATION_URL: ${DATABASE_MIGRATION_URL:-postgresql+psycopg://portal_migrator:portal_migrator_local_only@postgres:5432/portal}
+      DATABASE_MIGRATION_URL: ${DATABASE_MIGRATION_URL:-postgresql+psycopg://portal_migrator:portal_migrator_local_only@postgres:5433/portal}
     depends_on:
       db-bootstrap:
         condition: service_completed_successfully
@@ -59,7 +59,7 @@ services:
     restart: "no"
     command: python -m portal_api.seed
     environment:
-      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5433/portal}
     depends_on:
       api-migrate:
         condition: service_completed_successfully
@@ -139,11 +139,11 @@ services:
       context: ./apps/api
     environment:
       # Caminho de requisição: papel sujeito à RLS (ADR 0010).
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5433/portal}
       # Caminho de sistema: webhook e seed, que criam o tenant.
-      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5433/portal}
       # Caminho de administração: o único que escreve `membership` (ADR 0011).
-      DATABASE_ADMIN_URL: ${DATABASE_ADMIN_URL:-postgresql+psycopg://portal_admin:portal_admin_local_only@postgres:5432/portal}
+      DATABASE_ADMIN_URL: ${DATABASE_ADMIN_URL:-postgresql+psycopg://portal_admin:portal_admin_local_only@postgres:5433/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
@@ -265,8 +265,8 @@ services:
       context: ./apps/api
     command: celery -A portal_api.worker.celery_app worker --loglevel=INFO
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
-      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5433/portal}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5433/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       DEMO_MODE: ${DEMO_MODE:-false}
       ENVIRONMENT: ${ENVIRONMENT:-local}
@@ -363,8 +363,8 @@ services:
     deploy:
       replicas: 1
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5432/portal}
-      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5432/portal}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://portal_app:portal_app_local_only@postgres:5433/portal}
+      DATABASE_SYSTEM_URL: ${DATABASE_SYSTEM_URL:-postgresql+psycopg://portal_system:portal_system_local_only@postgres:5433/portal}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       ENVIRONMENT: ${ENVIRONMENT:-local}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

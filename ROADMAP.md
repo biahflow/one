@@ -1489,6 +1489,33 @@ deixou aberto foi fiado no commit `6b781ae` e o `infra-hml` de 19/08 passou em `
 da ADR 0052 foi corrigido no commit `58a831a`, com regressão — está registrado na Fase 1. Ler as
 ADRs sem o histórico dá os dois como pendentes.
 
+## O novo modelo operacional — One como projeção do cliente (24/08/2026)
+
+Três documentos entraram em `main` no mesmo dia e **não são fatia de código**: são a moldura em que
+este produto passa a viver. Estão aqui porque o índice canônico é este arquivo, e uma decisão que
+ele não conhece é estado sem dono — a lição que virou portão na ADR 0054, e que estas duas
+repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês, deixando
+`test_roadmap_index.py` vermelho a cada push até 25/08/2026.
+
+- [x] **O produto passa a se chamar One, e o estado de Delivery vira projeção.** *(ADR 0067,
+      24/08.)* One continua com banco próprio — RLS, conversas, documentos, notificações e a
+      experiência do cliente são dele —, mas deixa de ser dono canônico de backlog, prioridade e
+      status técnico: o que a tela mostra é **projeção client-facing** do que o BiahflowOS
+      consolida. A fronteira está escrita nos dois sentidos: atravessam projeto, fase, progresso,
+      marcos, entregas, pendências, decisões, aprovações, documentos, resultados e próximos passos;
+      **não** atravessam id de Issue/PR, interno de CI, campo de ClickUp, estado bruto de LangGraph,
+      prompt ou trace de LangSmith, e custo ou margem. O formato mínimo dessa projeção e o
+      vocabulário de homologação (`ready_for_acceptance`, `client_review`, `accepted`,
+      `changes_requested`) estão em `docs/contracts/client-projection-contract.md`.
+- [x] **OpenTelemetry como padrão transversal de correlação.** *(ADR 0068, 24/08.)* O
+      `trace_id` próprio da ADR 0018 continua servindo como identificador amigável durante a
+      migração, mas o padrão passa a ser W3C Trace Context — `traceparent`, `tracestate` e
+      `baggage` — com Collector no meio e Grafana Cloud como backend inicial, para que Pulse,
+      BiahflowOS, One, integrações e agentes se correlacionem. Amostragem no Collector, e a regra
+      de privacidade da casa mantida: conteúdo de documento, prompt, resposta privada e segredo
+      não entram na telemetria. **Ainda não há código desta ADR neste repositório** — a
+      instrumentação é progressiva e a linha existe para a decisão ter dono.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

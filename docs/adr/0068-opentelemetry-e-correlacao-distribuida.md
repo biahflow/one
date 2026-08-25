@@ -1,7 +1,8 @@
 # ADR 0068 — OpenTelemetry e correlação distribuída no One
 
-**Status:** Accepted  
-**Data:** 2026-08-24
+**Status:** aceito
+**Data:** 24/08/2026
+**Fase:** 7
 
 ## Contexto
 
@@ -29,3 +30,6 @@ Não existe requisito de exportar 100% dos traces. Erros, lentidão e fluxos cr�
 ## Consequências
 
 A observabilidade custom existente não é descartada de uma vez; migra-se incrementalmente preservando os runbooks e a capacidade de incident response já existente.
+
+*Retificado em 25/08/2026 (ADR 0069), no cabeçalho, junto da 0067 e pela mesma razão: o status
+declarado em inglês não era palavra que a guarda de índice soubesse ler.*

@@ -727,6 +727,48 @@
   .field-hint { @apply text-[10px] leading-relaxed text-muted; }
   .admin-head h2 svg, .panel-heading h2 svg { @apply mr-1.5 inline-block align-[-3px]; }
 
+  /* ---------- Vitrine do sistema de design (F-025 T04) ---------- */
+  /* Classes só desta tela. Elas existem porque a vitrine desenha o sistema, e não o
+     produto: não há painel de projeto que já tenha a forma de "uma amostra ao lado do
+     nome do token". Nenhuma introduz token novo — o `@theme` fecha na T01, e acrescentar
+     cor aqui reprovaria na guarda de consumo de `tests/rendered-html.test.mjs`. */
+  .design-brand { @apply mb-5 inline-flex; }
+  .design-note { @apply mt-0 mb-4 max-w-[70ch] text-[12.5px] leading-relaxed text-muted; }
+  .design-row { @apply flex flex-wrap items-center gap-2.5; }
+  .design-cell { @apply grid content-start gap-1.5; }
+  .design-live { @apply mt-4 grid gap-2.5 border-t border-line pt-4; }
+  .design-pill-live { @apply flex min-h-11 flex-wrap items-center gap-2.5; }
+  .design-slot { @apply inline-flex; }
+  /* O mesmo anel do `:focus-visible`, num invólucro: destacar a variante escolhida com
+     outra cor ensinaria um segundo vocabulário de "isto está em foco". */
+  .design-spot {
+    @apply rounded-xl;
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  .design-fields { @apply grid max-w-[560px] gap-3 sm:grid-cols-2; }
+  .design-field-label { @apply grid gap-1.5 text-[11px] font-semibold text-slate-600; }
+  .design-field {
+    @apply rounded-xl border border-line bg-white px-3 py-2.5 text-[13px] text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  }
+  /* O estado de foco desenhado, ao lado do campo em repouso: o foco de verdade só existe
+     num campo por vez, e a comparação é o que a vitrine precisa mostrar. O botão ao lado
+     leva o foco real ao outro campo, para que a amostra possa ser conferida contra ele. */
+  .design-field--focus { @apply border-brand-500 ring-4 ring-brand-100; }
+  .design-figure {
+    @apply block h-13 w-20 border border-line;
+    background: var(--color-surface-sunken);
+  }
+  .design-token { @apply font-mono text-[11px] font-semibold text-ink; }
+  .design-meta { @apply max-w-[46ch] text-[10.5px] leading-relaxed text-muted; }
+  .design-swatches { @apply grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2.5; }
+  .design-swatch { @apply grid content-start gap-1 rounded-xl border border-line p-2.5; }
+  .design-chip {
+    @apply grid h-11 w-full place-items-center rounded-lg border border-line text-base;
+    background: var(--color-surface);
+  }
+  .design-pair { @apply inline-block rounded-md px-2 py-1 text-[13px] font-semibold; }
+
   /* ---------- Login ---------- */
   .auth-shell { @apply grid min-h-screen grid-cols-[1.05fr_1fr] bg-canvas; }
   .auth-brand {

@@ -64,6 +64,7 @@ permitiu medir contra `HEAD` sem tocar no working tree.
 
 from __future__ import annotations
 
+import os
 import re
 from fnmatch import fnmatch
 from pathlib import Path
@@ -572,9 +573,18 @@ def test_every_line_in_the_number_registry_has_an_adr_file() -> None:
 #: `binary`, que o próprio git expande para `-diff -merge -text`.
 _MERGE_ATTRIBUTES = re.compile(r"^(?:merge(?:=|$)|[-!]merge$|binary$)")
 
+#: Diretórios que a varredura de `.gitattributes` não atravessa: artefato de
+#: instalação e de build. A mesma lista do `NOT_OURS` do `scripts/pins.mjs`.
+_NOT_OURS = {".git", ".next", ".venv", "node_modules", "test-results"}
+
 
 def _covers(pattern: str, relative: str) -> bool:
     """O padrão de `.gitattributes` alcança este caminho?
+
+    `relative` é o caminho do registro **visto de dentro do diretório daquele
+    `.gitattributes`**, porque é assim que o git resolve um padrão: o arquivo
+    vale dali para baixo, e um `number-registry.tsv` escrito em `docs/adr/`
+    alcança o registro enquanto o mesmo texto na raiz não alcança nada.
 
     Deliberadamente **generoso**: casa o caminho inteiro, o nome do arquivo (é o
     que um padrão sem barra faz no git) e qualquer diretório acima dele. Um
@@ -588,6 +598,113 @@ def _covers(pattern: str, relative: str) -> bool:
     return any(fnmatch("/".join(parts[:index]), pattern) for index in range(1, len(parts)))
 
 
+def _seen_from(directory: str, target: str) -> str | None:
+    """O caminho de `target` visto de dentro de `directory` — `None` se está fora.
+
+    É a metade do casador que a primeira versão desta guarda não tinha, e o
+    buraco que ela produziu foi medido: a guarda olhava **um** arquivo, o
+    `.gitattributes` da raiz, e um `docs/adr/.gitattributes` com quatro palavras
+    desarmava o mecanismo com as nove asserções verdes — no diretório mais óbvio
+    para quem fosse desarmá-lo. O git lê `.gitattributes` de qualquer diretório e
+    o aplica dali para baixo; quem não faz o mesmo pergunta por um arquivo que
+    não é o que decide.
+    """
+    if directory in ("", "."):
+        return target
+    prefix = directory.rstrip("/") + "/"
+    return target[len(prefix) :] if target.startswith(prefix) else None
+
+
+def _merge_declarations(text: str, relative: str) -> list[tuple[int, str]]:
+    """As linhas daquele `.gitattributes` que declaram mesclagem para o registro.
+
+    Recebe `text: str` pela convenção do módulo — só as funções `test_*` abrem
+    arquivo —, e é o que permite exercer o casador sem escrever nada no disco.
+    """
+    declarations: list[tuple[int, str]] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        pattern, *attributes = line.split()
+        if not _covers(pattern, relative):
+            continue
+        if any(_MERGE_ATTRIBUTES.match(attribute) for attribute in attributes):
+            declarations.append((number, line.strip()))
+    return declarations
+
+
+def _gitattributes_files() -> list[Path]:
+    """Todo `.gitattributes` do repositório, menos o que não é nosso.
+
+    A poda é a mesma do `NOT_OURS` do `scripts/pins.mjs` — artefato de
+    instalação e de build —, e sem ela a varredura desceria os milhares de
+    diretórios de `node_modules` para ler atributos que o git aplica a código de
+    terceiro, não ao registro.
+    """
+    found: list[Path] = []
+    for directory, subdirectories, names in os.walk(REPO_ROOT):
+        subdirectories[:] = [name for name in subdirectories if name not in _NOT_OURS]
+        if ".gitattributes" in names:
+            found.append(Path(directory) / ".gitattributes")
+    return sorted(found)
+
+
+def test_the_merge_driver_matcher_reads_a_pattern_the_way_git_does() -> None:
+    """O casador, exercido sem tocar no disco.
+
+    Ele tem duas metades e as duas já erraram: o **padrão** (que o `_covers`
+    resolve de forma generosa de propósito) e o **diretório** (que a primeira
+    versão desta guarda simplesmente não tinha). Esta asserção fixa as duas em
+    casos escritos, na forma do `_TEMPLATE_SAMPLE` do registro de prompts: a
+    cobertura de um portão é a dos ramos que a amostra percorre.
+    """
+    registry = "docs/adr/number-registry.tsv"
+
+    # O diretório: o mesmo texto alcança ou não alcança, conforme onde mora.
+    assert _seen_from("", registry) == registry
+    assert _seen_from("docs", registry) == "adr/number-registry.tsv"
+    assert _seen_from("docs/adr", registry) == "number-registry.tsv"
+    assert _seen_from("apps/api", registry) is None
+    assert _seen_from("docs/adr-antigo", registry) is None
+
+    # O padrão, visto da raiz e visto de `docs/adr/`.
+    from_root = _seen_from("", registry)
+    from_dir = _seen_from("docs/adr", registry)
+    assert from_root is not None and from_dir is not None
+    for pattern in ("docs/adr/number-registry.tsv", "*.tsv", "docs/adr/*", "docs/adr"):
+        assert _covers(pattern, from_root), pattern
+    for pattern in ("number-registry.tsv", "*.tsv", "*"):
+        assert _covers(pattern, from_dir), pattern
+    for pattern in ("*.json", "app/*", "docs/fdd/*"):
+        assert not _covers(pattern, from_root), pattern
+
+    # Padrão **sem barra** alcança pelo nome em qualquer profundidade abaixo do
+    # `.gitattributes`, que é o que o git faz — e é o lado generoso do casador.
+    assert _covers("number-registry.tsv", from_root)
+    # Padrão **com barra** é ancorado no diretório do arquivo: escrito na raiz,
+    # `adr/number-registry.tsv` não alcança `docs/adr/number-registry.tsv`.
+    assert not _covers("adr/number-registry.tsv", from_root)
+
+    # E o que conta como desligar a mesclagem, incluindo o macro `binary`, que o
+    # git expande para `-diff -merge -text`.
+    for attribute in ("merge=union", "merge=ours", "merge", "-merge", "!merge", "binary"):
+        assert _MERGE_ATTRIBUTES.match(attribute), attribute
+    for attribute in ("text=auto", "eol=lf", "diff=markdown", "merged"):
+        assert not _MERGE_ATTRIBUTES.match(attribute), attribute
+
+    # E o casador de linha inteiro, sobre arquivos que não existem no disco. O
+    # comentário e a linha em branco saem, `*.md text=auto` não é mesclagem, e a
+    # linha que importa volta com o número dela.
+    sample = "# comentário\n\nnumber-registry.tsv merge=union\n*.md text=auto\n"
+    assert _merge_declarations(sample, from_dir) == [
+        (3, "number-registry.tsv merge=union")
+    ]
+    assert _merge_declarations(sample, from_root) == [
+        (3, "number-registry.tsv merge=union")
+    ]
+    assert _merge_declarations("adr/number-registry.tsv merge=union\n", from_root) == []
+
+
 def test_the_number_registry_is_not_disarmed_by_a_merge_driver() -> None:
     """Ninguém desliga o conflito em silêncio.
 
@@ -598,32 +715,35 @@ def test_the_number_registry_is_not_disarmed_by_a_merge_driver() -> None:
     `.gitattributes` neste repositório hoje, e por isso a asserção é condicional —
     o que ela impede é o arquivo nascer já desarmando o mecanismo.
 
+    **Varre todos**, e não o da raiz: a primeira versão olhava
+    `REPO_ROOT / ".gitattributes"` e passava verde com um `docs/adr/.gitattributes`
+    de quatro palavras desarmando tudo — medido, com `git check-attr merge`
+    respondendo `union` e as nove asserções passando. Perguntar por um arquivo só
+    é perguntar por um arquivo que não é o que decide.
+
     Fail-closed no espírito da casa: o mecanismo tem de ser indefensável de forma
     silenciosa. Desligá-lo continua possível, e passa a exigir apagar esta
     asserção junto — que é uma linha de diff que uma pessoa lê.
     """
-    gitattributes = REPO_ROOT / ".gitattributes"
-    if not gitattributes.is_file():
-        return
-
-    relative = REGISTRY.relative_to(REPO_ROOT).as_posix()
+    registry = REGISTRY.relative_to(REPO_ROOT).as_posix()
     offending: list[str] = []
-    for number, line in enumerate(
-        gitattributes.read_text(encoding="utf-8").splitlines(), start=1
-    ):
-        if not line.strip() or line.lstrip().startswith("#"):
+    for path in _gitattributes_files():
+        directory = path.parent.relative_to(REPO_ROOT).as_posix()
+        relative = _seen_from(directory, registry)
+        if relative is None:
             continue
-        pattern, *attributes = line.split()
-        if not _covers(pattern, relative):
-            continue
-        for attribute in attributes:
-            if _MERGE_ATTRIBUTES.match(attribute):
-                offending.append(f".gitattributes:{number}: `{line.strip()}`")
+        name = path.relative_to(REPO_ROOT).as_posix()
+        offending += [
+            f"{name}:{number}: `{line}`"
+            for number, line in _merge_declarations(
+                path.read_text(encoding="utf-8"), relative
+            )
+        ]
 
     assert offending == [], (
-        "o `.gitattributes` declara mesclagem para o registro de números: "
+        "um `.gitattributes` declara mesclagem para o registro de números: "
         + "; ".join(offending)
-        + f". O conflito em `{relative}` **é** o mecanismo (ADR 0072) — um driver"
+        + f". O conflito em `{registry}` **é** o mecanismo (ADR 0072) — um driver"
         " de merge ali faz duas branches receberem o mesmo número com o arquivo"
         " parecendo íntegro. Apague o atributo; se a intenção é mesmo desligar a"
         " coordenação, isso é decisão de ADR, não de linha de configuração."

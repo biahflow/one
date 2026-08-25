@@ -1602,8 +1602,11 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       dois casos:* duas branches conflitam com o mesmo número **e** com números diferentes, e o
       segundo é o preço declarado e aceito. *E a asserção que defende o mecanismo:* um
       `.gitattributes` com `merge=union` faz o merge passar liso com as duas linhas entrando —
-      medido, saída 0 — então a guarda reprova driver de merge sobre o registro; desligar a
-      coordenação continua possível e passa a exigir apagar a asserção junto. **Fica aberto:** o
+      medido, saída 0 — então a guarda reprova driver de merge sobre o registro, em **qualquer**
+      diretório: a primeira versão olhava só o `.gitattributes` da raiz e a revisão mediu o
+      falso verde, com um `docs/adr/.gitattributes` de quatro palavras desarmando tudo e
+      `git check-attr` já dizendo `union`. Desligar a coordenação continua possível e passa a
+      exigir apagar a asserção junto. **Fica aberto:** o
       mecanismo protege o número e não o slug, e RFC e FDD continuam com número à mão, porque os
       três defeitos medidos são de ADR.
 

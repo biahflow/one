@@ -222,6 +222,16 @@ CI (`.github/workflows/ci.yml`) runs seven gates you should reproduce locally be
   perder linha. Migração que toca policy, RLS ou privilégio cita ADR ou RFC que exista e não tenha
   sido recusada — o corpus vem por `import` de `test_roadmap_index.py`, nunca recopiado. É a regra
   4 do `AGENTS.md`, a última das seis a ganhar portão.
+- **Escreveu ADR, o número não se escolhe** (ADR 0072). `npm run adr -- "Título da decisão"`
+  aloca o próximo, cria o arquivo com o cabeçalho da casa e escreve a linha em
+  `docs/adr/number-registry.tsv` — o ledger a que toda ADR acrescenta **no fim**, de modo que
+  duas branches concorrentes conflitem no git em vez de levarem o mesmo número (o mecanismo do
+  `schema.rb` do Rails). Escolher à mão produziu três colisões em 25/08/2026, e a segunda delas
+  é o argumento: `test_no_two_adr_files_share_the_same_number` **detecta**, e detecção não fecha
+  corrida — o número livre de dez minutos atrás não é o número livre de agora. Resolver o
+  conflito é ficar com as duas linhas, em ordem. A linha do `ROADMAP.md` continua sendo sua
+  (ADR 0054), e a guarda é bidirecional, fail-closed, e reprova um `.gitattributes` — em
+  **qualquer** diretório — que declare driver de merge sobre o registro.
 - **Mexeu no prompt, muda a `PROMPT_VERSION`** (ADR 0021). Alterar o `SYSTEM_PROMPT`, o `OUTPUT_SCHEMA` ou a moldura de `build_user_prompt` sem trocar a versão reprova em `test_prompt_version.py`, e **regravar o registro não conserta** — `python -m portal_api.ai.prompt --record` recusa reescrever uma versão já gravada. É o terceiro gate de deriva, ao lado do `alembic check` e do `openapi.json`. Mudança de prompt, recuperador, modelo ou ferramenta também pede eval (`docs/ai/eval-dataset.md`), e a seção adversarial é a que roda contra o respondedor real — com o cliente injetado pelo ponto de costura, **sem chave e sem custo de token**.
 - Web tests assert against **server-rendered HTML** (`tests/rendered-html.test.mjs` boots `next start` and matches strings like the page title and dashboard copy). If you change dashboard text/structure, update these assertions. The second test scans every source file under `app/` and `components/` to guard against reintroducing hardcoded tab data (the Fase 2 regression) and starter leftovers.
 - **A mensagem do log é o nome do evento; o detalhe vai em `extra`** (ADR 0018/0034).

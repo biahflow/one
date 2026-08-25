@@ -88,11 +88,17 @@ está**: ela é o backstop, e a mensagem dela é o que ensina a renumerar.
 **(g) E uma asserção defende o mecanismo de ser desligado em silêncio.** Não existe
 `.gitattributes` neste repositório. Se alguém criar um com `merge=union` para o registro, o
 git passa a mesclar os dois appends sem dizer nada: as duas linhas entram, as duas ADRs
-ficam com o mesmo número, e o arquivo continua **parecendo íntegro**. A guarda afirma que, se
-o `.gitattributes` existir, ele não declara driver de merge para o registro — nem
-`merge=<driver>`, nem `-merge`, nem o macro `binary`, que o próprio git expande para
-`-diff -merge -text`. Desligar a coordenação continua possível; passa a exigir apagar a
-asserção junto, que é uma linha de diff que uma pessoa lê.
+ficam com o mesmo número, e o arquivo continua **parecendo íntegro**. A guarda afirma que
+nenhum `.gitattributes` declara driver de merge para o registro — nem `merge=<driver>`, nem
+`-merge`, nem o macro `binary`, que o próprio git expande para `-diff -merge -text`.
+
+**Nenhum, e não o da raiz.** O git lê `.gitattributes` de **qualquer** diretório e o aplica
+dali para baixo, com o padrão resolvido em relação ao diretório do arquivo. A primeira versão
+desta guarda olhava um caminho só, `REPO_ROOT / ".gitattributes"`, e a revisão mediu o buraco:
+um `docs/adr/.gitattributes` de quatro palavras desarmava o mecanismo com as nove asserções
+verdes — no diretório mais óbvio para quem fosse desarmá-lo. Perguntar por um arquivo só é
+perguntar por um arquivo que não é o que decide. Desligar a coordenação continua possível;
+passa a exigir apagar a asserção junto, que é uma linha de diff que uma pessoa lê.
 
 ## Medição
 
@@ -126,7 +132,8 @@ pretendido foi produzido, `subprocess` do pytest, restauração byte a byte — 
 | slug do registro divergindo do arquivo | VERMELHA | VERMELHA, em `test_every_adr_file_has_a_line_in_the_number_registry` |
 | duas linhas trocadas de lugar (fora de ordem) | VERMELHA | VERMELHA, em `test_the_adr_number_registry_is_ordered_and_claims_each_number_once` |
 | registro esvaziado | VERMELHA, **fail-closed** | VERMELHA, nas três asserções que dependem do corpus |
-| `.gitattributes` com `merge=union` para o registro | VERMELHA | VERMELHA, em `test_the_number_registry_is_not_disarmed_by_a_merge_driver` |
+| `.gitattributes` **na raiz** com `merge=union` para o registro | VERMELHA | VERMELHA, em `test_the_number_registry_is_not_disarmed_by_a_merge_driver` |
+| `docs/adr/.gitattributes` com `number-registry.tsv merge=union` | VERMELHA | VERMELHA, na mesma asserção, nomeando `docs/adr/.gitattributes:1` |
 | tudo revertido | verde | verde |
 
 O vermelho que dá nome à fatia, literal:
@@ -137,6 +144,12 @@ AssertionError: estes arquivos de ADR não têm linha no registro de números:
 commit do arquivo — sem ela o número não foi reivindicado em lugar nenhum, e a próxima
 branch o toma sem que nada conflite (ADR 0072).
 ```
+
+**As duas mutações de (g) foram conferidas contra o próprio git**, e é o que prova que a
+guarda pergunta o que o git responde: em cada uma,
+`git check-attr merge -- docs/adr/number-registry.tsv` respondeu `merge: union`, e no estado
+final respondeu `merge: unspecified`. Antes do conserto, a mutação em `docs/adr/` era um
+**falso verde medido** — `9 passed` com o `check-attr` já dizendo `union`.
 
 E o de (g), que é a asserção sobre a própria defesa do mecanismo:
 
@@ -177,6 +190,18 @@ acrescentou a linha `0072<TAB>o-numero-que-ninguem-escolhe` ao fim do registro.
   entrada que expira, e diferente do `prompt-registry.json` ele não é append-only por
   digest: a linha some se o arquivo da ADR sumir, porque a guarda bidirecional cobra as duas
   direções.
+- **O casador de `.gitattributes` ganhou teste próprio, puro.**
+  `test_the_merge_driver_matcher_reads_a_pattern_the_way_git_does` fixa as duas metades em
+  casos escritos — o **diretório** (o mesmo texto alcança ou não o registro conforme onde
+  mora) e o **padrão** (sem barra casa pelo nome em qualquer profundidade, com barra é
+  ancorado) —, na forma do `_TEMPLATE_SAMPLE` do registro de prompts: a cobertura de um
+  portão é a dos ramos que a amostra percorre, e a amostra é parte do portão.
+- **Fica aberto, e foi achado ao escrever isto:** os bullets de "mexeu em X, Y vem junto" do
+  `AGENTS.md` e do `CLAUDE.md` são gêmeos por convenção e **nada cobra que sejam os mesmos**.
+  A guarda da ADR 0035 compara as duas listas de *princípios*, não as de checklist de PR — de
+  modo que uma regra escrita num arquivo e esquecida no outro deixa a instrução errada de pé
+  no lugar de maior alcance, que é justamente o arquivo que um agente lê antes de mexer no
+  repositório. Esta fatia escreveu a linha nos dois; o portão continua não existindo.
 - **Fica aberto, e nomeado:** o mecanismo protege o **número**, não o **slug**. Duas ADRs com
   o mesmo título produziriam a mesma linha e o mesmo arquivo — o `wx` do `writeFile` recusa
   sobrescrever, e é só isso; não há asserção de slug único, porque não há defeito medido

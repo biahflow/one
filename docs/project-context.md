@@ -44,7 +44,7 @@ técnico em feature de produto sem uma feature-pai explícita.
 | `web-unit-contract` | KNOWN | `npm test` |
 | `api-unit-integration` | KNOWN | `PYTHONPATH=apps/api/src pytest apps/api/tests` com Postgres e papéis locais quando aplicável |
 | `backup-restore` | KNOWN | `PYTHONPATH=apps/api/src pytest apps/api/tests/test_backup_restore.py -v` com Postgres, MinIO e credenciais de teste |
-| `e2e` | KNOWN | `docker compose up -d --build` seguido de `npm run test:e2e` |
+| `e2e` | **DISABLED_IN_CI** | `docker compose up -d --build` seguido de `npm run test:e2e`. Roda na máquina; **não roda no CI** desde 25/08/2026 — o job está desligado por `E2E_ENABLED`, para destravar uma entrega. O que se perde está escrito no próprio job. Um contrato de tarefa que exija este perfil precisa dizer quem o executa. |
 | `build` | KNOWN | `npm run build`; `docker compose build` |
 | `infra-quality` | KNOWN | `.github/workflows/ci.yml` executa `terraform fmt` e `terraform validate` sem backend |
 | `security` | KNOWN | `npm run audit` |

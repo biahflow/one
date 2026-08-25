@@ -121,9 +121,18 @@ variable "repositorios_github" {
   # redirect do GitHub cobre clone e push, mas a claim OIDC carrega o nome novo — e o
   # espelho de `biahflow/infra` já foi aplicado com ele; divergir aqui desfaria aquilo
   # no próximo apply.
+  #
+  # **E aconteceu, com o rename seguinte.** Em 24/08/2026 `biahflow/cockpit` virou
+  # `biahflow/pulse` (ADR 0035 de lá, o produto passou a se chamar Pulse), o
+  # `biahflow/infra` foi atualizado no mesmo dia (PR #18 de lá) e esta lista ficou para
+  # trás por um dia. O `plan` de 25/08 mostrou o que o parágrafo acima descreve, na
+  # letra: `attribute_condition` voltando de `biahflow/pulse` para `biahflow/cockpit`,
+  # que é repositório que não existe mais — e com ele o `deploy-hml` do Pulse deixaria
+  # de autenticar no push seguinte. O aviso estava escrito antes de o defeito existir; o
+  # que faltou foi alguém aplicar este state entre um rename e o outro.
   default = [
     "biahflow/portal-cliente",
-    "biahflow/cockpit",
+    "biahflow/pulse",
     "biahflow/site",
     "dcamppos83/OikOS",
     "biahflow/eliseu",
@@ -145,7 +154,7 @@ variable "repositorios_deploy" {
   type        = list(string)
   default = [
     "biahflow/portal-cliente",
-    "biahflow/cockpit",
+    "biahflow/pulse",
     "biahflow/site",
     "dcamppos83/OikOS",
     "biahflow/eliseu",

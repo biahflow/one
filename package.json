@@ -13,6 +13,7 @@
     "test:contract": "node --test tests/api-contract.test.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint .",
+    "adr": "node scripts/adr.mjs",
     "audit": "node scripts/audit.mjs",
     "pins": "node scripts/pins.mjs"
   },

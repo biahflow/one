@@ -56,6 +56,11 @@ listas são a mesma e que toda citação por número resolve.*
   `test_supply_chain_pins.py` reprova quem despinar. Isenção é linha em `PINNED_BY_EXCEPTION`
   com motivo e **sem prazo** — pino não caduca por calendário, e quem a vence é a asserção de
   obsolescência.
+- Escreveu ADR? **O número não se escolhe** (ADR 0072). `npm run adr -- "Título da decisão"`
+  aloca o próximo, cria o arquivo com o cabeçalho da casa e escreve a linha em
+  `docs/adr/number-registry.tsv` — o ledger a que toda ADR acrescenta no fim, de modo que duas
+  branches concorrentes conflitem no git em vez de levarem o mesmo número. Resolver o conflito é
+  ficar com as duas linhas, em ordem. A linha do [`ROADMAP.md`](ROADMAP.md) continua sendo sua.
 - Escreveu migração? **Ela é aditiva, e cita a decisão** (ADR 0066). `test_migration_rules.py`
   lê o AST do `upgrade()` — e só dele, porque `downgrade()` é destrutivo por definição — e
   reprova o que apaga dado (`drop_table`, `drop_column`, `DROP TABLE/COLUMN`, `TRUNCATE`);

@@ -1,0 +1,81 @@
+# O ponto onde o número da ADR é reivindicado — não um índice de decisões (ADR 0072).
+#
+# Uma linha por ADR, `NNNN<TAB>slug`, sempre acrescentada **no fim**: duas branches
+# concorrentes escrevem na mesma posição e o git produz conflito, que é exatamente a
+# coordenação que faltava quando o número era escolhido à mão e só reivindicado no merge.
+# O conflito é a função do arquivo, e não um efeito colateral dele.
+#
+# Quem escreve a linha é `npm run adr -- "Título da decisão"`. O índice canônico de
+# descoberta continua sendo o `ROADMAP.md`, e a linha de lá continua sendo sua (ADR 0054).
+0001	monorepo-e-stack
+0002	isolamento-multitenant
+0003	autenticacao-e-autorizacao
+0004	rag-e-contexto-de-ia
+0005	processamento-assincrono
+0006	fonte-biahflow-e-sync-webhook
+0007	chat-fase3-grounded-qa
+0008	abas-do-projeto-a-partir-do-snapshot
+0009	nextjs-em-node-no-lugar-do-worker
+0010	identidade-oidc-e-rls-por-transacao
+0011	administracao-de-acesso
+0012	notificacoes
+0013	eventos-dos-agentes-e-roi-apurado
+0014	ingestao-de-documentos-e-rag
+0015	persistencia-de-conversas-e-feedback
+0016	conector-google-drive
+0017	varredura-download-e-retencao
+0018	trace-id-log-estruturado-e-alertas
+0019	backup-e-restore
+0020	contrato-de-api-publicado
+0021	cenarios-adversariais-de-ia
+0022	homologacao-quotas-e-carga
+0023	dependencias-vulneraveis-e-o-portao
+0024	busca-no-projeto
+0025	primeiro-vinculo-de-uma-organizacao
+0026	controles-inertes-e-a-guarda-de-affordance
+0027	tela-da-organizacao-e-o-id-que-ninguem-devolvia
+0028	o-expurgo-que-falha
+0029	prioridade-e-filtros
+0030	o-sinal-do-assistente
+0031	da-pendencia-para-a-conversa
+0032	comentarios-na-pendencia
+0033	a-guarda-que-parecia-cobrir-o-contrato
+0034	o-evento-nomeado-e-o-runbook-que-o-conhece
+0035	a-guarda-escrita-a-mao-e-a-regra-que-ninguem-verifica
+0036	o-projeto-encerrado-e-o-404-que-nao-distingue
+0037	o-que-o-biahflow-nao-conta-ao-portal
+0038	a-citacao-sem-data
+0039	o-funil-que-carimba-sem-expor
+0040	o-alerta-de-cliente-travado
+0041	o-setimo-degrau
+0042	o-teto-que-nao-cabia-em-nenhuma-das-duas
+0043	o-canal-e-o-link-que-nao-existia
+0044	o-bootstrap-num-postgres-que-nao-tem-superusuario
+0045	o-worker-que-cabia-no-cloud-run
+0046	os-nomes-que-nao-apontavam-para-nada
+0047	a-lacuna-que-virava-a-resposta-seguinte
+0048	a-barreira-que-o-navegador-nao-atravessa
+0049	a-aba-que-esperava-um-escritor
+0050	o-primeiro-apply-e-o-que-so-ele-podia-dizer
+0051	tres-states-um-por-dono
+0052	o-que-a-primeira-subida-do-portal-mostrou
+0053	a-borda-que-servia-um-produto-so
+0054	o-indice-que-nao-sabia
+0055	o-aviso-que-nao-sai-de-madrugada
+0056	o-link-que-caia-no-item
+0057	a-ancora-que-a-navegacao-perdia
+0058	o-verde-que-dependia-da-hora
+0059	o-projeto-que-a-tela-mostra
+0060	o-verde-que-dependia-do-ambiente
+0061	o-projeto-que-a-tela-adivinha-pelo-nome
+0062	o-robo-que-abria-o-pr-que-ninguem-mergeava
+0063	o-pino-que-ninguem-conferia
+0064	o-documento-que-nao-conhecia-a-nuvem
+0065	o-nome-que-a-borda-nao-soube-que-mudou
+0066	o-drop-column-que-nenhum-portao-veria
+0067	one-como-projecao-client-facing
+0068	opentelemetry-e-correlacao-distribuida
+0069	o-nome-que-a-tela-ainda-nao-sabia
+0070	o-rename-que-a-guarda-atravessou
+0071	a-flag-que-o-casador-nao-conhecia
+0072	o-numero-que-ninguem-escolhe

@@ -48,6 +48,15 @@ A cláusula foi ainda medida contra si mesma, e a primeira versão reprovou: o r
 escreve `ADR 0003 **do `biahflow-portal`**`, e aceitar só espaço entre o número e o
 "do" fazia os asteriscos de ênfase quebrarem o casamento.
 
+**E o número de cada decisão passou a ser alocado aqui do lado (ADR 0072).** As
+asserções sobre o `ROADMAP.md` perguntam se o índice conhece a decisão; as do fim
+deste arquivo perguntam se o **número** dela foi reivindicado num ponto de
+coordenação — `docs/adr/number-registry.tsv`, um arquivo ordenado a que toda ADR
+acrescenta uma linha no fim, de modo que duas branches concorrentes conflitem no
+git. `test_no_two_adr_files_share_the_same_number` fica onde está e continua sendo
+o backstop: ela detecta a colisão depois de ela existir, e detecção não fecha
+corrida.
+
 Nenhuma asserção aqui precisa de banco: são sobre arquivos. E os auxiliares recebem
 `text: str`, nunca `Path` — só as funções `test_*` abrem arquivo —, que é o que
 permitiu medir contra `HEAD` sem tocar no working tree.
@@ -56,6 +65,7 @@ permitiu medir contra `HEAD` sem tocar no working tree.
 from __future__ import annotations
 
 import re
+from fnmatch import fnmatch
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -369,4 +379,252 @@ def test_the_roadmap_allowlist_does_not_keep_a_line_that_stopped_being_needed() 
         + "; ".join(obsolete)
         + ". Apague-as — a isenção que sobrevive ao motivo é a lista escrita à mão"
         " que a ADR 0033 descreve (ADR 0054)."
+    )
+
+
+# --- o registro de números (ADR 0072) ---------------------------------------
+#
+# As asserções acima são sobre o **índice** conhecer as decisões. As de baixo são
+# sobre o **número** de cada decisão ser alocado num ponto de coordenação, em vez
+# de escolhido à mão quando a branch nasce e reivindicado só no merge — janela em
+# que duas branches levam o mesmo número, o que aconteceu três vezes em 25/08/2026.
+#
+# `test_no_two_adr_files_share_the_same_number` continua acima e continua sendo o
+# backstop: ela **detecta** a colisão. Detecção não fecha corrida — o número livre
+# de dez minutos atrás não é o número livre de agora —, e quem a fecha é o arquivo
+# ordenado a que toda ADR acrescenta uma linha no fim, no mecanismo do `schema.rb`
+# do Rails e do `max_migration.txt` do django-linear-migrations: dois appends na
+# mesma posição conflitam no git, e o conflito é a coordenação.
+
+REGISTRY = ADR_DIR / "number-registry.tsv"
+
+#: Uma linha do registro: quatro dígitos, TAB, slug em kebab-case. O casador é
+#: **apertado** de propósito, e o TAB literal é parte disso: uma linha com espaços
+#: no lugar do TAB não vira "linha quase certa que a guarda deixa passar", vira
+#: linha malformada — e malformada reprova, em vez de sumir do corpus em silêncio,
+#: que seria a guarda ficando verde por não ter conseguido ler (ADR 0023).
+_REGISTRY_LINE = re.compile(r"^(\d{4})\t([a-z0-9]+(?:-[a-z0-9]+)*)$")
+
+
+def _adr_slug(name: str) -> str:
+    """O slug que o nome do arquivo declara — `0071-a-flag-….md` → `a-flag-…`.
+
+    Par de `_adr_number()`, e mora aqui pelo mesmo motivo: duas asserções
+    dependem dele e precisam concordar sobre onde o número acaba e o slug começa.
+    """
+    return name.split("-", 1)[1].removesuffix(".md")
+
+
+def _registry(text: str) -> tuple[list[tuple[int, str]], list[str]]:
+    """As linhas do registro **na ordem em que estão**, mais as malformadas.
+
+    A ordem é devolvida como lista, e não como dicionário, porque duas das
+    asserções são sobre ela: ordenação crescente e ausência de número repetido.
+    Um dicionário perderia as duas — é exatamente o que `_adrs()` faz com o
+    corpus de arquivos, e é a razão de existir
+    `test_no_two_adr_files_share_the_same_number`.
+
+    Comentário (`#`) e linha em branco são ignorados; **qualquer outra coisa** que
+    não case `_REGISTRY_LINE` volta na segunda lista para reprovar por nome.
+    """
+    rows: list[tuple[int, str]] = []
+    malformed: list[str] = []
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        found = _REGISTRY_LINE.match(line)
+        if found is None:
+            malformed.append(line)
+            continue
+        rows.append((int(found.group(1)), found.group(2)))
+    return rows, malformed
+
+
+def _read_registry() -> tuple[list[tuple[int, str]], list[str]]:
+    assert REGISTRY.is_file(), (
+        f"`{REGISTRY.relative_to(REPO_ROOT).as_posix()}` não existe, e é ele que"
+        " aloca o número de toda ADR nova (ADR 0072). Sem o arquivo não há ponto"
+        " de coordenação: o número volta a ser escolhido à mão e duas branches"
+        " voltam a levar o mesmo — restaure-o, não o contorne."
+    )
+    rows, malformed = _registry(REGISTRY.read_text(encoding="utf-8"))
+    assert malformed == [], (
+        "estas linhas do registro de números não têm a forma `NNNN<TAB>slug`: "
+        + "; ".join(repr(line) for line in malformed)
+        + ". O separador é um TAB literal e o slug é kebab-case; uma linha que a"
+        " guarda não sabe ler sairia do corpus em silêncio, que é o verde por não"
+        " ter conseguido olhar (ADR 0072)."
+    )
+    assert rows, (
+        "o registro de números está vazio — nenhuma linha `NNNN<TAB>slug` em"
+        f" `{REGISTRY.relative_to(REPO_ROOT).as_posix()}`. Ele é o corpus das duas"
+        " direções abaixo, e um corpus vazio faria as duas passarem sem afirmar"
+        " nada (ADR 0072)."
+    )
+    return rows, malformed
+
+
+def test_the_adr_number_registry_is_ordered_and_claims_each_number_once() -> None:
+    """O registro é ordenado e não repete número.
+
+    Ordenado porque a alocação é um **append no fim**: uma linha fora de ordem
+    significa que alguém escreveu no meio do arquivo, e escrever no meio é
+    justamente o que devolve ao git a chance de auto-mesclar dois appends sem
+    conflito — a coordenação evaporaria sem nada ficar vermelho. Número repetido
+    é a colisão que a fatia inteira existe para não deixar acontecer, vista do
+    lado do registro em vez do lado dos arquivos.
+    """
+    rows, _ = _read_registry()
+    numbers = [number for number, _ in rows]
+
+    assert numbers == sorted(numbers), (
+        "o registro de números não está em ordem crescente — a primeira quebra é"
+        f" {next(f'{b:04d} depois de {a:04d}' for a, b in zip(numbers, numbers[1:]) if b < a)}."
+        " Toda linha nova vai para o **fim** do arquivo: é o append na mesma"
+        " posição que faz duas branches conflitarem, e é isso que o mecanismo"
+        " compra (ADR 0072)."
+    )
+
+    seen: dict[int, int] = {}
+    for number in numbers:
+        seen[number] = seen.get(number, 0) + 1
+    repeated = sorted(number for number, count in seen.items() if count > 1)
+
+    assert repeated == [], (
+        "estes números aparecem mais de uma vez no registro: "
+        + ", ".join(f"ADR {number:04d}" for number in repeated)
+        + ". Duas linhas com o mesmo número são duas decisões reivindicando o"
+        " mesmo lugar — renumere a mais nova com `npm run adr` (ADR 0072)."
+    )
+
+
+def test_every_adr_file_has_a_line_in_the_number_registry() -> None:
+    """Direção 1: todo arquivo de ADR reivindicou o número dele no registro.
+
+    Fail-closed nas duas pontas: diretório de ADR vazio reprova (o glob quebrou),
+    registro ausente ou vazio reprova em `_read_registry`. Verde por não ter
+    conseguido olhar é o `dependency-review` da ADR 0023, e aqui custaria a fatia
+    inteira: um registro que não descreve o diretório não aloca número nenhum.
+    """
+    files = _read_adrs()
+    assert files, (
+        "nenhum arquivo de ADR foi encontrado em `docs/adr/` — o glob quebrou, e"
+        " uma guarda que não olha nada não pode dizer que está tudo certo."
+    )
+    rows, _ = _read_registry()
+    claimed = dict(rows)
+
+    missing = sorted(name for name in files if _adr_number(name) not in claimed)
+    assert missing == [], (
+        "estes arquivos de ADR não têm linha no registro de números: "
+        + ", ".join(missing)
+        + ". A linha é escrita por `npm run adr` no mesmo commit do arquivo — sem"
+        " ela o número não foi reivindicado em lugar nenhum, e a próxima branch o"
+        " toma sem que nada conflite (ADR 0072)."
+    )
+
+    diverging = sorted(
+        f"ADR {_adr_number(name):04d}: o arquivo diz `{_adr_slug(name)}` e o"
+        f" registro diz `{claimed[_adr_number(name)]}`"
+        for name in files
+        if claimed[_adr_number(name)] != _adr_slug(name)
+    )
+    assert diverging == [], (
+        "o slug do registro e o do nome do arquivo divergem: "
+        + "; ".join(diverging)
+        + ". O registro é onde se lê que número pertence a que decisão; um slug"
+        " que não bate faz a linha apontar para uma decisão que não é aquela"
+        " (ADR 0072)."
+    )
+
+
+def test_every_line_in_the_number_registry_has_an_adr_file() -> None:
+    """Direção 2: toda linha reivindicada tem arquivo.
+
+    As duas direções, porque as duas já falharam neste repositório em documentos
+    diferentes — é o argumento da ADR 0034 sobre o `alerts.md`, onde o runbook
+    nomeava um evento que ninguém emitia e doze emitidos não tinham runbook. Aqui
+    a linha órfã é pior que ruído: ela **queima** um número que ninguém usou, e a
+    ferramenta aloca a partir do maior reivindicado.
+    """
+    files = _read_adrs()
+    assert files, (
+        "nenhum arquivo de ADR foi encontrado em `docs/adr/` — o glob quebrou, e"
+        " uma guarda que não olha nada não pode dizer que está tudo certo."
+    )
+    existing = {_adr_number(name) for name in files}
+    rows, _ = _read_registry()
+
+    dangling = sorted(
+        f"ADR {number:04d}\t{slug}" for number, slug in rows if number not in existing
+    )
+    assert dangling == [], (
+        "estas linhas do registro não têm arquivo em `docs/adr/`: "
+        + "; ".join(dangling)
+        + ". Ou o arquivo foi apagado e a linha ficou (queimando um número), ou a"
+        " linha foi escrita antes do arquivo — as duas se resolvem no mesmo"
+        " commit (ADR 0072)."
+    )
+
+
+#: Atributos que desligam a mesclagem com conflito: o driver nomeado
+#: (`merge=union` é o caso literal), a negação (`-merge`, `!merge`) e o macro
+#: `binary`, que o próprio git expande para `-diff -merge -text`.
+_MERGE_ATTRIBUTES = re.compile(r"^(?:merge(?:=|$)|[-!]merge$|binary$)")
+
+
+def _covers(pattern: str, relative: str) -> bool:
+    """O padrão de `.gitattributes` alcança este caminho?
+
+    Deliberadamente **generoso**: casa o caminho inteiro, o nome do arquivo (é o
+    que um padrão sem barra faz no git) e qualquer diretório acima dele. Um
+    casador exato erraria para o lado errado — deixar de reconhecer o padrão que
+    desliga o mecanismo é o falso verde que esta asserção existe para não ter.
+    """
+    pattern = pattern.lstrip("/").rstrip("/")
+    if fnmatch(relative, pattern) or fnmatch(relative.rsplit("/", 1)[-1], pattern):
+        return True
+    parts = relative.split("/")
+    return any(fnmatch("/".join(parts[:index]), pattern) for index in range(1, len(parts)))
+
+
+def test_the_number_registry_is_not_disarmed_by_a_merge_driver() -> None:
+    """Ninguém desliga o conflito em silêncio.
+
+    O mecanismo inteiro é o git recusar mesclar dois appends na mesma posição. Um
+    `.gitattributes` com `merge=union` para o registro faz o git mesclar os dois
+    sem dizer nada: as duas linhas entram, as duas ADRs ficam com o mesmo número,
+    e a corrida volta a existir **com o arquivo parecendo íntegro**. Não existe
+    `.gitattributes` neste repositório hoje, e por isso a asserção é condicional —
+    o que ela impede é o arquivo nascer já desarmando o mecanismo.
+
+    Fail-closed no espírito da casa: o mecanismo tem de ser indefensável de forma
+    silenciosa. Desligá-lo continua possível, e passa a exigir apagar esta
+    asserção junto — que é uma linha de diff que uma pessoa lê.
+    """
+    gitattributes = REPO_ROOT / ".gitattributes"
+    if not gitattributes.is_file():
+        return
+
+    relative = REGISTRY.relative_to(REPO_ROOT).as_posix()
+    offending: list[str] = []
+    for number, line in enumerate(
+        gitattributes.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        pattern, *attributes = line.split()
+        if not _covers(pattern, relative):
+            continue
+        for attribute in attributes:
+            if _MERGE_ATTRIBUTES.match(attribute):
+                offending.append(f".gitattributes:{number}: `{line.strip()}`")
+
+    assert offending == [], (
+        "o `.gitattributes` declara mesclagem para o registro de números: "
+        + "; ".join(offending)
+        + f". O conflito em `{relative}` **é** o mecanismo (ADR 0072) — um driver"
+        " de merge ali faz duas branches receberem o mesmo número com o arquivo"
+        " parecendo íntegro. Apague o atributo; se a intenção é mesmo desligar a"
+        " coordenação, isso é decisão de ADR, não de linha de configuração."
     )

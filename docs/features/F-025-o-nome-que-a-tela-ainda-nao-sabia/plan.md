@@ -187,6 +187,15 @@ planning_findings:
 
 ## Desvios de plano
 
-Nenhum registrado até aqui. Depois de o plano ser congelado, mudança em dependência ou em trabalho
+### PLAN_DEVIATION 01 — a guarda de consumo de token entra em T04
+
+| Campo | Valor |
+| --- | --- |
+| Tarefa | T04 (a exigência), T02 (o consumo) |
+| Planejado | T01 declara tokens; T02 e T04 os usam; nenhuma guarda prevista |
+| Real | T01 entregou **sete tokens sem consumidor** — `--color-info-50/600`, `--color-surface`, `--color-surface-sunken`, `--radius-card/-control/-pill` — e no mesmo commit publicou um documento afirmando que "um token só entra no `@theme` se algum seletor o consumir" |
+| Impacto | É o defeito da ADR 0033 dentro da própria fatia: documento publicado sobre o que não existe. E deixa sem portão o critério da Issue #46 que pede *contrato estável de consumo de token* |
+| Resolução | T02 passa a **exigir** o consumo, com tabela de token → consumidor e conferência por `grep`; T04 ganha a guarda derivada em `tests/rendered-html.test.mjs`, com corpus lido do próprio `@theme`, fail-closed, isenção com motivo e sem prazo, e **medição por mutação** antes de declarar pronto. O que sobrar sem consumidor ao fim de T04 sai do `@theme` |
+| Autoridade | Dentro do escopo aceito: a Issue #46 lista o contrato de consumo entre os critérios de aceite da fundação. Não abre decisão nova; não exige gate humano | Depois de o plano ser congelado, mudança em dependência ou em trabalho
 planejado vira `PLAN_DEVIATION` com tarefa, estado planejado, estado real, impacto e resolução —
 o plano congelado não é editado no lugar.

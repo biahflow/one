@@ -126,7 +126,7 @@
   /* `<Button />` (F-025 T02, DAP §05) — as quatro variantes; `disabled` e o
      anel de foco de teclado vêm de `:focus-visible` no `@layer base` acima. */
   .btn {
-    @apply inline-flex min-h-10.5 items-center justify-center gap-2 border border-transparent px-4 py-2.5 text-[13px] font-bold transition-colors;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 border border-transparent px-4 py-2.5 text-[13px] font-bold transition-colors;
     border-radius: var(--radius-control);
   }
   .btn--primary {
@@ -138,7 +138,7 @@
     background: var(--color-surface);
   }
   .btn--ghost { @apply bg-transparent text-muted hover:bg-brand-50 hover:text-ink; }
-  .btn--danger { @apply bg-danger-600 text-white; }
+  .btn--danger { @apply bg-danger-600 text-white hover:opacity-90; }
   .btn:disabled { @apply cursor-not-allowed opacity-55; }
 
   .empty-state {
@@ -163,14 +163,15 @@
   .brand-row {
     @apply flex items-center gap-2 px-2 pb-6;
   }
-  /* Escrita para o antigo sufixo `labs` e reusada, sem regra nova, pelo ponto do
-     wordmark do One (F-025 T02, DAP §01): `.one-brand-dot` é o único `<span>`
-     aninhado dentro do `<span>` filho direto de `.brand-row`. */
-  .brand-row > span span { @apply text-brand-500; }
   /* `<Brand />` — wordmark em duas linhas dentro de uma `.brand-row` que é
-     `flex`; o `grid` interno é o que evita as duas linhas lado a lado. */
+     `flex`; o `grid` interno é o que evita as duas linhas lado a lado. Os três
+     filhos são `<span>` (nunca `<div>`, revisão da T02 achado 1), e cada um tem
+     regra de cor própria — nada aqui depende de um seletor `> span span`
+     genérico, que era frágil por construção e existia só para o antigo sufixo
+     `labs`. */
   .one-brand { @apply grid gap-px; }
   .one-brand-word { @apply text-[19px] font-bold tracking-[-0.03em] text-ink; }
+  .one-brand-dot { @apply text-brand-500; }
   .one-brand-sub { @apply text-[10px] font-semibold tracking-[0.04em] text-muted; }
   .sidebar-close { @apply hidden border-0 bg-transparent text-slate-500; }
   .sidebar-toggle { @apply ml-auto grid rounded-lg transition-colors hover:bg-slate-100; }
@@ -737,11 +738,11 @@
     @apply absolute -right-30 -bottom-30 h-65 w-65 rounded-full border-[60px] border-white/6;
   }
   .auth-brand-row { @apply p-0 text-white; }
-  .auth-brand-row > span span { @apply text-brand-200; }
-  /* O wordmark sobre o gradiente escuro (DAP §01): branco, com o descender em
-     `brand-200` — o mesmo tom do ponto, porque as duas medições de contraste
-     do pacote coincidem no valor. */
+  /* O wordmark sobre o gradiente escuro (DAP §01): branco, com o ponto e o
+     descender em `brand-200` — `brand-500` sobre `brand-600` dá 1,06:1, e as
+     duas medições de contraste do pacote coincidem no mesmo tom. */
   .auth-brand-row .one-brand-word { @apply text-white; }
+  .auth-brand-row .one-brand-dot { @apply text-brand-200; }
   .auth-brand-row .one-brand-sub { @apply text-brand-200; }
   .auth-brand-copy { @apply relative z-1 max-w-100; }
   .auth-brand-copy h1 { @apply mt-0 mb-3.5 text-3xl leading-tight font-semibold tracking-[-0.035em]; }
@@ -765,10 +766,12 @@
 @media (min-width: 761px) {
   .portal-shell--collapsed .sidebar { width: 72px; flex-basis: 72px; padding-left: 10px; padding-right: 10px; }
   .portal-shell--collapsed .brand-row { justify-content: center; padding: 0 0 25px; }
-  /* Era `> span:nth-child(2)`, contando com o `.brand-mark` como primeiro filho —
-     que saiu (F-025 T02). `<Brand />` é o próprio filho a esconder agora, e
-     nomear a classe é mais robusto do que contar posição. */
-  .portal-shell--collapsed .brand-row .one-brand { display: none; }
+  /* O DAP proíbe o tile na tela do produto, não o wordmark reduzido (revisão
+     da T02, achado 2): a 72 px com 10 px de padding de cada lado sobram ~52 px,
+     e "One." a 15 px em Inter bold mede ~33 px — cabe. Some só o descender e
+     encolhe o wordmark, em vez de esconder a marca inteira. */
+  .portal-shell--collapsed .one-brand-sub { display: none; }
+  .portal-shell--collapsed .one-brand-word { font-size: 15px; }
   .portal-shell--collapsed .sidebar-toggle { margin-left: 0; }
   .portal-shell--collapsed .project-switcher { justify-content: center; padding: 9px 0; }
   .portal-shell--collapsed .project-switcher > span:nth-child(2),

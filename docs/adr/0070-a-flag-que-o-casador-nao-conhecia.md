@@ -1,4 +1,4 @@
-# ADR 0067 — A flag que o casador não conhecia
+# ADR 0070 — A flag que o casador não conhecia
 
 **Status:** aceito
 **Data:** 20/08/2026
@@ -176,3 +176,9 @@ código num portão de CI e deixa a guarda medida; nada aqui foi observado servi
 nenhum comportamento de produto mudou, nenhuma imagem ou action trocou de versão, e nenhum
 defeito de dependência foi encontrado — o que a fatia entrega é o portão deixando de olhar
 para o token errado.
+
+*Retificado em 25/08/2026: esta ADR nasceu com o número 0067, que `main` já usava para outra
+decisão (`0067-one-como-projecao-client-facing.md`) — a branch desta ADR foi aberta antes de a
+outra existir e mergeada depois, e `test_roadmap_index.py` não via a colisão porque `_adrs()`
+chaveia por número e o arquivo mais novo sobrescrevia o mais antigo em silêncio. Renumerada para
+0070, o próximo número livre; o texto da decisão não foi tocado.*

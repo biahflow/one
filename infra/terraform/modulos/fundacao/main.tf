@@ -343,6 +343,29 @@ resource "google_project_iam_member" "infra" {
   member  = "serviceAccount:${google_service_account.infra.email}"
 }
 
+# **E faltava uma, que só um `create` revela.** A lista acima administra contas de
+# serviço (`serviceAccountAdmin`) mas não *age como* uma — e criar serviço, job ou
+# worker pool do Cloud Run que declare `service_account` exige `actAs` sobre ela. A
+# `hml-deploy` tem o equivalente no projeto (`iam.serviceAccountUser`, acima), por isso
+# o `deploy-hml.yml` sempre funcionou; a `hml-infra` não tinha, e ninguém notou porque
+# **o CI nunca criou um recurso deste stack**: os cinco do CRM nasceram à mão, com
+# credencial de pessoa (o annotation `serving.knative.dev/creator` ainda diz
+# `daniel@biahflow.ai`), e todo `apply` desde então foi update — que não pede `actAs`.
+#
+# Apareceu em 25/08/2026, no rename da ADR 0070: renomear é `destroy` mais `create`, e
+# os cinco `create` reprovaram com `Permission 'iam.serviceaccounts.actAs' denied on
+# service account hml-execucao@…`. Os `destroy` não chegaram a rodar, então nada caiu.
+#
+# O grant é **estreito de propósito**: sobre a `hml-execucao` e mais nada, em vez de
+# `roles/iam.serviceAccountUser` no projeto. Uma conta que já é quase dona do projeto
+# não precisa também poder personificar qualquer conta futura dele. É o mesmo desenho
+# que `envs/hml/croquito` usa em `biahflow/infra`.
+resource "google_service_account_iam_member" "infra_actas_execucao" {
+  service_account_id = google_service_account.execucao.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.infra.email}"
+}
+
 # O estado. Sem esta linha o `terraform init` do CI falha antes de planejar
 # qualquer coisa, e o erro não menciona o bucket — diz só que a credencial não
 # serve. O bucket é criado à mão (ovo e galinha, ver `backend.tf`), então ele entra

@@ -1571,6 +1571,21 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       e quem envia e-mail é o worker, não há `apple-touch-icon`, e o anel de foco herda
       `transition-colors`, que no Tailwind v4 inclui `outline-color`.
 
+- [x] **O rename que a guarda atravessou** *(ADR 0070)*: os cinco recursos de HML do CRM
+      passaram de `cockpit-*` para `pulse-*`, alinhando o nome ao do produto (ADR 0035 do
+      `biahflow/pulse`). *O que dá a esta fatia o nome que ela tem:* o mesmo movimento, em
+      19/08, tocou só o `servicos.tf` e deixou `ambientes/hml/cloudflare.tf` apontando a borda
+      para um serviço morto — sem nada ficar vermelho, porque uma string não é referência. A
+      ADR 0065 diagnosticou aquilo e deixou o portão; **desta vez o portão foi exercido antes
+      de a fatia ser escrita**, e devolver `cockpit-web` àquela linha reprova o `api-quality`
+      com arquivo e linha na mensagem. *E o custo do silêncio da primeira vez ficou medido:* a
+      correção da ADR 0065 entrou no código em 20/08 e o `apply` nunca rodou, de modo que a
+      borda seguia apontando para `biahflow-web` em 25/08 — **seis dias**, escondidos pelo
+      Cloudflare Access, que responde 302 antes de a origem ser exercida e faz toda sonda
+      anônima parecer verde. Renomear em Cloud Run é `destroy` mais `create`: há janela de
+      indisponibilidade em HML, e os `pulse-*` nascem com a imagem de bootstrap até o
+      `deploy-hml` do outro repositório publicar as reais.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

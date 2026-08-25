@@ -40,12 +40,12 @@ segredos, quantas instâncias. Trocar de provedor é reescrever `modulos/` e man
 
 "Quem alcança" é `acesso`, com quatro valores e não um booleano (ADR 0048): `publico`, `interno`,
 `interno-sem-iam` e `balanceador`. O `balanceador` existe porque o `interno` não serve a um serviço
-**cujo cliente é o navegador** — ver a linha da `cockpit-api` na tabela abaixo —, e o
+**cujo cliente é o navegador** — ver a linha da `pulse-api` na tabela abaixo —, e o
 `interno-sem-iam` porque nem todo chamador de dentro da VPC sabe apresentar identidade.
 
 *Corrigido em 20/08/2026 (ADR 0064): este parágrafo dizia "três valores" e nomeava três, enquanto
 o `validation` de `modulos/servico-cloudrun/main.tf` aceita quatro desde a ADR 0048. O quarto,
-`interno-sem-iam`, é justamente o da `cockpit-api`, que é a linha para a qual o parágrafo mandava
+`interno-sem-iam`, é justamente o da `pulse-api`, que é a linha para a qual o parágrafo mandava
 olhar.*
 
 ## Por que as aplicações já são portáteis
@@ -63,14 +63,14 @@ Isto foi medido antes de escolher, e é o que sustenta a promessa acima:
 
 | Peça | Onde | Por quê |
 |---|---|---|
-| `cockpit-web` (SPA em nginx) | Cloud Run, **público** | é o único que o navegador alcança direto; serve o `index.html` e os assets em `app.<base>` |
-| `cockpit-api` (Django) | Cloud Run, **`interno-sem-iam`** | o cliente dela é **o navegador**, e para esse cliente IAM invoker não é barreira: nginx não emite ID token e um NEG sem servidor também não. A `run.app` deixa de ser alcançável de fora, e os caminhos de `app.<base>` chegam pela nossa borda (ADR 0046, ADR 0048) |
-| `cockpit-scheduler` | **Cloud Run worker pool** | a primitiva feita para carga longa sem HTTP — o container de um worker pool nem tem bloco `ports`. Uma versão anterior deste arquivo o mandava para uma VM, sobre a conclusão errada de que o Cloud Run não os aceitava (ADR 0045) |
-| `cockpit-migrate`, `cockpit-check` | **Cloud Run job** | começam e terminam: a migração e o `check --deploy` do deploy |
+| `pulse-web` (SPA em nginx) | Cloud Run, **público** | é o único que o navegador alcança direto; serve o `index.html` e os assets em `app.<base>` |
+| `pulse-api` (Django) | Cloud Run, **`interno-sem-iam`** | o cliente dela é **o navegador**, e para esse cliente IAM invoker não é barreira: nginx não emite ID token e um NEG sem servidor também não. A `run.app` deixa de ser alcançável de fora, e os caminhos de `app.<base>` chegam pela nossa borda (ADR 0046, ADR 0048) |
+| `pulse-scheduler` | **Cloud Run worker pool** | a primitiva feita para carga longa sem HTTP — o container de um worker pool nem tem bloco `ports`. Uma versão anterior deste arquivo o mandava para uma VM, sobre a conclusão errada de que o Cloud Run não os aceitava (ADR 0045) |
+| `pulse-migrate`, `pulse-check` | **Cloud Run job** | começam e terminam: a migração e o `check --deploy` do deploy |
 | Redis | **Upstash**, externo | cobrado por comando, então o `polling_interval` do Celery foi afrouxado para 5s — um worker ocioso a 1s gera ~86 mil comandos/dia sem trabalho nenhum |
 | documentos | Cloud Storage | S3-compatível por HMAC. Resolve de carona um ponto que o `Caddyfile` deixou em aberto: a URL assinada **cobre o host**, e o MinIO não era publicado |
 | Postgres | Neon, externo | ver ADR 0044 — o `roles.sql` foi verificado lá |
-| rede | VPC + **egress direto** + Cloud NAT | a VPC existe por um motivo só: fazer o ingress interno da API significar alguma coisa — é por dentro dela que o nginx da SPA alcança a `cockpit-api`. Sem conector — ele é peça paga, e worker pool nem o aceita |
+| rede | VPC + **egress direto** + Cloud NAT | a VPC existe por um motivo só: fazer o ingress interno da API significar alguma coisa — é por dentro dela que o nginx da SPA alcança a `pulse-api`. Sem conector — ele é peça paga, e worker pool nem o aceita |
 
 *Corrigido em 20/08/2026 (ADR 0064): esta tabela listava `web`, `portal-api`, `keycloak`, `worker`
 e `beat` como peças de HML, e eles saíram em 13/08 com o produto (ADR 0053); e chamava os dois

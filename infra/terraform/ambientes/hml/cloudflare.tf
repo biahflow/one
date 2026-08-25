@@ -13,7 +13,7 @@
 # não tem log nenhum. A Cloudflare no plano free dá analytics agregado, não log por
 # requisição. Quem for depurar um 502 daqui em diante começa pelo log do Cloud Run.
 #
-# **A direção continua fundação → produto.** Este arquivo nomeia `cockpit-web`, que é
+# **A direção continua fundação → produto.** Este arquivo nomeia `pulse-web`, que é
 # recurso do outro state, pela mesma razão que `backends_da_borda` o nomeava: um
 # hostname de borda referencia o serviço **por nome**, que é uma string e não um
 # recurso. É o que permite declarar a borda inteira sem ler state de produto nenhum, e
@@ -27,6 +27,12 @@
 # confere agora é `test_every_service_name_the_repository_builds_or_invokes_is_declared`,
 # em `apps/api/tests/test_architecture_doc.py`: o primeiro segmento de um hostname
 # `run.app` tem de ser chave de algum `servicos.tf`.
+#
+# **E a guarda foi exercida em 25/08/2026, no rename seguinte.** `cockpit-*` virou
+# `pulse-*` junto com o nome do produto, esta linha mudou no mesmo lote — e o que
+# garante que mudou não foi lembrança de ninguém: é que deixá-la para trás reprova o
+# `api-quality` antes de o PR poder ser mergeado. Da primeira vez o defeito atravessou
+# seis dias em silêncio; da segunda ele não passou do CI.
 
 # **A zona entra por id e não por busca, e isso é uma permissão a menos.** O repo do
 # site descobre a zona com `data "cloudflare_zone"` filtrando por nome, o que exige
@@ -53,7 +59,7 @@ locals {
   # antiga com hash: é a que o Django do CRM tem em `DJANGO_ALLOWED_HOSTS`. Construída
   # e não lida do serviço pelo mesmo motivo de sempre — o número do projeto torna a URL
   # previsível antes de o serviço existir, e ler o serviço fecharia ciclo entre states.
-  origem_do_crm = "cockpit-web-${data.google_project.este.number}.${var.regiao}.run.app"
+  origem_do_crm = "pulse-web-${data.google_project.este.number}.${var.regiao}.run.app"
 }
 
 resource "cloudflare_dns_record" "crm" {
@@ -104,7 +110,7 @@ resource "cloudflare_workers_route" "proxy_do_crm" {
 # --- Access ---------------------------------------------------------------------
 # Mesmo padrão já validado em `biahflow-site/infra/terraform/access.tf`.
 #
-# **E o que ele não resolve, dito por extenso.** O `cockpit-web` é `publico` — precisa
+# **E o que ele não resolve, dito por extenso.** O `pulse-web` é `publico` — precisa
 # ser, porque quem o alcança é a Cloudflare, que chega pela internet como qualquer
 # outro cliente. Então a `run.app` dele continua aberta, e o Access protege o nome
 # bonito, não o serviço. A barreira que vale para quem descobrir a `run.app` continua

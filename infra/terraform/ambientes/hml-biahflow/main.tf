@@ -27,7 +27,7 @@ locals {
   primeiro_apply = var.tag_imagem == ""
 
   # Imagem declarada no serviço vence; para as nossas vale a regra de sempre.
-  imagem = { for nome, s in local.servicos_http :
+  imagem = { for nome, s in local.servicos_http_com_desmonte :
     nome => s.imagem != null ? s.imagem : (
       local.primeiro_apply ? var.imagem_bootstrap : "${local.fundacao.registro}/${nome}:${var.tag_imagem}"
     )
@@ -36,7 +36,7 @@ locals {
 
 module "servicos" {
   source   = "../../modulos/servico-cloudrun"
-  for_each = local.servicos_http
+  for_each = local.servicos_http_com_desmonte
 
   projeto  = var.projeto
   regiao   = var.regiao
@@ -52,6 +52,8 @@ module "servicos" {
   rede     = local.fundacao.rede
   sub_rede = local.fundacao.sub_rede
 
+  protegido = !startswith(each.key, "cockpit-")
+
   argumentos = each.value.argumentos
   variaveis  = each.value.variaveis
   segredos   = each.value.segredos
@@ -62,7 +64,7 @@ module "servicos" {
 # código, do mesmo banco e do mesmo storage.
 module "workers" {
   source   = "../../modulos/worker-pool"
-  for_each = local.processos_longos
+  for_each = local.processos_longos_com_desmonte
 
   projeto    = var.projeto
   regiao     = var.regiao
@@ -70,33 +72,35 @@ module "workers" {
   imagem     = local.imagem[each.value.servico]
   comando    = each.value.comando
   instancias = each.value.instancias
+  protegido  = !startswith(each.key, "cockpit-")
   cpu        = each.value.cpu
   memoria    = each.value.memoria
   conta      = local.fundacao.conta_execucao
   rede       = local.fundacao.rede
   sub_rede   = local.fundacao.sub_rede
 
-  variaveis = local.servicos_http[each.value.servico].variaveis
-  segredos  = local.servicos_http[each.value.servico].segredos
+  variaveis = local.servicos_http_com_desmonte[each.value.servico].variaveis
+  segredos  = local.servicos_http_com_desmonte[each.value.servico].segredos
 }
 
 # Os trabalhos que começam e terminam. Cada um herda o ambiente do serviço de que é
 # irmão — manter duas listas seria criar uma segunda verdade sobre a mesma configuração.
 module "trabalhos" {
   source   = "../../modulos/job"
-  for_each = local.trabalhos
+  for_each = local.trabalhos_com_desmonte
 
-  projeto  = var.projeto
-  regiao   = var.regiao
-  nome     = each.key
-  imagem   = local.imagem[each.value.servico]
-  comando  = each.value.comando
-  conta    = local.fundacao.conta_execucao
-  rede     = local.fundacao.rede
-  sub_rede = local.fundacao.sub_rede
+  projeto   = var.projeto
+  regiao    = var.regiao
+  nome      = each.key
+  imagem    = local.imagem[each.value.servico]
+  comando   = each.value.comando
+  protegido = !startswith(each.key, "cockpit-")
+  conta     = local.fundacao.conta_execucao
+  rede      = local.fundacao.rede
+  sub_rede  = local.fundacao.sub_rede
 
-  variaveis = local.servicos_http[each.value.servico].variaveis
-  segredos  = local.servicos_http[each.value.servico].segredos
+  variaveis = local.servicos_http_com_desmonte[each.value.servico].variaveis
+  segredos  = local.servicos_http_com_desmonte[each.value.servico].segredos
 }
 
 # --- Os dois portões de segredo, agora deste produto ----------------------------

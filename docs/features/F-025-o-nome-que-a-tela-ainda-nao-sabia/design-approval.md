@@ -1,7 +1,7 @@
 # Design Approval Package — F-025 · Identidade do One e fundação de design
 
 Classification: INTERFACE_CHANGE
-Revision: 3
+Revision: 4
 Status: Approved
 Date: 2026-08-25
 Produced by: Claude Opus 5 (1M context), sob a Engineering OS
@@ -16,7 +16,7 @@ Produced by: Claude Opus 5 (1M context), sob a Engineering OS
 | What was approved | **visual e cópia** |
 | Approved by | Daniel Campos |
 | Date | 25/08/2026 |
-| Revision approved | **3** |
+| Revision approved | **4** |
 | Explicitly **not** approved | A direção de marca com selo (considerada e recusada) · o descritor `Portal do Cliente` (retirado na revisão 3) · tema escuro · redesenho de tela existente · o laço de aceite da ADR 0067 · renomear o repositório · qualquer coisa listada em *Open questions* |
 
 ### Histórico de revisões
@@ -25,14 +25,15 @@ Produced by: Claude Opus 5 (1M context), sob a Engineering OS
 | --- | --- | --- |
 | 1 | Levada ao gate com **duas** direções de marca renderizadas lado a lado, para escolha. | `design/one-dap-r1.html` + `design/captures/` — **preservados** |
 | 2 | Direção B (só wordmark), descender em inglês, e o símbolo do `favicon`/`og.png` resolvido como tile com a inicial. | superseded antes de qualquer implementação consumi-la — não preservada |
-| 3 | Sai o descritor `Portal do Cliente`: o produto se apresenta pelo nome, sem aposto. Some do `<title>`, do cartão de compartilhamento e do rodapé do painel de autenticação. | `design/one-dap-r3.html` + `design/captures-r3/` — **a revisão que vale** |
+| 3 | Sai o descritor `Portal do Cliente`: o produto se apresenta pelo nome, sem aposto. Some do `<title>`, do cartão de compartilhamento e do rodapé do painel de autenticação. | superseded pela 4 — não preservada |
+| 4 | **Nenhuma decisão nova.** A Inter passa a ser embutida no artefato como data URI. Descobriu-se na implementação que as capturas 1 a 3 saíram na fonte do sistema, não em Inter — a letra aprovada não era a letra entregue. | `design/one-dap-r4.html` + `design/captures-r4/` — **a revisão que vale** |
 
 **A revisão 1 fica.** É o que a pessoa olhou quando escolheu entre as duas direções de marca, e
-apagá-la tornaria aquela decisão não verificável depois. **A revisão 2 não fica**, e a diferença é
-que ninguém agiu sobre ela: ela existiu por vinte minutos entre duas emendas do mesmo gate, nenhuma
-implementação a consumiu e nenhuma revisão de código dependeu dela. O que ela decidiu está nesta
-tabela e no corpo deste registro; guardar cinco megabytes de captura de um estado intermediário
-seria confundir histórico com evidência.
+apagá-la tornaria aquela decisão não verificável depois. **As revisões 2 e 3 não ficam**, e o
+critério é o mesmo nos dois casos: guardar duas capturas da mesma decisão — uma delas sabidamente
+na letra errada — é guardar ruído, não evidência. A 2 existiu por vinte minutos entre duas emendas
+do mesmo gate; a 3 foi superada por uma correção de fidelidade que não mexeu em decisão nenhuma.
+O que cada uma decidiu está nesta tabela e no corpo deste registro.
 
 ### Errata
 
@@ -61,17 +62,29 @@ cópia**, e vice-versa: se só uma das duas for aprovada, diga qual.
 
 | File | What it is |
 | --- | --- |
-| `design/one-dap-r3.html` | **A revisão aprovada.** Renderização auto-contida: abre com duplo clique — sem build, sem toolchain, sem rede. Um arquivo, CSS embutido e ícones em SVG inline. |
-| `design/captures-r3/` | **Captura congelada do que foi aprovado** — é a isto que a aprovação se refere. Catorze imagens: capa, uma por seção, e o pacote inteiro. |
+| `design/one-dap-r4.html` | **A revisão aprovada.** Renderização auto-contida: abre com duplo clique — sem build, sem toolchain, sem rede. Um arquivo, com CSS, ícones em SVG e **a Inter** embutidos. |
+| `design/captures-r4/` | **Captura congelada do que foi aprovado** — é a isto que a aprovação se refere. Catorze imagens: capa, uma por seção, e o pacote inteiro. |
 | `design/one-dap-r1.html` + `design/captures/` | Histórico: o que foi levado ao gate, com as duas direções de marca. Não é a revisão aprovada. |
 
 A captura existe porque uma renderização depende de fonte, navegador e plataforma. As capturas
 foram feitas com Chromium headless (Playwright 1.62.1), 1280 px de largura, escala 1,5× (o pacote
 inteiro em 1×), sobre o mesmo arquivo desta revisão — validação determinística, sem modelo no laço.
 
-**Sobre a fonte:** o artefato pede `Inter` e cai para a pilha de sistema quando ela não está
-instalada. A captura foi feita numa máquina com Inter disponível; é o que a aprovação enxerga, e
-é a fonte que o produto carrega por `next/font/google`.
+**Sobre a fonte, e sobre a afirmação errada que estava aqui.** Até a revisão 3 este parágrafo
+dizia que *"a captura foi feita numa máquina com Inter disponível"*. **Era falso, e foi medido:**
+com `canvas.measureText`, `Inter` resolvia nesta máquina exatamente como uma fonte inexistente, e
+a pilha caía em `system-ui`. As capturas das revisões 1 a 3 mostram, portanto, a letra do sistema —
+enquanto o produto renderiza Inter, que o `next/font/google` auto-hospeda.
+
+É o defeito exato que a regra da captura congelada existe para evitar: *"uma renderização depende
+de fonte, navegador e plataforma; a captura congelada é a que a aprovação referencia"*. Aprovar
+uma marca é aprovar uma **letra**, e a letra aprovada não era a letra entregue.
+
+A revisão 4 fecha isso pela raiz: a Inter entra **embutida no arquivo** como data URI — o mesmo
+subconjunto latino que o `next/font/google` gera para o produto, 48 KB. Com isso o artefato deixa
+de depender do que está instalado na máquina de quem o abre, que era uma violação latente da
+exigência de ele abrir *"sem build, sem toolchain e sem rede"*. Nenhuma decisão de desenho mudou
+entre a 3 e a 4.
 
 ## Surfaces and states included
 

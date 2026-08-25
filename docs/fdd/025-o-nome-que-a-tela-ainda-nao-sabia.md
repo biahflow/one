@@ -100,8 +100,8 @@ vocabulário que a próxima superfície do One vai desenhar — `ready_for_accep
 
 O cliente abre o link do convite. A tela de login diz **One**, e o painel de marca é o mesmo
 gradiente roxo de sempre — o que mudou é que agora ele tem procedência escrita. Entra, e a
-sidebar traz o wordmark `One` com o descender `por Biahflow`: o produto que ele usa, e a empresa
-com quem ele fala. A aba do navegador diz `One | Portal do Cliente`. Quando o assistente não
+sidebar traz o wordmark `One.` com o descender `by Biahflow`: o produto que ele usa, e a empresa
+com quem ele fala. A aba do navegador diz `One`, sem aposto. Quando o assistente não
 acha evidência e abre pendência, o chip diz "Pendência criada para o time Biahflow" — o time tem
 nome de empresa, porque é com a empresa que ele fala; o produto é a tela.
 
@@ -246,7 +246,7 @@ A guarda bidirecional de `test_telemetry.py` continua verde por não ter o que c
 | `workflows/design-approval.md` (Engineering OS) | O gate, e o que o pacote precisa conter |
 | `workflows/browser-runtime-validation.md` (Engineering OS) | O que `BROWSER_REQUIRED` exige |
 | `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md` | **O Design Approval Package** — registro de aprovação, procedência valor a valor e questões em aberto |
-| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r3.html` | O artefato aprovado; as capturas em `design/captures-r3/` são o que a aprovação referencia |
+| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r4.html` | O artefato aprovado; as capturas em `design/captures-r4/` são o que a aprovação referencia |
 
 ## Testes e avaliações de IA
 

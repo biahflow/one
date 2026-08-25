@@ -264,6 +264,51 @@ def test_every_adr_the_roadmap_cites_exists() -> None:
     )
 
 
+def test_no_two_adr_files_share_the_same_number() -> None:
+    """Duas ADRs com o mesmo número são uma decisão que a outra apaga em silêncio.
+
+    `_adrs()` chaveia por `int(name.split("-", 1)[0])`: um número repetido faz o
+    arquivo que ordena depois sobrescrever o que ordena antes dentro do dicionário,
+    e as duas podem dizer `aceito` sem que `test_every_accepted_adr_has_a_line_in_the_roadmap`
+    veja a duplicata — ela só enxerga o número, nunca o nome do arquivo. Foi
+    exatamente isto que aconteceu com `0067-one-como-projecao-client-facing.md` e
+    `0067-a-flag-que-o-casador-nao-conhecia.md`: duas decisões, um número, e a guarda
+    de índice passava verde por cima da colisão (ADR 0054). Esta asserção lê o
+    corpus de `_read_adrs()` **antes** de `_adrs()` perder a informação, e é onde ela
+    tem de morar: um segundo casador sobre o mesmo dicionário divergiria da forma
+    que `_adrs()` já usa para extrair o número.
+
+    Fail-closed: corpus vazio reprova, na mesma forma que o `dependency-review` da
+    ADR 0023 — verde por não ter conseguido olhar não é verde.
+    """
+    files = _read_adrs()
+    assert files, (
+        "nenhum arquivo de ADR foi encontrado em `docs/adr/` — o glob quebrou, e"
+        " uma guarda que não olha nada não pode dizer que está tudo certo."
+    )
+
+    by_number: dict[int, list[str]] = {}
+    for name in files:
+        number = int(name.split("-", 1)[0])
+        by_number.setdefault(number, []).append(name)
+
+    duplicated = {
+        number: sorted(names) for number, names in by_number.items() if len(names) > 1
+    }
+
+    assert duplicated == {}, (
+        "estes números de ADR têm mais de um arquivo em `docs/adr/`, e o que ordena"
+        " depois sobrescreve o outro em silêncio dentro de `_adrs()`: "
+        + "; ".join(
+            f"ADR {number:04d}: {' e '.join(names)}"
+            for number, names in sorted(duplicated.items())
+        )
+        + ". Renumere um dos dois arquivos para o próximo número livre — `git mv` mais"
+        " a linha 1 do arquivo — e atualize toda citação dele no repositório e no"
+        " `ROADMAP.md` (ADR 0054)."
+    )
+
+
 def test_every_adr_status_is_a_word_this_guard_knows() -> None:
     """Um status fora dos dois vocabulários reprova, em vez de virar 'aceita'.
 

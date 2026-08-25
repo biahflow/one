@@ -1294,7 +1294,7 @@ que ele respeita.
       aberto:** RAG e retenção não têm gatilho estrutural (cobrá-las seria a lista digitada
       da ADR 0033), e "revisadas" continua sem portão — prova-se que a decisão existe e
       está citada, nunca que alguém a leu.
-- [x] **A flag que o casador não conhecia** *(ADR 0067)*: a ponta que a ADR 0063 mediu e
+- [x] **A flag que o casador não conhecia** *(ADR 0070)*: a ponta que a ADR 0063 mediu e
       deixou escrita — *"um `docker run` com flag de valor separado que o casador não
       conhece toma o valor dela por imagem em vez de reprovar; o fail-closed cobre o caso
       de nenhum token sobrar, não o de sobrar o token errado"*. **O mecanismo era uma lista

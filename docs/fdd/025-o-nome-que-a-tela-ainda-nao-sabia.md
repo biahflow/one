@@ -12,10 +12,11 @@ Engineering OS (`workflows/design-approval.md`, `workflows/browser-runtime-valid
 
 ## Status
 
-`SPEC_IN_PROGRESS` → `READY_FOR_PLANNING` **somente depois** de o humano aprovar a revisão exata
-do Design Approval Package — hoje a **revisão 1**, em
-[`design-approval.md`](../features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md),
-estado `Awaiting approval`. O gate fica **antes do planejamento**, não antes da construção: um
+`READY_FOR_PLANNING` desde 25/08/2026. O gate de design foi atravessado: a **revisão 2** do
+Design Approval Package está `Approved` — visual e cópia — em
+[`design-approval.md`](../features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md).
+A revisão 1 levou duas direções de marca ao gate; a escolha foi o **wordmark sem selo**, com o
+descender em inglês, e a revisão 2 é o artefato que renderiza o que foi decidido. O gate fica **antes do planejamento**, não antes da construção: um
 plano que decompõe superfície não aprovada produz tarefas que precisam ser recortadas de novo
 quando o desenho muda.
 
@@ -189,11 +190,11 @@ A guarda bidirecional de `test_telemetry.py` continua verde por não ter o que c
 
 ### Gate de design
 
-- [ ] Existe DAP auto-contido, revisionado, que abre sem build, sem toolchain e sem rede.
-- [ ] O pacote traz **captura congelada**, não só prosa.
-- [ ] A relação Biahflow ⟂ One está explícita.
-- [ ] Todo valor visual está declarado como **retido** ou **novo**, com procedência.
-- [ ] Um humano aprovou a revisão exata antes de o Builder começar.
+- [x] Existe DAP auto-contido, revisionado, que abre sem build, sem toolchain e sem rede.
+- [x] O pacote traz **captura congelada**, não só prosa.
+- [x] A relação Biahflow ⟂ One está explícita.
+- [x] Todo valor visual está declarado como **retido**, **corrigido por medição** ou **novo**, com procedência.
+- [x] Um humano aprovou a revisão exata — revisão 2, visual e cópia, em 25/08/2026 — antes de o Builder começar.
 
 ### Fundação do One
 
@@ -243,8 +244,8 @@ A guarda bidirecional de `test_telemetry.py` continua verde por não ter o que c
 | `docs/project-context.md` | Perfis de validação e fontes de verdade |
 | `workflows/design-approval.md` (Engineering OS) | O gate, e o que o pacote precisa conter |
 | `workflows/browser-runtime-validation.md` (Engineering OS) | O que `BROWSER_REQUIRED` exige |
-| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md` | **O Design Approval Package**, revisão 1 — registro, procedência e questões em aberto |
-| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r1.html` | O artefato auto-contido que o gate aprova |
+| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md` | **O Design Approval Package** — registro de aprovação, procedência valor a valor e questões em aberto |
+| `docs/features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design/one-dap-r2.html` | O artefato aprovado; as capturas em `design/captures-r2/` são o que a aprovação referencia |
 
 ## Testes e avaliações de IA
 

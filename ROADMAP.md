@@ -24,7 +24,7 @@ contratos de tarefa e evidências, está em [`docs/features/README.md`](docs/fea
 | --- | --- | --- | --- | --- |
 | `F-020` — Funil de onboarding: vigília de IA | Não selecionada | `BLOCKED` | [FDD 020](docs/fdd/020-funil-de-onboarding.md) | Histórico suficiente para priorização segura da IA. |
 | `F-022` — Pesquisa de satisfação por evento | Não selecionada | `BLOCKED` | [FDD 022](docs/fdd/022-pesquisa-de-satisfacao-por-evento.md) | Laço de ação do funil fechado de verdade. |
-| `F-025` — One: identidade e fundação de design | Selecionada em 25/08/2026 (Issue #46) | `SPEC_IN_PROGRESS` | [FDD 025](docs/fdd/025-o-nome-que-a-tela-ainda-nao-sabia.md) | Design Approval Package aguardando aprovação humana — o gate fica antes do planejamento. |
+| `F-025` — One: identidade e fundação de design | Selecionada em 25/08/2026 (Issue #46) | `READY_FOR_PLANNING` | [FDD 025](docs/fdd/025-o-nome-que-a-tela-ainda-nao-sabia.md) | Gate de design atravessado: revisão 2 do DAP aprovada em 25/08/2026, visual e cópia. |
 
 `Não selecionada` não é prioridade implícita: exige seleção humana antes de especificação,
 planejamento ou execução.

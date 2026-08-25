@@ -1,4 +1,4 @@
-# ADR 0070 — A flag que o casador não conhecia
+# ADR 0071 — A flag que o casador não conhecia
 
 **Status:** aceito
 **Data:** 20/08/2026
@@ -182,3 +182,12 @@ decisão (`0067-one-como-projecao-client-facing.md`) — a branch desta ADR foi 
 outra existir e mergeada depois, e `test_roadmap_index.py` não via a colisão porque `_adrs()`
 chaveia por número e o arquivo mais novo sobrescrevia o mais antigo em silêncio. Renumerada para
 0070, o próximo número livre; o texto da decisão não foi tocado.*
+
+*Retificado de novo, no mesmo dia: `0070` também já estava tomado. A ADR 0070 — "O rename que a
+guarda atravessou" — entrou pelo PR #51 minutos antes deste, e a correção acima foi escrita
+contra uma `main` que ainda não a tinha. **A guarda que este PR trouxe é quem acusou**, o que é o
+argumento dela em uma linha: o número livre de dez minutos atrás não é o número livre de agora, e
+essa é a razão de a unicidade ser conferida por portão e não por leitura. Renumerada para 0071.
+Quem renumera é esta, e não a 0070, porque aquela já é referenciada de **outro repositório** —
+o cabeçalho do `deploy-hml.yml` e a ADR 0044 do `biahflow/pulse`, ambos mergeados —, e o custo de
+mover um número atravessa o repositório que o cita.*

@@ -3,7 +3,7 @@
 > **13/08/2026 — o portal do cliente saiu.** Não existem mais `portal-web`, `portal-api`,
 > `keycloak`, `portal-worker`, `portal-beat` nem `portal-migrate` na GCP, nem o state
 > `ambientes/hml-portal`, nem os vinte segredos que eram deles. O que sobrou de HML é o
-> CRM (`cockpit-*`, renomeado de `biahflow-*` em 19/08/2026) e o relay do site de
+> CRM (`pulse-*`, que foi `biahflow-*` até 19/08/2026 e `cockpit-*` até 25/08/2026) e o relay do site de
 > marketing. **Os passos 5, 8 e 9 abaixo tratam de segredos, do realm do Keycloak e do
 > `roles.sql` do banco do portal — são história até alguém religar o produto**, e ficam
 > porque religar é refazê-los. A ADR 0053 conta o resto, inclusive a troca do
@@ -294,8 +294,8 @@ Depois dele, as migrações. O `portal-migrate` é executado pelo `deploy-hml.ym
 do outro produto **não são invocados por workflow nenhum** deste repositório:
 
 ```bash
-gcloud run jobs execute cockpit-migrate --region us-east1 --wait
-gcloud run jobs execute cockpit-check   --region us-east1 --wait
+gcloud run jobs execute pulse-migrate --region us-east1 --wait
+gcloud run jobs execute pulse-check   --region us-east1 --wait
 ```
 
 ## 10. As allowlists do Neon e do Upstash
@@ -326,7 +326,7 @@ vão pelo `infra-hml.yml` (`workflow_dispatch` com `aplicar=true`).
 O balanceador global da GCP foi apagado com a saída do portal do cliente: ele servia três
 nomes de dois produtos, e com um produto só a conta da ADR 0048 não se sustentava. Quem
 serve `app.biahflow.ai` agora é a Cloudflare — DNS proxied mais uma Origin Rule que
-reescreve o `Host` para a `run.app` da `cockpit-web`. Ver ADR 0053.
+reescreve o `Host` para a `run.app` da `pulse-web`. Ver ADR 0053.
 
 **Não há mais certificado gerenciado para conferir, nem IP de entrada, nem `url_map`.** As
 seções que ensinavam isso saíram junto; se você chegou aqui procurando por elas, o
@@ -376,9 +376,9 @@ curl -sI https://app.biahflow.ai/ | head -3
 # 2. O 404 do Google, se aparecer, é a Origin Rule não tendo casado: a Cloudflare
 #    entregou o Host original e o Cloud Run não reconheceu o nome.
 #    Confira comparando com a origem crua, que tem de responder 200:
-curl -sI https://cockpit-web-209400815796.us-east1.run.app/ | head -3
+curl -sI https://pulse-web-209400815796.us-east1.run.app/ | head -3
 
-# 3. A API por dentro. O caminho é Cloudflare → cockpit-web → nginx → cockpit-api,
+# 3. A API por dentro. O caminho é Cloudflare → pulse-web → nginx → pulse-api,
 #    e é o nginx quem reescreve o Host para a run.app da API.
 curl -sI https://app.biahflow.ai/healthz | head -3
 ```
@@ -416,10 +416,10 @@ zona) e não há DNS a apontar à mão (o registro é do Terraform).
 Desde 13/08/2026 homologação não tem nada aceso por padrão. Duas coisas diferentes, e a
 diferença é a que mais confunde:
 
-**Serviços HTTP (`min = 0`) acordam sozinhos.** `cockpit-api` e `cockpit-web` sobem
+**Serviços HTTP (`min = 0`) acordam sozinhos.** `pulse-api` e `pulse-web` sobem
 quando chega requisição, em segundos. Não há o que fazer — só esperar.
 
-**Worker pools (`instancias = 0`) NÃO acordam.** `cockpit-scheduler` está desligado, e
+**Worker pools (`instancias = 0`) NÃO acordam.** `pulse-scheduler` está desligado, e
 worker pool não tem requisição que o acorde — ele só volta com um `apply`. Enquanto
 estiver assim, nada agendado do CRM roda: sincronia de calendário, faturas vencidas e
 frescor da base.
@@ -428,7 +428,7 @@ frescor da base.
 simplesmente não acontece, e o sintoma não aponta para a causa:
 
 ```bash
-# em ambientes/hml-biahflow/servicos.tf, cockpit-scheduler: instancias = 1
+# em ambientes/hml-biahflow/servicos.tf, pulse-scheduler: instancias = 1
 cd infra/terraform/ambientes/hml-biahflow && terraform apply
 ```
 
@@ -533,7 +533,7 @@ ser citado. E leia `is_upstash` — contra o Redis do compose o relatório decla
 **A conta da ADR 0045 está incompleta, e o instrumento existe para mostrar quanto.** Ela
 supõe um comando por ciclo por instância e deixa de fora o gossip/mingle/heartbeat do
 Celery, o result backend (que é o mesmo Redis), os tiques do beat, e o
-`cockpit-scheduler` do outro produto — que aponta para o mesmo Upstash sem nenhuma ADR
+`pulse-scheduler` do outro produto — que aponta para o mesmo Upstash sem nenhuma ADR
 ter contabilizado os comandos dele. Medido contra o compose ocioso, o total saiu **da
 ordem de quinze vezes** o previsto; ali há duas sondas de healthcheck que HML não tem, e
 o relatório nomeia as duas justamente para ninguém dividir por um fator qualquer e citar
@@ -585,16 +585,16 @@ Nomeado para não ser confundido com feito:
 
   ```bash
   SHA=$(git -C ../biahflow-portal rev-parse HEAD)
-  gcloud beta run worker-pools update cockpit-scheduler \
-    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/cockpit-api:$SHA" --region us-east1 --quiet
-  gcloud run jobs update cockpit-check \
-    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/cockpit-api:$SHA" --region us-east1 --quiet
-  gcloud run jobs execute cockpit-check --region us-east1 --wait
+  gcloud beta run worker-pools update pulse-scheduler \
+    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/pulse-api:$SHA" --region us-east1 --quiet
+  gcloud run jobs update pulse-check \
+    --image "us-east1-docker.pkg.dev/biahflow-hml/hml/pulse-api:$SHA" --region us-east1 --quiet
+  gcloud run jobs execute pulse-check --region us-east1 --wait
   ```
 - **O restore contra o Neon.** O `restore.sh` sabe descrever um alvo gerenciado desde a
   ADR 0048 e **não foi exercitado** contra um. Ver `backup-restore.md § Contra um Postgres
   gerenciado`.
-- **A segunda barreira da `cockpit-api`.** O que a ADR 0048 entrega é ingress mais
+- **A segunda barreira da `pulse-api`.** O que a ADR 0048 entrega é ingress mais
   roteamento — a `run.app` deixou de ser alcançável de fora e a borda é nossa. Não é IAM,
   e não é Cloud Armor; está declarado lá com essas palavras.
 - **As três frentes públicas continuam com a `run.app` alcançável.** Fechá-las é uma linha

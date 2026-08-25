@@ -45,6 +45,8 @@ import {
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
+import { Brand } from "@/components/one/Brand";
+
 import {
   addPendingCommentAction,
   listPendingCommentsAction,
@@ -989,8 +991,7 @@ export default function DashboardClient({
     <main className={`portal-shell ${collapsed ? "portal-shell--collapsed" : ""}`}>
       <aside className={`sidebar ${mobileNavOpen ? "sidebar--open" : ""} ${menu === "profile-side" ? "sidebar--menu-open" : ""}`}>
         <div className="brand-row">
-          <div className="brand-mark"><Sparkles size={17} /></div>
-          <span>portal<span>labs</span></span>
+          <Brand />
           <button
             className="icon-button sidebar-toggle"
             onClick={() => { setCollapsed((value) => !value); setMobileNavOpen(false); }}

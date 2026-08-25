@@ -86,7 +86,12 @@
   .panel,
   .state-card,
   .metric-card {
-    @apply rounded-2xl border border-line bg-white;
+    @apply border border-line;
+    /* O cartão é a superfície e o raio que as primitivas do One citam por nome
+       (F-025 T02, DAP §"Decisions this package carries" item 7): mesmo valor de
+       `rounded-2xl`/`bg-white` de antes, só que agora o token é a fonte. */
+    background: var(--color-surface);
+    border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
   }
 
@@ -104,6 +109,37 @@
   /* Um expurgo que falhou é obrigação contratual não cumprida (ADR 0027), e o
      cinza de `state--2` o esconderia entre os pendentes. */
   .state--3 { @apply bg-danger-50 text-danger-600; }
+
+  /* `<StatePill />` (F-025 T02, DAP §04) — ícone e cor juntos, nas quatro
+     variantes semânticas. Primitiva nova, classes novas: trocar `.state--0..3`
+     por ela em todo o produto não é desta fatia. */
+  .state-pill {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-[10.5px] font-extrabold;
+    border-radius: var(--radius-pill);
+  }
+  .state-pill svg { @apply shrink-0; }
+  .state-pill--success { @apply bg-success-50 text-success-600; }
+  .state-pill--warning { @apply bg-warning-50 text-warning-600; }
+  .state-pill--danger { @apply bg-danger-50 text-danger-600; }
+  .state-pill--info { background: var(--color-info-50); color: var(--color-info-600); }
+
+  /* `<Button />` (F-025 T02, DAP §05) — as quatro variantes; `disabled` e o
+     anel de foco de teclado vêm de `:focus-visible` no `@layer base` acima. */
+  .btn {
+    @apply inline-flex min-h-10.5 items-center justify-center gap-2 border border-transparent px-4 py-2.5 text-[13px] font-bold transition-colors;
+    border-radius: var(--radius-control);
+  }
+  .btn--primary {
+    @apply bg-brand-500 text-white hover:bg-brand-600;
+    box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--color-brand-500) 50%, transparent);
+  }
+  .btn--secondary {
+    @apply border-line text-ink hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700;
+    background: var(--color-surface);
+  }
+  .btn--ghost { @apply bg-transparent text-muted hover:bg-brand-50 hover:text-ink; }
+  .btn--danger { @apply bg-danger-600 text-white; }
+  .btn:disabled { @apply cursor-not-allowed opacity-55; }
 
   .empty-state {
     @apply rounded-xl border border-dashed border-line px-4 py-6 text-center text-xs text-muted;
@@ -125,18 +161,26 @@
   .sidebar--menu-open { @apply z-60; }
 
   .brand-row {
-    @apply flex items-center gap-2 px-2 pb-6 text-[19px] font-bold tracking-[-0.03em] text-ink;
+    @apply flex items-center gap-2 px-2 pb-6;
   }
+  /* Escrita para o antigo sufixo `labs` e reusada, sem regra nova, pelo ponto do
+     wordmark do One (F-025 T02, DAP §01): `.one-brand-dot` é o único `<span>`
+     aninhado dentro do `<span>` filho direto de `.brand-row`. */
   .brand-row > span span { @apply text-brand-500; }
-  .brand-mark {
-    @apply grid h-6.5 w-6.5 place-items-center rounded-lg bg-brand-500 text-white;
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-brand-500) 32%, transparent);
-  }
+  /* `<Brand />` — wordmark em duas linhas dentro de uma `.brand-row` que é
+     `flex`; o `grid` interno é o que evita as duas linhas lado a lado. */
+  .one-brand { @apply grid gap-px; }
+  .one-brand-word { @apply text-[19px] font-bold tracking-[-0.03em] text-ink; }
+  .one-brand-sub { @apply text-[10px] font-semibold tracking-[0.04em] text-muted; }
   .sidebar-close { @apply hidden border-0 bg-transparent text-slate-500; }
   .sidebar-toggle { @apply ml-auto grid rounded-lg transition-colors hover:bg-slate-100; }
 
   .project-switcher {
-    @apply flex w-full items-center gap-2.5 rounded-xl border border-line bg-slate-50/70 p-2.5 text-left text-ink transition-colors hover:border-brand-200 hover:bg-brand-50/40;
+    @apply flex w-full items-center gap-2.5 rounded-xl border border-line p-2.5 text-left text-ink transition-colors hover:border-brand-200 hover:bg-brand-50/40;
+    /* Era `bg-slate-50/70` — mesmo hex (F-025 T02, DAP §"Decisions this package
+       carries" item 7: `--color-surface-sunken` nomeia o que já era escrito à
+       mão). */
+    background: color-mix(in srgb, var(--color-surface-sunken) 70%, transparent);
   }
   .project-switcher > span:nth-child(2) { @apply grid min-w-0 flex-1 gap-0.5; }
   .project-switcher strong, .profile-card strong { @apply text-xs; }
@@ -694,7 +738,11 @@
   }
   .auth-brand-row { @apply p-0 text-white; }
   .auth-brand-row > span span { @apply text-brand-200; }
-  .auth-brand-row .brand-mark { @apply bg-white/15 shadow-none; }
+  /* O wordmark sobre o gradiente escuro (DAP §01): branco, com o descender em
+     `brand-200` — o mesmo tom do ponto, porque as duas medições de contraste
+     do pacote coincidem no valor. */
+  .auth-brand-row .one-brand-word { @apply text-white; }
+  .auth-brand-row .one-brand-sub { @apply text-brand-200; }
   .auth-brand-copy { @apply relative z-1 max-w-100; }
   .auth-brand-copy h1 { @apply mt-0 mb-3.5 text-3xl leading-tight font-semibold tracking-[-0.035em]; }
   .auth-brand-copy p { @apply text-sm leading-relaxed text-brand-100; }
@@ -717,7 +765,10 @@
 @media (min-width: 761px) {
   .portal-shell--collapsed .sidebar { width: 72px; flex-basis: 72px; padding-left: 10px; padding-right: 10px; }
   .portal-shell--collapsed .brand-row { justify-content: center; padding: 0 0 25px; }
-  .portal-shell--collapsed .brand-row > span:nth-child(2) { display: none; }
+  /* Era `> span:nth-child(2)`, contando com o `.brand-mark` como primeiro filho —
+     que saiu (F-025 T02). `<Brand />` é o próprio filho a esconder agora, e
+     nomear a classe é mais robusto do que contar posição. */
+  .portal-shell--collapsed .brand-row .one-brand { display: none; }
   .portal-shell--collapsed .sidebar-toggle { margin-left: 0; }
   .portal-shell--collapsed .project-switcher { justify-content: center; padding: 9px 0; }
   .portal-shell--collapsed .project-switcher > span:nth-child(2),

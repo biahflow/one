@@ -1,7 +1,8 @@
-import { Building2, Sparkles } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { auth, signIn } from "@/auth";
+import { Brand } from "@/components/one/Brand";
 
 /**
  * A entrada do portal. Server Component: o botão dispara uma Server Action que
@@ -27,8 +28,7 @@ export default async function LoginPage({
     <main className="auth-shell">
       <aside className="auth-brand">
         <div className="brand-row auth-brand-row">
-          <div className="brand-mark"><Sparkles size={17} /></div>
-          <span>portal<span>labs</span></span>
+          <Brand />
         </div>
         <div className="auth-brand-copy">
           <h1>Acompanhe seus projetos de IA em um só lugar.</h1>

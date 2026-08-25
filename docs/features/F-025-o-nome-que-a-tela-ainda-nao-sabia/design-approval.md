@@ -34,6 +34,19 @@ implementação a consumiu e nenhuma revisão de código dependeu dela. O que el
 tabela e no corpo deste registro; guardar cinco megabytes de captura de um estado intermediário
 seria confundir histórico com evidência.
 
+### Errata
+
+Uma divergência **interna** ao artefato, achada na implementação e registrada aqui em vez de
+resolvida no silêncio:
+
+| Onde | O artefato diz | Vale |
+| --- | --- | --- |
+| Alvo de toque do botão | a prosa da §03 diz `44` como altura mínima de alvo de toque; o CSS da §05 escreve `min-height: 42px` | **44 px.** A prosa registra a decisão; os 42 px foram descuido de quem escreveu o artefato |
+
+Não houve revisão nova por isto, e a razão é a proporção: dois pixels de altura mínima não mudam o
+que a pessoa aprovou ao olhar a captura, e recapturar catorze imagens por eles trocaria evidência
+por cerimônia. Uma divergência que **mudasse** o que foi visto seria revisão, não errata.
+
 Cada emenda virou revisão nova em vez de nota de rodapé, e a razão é a mesma nas três vezes:
 **aprovação de um pacote que não mostra o que foi decidido não é evidência de nada.** A revisão 1
 renderizava `por Biahflow` em seis lugares e não desenhava símbolo algum; a 2 ainda estampava o

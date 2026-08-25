@@ -1586,6 +1586,27 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       indisponibilidade em HML, e os `pulse-*` nascem com a imagem de bootstrap até o
       `deploy-hml` do outro repositório publicar as reais.
 
+- [x] **O número que ninguém escolhe** *(ADR 0072)*: o número da ADR era escolhido quando a
+      branch nascia e só reivindicado no merge, e entre os dois momentos outra branch levava o
+      mesmo — **três vezes em 25/08/2026**, sendo a terceira duas fatias consertando a segunda
+      sem se ver. *O que a segunda manifestação prova é que detecção não fecha corrida:* a guarda
+      da ADR 0054 está certa e chega tarde por construção, porque só pode falar depois de as duas
+      ADRs coexistirem em `main`, quando o custo já é renomear arquivo, cabeçalho e citação — às
+      vezes atravessando outro repositório. O que fecha é um **ponto de coordenação**:
+      `docs/adr/number-registry.tsv`, uma linha por ADR acrescentada sempre no fim, no mecanismo
+      do `schema.rb` do Rails e do `max_migration.txt` do django-linear-migrations — dois appends
+      na mesma posição conflitam no git, e o conflito **é** a coordenação. Texto puro e não JSON
+      porque o objetivo é o oposto de auto-mesclar; ordenação é asserção de guarda e não estética,
+      porque escrever no meio devolve ao git a chance de mesclar sem conflito. `npm run adr`
+      aloca, escreve o esqueleto e a linha — a do `ROADMAP.md` continua sendo sua. *Medido nos
+      dois casos:* duas branches conflitam com o mesmo número **e** com números diferentes, e o
+      segundo é o preço declarado e aceito. *E a asserção que defende o mecanismo:* um
+      `.gitattributes` com `merge=union` faz o merge passar liso com as duas linhas entrando —
+      medido, saída 0 — então a guarda reprova driver de merge sobre o registro; desligar a
+      coordenação continua possível e passa a exigir apagar a asserção junto. **Fica aberto:** o
+      mecanismo protege o número e não o slug, e RFC e FDD continuam com número à mão, porque os
+      três defeitos medidos são de ADR.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

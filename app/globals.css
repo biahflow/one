@@ -4,7 +4,7 @@
    tudo abaixo (e o markup) referencia estes tokens em vez de literais soltos. */
 @theme {
   --color-ink: #17243a;
-  --color-muted: #6b7a91;
+  --color-muted: #657389;
   --color-line: #e8edf4;
   --color-canvas: #f6f8fc;
   --color-navy: #16233a;
@@ -19,11 +19,22 @@
   --color-brand-900: #342478;
 
   --color-success-50: #e7f7f0;
-  --color-success-600: #1c8a63;
+  --color-success-600: #1a7e5b;
   --color-warning-50: #fdf3e4;
-  --color-warning-600: #b06a1a;
+  --color-warning-600: #a16118;
   --color-danger-50: #fdecea;
   --color-danger-600: #c0392b;
+  --color-info-50: #e9f1fd;
+  --color-info-600: #1d5fb4;
+
+  --color-accent-green: #1c8665;
+  --color-focus: var(--color-brand-500);
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f8fafc;
+
+  --radius-card: 1rem;
+  --radius-control: 0.75rem;
+  --radius-pill: 9999px;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
@@ -41,8 +52,8 @@
   body {
     margin: 0;
     background:
-      radial-gradient(circle at 6% -4%, rgba(110, 86, 207, 0.07), transparent 26rem),
-      radial-gradient(circle at 96% 2%, rgba(33, 161, 121, 0.05), transparent 22rem),
+      radial-gradient(circle at 6% -4%, color-mix(in srgb, var(--color-brand-500) 7%, transparent), transparent 26rem),
+      radial-gradient(circle at 96% 2%, color-mix(in srgb, var(--color-accent-green) 5%, transparent), transparent 22rem),
       var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
@@ -65,7 +76,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand-500);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
   }
 }
@@ -81,7 +92,7 @@
 
   .eyebrow,
   .nav-label {
-    @apply m-0 text-[10px] font-extrabold uppercase tracking-[0.11em] text-slate-400;
+    @apply m-0 text-[10px] font-extrabold uppercase tracking-[0.11em] text-muted;
   }
 
   .state {
@@ -119,7 +130,7 @@
   .brand-row > span span { @apply text-brand-500; }
   .brand-mark {
     @apply grid h-6.5 w-6.5 place-items-center rounded-lg bg-brand-500 text-white;
-    box-shadow: 0 4px 12px rgba(110, 86, 207, 0.32);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-brand-500) 32%, transparent);
   }
   .sidebar-close { @apply hidden border-0 bg-transparent text-slate-500; }
   .sidebar-toggle { @apply ml-auto grid rounded-lg transition-colors hover:bg-slate-100; }
@@ -194,7 +205,7 @@
   .hero-copy { @apply mt-2 mb-0 text-sm text-muted; }
   .ai-button {
     @apply flex items-center gap-2 rounded-xl border-0 bg-brand-500 px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-brand-600;
-    box-shadow: 0 8px 18px -6px rgba(110, 86, 207, 0.5);
+    box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--color-brand-500) 50%, transparent);
   }
 
   .status-card {

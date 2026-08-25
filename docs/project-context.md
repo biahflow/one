@@ -21,6 +21,7 @@ princípios, guardrails, definição de pronto, contratos de Planner/Builder/Rev
 | Arquitetura atual | [docs/architecture.md](architecture.md) | Visão de módulos, fronteiras e implantação. |
 | Regras de segurança e IA | [docs/security.md](security.md), [docs/ai/](ai/) | Aplicação obrigatória conforme escopo. |
 | Instruções de agente | [AGENTS.md](../AGENTS.md), [CLAUDE.md](../CLAUDE.md) | Devem permanecer compatíveis com a Engineering OS. |
+| Sistema de design (tokens, contraste, política de raio) | [docs/design/one-design-system.md](design/one-design-system.md) | `app/globals.css` é a fonte executável; diverge, o CSS vence. |
 
 Não existe `STATUS.md` independente: o estado é uma visão derivada de ROADMAP e FDDs.
 

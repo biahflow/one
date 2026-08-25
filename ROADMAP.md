@@ -24,7 +24,7 @@ contratos de tarefa e evidências, está em [`docs/features/README.md`](docs/fea
 | --- | --- | --- | --- | --- |
 | `F-020` — Funil de onboarding: vigília de IA | Não selecionada | `BLOCKED` | [FDD 020](docs/fdd/020-funil-de-onboarding.md) | Histórico suficiente para priorização segura da IA. |
 | `F-022` — Pesquisa de satisfação por evento | Não selecionada | `BLOCKED` | [FDD 022](docs/fdd/022-pesquisa-de-satisfacao-por-evento.md) | Laço de ação do funil fechado de verdade. |
-| `F-025` — One: identidade e fundação de design | Selecionada em 25/08/2026 (Issue #46) | `READY_FOR_PLANNING` | [FDD 025](docs/fdd/025-o-nome-que-a-tela-ainda-nao-sabia.md) | Gate de design atravessado: revisão 3 do DAP aprovada em 25/08/2026, visual e cópia. |
+| `F-025` — One: identidade e fundação de design | Selecionada em 25/08/2026 (Issue #46) | `READY_FOR_HUMAN_REVIEW` | [FDD 025](docs/fdd/025-o-nome-que-a-tela-ainda-nao-sabia.md) | Implementada e validada (ADR 0069); falta o merge, que é gate humano. |
 
 `Não selecionada` não é prioridade implícita: exige seleção humana antes de especificação,
 planejamento ou execução.
@@ -1516,6 +1516,32 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       de privacidade da casa mantida: conteúdo de documento, prompt, resposta privada e segredo
       não entram na telemetria. **Ainda não há código desta ADR neste repositório** — a
       instrumentação é progressiva e a linha existe para a decisão ter dono.
+
+- [x] **O nome que a tela ainda não sabia** *(ADR 0069)*: a ADR 0067 renomeou o produto numa
+      frase e parou aí — nem marca, nem cor, nem token, nem a relação entre **Biahflow** (a
+      empresa) e **One** (o produto). Um dia depois a sidebar ainda escrevia `portal`**`labs`**, o
+      assistente se apresentava pelo nome antigo e o `og.png` estampava o monograma dele. *E o nome
+      era a metade menor:* o wordmark existia **duas vezes escrito à mão** sem nada que cobrasse
+      que os dois blocos fossem idênticos, o `@theme` tinha três estados semânticos contra os
+      quatro que a Issue cobrava, e o roxo da marca estava escrito **à mão em quatro lugares**,
+      contra a regra que este repositório publica. **O gate de design ficou antes do planejamento e
+      mudou o desenho três vezes** — a revisão 1 levou duas direções de marca e voltou com a
+      segunda, o descender em inglês e uma pergunta nova; cada emenda virou revisão, porque aprovar
+      um pacote que não mostra o que foi decidido não é evidência de nada. *Medir a paleta em vez de
+      admirá-la achou o que ninguém tinha olhado:* o `.eyebrow`, rótulo em caixa alta acima de cada
+      título de painel, dava **2,56:1** — reprovando até o critério de texto grande —, e `muted`,
+      `success-600` e `warning-600` passavam **por baixo** do mínimo AA. *A guarda nova é o que
+      impede o oitavo token órfão*, com corpus derivado do próprio `@theme`, fail-closed em três
+      pontos e casador fechado nas duas pontas, porque `--color-brand-5` passaria verde por causa de
+      `bg-brand-500` — o `.priority` da ADR 0033 outra vez. **E a mutação achou um defeito na
+      própria guarda:** o casador solto de `@theme` casava a menção dentro de um comentário e
+      reprovava pela asserção errada. *De quebra, duas coisas que só apareceram por executar:* o
+      pacote afirmava ter sido capturado com Inter e **não tinha** — `Inter` resolvia como fonte
+      inexistente, de modo que a letra aprovada não era a letra entregue, e a revisão 4 a embutiu no
+      arquivo; e um `.env` no diretório fazia `pytest` reportar 419 pulados dizendo "PostgreSQL is
+      not reachable" com o Postgres de pé. **Fica aberto:** o compose passa o remetente só ao `api`
+      e quem envia e-mail é o worker, não há `apple-touch-icon`, e o anel de foco herda
+      `transition-colors`, que no Tailwind v4 inclui `outline-color`.
 
 ## Ordem recomendada
 

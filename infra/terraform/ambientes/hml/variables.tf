@@ -130,8 +130,15 @@ variable "repositorios_github" {
   # que é repositório que não existe mais — e com ele o `deploy-hml` do Pulse deixaria
   # de autenticar no push seguinte. O aviso estava escrito antes de o defeito existir; o
   # que faltou foi alguém aplicar este state entre um rename e o outro.
+  #
+  # Em 25/08/2026 foi a vez deste repositório: `biahflow/portal-cliente` virou
+  # `biahflow/one` (ADR 0073), alcançando o nome que a ADR 0067 deu ao produto. Desta
+  # vez a lista muda no mesmo PR do rename, e a ordem está na ADR: o apply deste state
+  # roda ANTES do rename, porque é ele que troca a impersonação da `hml-infra` — depois
+  # do rename o token novo não passa pela binding antiga, que é o modo de falha medido
+  # em 17/08. O caminho antigo sai da lista, pelo argumento do parágrafo de 14/08.
   default = [
-    "biahflow/portal-cliente",
+    "biahflow/one",
     "biahflow/pulse",
     "biahflow/site",
     "dcamppos83/OikOS",
@@ -153,7 +160,7 @@ variable "repositorios_deploy" {
   TXT
   type        = list(string)
   default = [
-    "biahflow/portal-cliente",
+    "biahflow/one",
     "biahflow/pulse",
     "biahflow/site",
     "dcamppos83/OikOS",
@@ -178,7 +185,7 @@ variable "repositorio_infra" {
     esbarrava na impersonação, e o `infra-hml.yml` falhava com a lista já correta.
   TXT
   type        = string
-  default     = "biahflow/portal-cliente"
+  default     = "biahflow/one"
 }
 
 variable "segredos" {

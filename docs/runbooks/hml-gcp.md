@@ -191,8 +191,8 @@ Os serviços sobem **quebrados** neste momento, e isso é esperado: o realm não
 terraform output -raw provedor_wif
 ```
 
-O valor vai na variável de repositório `WIF_PROVIDER` de **`biahflow/portal-cliente` e
-`biahflow/portal`**. São dois, e esquecer o segundo faz o deploy do outro produto falhar
+O valor vai na variável de repositório `WIF_PROVIDER` de **`biahflow/one` e
+`biahflow/pulse`**. São dois, e esquecer o segundo faz o deploy do outro produto falhar
 na primeira linha do primeiro job — com uma mensagem sobre credencial, não sobre variável
 ausente.
 
@@ -346,7 +346,7 @@ que é o pior formato para um portão que ninguém pode consertar sem saber diss
 workflow agora passa `CLOUDFLARE_API_TOKEN` pelo ambiente, com o porquê escrito ao lado.
 
 **O que falta é um ato humano, e é este:** cadastrar o secret `CLOUDFLARE_API_TOKEN` em
-`biahflow/portal-cliente`, com as **três** permissões que `ambientes/hml/cloudflare.tf`
+`biahflow/one`, com as **três** permissões que `ambientes/hml/cloudflare.tf`
 mediu uma a uma contra a API — `Zone → DNS → Edit`, `Zone → Origin Rules → Edit` e
 `Account → Access: Apps and Policies → Edit`. Não deduza permissão do nome do recurso:
 duas delas falham de forma enganosa quando faltam, e a de `Origin Rules` chamada errada

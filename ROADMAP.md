@@ -1610,6 +1610,18 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       mecanismo protege o número e não o slug, e RFC e FDD continuam com número à mão, porque os
       três defeitos medidos são de ADR.
 
+- [x] **O repositório passa a se chamar one** *(ADR 0073)*: a ADR 0067 renomeou o produto e a
+      0069 levou o nome à tela, mas o repositório seguia `biahflow/portal-cliente` — o nome do
+      meio, como os `cockpit-*` da ADR 0070. O redirect do GitHub cobre clone e push; a claim
+      OIDC não, e este repositório tem três referências vivas ao próprio caminho na federação,
+      uma delas (`repositorio_infra`, a impersonação da `hml-infra`) só deste state. A ordem é
+      o que a fatia fixa: apply de `ambientes/hml` **antes** do rename — senão o `infra-hml.yml`
+      fica trancado para fora, o modo de falha medido em 17/08 — e PR pareado em
+      `biahflow/infra` para o espelho autoritativo do pool, pelo risco que a ADR 0070 nomeou:
+      um apply de lá com a lista atrasada reverte a condição. A narrativa histórica não é
+      reescrita; a instrução viva do runbook que ainda mandava olhar `biahflow/portal` foi
+      corrigida na passada.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

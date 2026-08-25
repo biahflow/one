@@ -102,14 +102,20 @@ const TF_TOP_LEVEL = /^\S/;
  *  um Dockerfile, que `FROM` já cobre. */
 const DOCKER_CLI = /\bdocker[ \t]+(?:run|pull|create)\b/g;
 
-/** As flags que tomam **valor separado** — a única lista digitada deste arquivo,
- *  e ela envelhece com a CLI do Docker, não com o repositório. Espelha
- *  `_DOCKER_VALUE_FLAGS` da guarda em pytest: as duas leem a mesma regra, e
- *  divergir faria o inventário e o portão discordarem sobre o mesmo comando. */
-const DOCKER_VALUE_FLAGS = new Set([
-  "-e", "--env", "-p", "--publish", "--name", "-v", "--volume", "--network",
-  "-w", "--workdir", "-u", "--user", "-l", "--label", "--entrypoint", "--platform",
-]);
+/** A **forma** de uma referência de imagem — não mais uma tabela de flags
+ *  digitada à mão. Espelha `_IMAGE_REFERENCE_FORM`/`_looks_like_image_reference`
+ *  da guarda em pytest: as duas leem a mesma regra, e divergir faria o
+ *  inventário e o portão discordarem sobre o mesmo comando. Nome com
+ *  namespace opcional, tag opcional, digest opcional, e a exigência de conter
+ *  `/` ou `@sha256:` — é isso que separa uma referência de imagem de um valor
+ *  de flag (`9000:9000`, `512m`, `FOO=bar` não têm nenhum dos dois). */
+const IMAGE_REFERENCE_FORM =
+  /^([\w.-]+(?:\/[\w.-]+)*)(?::([\w][\w.-]*))?(?:@sha256:([0-9a-f]{64}))?$/;
+
+function looksLikeImageReference(token) {
+  if (!token.includes("/") && !token.includes("@sha256:")) return false;
+  return IMAGE_REFERENCE_FORM.test(token);
+}
 
 /** A linha de uma imagem de `docker run`, para a reescrita. Solta de propósito:
  *  `rewrite()` só troca o que estiver na tabela de resoluções, então a chave é
@@ -149,10 +155,15 @@ function parseImage(ref) {
 /**
  * As imagens que um `docker run|pull|create` nomeia, com continuação de linha.
  *
- * A partir do subcomando os tokens são percorridos: quem começa com `-` é flag,
- * quem é valor de flag que toma valor é pulado, e o primeiro token que sobra é a
- * imagem. **Fail-closed:** se nada sobrar, é falha deste casador — flag nova ou
- * forma não prevista — e o erro sobe, porque "não achei a imagem" não pode valer
+ * A partir do subcomando os tokens são percorridos: quem começa com `-` é flag e
+ * consome **um** token — não há mais tabela de flags de valor separado —, e o
+ * primeiro token que não começa com `-` é o candidato a imagem. O candidato só
+ * vira imagem se tiver forma de referência (`looksLikeImageReference`); do
+ * contrário o erro sobe nomeando o token, em vez de tomá-lo por imagem
+ * "provavelmente" — era o defeito medido na ADR 0063 (`docker run --memory 512m
+ * minio/minio:…` tomava `512m` por imagem). A saída legítima é escrever a flag
+ * colada (`--memory=512m`, `--env=FOO=bar`, `--publish=9000:9000`).
+ * **Fail-closed** também quando nada sobra: "não achei a imagem" não pode valer
  * como "não há imagem aqui" (ADR 0063). Mesma semântica de `docker_run_images`
  * da guarda em pytest.
  */
@@ -179,18 +190,18 @@ function dockerRunImages(text) {
       remainder = lines[idx];
     }
 
-    let image = null;
+    let candidate = null;
     for (let i = 0; i < tokens.length; ) {
       const [token] = tokens[i];
       if (token.startsWith("-")) {
-        i += DOCKER_VALUE_FLAGS.has(token) ? 2 : 1;
+        i += 1;
         continue;
       }
-      image = tokens[i];
+      candidate = tokens[i];
       break;
     }
 
-    if (!image) {
+    if (!candidate) {
       throw new Error(
         `não achei a imagem depois de \`docker run|pull|create\` na linha ${firstLine + 1} de um workflow: ` +
           `\`${tokens.map(([t]) => t).join(" ")}\`. Ou o comando não nomeia imagem, ou usa flag que este ` +
@@ -198,8 +209,22 @@ function dockerRunImages(text) {
       );
     }
 
-    const [ref, refLine] = image;
-    const clean = ref.replace(/^["']|["']$/g, "");
+    // As aspas saem **antes** da conferência de forma, e não depois: um
+    // `docker run "minio/minio:…"` é forma legítima, e conferir a forma com a
+    // aspa ainda no token reprovaria a imagem verdadeira.
+    const [candidateToken, refLine] = candidate;
+    const clean = candidateToken.replace(/^["']|["']$/g, "");
+    if (!looksLikeImageReference(clean)) {
+      throw new Error(
+        `\`${clean}\` (linha ${refLine}) não tem forma de referência de imagem — nome com \`/\` ou ` +
+          "digest `@sha256:` — e por isso não é a imagem de `docker run|pull|create` na linha " +
+          `${firstLine + 1} de um workflow: \`${tokens.map(([t]) => t).join(" ")}\`. Provavelmente é o ` +
+          "valor de uma flag escrita na forma separada; escreva-a colada (`--memory=512m`, " +
+          "`--env=FOO=bar`, `--publish=9000:9000`) para que o casador não tome o valor por imagem " +
+          "(ADR 0063).",
+      );
+    }
+
     const parts = parseImage(clean);
     const pin = clean.match(IMAGE_PIN);
     found.push({

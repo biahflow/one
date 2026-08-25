@@ -271,6 +271,26 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # **Desligado por variável em 25/08/2026, para destravar uma entrega.** É temporário,
+    # e a forma é a mesma do `codeql` e do `dependency-review` logo abaixo: desligar por
+    # variável, e não comentar nem apagar, para que o job continue visível como `skipping`
+    # em vez de sumir do relatório e ninguém lembrar que ele existia.
+    #
+    # **O que se perde, declarado em vez de descoberto depois:** este é o único nível que
+    # sobe o Keycloak de verdade, e por isso o único que prova o que os outros não
+    # alcançam — redirect do anônimo, code exchange no callback do BFF, dashboard com o
+    # nome vindo do token, e o "Sair" que o F5 não desfaz. Some junto a única verificação
+    # de que o e-mail chega (o `invite.spec.ts` lê a caixa do Mailpit pela API), e o smoke
+    # do `loadtest.py`/`redis_rate.py`, que existe para a ferramenta não apodrecer.
+    #
+    # E some a garantia que a ADR 0020 comprou: ela tirou o `continue-on-error` daqui
+    # justamente porque havia **dois** mecanismos independentes fazendo com que o nível
+    # que prova o login jamais reprovasse um PR. Enquanto esta variável estiver desligada,
+    # o segundo está de volta.
+    #
+    # `npm run test:e2e` continua funcionando na máquina de quem rodar `docker compose up`.
+    # **Religar:** defina a variável de repositório `E2E_ENABLED=true`.
+    if: vars.E2E_ENABLED == 'true'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

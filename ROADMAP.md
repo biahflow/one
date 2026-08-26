@@ -26,7 +26,7 @@ contratos de tarefa e evidências, está em [`docs/features/README.md`](docs/fea
 | `F-022` — Pesquisa de satisfação por evento | Não selecionada | `BLOCKED` | [FDD 022](docs/fdd/022-pesquisa-de-satisfacao-por-evento.md) | Laço de ação do funil fechado de verdade. |
 | `F-025` — One: identidade e fundação de design | Selecionada em 25/08/2026 (Issue #46) | `DONE` | [FDD 025](docs/fdd/025-o-nome-que-a-tela-ainda-nao-sabia.md) | Implementada, validada (ADR 0069) e mergeada em 25/08/2026 (PR #47); Issue #46 fechada. |
 | `F-026` — Aplicar o One Design System ao shell real | Selecionada em 26/08/2026 (Issue #60) | `SPEC_IN_PROGRESS` | [FDD 026](docs/fdd/026-a-pele-que-o-shell-ainda-nao-vestiu.md) | FDD + DAP r1 produzidos; aguardam gate de Design Approval (humano). Depende da F-025 aprovada. |
-| `F-027` — Revisão e aceite do cliente | Selecionada em 26/08/2026 (Issue #61) | `SPEC_IN_PROGRESS` | [FDD 027](docs/fdd/027-o-aceite-que-a-tela-so-desenhou.md) | FDD + DAP r1 produzidos; aguardam Design Approval **e** ADR do contrato de retorno + nova tabela (gates humanos). |
+| `F-027` — Revisão e aceite do cliente | Selecionada em 26/08/2026 (Issue #61) | `SPEC_IN_PROGRESS` | [FDD 027](docs/fdd/027-o-aceite-que-a-tela-so-desenhou.md) | FDD + DAP r1 produzidos; contrato de retorno + tabela definidos em ADR 0077 (aceita); aguarda Design Approval e aprovação de plano. |
 | `F-028` — Projeção Pulse→One da jornada | Selecionada em 26/08/2026 (Issue #62) | `SPEC_IN_PROGRESS` | [FDD 028](docs/fdd/028-o-frescor-que-a-jornada-nunca-teve.md) | FDD + DAP r1 produzidos; contrato definido em ADR 0076 (aceita); aguarda Design Approval e aprovação de plano. |
 
 `Não selecionada` não é prioridade implícita: exige seleção humana antes de especificação,

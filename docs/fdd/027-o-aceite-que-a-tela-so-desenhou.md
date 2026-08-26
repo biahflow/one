@@ -182,7 +182,9 @@ sem interpolação, detalhe em `extra` — ADR 0018/0034), com linha em `alerts.
 
 ## Referências
 
-- Issue #61; ADR 0067 (laço de aceite); F-025 §10 (`design-approval.md`), rótulos em
+- Issue #61; **ADR 0077** (contrato de retorno One→Pulse + tabela `deliverable_acceptance`; o
+  pré-requisito arquitetural desta FDD, `proposto`); ADR 0067 (laço de aceite); F-025 §10
+  (`design-approval.md`), rótulos em
   `one-dap-r4.html`. Precedentes: `pending_item_comment` (ADR 0032, migração 0021),
   `conversation_message.feedback` (ADR 0015, migração 0012), `notifications.py`/`AUDIENCE`,
   `add_pending_comment`/`pending_comments.py` (molde de rota+módulo). `test_rls_isolation.py`,

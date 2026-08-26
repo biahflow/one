@@ -1,15 +1,16 @@
 # ADR 0077 — A porta de volta que a integração não tinha
 
-**Status:** proposto
+**Status:** aceito
 **Data:** 26/08/2026
 **Fase:** 7
 
-> **Rascunho pendente de gate humano.** Esta ADR é o pré-requisito arquitetural da `F-027`
+> **Aceita.** Esta ADR é o pré-requisito arquitetural da `F-027`
 > ([FDD 027](../fdd/027-o-aceite-que-a-tela-so-desenhou.md), Issue #61): a migração que cria a tabela
 > de aceite escreve policy e `GRANT`, e `test_migration_rules.py` exige uma ADR **aceita** a citar
-> (regra 4 do `AGENTS.md`, ADR 0066). Enquanto `proposto`, o build da F-027 não começa. Nenhum
-> código foi escrito por esta ADR. É o par da [ADR 0076](0076-o-snapshot-que-precisava-de-versao-e-hora.md)
-> (Pulse→One); esta trata do sentido inverso, One→Pulse.
+> (regra 4 do `AGENTS.md`, ADR 0066). Com o aceite, a migração pode citá-la; o **build** da F-027
+> ainda aguarda o Design Approval do DAP r1 e a aprovação de plano. Nenhum código foi escrito por
+> esta ADR. É o par da [ADR 0076](0076-o-snapshot-que-precisava-de-versao-e-hora.md) (Pulse→One);
+> esta trata do sentido inverso, One→Pulse.
 
 ## Contexto
 

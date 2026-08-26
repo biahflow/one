@@ -1,14 +1,15 @@
 # ADR 0076 — O snapshot que precisava de versão e hora
 
-**Status:** proposto
+**Status:** aceito
 **Data:** 26/08/2026
 **Fase:** 7
 
-> **Rascunho pendente de gate humano.** Esta ADR é o pré-requisito arquitetural da `F-028`
+> **Aceita.** Esta ADR é o pré-requisito arquitetural da `F-028`
 > ([FDD 028](../fdd/028-o-frescor-que-a-jornada-nunca-teve.md), Issue #62): a migração que a fatia
 > escreve toca contrato de integração e é `test_migration_rules.py` que exige uma ADR **aceita** a
-> citar (regra 4 do `AGENTS.md`, ADR 0066). Enquanto esta estiver `proposto`, o build da F-028 não
-> começa. Nenhum código foi escrito por esta ADR.
+> citar (regra 4 do `AGENTS.md`, ADR 0066). Com o aceite, a migração pode citá-la; o **build** da
+> F-028 ainda aguarda o Design Approval do DAP r1 e a aprovação de plano. Nenhum código foi escrito
+> por esta ADR.
 
 ## Contexto
 

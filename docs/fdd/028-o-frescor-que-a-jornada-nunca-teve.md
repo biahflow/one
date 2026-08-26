@@ -159,7 +159,9 @@ detalhe em `extra`; linha em `alerts.md` — ADR 0018/0034). Critérios (Issue #
 
 ## Referências
 
-- Issue #62; ADR 0067 (One como projeção; contrato versionado); ADR 0006/0008 (portal nunca origina
+- Issue #62; **ADR 0076** (contrato de projeção versionado — `observed_at`, `projection_version`,
+  reconciliação; o pré-requisito arquitetural desta FDD, `proposto`); ADR 0067 (One como projeção;
+  contrato versionado); ADR 0006/0008 (portal nunca origina
   status); ADR 0026 (o carimbo de frescor inventado, removido); ADR 0036/0037 (`archived_at`/
   `source_deleted_at`, padrão de estado somente-consulta honesto). Precedente de anti-regressão:
   `mark_project_deleted`. Código: `integrations/biahflow.py` (`sync_snapshot`/`build_dashboard`),

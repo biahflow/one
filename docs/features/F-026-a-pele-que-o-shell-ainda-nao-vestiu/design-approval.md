@@ -2,7 +2,7 @@
 
 Classification: INTERFACE_CHANGE
 Revision: 1
-Status: Awaiting approval
+Status: Approved
 Date: 2026-08-26
 Produced by: Claude Opus 4.8 (1M context), sob a Engineering OS
 
@@ -26,11 +26,11 @@ contraste melhora — elas são o motivo de o gate existir.
 
 | Campo | Valor |
 | --- | --- |
-| What was approved | `{{visual / cópia / ambos / nada ainda}}` — **pendente** |
-| Approved by | `{{pessoa}}` |
-| Date | `{{aaaa-mm-dd}}` |
-| Revision approved | `{{n}}` |
-| Explicitly **not** approved | Tema escuro · troca das classes utilitárias de raio (`rounded-2xl/xl/full`) pelos tokens de raio · qualquer valor visual novo · superfícies `/admin/*` · o laço de aceite (F-027) e a projeção de jornada (F-028) |
+| What was approved | **visual e cópia** |
+| Approved by | Daniel Campos |
+| Date | 26/08/2026 |
+| Revision approved | **1** |
+| Explicitly **not** approved | As *Open questions* deste pacote seguem em aberto (a aprovação não as resolve): `.nav-item` ativo em `brand-50` vs neutro; abas longas nesta fatia ou na seguinte. Além de: tema escuro · troca das classes utilitárias de raio (`rounded-2xl/xl/full`) pelos tokens de raio · qualquer valor visual novo · superfícies `/admin/*` · o laço de aceite (F-027) e a projeção de jornada (F-028) |
 
 Aprovação desta revisão não é aprovação de uma posterior. Aprovação de **visual** não é aprovação
 de **cópia** (a única mudança de cópia é "Notificações no portal" → "Notificações no One") — se só

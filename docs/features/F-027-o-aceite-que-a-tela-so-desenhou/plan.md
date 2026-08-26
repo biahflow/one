@@ -142,8 +142,10 @@ planning_findings:
 
 ## Validação do plano
 
-`PLAN_VALIDATION: PENDENTE`. Aguarda a validação de consistência e o **gate humano de aprovação de
-plano** antes de congelar. Enquanto pendente, nenhum Task Contract é derivado. Não me auto-aprovei.
+`PLAN_VALIDATION: PLAN_VALID`. Validação de consistência atendida (auto-checagem abaixo) e **gate
+humano de aprovação de plano cumprido** — aprovado por Daniel Campos em 26/08/2026. O plano está
+**congelado para execução**: os Task Contracts (`tasks/T01.md`…) podem ser derivados; qualquer
+mudança de dependência ou trabalho vira `PLAN_DEVIATION`, não edição do plano congelado.
 
 Auto-checagem do Planner (não substitui a validação): IDs únicos (T01–T04); todo `depends_on` nomeia
 tarefa existente; sem ciclos (T01→T02→T03→T04); `parallel_groups` vazio é honesto (cadeia de

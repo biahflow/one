@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One · F-026 — mapeamento utilitário → token (shell)</title>
+<style>
+  :root{
+    --ink:#17243a; --muted:#657389; --line:#e8edf4; --canvas:#f6f8fc; --navy:#16233a;
+    --brand-50:#f3f0fd; --brand-100:#e5dffb; --brand-200:#cfc4f6; --brand-500:#6e56cf;
+    --brand-600:#5f47c4; --brand-700:#4f38ab; --brand-900:#342478;
+    --success-50:#e7f7f0; --success-600:#1a7e5b; --warning-50:#fdf3e4; --warning-600:#a16118;
+    --danger-50:#fdecea; --danger-600:#c0392b; --info-50:#e9f1fd; --info-600:#1d5fb4;
+    --surface:#ffffff; --surface-sunken:#f8fafc; --focus:var(--brand-500);
+    --radius-card:1rem; --radius-control:.75rem; --radius-pill:9999px;
+    --shadow-card:0 1px 2px rgba(23,36,58,.04),0 12px 28px -18px rgba(23,36,58,.22);
+    /* utilitários crus do "antes", para render fiel */
+    --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1; --slate-400:#94a3b8; --slate-500:#64748b;
+    --amber-100:#fef3c7; --amber-800:#92400e; --rose-500:#f43f5e; --white:#fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 6% -4%,color-mix(in srgb,var(--brand-500) 7%,transparent),transparent 26rem),var(--canvas);
+    color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 4px}
+  .brand{font-weight:800;letter-spacing:-.03em;font-size:19px}
+  .brand .dot{color:var(--brand-500)}
+  h2{font-size:15px;margin:40px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);margin:0 0 8px}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .col{border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);box-shadow:var(--shadow-card);padding:16px}
+  .col.antes{background:var(--surface);opacity:.98}
+  .tag{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border-radius:9999px;margin-bottom:12px}
+  .tag.a{background:var(--slate-100);color:var(--slate-500)}
+  .tag.d{background:var(--brand-50);color:var(--brand-700)}
+  /* nav */
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;font-size:13px;font-weight:600;margin-bottom:4px}
+  .nav-a .nav-item{color:var(--slate-500)} .nav-a .nav-item.active{background:var(--slate-100);color:var(--ink)}
+  .nav-d .nav-item{color:var(--muted)} .nav-d .nav-item.active{background:var(--brand-50);color:var(--brand-700)}
+  .dotmark{width:8px;height:8px;border-radius:9999px;background:currentColor;opacity:.5}
+  .active .dotmark{opacity:1}
+  /* status card */
+  .status{padding:14px;border-radius:12px;border:1px solid var(--line)}
+  .status .meta{font-size:11px} .status-a .meta{color:var(--slate-400)} .status-d .meta{color:var(--muted)}
+  .prog{height:8px;border-radius:9999px;margin-top:10px} .prog-a{background:color-mix(in srgb,var(--slate-200) 70%,transparent)} .prog-d{background:var(--line)}
+  .prog span{display:block;height:100%;width:68%;border-radius:9999px;background:var(--brand-500)}
+  /* pills */
+  .pills{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;padding:4px 10px;border-radius:9999px}
+  .pill svg{width:12px;height:12px}
+  .p-ok{background:var(--success-50);color:var(--success-600)} .p-warn{background:var(--warning-50);color:var(--warning-600)}
+  .p-dng{background:var(--danger-50);color:var(--danger-600)} .p-info{background:var(--info-50);color:var(--info-600)}
+  .p-grey-a{background:var(--slate-100);color:var(--slate-500)} .p-grey-d{background:var(--surface-sunken);color:var(--muted)}
+  .p-amber-a{background:var(--amber-100);color:var(--amber-800)}
+  /* buttons */
+  .btn{font-size:13px;font-weight:700;padding:9px 16px;border-radius:12px;border:1px solid transparent}
+  .btn-primary{background:var(--brand-500);color:#fff} .btn-secondary{background:var(--surface);color:var(--ink);border-color:var(--line)}
+  .btn-ghost{background:transparent;color:var(--brand-700)} .btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  /* swatch table */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .sw{display:inline-block;width:16px;height:16px;border-radius:4px;border:1px solid rgba(0,0,0,.08);vertical-align:middle;margin-right:8px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--surface-sunken);padding:1px 5px;border-radius:5px}
+  .no{color:var(--danger-600);font-weight:700} .iso{color:var(--muted)}
+  .note{font-size:12.5px;color:var(--muted);margin-top:10px}
+  .badge{position:relative;display:inline-flex;width:34px;height:34px;border-radius:12px;background:var(--surface-sunken);align-items:center;justify-content:center}
+  .badge b{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:9999px;font-size:9px;color:#fff;display:flex;align-items:center;justify-content:center;padding:0 4px}
+  .badge-a b{background:var(--rose-500)} .badge-d b{background:var(--danger-600)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="brand">One<span class="dot">.</span></p>
+  <h1>F-026 — a pele que o shell ainda não vestiu</h1>
+  <p class="sub">Mapeamento <strong>utilitário cru → token semântico</strong> no shell do cliente. A aparência-alvo é a já aprovada na F-025 (DAP r4). Este pacote decide a <em>tradução</em>, não uma aparência nova.</p>
+  <p class="sub">Cada bloco mostra <span class="tag a" style="margin:0">antes (cru)</span> e <span class="tag d" style="margin:0">depois (token)</span>. Onde os dois são visualmente iguais, o token só troca a procedência; onde diferem, é correção de contraste já medida.</p>
+
+  <h2>§1 — Navegação (sidebar)</h2>
+  <div class="pair">
+    <div class="col nav-a"><span class="tag a">antes · slate</span>
+      <div class="nav-item active"><span class="dotmark"></span>Visão geral</div>
+      <div class="nav-item"><span class="dotmark"></span>Cronograma</div>
+      <div class="nav-item"><span class="dotmark"></span>Documentos</div>
+      <p class="note"><code>text-slate-500</code>, ativo <code>bg-slate-100</code></p>
+    </div>
+    <div class="col nav-d"><span class="tag d">depois · token</span>
+      <div class="nav-item active"><span class="dotmark"></span>Visão geral</div>
+      <div class="nav-item"><span class="dotmark"></span>Cronograma</div>
+      <div class="nav-item"><span class="dotmark"></span>Documentos</div>
+      <p class="note"><code>text-muted</code> (contraste ✓), ativo <code>bg-brand-50</code> (cita a marca)</p>
+    </div>
+  </div>
+
+  <h2>§2 — Status-card e progresso</h2>
+  <div class="pair">
+    <div class="col"><span class="tag a">antes</span>
+      <div class="status status-a" style="background:var(--white)">
+        <div style="font-weight:700">Automação Financeira</div>
+        <div class="meta">Atualizado no ciclo · 18 set</div>
+        <div class="prog prog-a"><span></span></div>
+      </div>
+      <p class="note"><code>bg-white</code>, <code>text-slate-400</code>, trilho <code>bg-slate-200/70</code></p>
+    </div>
+    <div class="col"><span class="tag d">depois</span>
+      <div class="status status-d" style="background:var(--surface)">
+        <div style="font-weight:700">Automação Financeira</div>
+        <div class="meta">Atualizado no ciclo · 18 set</div>
+        <div class="prog prog-d"><span></span></div>
+      </div>
+      <p class="note"><code>bg-surface</code> (=#fff), <code>text-muted</code> (2,56:1 → 4,81:1 ✓), trilho <code>bg-line</code></p>
+    </div>
+  </div>
+
+  <h2>§3 — Pastilhas de estado → <code>&lt;StatePill&gt;</code></h2>
+  <div class="pair">
+    <div class="col"><span class="tag a">antes · desenho à mão</span>
+      <div class="pills">
+        <span class="pill p-ok">Entregue</span>
+        <span class="pill p-grey-a">Bloqueado</span>
+        <span class="pill p-amber-a">Atenção</span>
+        <span class="pill p-dng">Atrasado</span>
+      </div>
+      <p class="note">Cinza <code>bg-slate-100/text-slate-500</code>, atenção <code>bg-amber-100/text-amber-800</code>, <strong>sem ícone</strong></p>
+    </div>
+    <div class="col"><span class="tag d">depois · primitiva</span>
+      <div class="pills">
+        <span class="pill p-ok"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3 3 7-7"/></svg>Entregue</span>
+        <span class="pill p-grey-d"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="7" width="8" height="6" rx="1"/><path d="M6 7V5a2 2 0 0 1 4 0v2"/></svg>Bloqueado</span>
+        <span class="pill p-warn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3l6 10H2z"/><path d="M8 7v3"/></svg>Atenção</span>
+        <span class="pill p-dng"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M8 5v4"/></svg>Atrasado</span>
+        <span class="pill p-info"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5h.01"/></svg>Em revisão</span>
+      </div>
+      <p class="note"><code>&lt;StatePill&gt;</code> — ícone <strong>junto</strong> do texto (sobrevive a daltonismo/cinza), warning/info tokenizados</p>
+    </div>
+  </div>
+
+  <h2>§3 — Botões → <code>&lt;Button&gt;</code>, e o badge do sino</h2>
+  <div class="pair">
+    <div class="col"><span class="tag a">antes</span>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary">Perguntar ao assistente</button>
+        <button class="btn btn-secondary">Ver cronograma</button>
+        <span class="badge badge-a"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="1.6"><path d="M8 2a3 3 0 0 0-3 3c0 4-1.5 5-1.5 5h9S11 9 11 5a3 3 0 0 0-3-3z"/><path d="M7 13a1 1 0 0 0 2 0"/></svg><b>3</b></span>
+      </div>
+      <p class="note">Badge <code>bg-rose-500</code>, botões crus</p>
+    </div>
+    <div class="col"><span class="tag d">depois</span>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" type="submit">Perguntar ao assistente</button>
+        <button class="btn btn-secondary" type="submit">Ver cronograma</button>
+        <span class="badge badge-d"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="1.6"><path d="M8 2a3 3 0 0 0-3 3c0 4-1.5 5-1.5 5h9S11 9 11 5a3 3 0 0 0-3-3z"/><path d="M7 13a1 1 0 0 0 2 0"/></svg><b>3</b></span>
+      </div>
+      <p class="note">Badge <code>bg-danger-600</code>, <code>&lt;Button&gt;</code> (satisfaz <code>inertButtons()</code>). <strong>Foque com Tab</strong> para ver o anel da marca.</p>
+    </div>
+  </div>
+
+  <h2>Tabela de procedência — nenhum valor novo</h2>
+  <table>
+    <tr><th>Onde</th><th>Antes</th><th>Depois</th><th>Isovalente?</th></tr>
+    <tr><td>.sidebar / .topbar / .status-card fundo</td><td><span class="sw" style="background:var(--white)"></span><code>bg-white</code></td><td><span class="sw" style="background:var(--surface)"></span><code>bg-surface</code></td><td class="iso">sim (#fff)</td></tr>
+    <tr><td>.nav-item texto</td><td><span class="sw" style="background:var(--slate-500)"></span><code>slate-500</code></td><td><span class="sw" style="background:var(--muted)"></span><code>muted</code></td><td class="no">não · contraste</td></tr>
+    <tr><td>.status-meta / .file-icon</td><td><span class="sw" style="background:var(--slate-400)"></span><code>slate-400</code></td><td><span class="sw" style="background:var(--muted)"></span><code>muted</code></td><td class="no">não · 2,56→4,81</td></tr>
+    <tr><td>.progress trilho / bordas</td><td><span class="sw" style="background:var(--slate-200)"></span><code>slate-200</code></td><td><span class="sw" style="background:var(--line)"></span><code>line</code></td><td class="iso">~</td></tr>
+    <tr><td>.pending-avatar</td><td><span class="sw" style="background:var(--amber-100)"></span><code>amber</code></td><td><span class="sw" style="background:var(--warning-50)"></span><code>warning</code></td><td class="no">não · semântico</td></tr>
+    <tr><td>notification badge</td><td><span class="sw" style="background:var(--rose-500)"></span><code>rose-500</code></td><td><span class="sw" style="background:var(--danger-600)"></span><code>danger-600</code></td><td class="no">não · semântico</td></tr>
+    <tr><td>.nav-item ativo</td><td><span class="sw" style="background:var(--slate-100)"></span><code>slate-100</code></td><td><span class="sw" style="background:var(--brand-50)"></span><code>brand-50</code></td><td class="no">decisão (cita a marca)</td></tr>
+  </table>
+  <p class="note">Fonte executável: <code>app/globals.css</code> (@theme). Se este pacote e o CSS divergirem, o CSS vence. Dados de exemplo são ilustrativos.</p>
+</div>
+</body>
+</html>

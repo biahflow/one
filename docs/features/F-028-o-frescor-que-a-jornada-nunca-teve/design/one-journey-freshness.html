@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One · F-028 — jornada e frescor</title>
+<style>
+  :root{
+    --ink:#17243a;--muted:#657389;--line:#e8edf4;--canvas:#f6f8fc;
+    --brand-50:#f3f0fd;--brand-100:#e5dffb;--brand-500:#6e56cf;--brand-600:#5f47c4;--brand-700:#4f38ab;
+    --success-50:#e7f7f0;--success-600:#1a7e5b;--warning-50:#fdf3e4;--warning-600:#a16118;
+    --danger-50:#fdecea;--danger-600:#c0392b;--info-50:#e9f1fd;--info-600:#1d5fb4;
+    --surface:#fff;--surface-sunken:#f8fafc;--focus:var(--brand-500);
+    --radius-card:1rem;--radius-control:.75rem;--radius-pill:9999px;
+    --shadow-card:0 1px 2px rgba(23,36,58,.04),0 12px 28px -18px rgba(23,36,58,.22);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 6% -4%,color-mix(in srgb,var(--brand-500) 7%,transparent),transparent 26rem),var(--canvas);
+    color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:860px;margin:0 auto;padding:36px 20px 80px}
+  .brand{font-weight:800;letter-spacing:-.03em;font-size:19px;margin:0 0 4px}.brand .dot{color:var(--brand-500)}
+  h1{font-size:24px;letter-spacing:-.02em;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 24px}
+  .eyebrow{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);margin:26px 0 10px}
+  .panel{border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);box-shadow:var(--shadow-card);padding:20px;margin-bottom:16px}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;padding:4px 10px;border-radius:9999px}
+  .pill svg{width:12px;height:12px}
+  .p-brand{background:var(--brand-50);color:var(--brand-700)}.p-info{background:var(--info-50);color:var(--info-600)}
+  .p-ok{background:var(--success-50);color:var(--success-600)}.p-warn{background:var(--warning-50);color:var(--warning-600)}
+  .p-dng{background:var(--danger-50);color:var(--danger-600)}.p-grey{background:var(--surface-sunken);color:var(--muted)}
+  .head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .fresh{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+  .fresh svg{width:13px;height:13px}
+  /* timeline */
+  .track{display:flex;align-items:flex-start;gap:0;margin:18px 0 6px;overflow-x:auto}
+  .step{flex:1;min-width:96px;text-align:center;position:relative}
+  .step::before{content:"";position:absolute;top:11px;left:-50%;width:100%;height:2px;background:var(--line)}
+  .step:first-child::before{display:none}
+  .step.done::before{background:var(--success-600)}
+  .dot{width:24px;height:24px;border-radius:9999px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:var(--surface);border:2px solid var(--line);position:relative;z-index:1}
+  .step.done .dot{background:var(--success-600);border-color:var(--success-600);color:#fff}
+  .step.active .dot{border-color:var(--brand-500);box-shadow:0 0 0 4px var(--brand-100)}
+  .step.locked .dot{color:var(--muted)}
+  .step .nm{font-size:11.5px;font-weight:700}.step.locked .nm{color:var(--muted);font-weight:600}
+  .dot svg{width:12px;height:12px}
+  .phase-detail{border-top:1px solid var(--line);margin-top:14px;padding-top:14px}
+  .phase-detail h3{margin:0;font-size:16px}.phase-detail .desc{font-size:13px;color:var(--muted);margin:4px 0 0}
+  /* decision node */
+  .gate{display:flex;gap:10px;margin-top:14px;padding:12px 14px;background:var(--brand-50);border-radius:var(--radius-control)}
+  .gate .ic{width:26px;height:26px;border-radius:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--brand-600);flex:none}
+  .gate .t{font-size:13px;font-weight:700}.gate .r{font-size:12.5px;color:var(--muted);margin-top:2px}.gate .d{font-size:11px;color:var(--muted);margin-top:4px}
+  /* states row */
+  .states{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .sc{border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);box-shadow:var(--shadow-card);padding:16px}
+  .sc .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .sc h4{margin:0;font-size:13px}.sc p{font-size:12px;color:var(--muted);margin:6px 0 0}
+  .note{font-size:12.5px;color:var(--muted)}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--surface-sunken);padding:1px 5px;border-radius:5px}
+  @media(max-width:620px){.states{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="brand">One<span class="dot">.</span></p>
+  <h1>Sua jornada</h1>
+  <p class="sub">A timeline já renderizada, agora com <strong>frescor honesto</strong> e decisões/gates ancorados à fase. O carimbo deriva de um <code>observed_at</code> real — nunca inventado (ADR 0026).</p>
+
+  <p class="eyebrow">Timeline — frescor recente</p>
+  <div class="panel">
+    <div class="head">
+      <span class="pill p-brand"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v6l4 2"/><circle cx="8" cy="8" r="6"/></svg>Você está aqui: Otimização</span>
+      <span class="fresh"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 4v4l3 2"/><circle cx="8" cy="8" r="6"/></svg>Atualizado há 2 h · sincronizado com o Biahflow</span>
+    </div>
+    <div class="track">
+      <div class="step done"><div class="dot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg></div><div class="nm">Boas-vindas</div></div>
+      <div class="step done"><div class="dot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg></div><div class="nm">Descoberta</div></div>
+      <div class="step done"><div class="dot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg></div><div class="nm">Construção</div></div>
+      <div class="step active"><div class="dot"></div><div class="nm">Otimização</div></div>
+      <div class="step locked"><div class="dot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="7" width="8" height="6" rx="1"/><path d="M6 7V5a2 2 0 0 1 4 0v2"/></svg></div><div class="nm">Escala</div></div>
+    </div>
+    <div class="phase-detail">
+      <h3>Otimização</h3>
+      <p class="desc">Ajuste fino dos fluxos automatizados e revisão de resultados. Previsão: 30 set.</p>
+      <div class="gate">
+        <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3 3 7-7"/></svg></div>
+        <div>
+          <div class="t">Gate: aprovação do escopo de otimização</div>
+          <div class="r">Escopo aprovado com o cliente; destravou a fase de Otimização.</div>
+          <div class="d">Decidido em 12 set · reunião de alinhamento</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="eyebrow">Os três estados honestos do dado</p>
+  <div class="states">
+    <div class="sc">
+      <div class="top"><h4>Pode estar desatualizado</h4><span class="pill p-warn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3l6 10H2z"/><path d="M8 7v3"/></svg>stale</span></div>
+      <p>Última sincronização há <strong>5 dias</strong>. O que você vê pode não refletir o estado atual do projeto.</p>
+      <p class="note" style="margin-top:8px">há dado, mas velho</p>
+    </div>
+    <div class="sc">
+      <div class="top"><h4>Indisponível</h4><span class="pill p-dng"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M8 5v4M8 11h.01"/></svg>erro</span></div>
+      <p>Não conseguimos carregar sua jornada agora. Isso é indisponibilidade — não um projeto vazio.</p>
+      <p class="note" style="margin-top:8px">sem dado</p>
+    </div>
+    <div class="sc">
+      <div class="top"><h4>Projeto encerrado</h4><span class="pill p-grey"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>encerrado</span></div>
+      <p>Encerrado na origem. O histórico continua visível; nada novo entra.</p>
+      <p class="note" style="margin-top:8px">somente-consulta (ADR 0036/0037)</p>
+    </div>
+  </div>
+  <p class="note" style="margin-top:16px">Três cores, três mensagens — colapsá-los mentiria sobre qual é o caso. Dados de exemplo ilustrativos; só campos client-safe atravessam (ADR 0067). Tokens de <code>app/globals.css</code>.</p>
+</div>
+</body>
+</html>

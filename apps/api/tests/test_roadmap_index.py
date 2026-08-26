@@ -575,7 +575,12 @@ _MERGE_ATTRIBUTES = re.compile(r"^(?:merge(?:=|$)|[-!]merge$|binary$)")
 
 #: Diretórios que a varredura de `.gitattributes` não atravessa: artefato de
 #: instalação e de build. A mesma lista do `NOT_OURS` do `scripts/pins.mjs`.
-_NOT_OURS = {".git", ".next", ".venv", "node_modules", "test-results"}
+#: `engineering-os` é o espelho vendorizado da camada global (ADR 0074): cópia fiel
+#: de outro repositório, que **não é editada aqui**. Cobrar dela as regras estruturais
+#: deste repositório só produz falha que a D1 daquela ADR proíbe consertar — e produziria
+#: de novo a cada release da origem. Nasceu vermelha com `TESTING-COMPLETE.md` desenhando
+#: `./bin/biah`, um artefato de build que a origem passou a ignorar.
+_NOT_OURS = {".git", ".next", ".venv", "node_modules", "test-results", "engineering-os"}
 
 
 def _covers(pattern: str, relative: str) -> bool:

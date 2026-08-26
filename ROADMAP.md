@@ -1622,6 +1622,18 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       reescrita; a instrução viva do runbook que ainda mandava olhar `biahflow/portal` foi
       corrigida na passada.
 
+- [x] **A camada global que só uma máquina enxergava** *(ADR 0074)*: `project-context.md` dizia
+      que o contexto global estava em `/Users/danielcampos/workspace/engineeringOS/` — caminho
+      absoluto de uma máquina, num arquivo versionado. Nunca resolveu para o CI, para
+      colaborador novo ou para agente em nuvem, e em 25/08 o checkout mudou de lugar e ele
+      morreu para todos, **sem erro**: import que não resolve é ausência, não falha. O
+      repositório se declarava `ENGINEERING_OS_COMPLIANT` o tempo inteiro. A fatia vendoriza a
+      camada em `docs/engineering-os/`, pinada na tag `v0.1.0` da origem publicada — tag e
+      commit no `PROVENANCE`, e o sync recusa o que não é tag, porque branch se move. As dez
+      citações em texto corrido viram links, e `tests/docs-links.test.mjs` é o que faz delas
+      referência: era o defeito da regra 6 da ADR 0035 noutra superfície, a citação que nenhum
+      portão conferia. **Fica aberto:** o espelho envelhece em silêncio entre sincronizações.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

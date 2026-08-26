@@ -25,14 +25,22 @@ listas são a mesma e que toda citação por número resolve.*
 
 ## Engineering OS e ciclo de trabalho
 
+- A camada global está vendorizada e pinada em
+  [`docs/engineering-os/`](docs/engineering-os/PROVENANCE.md) — princípios, guardrails,
+  [definição de pronto](docs/engineering-os/core/definition-of-done.md) e contratos de
+  Planner/Builder/Reviewer. **Leia lá, não aqui:** este arquivo acrescenta restrições do projeto
+  e não reformula regra global. Onde os dois falarem do mesmo assunto, o global manda e o local
+  só aperta.
 - O contexto operacional do projeto está em [`docs/project-context.md`](docs/project-context.md).
   Ele aponta para as fontes canônicas; não duplique seus comandos ou decisões aqui.
 - [`ROADMAP.md`](ROADMAP.md) é o índice canônico de trabalho. Para uma funcionalidade com FDD,
   a FDD é o contrato detalhado e dona do estado do ciclo; ADRs registram decisões e RFCs preservam
   contexto, não status de implementação.
 - Adoção é prospectiva: FDDs históricas permanecem no lugar. Novas FDDs usam o template com
-  identificador `F-<número>` e estados da Engineering OS. Planos, contratos de tarefa e evidências
-  vivem conforme [`docs/features/README.md`](docs/features/README.md).
+  identificador `F-<número>` e os
+  [estados do ciclo de feature](docs/engineering-os/workflows/feature.md) da Engineering OS.
+  Planos, contratos de tarefa e evidências vivem conforme
+  [`docs/features/README.md`](docs/features/README.md).
 - Nenhum agente escolhe prioridade, inicia implementação ou marca uma funcionalidade como `DONE`
   sem a seleção e o gate humano aplicáveis.
 

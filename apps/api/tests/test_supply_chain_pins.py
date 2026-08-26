@@ -54,7 +54,12 @@ TERRAFORM_GLOB = "**/*.tf"
 #: instalação e de build, não código deste repositório: um `Dockerfile` dentro de
 #: `node_modules` é dependência de terceiro, e cobrar pino dele seria cobrar do
 #: repositório o que ele não escreve.
-_NOT_OURS = {".venv", "node_modules", ".next", ".git", "test-results"}
+#: `engineering-os` é o espelho vendorizado da camada global (ADR 0074): cópia fiel
+#: de outro repositório, que **não é editada aqui**. Cobrar dela as regras estruturais
+#: deste repositório só produz falha que a D1 daquela ADR proíbe consertar — e produziria
+#: de novo a cada release da origem. Nasceu vermelha com `TESTING-COMPLETE.md` desenhando
+#: `./bin/biah`, um artefato de build que a origem passou a ignorar.
+_NOT_OURS = {".venv", "node_modules", ".next", ".git", "test-results", "engineering-os"}
 
 
 class Reference(NamedTuple):

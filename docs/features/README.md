@@ -18,17 +18,19 @@ docs/
         └── evidence.md
 ```
 
-`plan.md` segue o contrato do Planner da Engineering OS e representa um DAG válido. Cada contrato
-em `tasks/` declara Feature ID, Task ID, escopo, fora de escopo, critérios de aceite,
-dependências, validação e capacidades. `evidence.md` referencia baseline, relatórios completos de
-Builder, validações, desvios de plano, revisão e decisões humanas.
+`plan.md` segue o [contrato do Planner](../engineering-os/agents/planner.md) e representa um DAG
+válido. Cada contrato em `tasks/` declara Feature ID, Task ID, escopo, fora de escopo, critérios
+de aceite, dependências, validação e capacidades. `evidence.md` referencia baseline, os
+[`BUILD REPORT`](../engineering-os/agents/builder.md) completos, validações, desvios de plano,
+revisão e decisões humanas.
 
 ## Autoridade e gates
 
 - A FDD declara **o que** a feature entrega e seu estado de ciclo.
 - O plano declara **como** a execução é decomposta; não altera requisitos.
 - Contratos de tarefa autorizam um Builder apenas no escopo explicitamente aceito.
-- Evidência é o handoff para revisão; não substitui os relatórios de Builder.
+- Evidência é o handoff para [revisão](../engineering-os/agents/reviewer.md); não substitui os
+  `BUILD REPORT`.
 - Nenhum artefato permite escolher prioridade, aprovar trabalho, marcar `DONE` ou executar
   produção sem a autoridade humana aplicável.
 

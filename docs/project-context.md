@@ -6,8 +6,18 @@ Este é o ponto de entrada operacional do projeto na Engineering OS. Ele referen
 canônicas existentes; não substitui PRD, FDD, ADR, RFC, runbook ou configuração executável.
 
 A ordem de regras é: Engineering OS global → [AGENTS.md](../AGENTS.md) → contrato da tarefa.
-O contexto global está disponível em `/Users/danielcampos/workspace/engineeringOS/` e inclui os
-princípios, guardrails, definição de pronto, contratos de Planner/Builder/Reviewer e workflows.
+
+A camada global está vendorizada e pinada em [docs/engineering-os](engineering-os/PROVENANCE.md),
+alcançável do próprio checkout — por CI, por colaborador novo e por agente em nuvem, não só por
+quem tem o bootstrap pessoal instalado. Ela é a fonte de
+[princípios](engineering-os/core/principles/engineering.md),
+[guardrails](engineering-os/core/guardrails/git.md),
+[definição de pronto](engineering-os/core/definition-of-done.md),
+[contratos de Planner](engineering-os/agents/planner.md),
+[Builder](engineering-os/agents/builder.md) e [Reviewer](engineering-os/agents/reviewer.md), e dos
+workflows de [feature](engineering-os/workflows/feature.md) e
+[execução](engineering-os/workflows/execution.md). Este documento não os repete: onde a regra é
+global, o link é a regra.
 
 ## Fontes de verdade
 
@@ -65,5 +75,10 @@ qualquer validação indisponível. A CI em [`.github/workflows/ci.yml`](../.git
 
 ## Estado de adoção
 
-`ENGINEERING_OS_COMPLIANT` em 17/08/2026. A adoção resolveu a ambiguidade de status das RFCs,
-preservou artefatos históricos e não criou uma fonte de trabalho paralela.
+`ENGINEERING_OS_COMPLIANT` contra a Engineering OS `v0.1.0`, reverificado em 26/08/2026.
+
+A adoção de 17/08/2026 resolveu a ambiguidade de status das RFCs, preservou artefatos históricos
+e não criou uma fonte de trabalho paralela. Ela não sobreviveu à exigência de alcançabilidade que
+a camada global passou a fazer depois: a única referência ao contexto global era um caminho
+absoluto da máquina do operador, e ele morreu em silêncio quando o diretório mudou de lugar. O
+espelho vendorizado fecha essa lacuna; avançar o pino é mudança revisada, nunca automática.

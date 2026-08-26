@@ -12,8 +12,8 @@ Engineering OS (`workflows/design-approval.md`, `workflows/browser-runtime-valid
 
 ## Status
 
-`READY_FOR_HUMAN_REVIEW` desde 25/08/2026 — implementada, validada e revisada; falta a decisão
-humana no merge. O gate de design foi atravessado: a **revisão 2** do
+`DONE` desde 25/08/2026 — implementada, validada, revisada e **mergeada** (PR #47, ADR 0069): a
+decisão humana no merge foi tomada. O gate de design foi atravessado antes: o
 Design Approval Package está `Approved` — visual e cópia — em
 [`design-approval.md`](../features/F-025-o-nome-que-a-tela-ainda-nao-sabia/design-approval.md).
 A revisão 1 levou duas direções de marca ao gate; a escolha foi o **wordmark sem selo**, com o

@@ -1,5 +1,7 @@
 "use client";
 
+import { RotateCcw } from "lucide-react";
+
 import { StatePill } from "@/components/one/StatePill";
 
 /**
@@ -43,7 +45,16 @@ export default function Error({
             Código: <code>{error.digest}</code>
           </p>
         )}
-        <button className="ai-button" onClick={reset}>Tentar de novo</button>
+        {/* O ícone não é enfeite: a regra móvel `.ai-button { font-size: 0 }` colapsa
+            o rótulo abaixo de 760px, e foi escrita para o botão do herói, que tem
+            ícone. Sem um aqui, o único caminho de recuperação desta tela virava um
+            círculo roxo vazio no celular. Dos outros onze `.ai-button` do produto, dez
+            já carregavam o seu; o décimo segundo ("Autorizar", em `/admin/conhecimento`)
+            era a outra exceção, e foi corrigido junto — a guarda o achou, o levantamento
+            à mão não. `iconlessAiButtons()` agora reprova os dois. */}
+        <button className="ai-button" onClick={reset}>
+          <RotateCcw size={17} /> Tentar de novo
+        </button>
       </div>
     </main>
   );

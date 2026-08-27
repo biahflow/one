@@ -1,0 +1,251 @@
+{
+  "feature": "F-027",
+  "task": "T08",
+  "generated_at": "2026-08-27T09:30:50.921Z",
+  "generated_by": "node scripts/capture-acceptance-evidence.mjs",
+  "model_in_the_loop": false,
+  "revision": {
+    "sha": "3dd5857a8c85210f70abe1777df1de53304bf2c3",
+    "short": "3dd5857",
+    "subject": "fix(db): reencadeia 0034 sobre 0031, após o merge da F-028",
+    "branch": "o-card-que-o-cliente-decide",
+    "pending_at_capture": [
+      "app/DashboardClient.tsx",
+      "app/actions.ts",
+      "app/demo-overview.ts",
+      "app/globals.css",
+      "app/page.tsx",
+      "apps/api/src/portal_api/integrations/biahflow.py",
+      "apps/api/src/portal_api/schemas.py",
+      "apps/api/src/portal_api/tabs.py",
+      "apps/api/tests/test_biahflow_integration.py",
+      "docs/api/openapi.json",
+      "tests/api-contract.test.mjs",
+      "tests/fixtures/dashboard.mjs",
+      "tests/rendered-html.test.mjs",
+      "scripts/capture-acceptance-evidence.mjs"
+    ],
+    "diff_sha256": "0c6cdc8c3919ded7c653fc96fa393f7f55af1fe0042f0e0c9c85345776ab4d6d",
+    "diff_bytes": 67264,
+    "note": "A superfície ainda não estava comitada quando foi fotografada — a T08 entrega a evidência junto do código. `diff_sha256` é o SHA-256 de `git diff HEAD` no momento da captura: `git diff HEAD | shasum -a 256` na revisão sob revisão confere."
+  },
+  "design_approval": {
+    "package": "docs/features/F-027-o-aceite-que-a-tela-so-desenhou/design/one-acceptance.html",
+    "revision": 1,
+    "approved_on": "2026-08-26",
+    "record": "docs/features/F-027-o-aceite-que-a-tela-so-desenhou/design-approval.md",
+    "gate_resolutions": "plan.md §Resoluções do gate (27/08/2026)"
+  },
+  "runtime": {
+    "portal": "`next start` (build de produção) do próprio repositório",
+    "api": "stub HTTP local servindo `tests/fixtures/dashboard.mjs`, com o aceite **stateful**",
+    "session": "cookie cunhado com o `encode()` do Auth.js, como em `tests/rendered-html.test.mjs`",
+    "browser": "chromium 151.0.7922.34",
+    "engine": "playwright",
+    "device_scale_factor": 1,
+    "locale": "pt-BR",
+    "emulation": "apenas viewport — sem emulação de toque, para a diferença capturada ser a do CSS",
+    "why_not_the_full_stack": "o portal está fora do ar desde 13/08/2026 (ADR 0053) e, na máquina desta captura, as portas do Postgres e do MinIO pertencem a outro ambiente. Subir a pilha significaria derrubar o que não é desta tarefa."
+  },
+  "proves": [
+    "o código desta revisão renderiza a superfície, com os rótulos e tons do pacote aprovado",
+    "os controles agem: as capturas 02 e 03 saem de cliques de verdade que atravessaram a Server Action",
+    "uma segunda decisão acrescenta e a primeira aparece superada, nunca apagada",
+    "o foco de teclado alcança o controle de decisão, por tabulação",
+    "a tela não afirma «pendente» quando não conseguiu ler o histórico"
+  ],
+  "does_not_prove": [
+    "a integração com o FastAPI real: quem responde aqui é um stub, e é o mesmo mecanismo em que `tests/rendered-html.test.mjs` já se apoia",
+    "a imutabilidade no banco — isso é privilégio do Postgres e está provado em `test_rls_isolation.py` (F-027 T02)",
+    "o aviso interno de aceite, que não tem superfície de cliente (F-027 T04)"
+  ],
+  "captures": [
+    {
+      "id": "01-aguardando-1440x900",
+      "requirement": "card de revisão — `ready_for_acceptance`, aguardando o cliente",
+      "file": "01-aguardando-1440x900.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 163072,
+      "sha256": "52df104038edd136b8451b70924255bf67b9600c48e60ddf2bf5e91d56666ea6",
+      "notes": "A entrega de engenharia está concluída e o aceite do cliente está pendente, nas duas metades do card. Sem essa separação a tela sugeriria que uma coisa é a outra, que é o invariante que a fatia inteira nega (DAP decisão 3)."
+    },
+    {
+      "id": "01-aguardando-390x844",
+      "requirement": "card de revisão — `ready_for_acceptance`, aguardando o cliente",
+      "file": "01-aguardando-390x844.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "390×844",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 124189,
+      "sha256": "773858ad23de1c06ce43c3ff69e5ea057500fd4437da5bbf642e7eae3bf43abe",
+      "notes": "A entrega de engenharia está concluída e o aceite do cliente está pendente, nas duas metades do card. Sem essa separação a tela sugeriria que uma coisa é a outra, que é o invariante que a fatia inteira nega (DAP decisão 3)."
+    },
+    {
+      "id": "02-ajuste-pedido-1440x900",
+      "requirement": "controle que age — `changes_requested` e a confirmação",
+      "file": "02-ajuste-pedido-1440x900.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 171233,
+      "sha256": "c61c0ffb92be50da7e4e03fe26f8a691352660cf32d47c22bdc50856483294f1",
+      "notes": "O estado saiu de um clique no botão real: o comentário foi digitado, a Server Action chamou `POST /api/v1/me/deliverables/{ref}/acceptance`, e a confirmação nomeia o time. Um controle inerte (ADR 0026) não produziria esta imagem."
+    },
+    {
+      "id": "02-ajuste-pedido-390x844",
+      "requirement": "controle que age — `changes_requested` e a confirmação",
+      "file": "02-ajuste-pedido-390x844.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "390×844",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 139908,
+      "sha256": "8edf66a33b4b0d600a4e01509763ba44bdc96b6054ceaeba832c889d753b962b",
+      "notes": "O estado saiu de um clique no botão real: o comentário foi digitado, a Server Action chamou `POST /api/v1/me/deliverables/{ref}/acceptance`, e a confirmação nomeia o time. Um controle inerte (ADR 0026) não produziria esta imagem."
+    },
+    {
+      "id": "03-aprovado-1440x900",
+      "requirement": "`accepted` + histórico imutável com supersessão explícita",
+      "file": "03-aprovado-1440x900.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 178983,
+      "sha256": "0b1af8b679c665689b48894ae99748286491536b30da2e9a60857cd3820fa666",
+      "notes": "Duas decisões, duas linhas: a mais nova em vigor e a anterior riscada com o rótulo «superada». A primeira **não** foi apagada nem reescrita — é o reflexo na tela do `GRANT` só de `INSERT` da migração 0035 (DAP decisão 2)."
+    },
+    {
+      "id": "03-aprovado-390x844",
+      "requirement": "`accepted` + histórico imutável com supersessão explícita",
+      "file": "03-aprovado-390x844.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "390×844",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 146546,
+      "sha256": "3a7feba871eab46f12dac5af1c68ea8c88a513d226c96cfa83a5b9eb5048f5f8",
+      "notes": "Duas decisões, duas linhas: a mais nova em vigor e a anterior riscada com o rótulo «superada». A primeira **não** foi apagada nem reescrita — é o reflexo na tela do `GRANT` só de `INSERT` da migração 0035 (DAP decisão 2)."
+    },
+    {
+      "id": "04-foco-de-teclado-1440x900",
+      "requirement": "foco de teclado visível no controle de decisão",
+      "file": "04-foco-de-teclado-1440x900.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 37236,
+      "sha256": "a5a9725e8edf554f20342b53a5e46bfa14e50e34511c00bba11f3de16e24c56c",
+      "notes": "O anel apareceu sozinho, por tabulação: nenhuma classe injetada e nenhum `element.focus()`. O controle é o «Aprovar entrega» real do card.",
+      "keyboard_focus": {
+        "tab_presses": 18,
+        "reached_by": "page.keyboard.press(\"Tab\")",
+        "control": "btn btn--primary",
+        "accessible_name": "Aprovar entrega",
+        "matches_focus_visible": true,
+        "outline_color": "rgb(110, 86, 207)",
+        "outline_width": "2px",
+        "outline_offset": "2px",
+        "focus_token": "#6e56cf",
+        "settled": true
+      }
+    },
+    {
+      "id": "05-vazio-1440x900",
+      "requirement": "vazio — nada aguardando revisão",
+      "file": "05-vazio-1440x900.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 134104,
+      "sha256": "f001a7123342056c1820703c895d413f7c2da4ab1497fd45d8d0ff5eb10ca936",
+      "notes": "Nenhuma entrega concluída pela operação: não há decisão a pedir do cliente."
+    },
+    {
+      "id": "06-erro-1440x900",
+      "requirement": "erro — serviço indisponível",
+      "file": "06-erro-1440x900.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 162784,
+      "sha256": "2f1884371d35947ecba53a9e125dfc094b9d3b6349b3807046bfb77226c24e5d",
+      "notes": "A tela diz que não conseguiu ler, e **não** diz «pendente»: uma lista vazia afirmaria que ninguém decidiu sobre um histórico que ela não leu. É a mesma regra de `scan_state=skipped` não ser `clean`."
+    },
+    {
+      "id": "07-nao-autorizado-1440x900",
+      "requirement": "não autorizado — 404, nunca 403",
+      "file": "07-nao-autorizado-1440x900.png",
+      "route": "/?tab=Revis%C3%A3o",
+      "actor": "marina.farias@acme.com.br (client_member)",
+      "viewport": "1440×900",
+      "device_scale_factor": 1,
+      "full_page": true,
+      "bytes": 31971,
+      "sha256": "d9454922d2790b447c7f58344624e44ea318e150afa3d5eb432506935a870b6a",
+      "notes": "A API respondeu 404, que é a negação padrão do portal: ela não distingue «não existe» de «não é seu», e é isso que impede o 403 de confirmar a existência de um projeto a quem não deveria saber dela."
+    }
+  ],
+  "coverage": {
+    "total_bytes": 1290026,
+    "requirements": [
+      {
+        "requirement": "card de revisão — `ready_for_acceptance`, aguardando o cliente",
+        "evidence": "01-aguardando-1440x900"
+      },
+      {
+        "requirement": "card de revisão — `ready_for_acceptance`, aguardando o cliente",
+        "evidence": "01-aguardando-390x844"
+      },
+      {
+        "requirement": "controle que age — `changes_requested` e a confirmação",
+        "evidence": "02-ajuste-pedido-1440x900"
+      },
+      {
+        "requirement": "controle que age — `changes_requested` e a confirmação",
+        "evidence": "02-ajuste-pedido-390x844"
+      },
+      {
+        "requirement": "`accepted` + histórico imutável com supersessão explícita",
+        "evidence": "03-aprovado-1440x900"
+      },
+      {
+        "requirement": "`accepted` + histórico imutável com supersessão explícita",
+        "evidence": "03-aprovado-390x844"
+      },
+      {
+        "requirement": "foco de teclado visível no controle de decisão",
+        "evidence": "04-foco-de-teclado-1440x900"
+      },
+      {
+        "requirement": "vazio — nada aguardando revisão",
+        "evidence": "05-vazio-1440x900"
+      },
+      {
+        "requirement": "erro — serviço indisponível",
+        "evidence": "06-erro-1440x900"
+      },
+      {
+        "requirement": "não autorizado — 404, nunca 403",
+        "evidence": "07-nao-autorizado-1440x900"
+      }
+    ]
+  }
+}

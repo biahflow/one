@@ -731,6 +731,10 @@ def _journey_projection(session: Session, project: Project) -> dict[str, Any]:
                         "name": deliverable.name,
                         "state": deliverable.state.value,
                         "link": deliverable.link,
+                        # A identidade que o uuid desta linha não é (ADR 0077): é
+                        # o caminho da rota de aceite, e é o que faz o card de
+                        # revisão ter para onde mandar a decisão.
+                        "external_ref": deliverable.external_ref,
                     }
                     for deliverable in deliverables_by_phase.get(phase.id, [])
                 ],

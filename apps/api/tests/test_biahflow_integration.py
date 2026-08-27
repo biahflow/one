@@ -244,7 +244,12 @@ def test_sync_snapshot_projects_journey_roi_and_next_meeting(db_session: Session
     assert [p["name"] for p in journey["phases"]] == ["Welcome", "Prove", "Scale"]
     assert journey["phases"][0]["state"] == "done"
     assert journey["phases"][0]["deliverables"][0] == {
+        # `external_ref` entra aqui porque é o **caminho** da rota de aceite
+        # (ADR 0077): sem ele o card de revisão não teria para onde mandar a
+        # decisão. A igualdade é do dicionário inteiro de propósito — um campo
+        # a mais na projeção é campo que a tela recebe e ninguém pediu.
         "name": "Acesso ao portal", "state": "delivered", "link": None,
+        "external_ref": "91",
     }
     assert journey["phases"][1]["state"] == "active"
     assert dashboard["roi"] == {"net": 750.0, "ratio": 3.0}
@@ -485,6 +490,10 @@ def test_um_entregavel_sem_id_na_origem_fica_sem_external_ref(
         ).scalars()
     }
     assert refs == {"Acesso ao portal": None, "Funcionário Digital": "92"}
+    # E a projeção repassa o silêncio em vez de o esconder: a tela precisa saber
+    # que aquele entregável não tem como receber decisão.
+    journey = biahflow.build_dashboard(db_session, project)["journey"]
+    assert journey["phases"][0]["deliverables"][0]["external_ref"] is None
 
 
 # --- integration: documentos, reuniões, pendências e resultados -------------

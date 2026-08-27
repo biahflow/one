@@ -565,6 +565,62 @@
   .anchor-missing { @apply mb-3 rounded-xl bg-brand-50 px-3.5 py-2.5 text-xs text-muted; }
   .empty-note, .panel-note { @apply px-0.5 py-4 text-xs leading-relaxed text-muted; }
 
+  /* ---------- Revisão e aceite (F-027, DAP r1 aprovado) ---------- */
+  /* Classes só desta aba, e nenhum token novo: o `@theme` fecha na F-025, e
+     acrescentar cor aqui reprovaria na guarda de consumo de
+     `tests/rendered-html.test.mjs`. Os cinco selos da escada reusam `.state--0`
+     (marca) e `.state--2` (neutro) para os dois tons que `StatePill` não tem. */
+  .review-ladder { @apply flex flex-wrap items-center gap-2; }
+  .review-step { @apply inline-flex items-center gap-2; }
+  .review-arrow { @apply text-line; }
+  .review-list { @apply mt-1 grid gap-3.5; }
+  .review-card { @apply grid gap-3 p-4.5; }
+  .review-head { @apply flex items-start justify-between gap-3; }
+  .review-head h3 { @apply m-0 text-[15px] font-bold; }
+  .review-phase { @apply m-0 text-[11px] text-muted; }
+  /* O `gap-px` sobre o fundo da linha é o que desenha o fio entre as duas
+     metades sem uma borda que sumiria ao empilhar no celular. */
+  .review-split {
+    @apply grid gap-px overflow-hidden rounded-xl border border-line sm:grid-cols-2;
+    background: var(--color-line);
+  }
+  .review-half {
+    @apply grid content-start gap-1 p-3;
+    background: var(--color-surface);
+  }
+  .review-half--engineering { background: var(--color-surface-sunken); }
+  .review-lab { @apply m-0 text-[10px] font-extrabold tracking-[0.08em] uppercase text-muted; }
+  .review-val { @apply m-0 text-xs font-semibold text-ink; }
+  .review-val--pending { color: var(--color-info-600); }
+  .review-note { @apply m-0 text-[10px] text-muted; }
+  .review-evidence { @apply flex flex-wrap gap-2; }
+  .review-evidence a {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-[11px] font-semibold text-brand-700 hover:border-brand-200 hover:bg-brand-50;
+  }
+  .review-field {
+    @apply min-h-16 w-full resize-y rounded-xl border border-line bg-surface px-3 py-2.5 text-xs text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  }
+  .review-actions { @apply flex flex-wrap gap-2.5; }
+  .review-confirm { @apply m-0 inline-flex items-center gap-2 text-xs font-semibold text-success-600; }
+
+  /* O histórico imutável. A linha superada é riscada e rotulada — nunca some, que
+     é o reflexo na tela do `GRANT` só de `INSERT` (ADR 0077). */
+  .decision-log { @apply m-0 grid list-none gap-0 p-0; }
+  .decision-log li { @apply flex gap-3 border-b border-line py-2.5 last:border-b-0 last:pb-0; }
+  .decision-dot { @apply mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full; }
+  .decision-dot--accepted { @apply bg-success-600; }
+  .decision-dot--changes_requested { @apply bg-warning-600; }
+  .decision-who { @apply text-xs font-semibold text-ink; }
+  .decision-internal { @apply ml-1.5 text-[10px] font-bold text-brand-600; }
+  .decision-when { @apply text-[11px] text-muted; }
+  .decision-comment { @apply mt-1 text-xs leading-relaxed text-ink; }
+  .decision-log .is-superseded .decision-who,
+  .decision-log .is-superseded .decision-comment { @apply text-muted line-through; }
+  .decision-superseded {
+    @apply ml-1.5 inline-block rounded-full px-2 py-px text-[10px] font-extrabold tracking-[0.06em] uppercase text-muted;
+    background: var(--color-surface-sunken);
+  }
+
   /* ---------- Perfil e configurações ---------- */
   .profile-head { @apply mb-4 flex items-center gap-3.5 border-b border-line pt-1 pb-4.5; }
   .profile-head strong { @apply block text-[15px]; }

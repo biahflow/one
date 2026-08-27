@@ -46,6 +46,8 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Brand } from "@/components/one/Brand";
+import { Button } from "@/components/one/Button";
+import { StatePill, type StatePillVariant } from "@/components/one/StatePill";
 
 import {
   addPendingCommentAction,
@@ -271,6 +273,32 @@ const stateStyle: Record<string, string> = {
   "Próxima entrega": "1",
   "Planejado": "2",
 };
+
+/**
+ * O tom do selo traduzido para a variante da primitiva (F-026 DAP §3).
+ *
+ * Este mapa é também **o único lugar que sabe o que a primitiva ainda não
+ * cobre**: `"2"` — o neutro — não tem entrada, porque `StatePill` tem quatro
+ * variantes semânticas e nenhuma neutra. O pacote de design aprovado mantém o
+ * cinza (o `p-grey-d` de `design/one-shell-tokens.html` é
+ * `surface-sunken`/`muted`, exatamente o que `.state--2` passou a valer na T03)
+ * e o desenha **com ícone** — o que exigiria uma quinta variante, e alterar a
+ * primitiva está fora do escopo desta fatia. Enquanto não houver decisão, o
+ * neutro cai no `.state` de sempre: mesma geometria, mesma cor, sem ícone.
+ */
+const PILL_VARIANT: Record<string, StatePillVariant> = {
+  "0": "info",
+  "1": "success",
+  done: "success",
+  "3": "danger",
+};
+
+/** O selo de estado: a primitiva quando há variante, o `.state` legado quando não há. */
+function StateBadge({ tone, children }: { tone: string; children: ReactNode }) {
+  const variant = PILL_VARIANT[tone];
+  if (!variant) return <span className={`state state--${tone}`}>{children}</span>;
+  return <StatePill variant={variant}>{children}</StatePill>;
+}
 
 // Tom do selo de pendência por estado (as classes vêm do CSS existente).
 const pendingTone: Record<string, string> = {
@@ -1326,7 +1354,7 @@ function ViewHero({ eyebrow, title, subtitle, onAsk }: { eyebrow: string; title:
         <h1>{title}</h1>
         <p className="hero-copy">{subtitle}</p>
       </div>
-      <button className="ai-button" onClick={onAsk}><Sparkles size={17} /> Perguntar à IA</button>
+      <Button variant="primary" onClick={onAsk}><Sparkles size={17} /> Perguntar à IA</Button>
     </section>
   );
 }
@@ -1463,7 +1491,7 @@ function JourneyPanel({ journey, focusedItem }: { journey: Overview["journey"]; 
       <div className="journey-detail">
         <div className="journey-detail-head">
           <div>
-            <span className={`state state--${phase.state === "done" ? "1" : phase.state === "active" ? "2" : "3"}`}>{PHASE_STATE_LABEL[phase.state]}</span>
+            <StateBadge tone={phase.state === "done" ? "1" : phase.state === "active" ? "2" : "3"}>{PHASE_STATE_LABEL[phase.state]}</StateBadge>
             <h3>{phase.name}</h3>
             {phase.description && <p>{phase.description}</p>}
           </div>
@@ -1586,7 +1614,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
                   <div className={`timeline-dot timeline-dot--${tone}`}><span /></div>
                   <div className="milestone-date">{milestone.date}</div>
                   <div className="milestone-title"><strong>{milestone.title}</strong>{milestone.owner && <span>{milestone.owner}</span>}</div>
-                  <span className={`state state--${tone}`}>{milestone.state}</span>
+                  <StateBadge tone={tone}>{milestone.state}</StateBadge>
                 </div>
               );
             })}
@@ -1638,7 +1666,7 @@ function ScheduleView({ onAsk, overview, focusedItem }: { onAsk: () => void; ove
     <>
       <ViewHero eyebrow="CRONOGRAMA" title="Cronograma do projeto" subtitle="Marcos concluídos, em andamento e planejados." onAsk={onAsk} />
       <article className="panel timeline-panel">
-        <div className="panel-heading"><div><p className="eyebrow">LINHA DO TEMPO</p><h2>Todos os marcos</h2></div><span className="state state--1">{overview.completion}% concluído</span></div>
+        <div className="panel-heading"><div><p className="eyebrow">LINHA DO TEMPO</p><h2>Todos os marcos</h2></div><StateBadge tone="1">{overview.completion}% concluído</StateBadge></div>
         {/* Os estados vêm do que a lista tem, não de uma lista fixa: o rótulo é
             do Biahflow, e enumerá-lo aqui criaria um segundo mapa para envelhecer. */}
         <FilterChips
@@ -1669,7 +1697,7 @@ function ScheduleView({ onAsk, overview, focusedItem }: { onAsk: () => void; ove
                 <div className={`timeline-dot timeline-dot--${tone}`}><span /></div>
                 <div className="milestone-date">{item.date}</div>
                 <div className="milestone-title"><strong>{item.title}</strong>{item.owner && <span>{item.owner}</span>}</div>
-                <span className={`state state--${tone}`}>{item.state}</span>
+                <StateBadge tone={tone}>{item.state}</StateBadge>
               </div>
             );
           })}
@@ -1774,7 +1802,7 @@ function MeetingsView({ onAsk, overview, focusedItem }: { onAsk: () => void; ove
                   <ArrowUpRight size={16} />
                 </a>
               )}
-              <span className={`state state--${meeting.status === "Realizada" ? "done" : "1"}`}>{meeting.status}</span>
+              <StateBadge tone={meeting.status === "Realizada" ? "done" : "1"}>{meeting.status}</StateBadge>
             </div>
           ))}
         </div>
@@ -2397,7 +2425,7 @@ function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) 
             </div>
             <div className="setting-row">
               <div>
-                <strong>Notificações no portal</strong>
+                <strong>Notificações no One</strong>
                 <span>O sino sempre mostra o que mudou — não há o que desligar</span>
               </div>
             </div>
@@ -2434,7 +2462,7 @@ function ProjectsView({ projects, onSelect, onAsk }: { projects: ProjectSummary[
           >
             <div className="project-card-head">
               <span className="project-logo project-logo--lg">{project.name.slice(0, 1)}</span>
-              {project.current && <span className="state state--1">Atual</span>}
+              {project.current && <StateBadge tone="1">Atual</StateBadge>}
             </div>
             <strong>{project.name}</strong>
             <div className="project-meta"><span>{project.status}</span></div>

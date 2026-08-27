@@ -1650,6 +1650,22 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       módulo fora do escopo desta fatia; e os três `apply`s (criar o novo, importar e
       destruir o antigo) seguem sendo gate humano de operação, não executados aqui.
 
+- [x] **O worktree isola o git, não o estado externo** *(ADR 0078)*: quatro tarefas em paralelo
+      (`#71`–`#74`) isolaram git perfeitamente e colidiram no **Postgres local compartilhado** —
+      uma migração de uma branch aplicada ao banco de todas fez `alembic upgrade head` falhar nas
+      outras e **419 testes darem erro** numa tarefa que não tocou Python. O worktree resolve
+      estado de git; um banco, bucket ou scratchpad compartilhados continuam sendo recurso único
+      com escritores concorrentes. A decisão: antes de autorizar execução concorrente com `WRITE`,
+      classificar o **estado externo** (segundo eixo, independente da dependência entre tarefas) e
+      isolar por tarefa o que colide — banco dedicado por tarefa com migração, scratchpad por
+      branch, faixa Alembic declarada mais rebase. Vira aperto local no `AGENTS.md`; a casa
+      canônica é o `worktree-execution.md` vendorizado, que **não se edita aqui**. O upstream
+      `biahflow/engineeringOS` **já mergeou** a seção equivalente (`## Shared external state`, PR #11,
+      27/08) — não há PR a abrir. **Fica aberto:** avançar o pino do espelho por tag à frente de
+      `v0.1.0` (a seção está em `main` sem tag nova; até lá, o `AGENTS.md` sustenta a regra), o
+      isolamento de objeto do mesmo tenant, e o banco `portal` local possivelmente à frente do
+      `main` (resolve por `alembic downgrade` deliberado). Descoberto em `biahflow/one#79`.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

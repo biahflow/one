@@ -43,6 +43,17 @@ listas são a mesma e que toda citação por número resolve.*
   [`docs/features/README.md`](docs/features/README.md).
 - Nenhum agente escolhe prioridade, inicia implementação ou marca uma funcionalidade como `DONE`
   sem a seleção e o gate humano aplicáveis.
+- **Execução paralela isola o git, não o estado externo** (ADR 0078). O
+  [`worktree-execution.md`](docs/engineering-os/workflows/worktree-execution.md) garante "um task,
+  uma branch, um worktree" — o que resolve estado de **git**. Um Postgres, um bucket, um Redis ou
+  um scratchpad **compartilhados** continuam sendo um recurso único com escritores concorrentes.
+  Antes de autorizar execução concorrente com capacidade `WRITE`, classifique o **estado externo**
+  além da dependência entre tarefas (é o outro eixo) e **isole por tarefa** o que colide: um banco
+  dedicado por tarefa com migração (`CREATE DATABASE` + `CREATE EXTENSION vector` +
+  `infra/postgres/bootstrap/roles.sql`), um subdiretório de scratchpad nomeado pela branch, e faixa
+  de numeração Alembic declarada mais rebase na integração quando duas tarefas criam migração. O
+  sintoma de não fazer isso não parece colisão — parece defeito da tarefa: migração alheia no banco
+  vira erro de *fixture*, não conflito de *merge*.
 
 ## Antes de abrir pull request
 

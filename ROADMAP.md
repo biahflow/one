@@ -1645,10 +1645,11 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       em `local.trabalhos`, herdando o ambiente da `pulse-api` como os outros dois trabalhos,
       e remover o antigo por caminho declarado — `import` para trazê-lo ao state, depois
       remoção da configuração para que o `plan` produza o `destroy`, nunca `gcloud`
-      imperativo. **Fica aberto:** o `destroy` do job antigo depende de `module "trabalhos"`
-      passar a repassar `protegido` por entrada do mapa (hoje sempre `true`), ajuste de
-      módulo fora do escopo desta fatia; e os três `apply`s (criar o novo, importar e
-      destruir o antigo) seguem sendo gate humano de operação, não executados aqui.
+      imperativo. O `destroy` do job antigo dependia de `module "trabalhos"` passar a
+      repassar `protegido` por entrada do mapa (antes sempre `true`), ajuste de módulo que
+      saiu em fatia própria e **foi mergeado no PR #78 (27/08/2026)** — a ADR 0075 registra
+      a emenda. **Fica aberto:** apenas os três `apply`s (criar o novo, importar e destruir
+      o antigo) contra `biahflow-hml`, gate humano de operação, não executados aqui.
 
 ## Ordem recomendada
 

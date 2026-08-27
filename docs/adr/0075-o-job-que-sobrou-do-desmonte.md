@@ -142,14 +142,20 @@ rm` (que apenas desvincularia o recurso do state sem apagá-lo na nuvem, deixand
 órfão e falhando o critério de aceite "`gcloud run jobs list` não devolve mais nada com
 prefixo `cockpit-`"). Revisar o plano e `apply`.
 
-**Bloqueio conhecido no Passo 2, herdado da proposta de 26/08 e ainda verdadeiro:**
-`module "trabalhos"` não repassa `protegido` às instâncias de `modulos/job`, que por isso
-herdam o default `true`. Com `deletion_protection = true`, o provider recusa o `destroy`
-do Passo 2 antes mesmo de chegar à nuvem. Resolver isso é mudança de infraestrutura própria
+**Bloqueio conhecido no Passo 2, herdado da proposta de 26/08:**
+`module "trabalhos"` não repassava `protegido` às instâncias de `modulos/job`, que por isso
+herdavam o default `true`. Com `deletion_protection = true`, o provider recusa o `destroy`
+do Passo 2 antes mesmo de chegar à nuvem. Resolver isso era mudança de infraestrutura própria
 — `main.tf` passaria a repassar `protegido = try(each.value.protegido, true)` a
 `module "trabalhos"`, aditiva e simétrica ao que `modulos/servico-cloudrun` já discute — e
-fica **fora do escopo desta fatia**: é ajuste de módulo, não uma entrada em
-`local.trabalhos`. Sem ele, o Passo 2 para no `apply`, não no `plan`.
+ficou **fora do escopo desta fatia**: é ajuste de módulo, não uma entrada em
+`local.trabalhos`. Sem ele, o Passo 2 pararia no `apply`, não no `plan`.
+
+> **Atualização (27/08/2026):** esse ajuste **foi feito** e mergeado no PR #78 —
+> `main.tf` agora repassa `protegido = try(each.value.protegido, true)`. O Passo 2
+> deixa de ter bloqueio de configuração; resta apenas declarar `protegido = false`
+> na entrada temporária `cockpit-createsuperuser` do Passo 1 para que o provider
+> aceite o `destroy`. Ver a **Emenda (27/08/2026)** ao final.
 
 ## Consequências
 
@@ -160,10 +166,13 @@ fica **fora do escopo desta fatia**: é ajuste de módulo, não uma entrada em
   satisfazendo o guardrail que ele violava ao ter sido criado à mão.
 - `gcloud run jobs list` em `biahflow-hml` deixa de devolver qualquer coisa com prefixo
   `cockpit-` — o critério (4) da issue — uma vez que o Passo 2 seja aplicado.
-- **A lacuna do módulo permanece medida e não resolvida** (ver bloqueio acima): o Passo 2
+- ~~**A lacuna do módulo permanece medida e não resolvida** (ver bloqueio acima): o Passo 2
   não pode ser aplicado com sucesso até `module "trabalhos"` aceitar `protegido` por
-  entrada. Isto vale independentemente de qual opção (a ou b) fosse escolhida — é
-  consequência de destruir *qualquer* job hoje, não desta decisão específica.
+  entrada.~~ **Resolvida em 27/08/2026 pelo PR #78** — `module "trabalhos"` passou a repassar
+  `protegido = try(each.value.protegido, true)`. Como a proposta observava, isto valia
+  independentemente de qual opção (a ou b) fosse escolhida — era consequência de destruir
+  *qualquer* job hoje, não desta decisão específica; por isso saiu em fatia própria. Ver a
+  **Emenda (27/08/2026)** ao final.
 - Nada de estado se perde: o job antigo não tem estado, e o admin que ele criou uma vez
   continua existindo no banco de `biahflow-hml` independentemente do job em si.
 - Há janela em que os dois jobs coexistem irregularmente durante os passos 0–2 (o novo já
@@ -172,11 +181,37 @@ fica **fora do escopo desta fatia**: é ajuste de módulo, não uma entrada em
 
 ## O que fica aberto
 
-- O ajuste em `module "trabalhos"` para repassar `protegido` por entrada do mapa —
+- ~~O ajuste em `module "trabalhos"` para repassar `protegido` por entrada do mapa —
   necessário para o Passo 2 ter sucesso — é mudança de infraestrutura revisada própria,
-  não desta fatia.
+  não desta fatia.~~ **Fechado pelo PR #78 (27/08/2026)** — ver a Emenda abaixo.
 - A execução dos três `apply`s (Passo 0, Passo 1, Passo 2) é gate humano de operação com
-  credencial de `biahflow-hml`.
+  credencial de `biahflow-hml`. **É tudo o que resta** para satisfazer o critério (4) da
+  issue; nenhum deles foi executado aqui.
+
+## Emenda (27/08/2026) — o Passo 2 foi destravado pelo #78
+
+*Aditiva à decisão aceita acima; não a reescreve. Registrada quando o único bloqueio
+técnico que a ADR deixava em aberto foi resolvido em fatia própria.*
+
+A decisão de 27/08 deixou dois itens em aberto: (1) o repasse de `protegido` por
+`module "trabalhos"`, sem o qual o `destroy` do Passo 2 é recusado pelo provider antes de
+chegar à nuvem; e (2) os três `apply`s de operação. O item (1) **saiu em fatia própria e
+está mergeado (PR #78)**: `main.tf` repassa `protegido = try(each.value.protegido, true)`,
+mantendo o default `true` do módulo — desproteger passa a ser ato explícito, escrito por
+entrada do mapa.
+
+O efeito no procedimento é local e não reabre a decisão:
+
+- **Passo 0** (criar `pulse-createsuperuser`) e **Passo 1** (`import` do job antigo) são
+  inalterados.
+- **Passo 2** deixa de ter bloqueio de configuração. Para o `destroy` ser aceito, a entrada
+  temporária `cockpit-createsuperuser` do Passo 1 declara `protegido = false` no mapa; o
+  `terraform plan` então mostra exatamente um `destroy` e nada mais.
+
+O que **não** mudou: os três `apply`s contra `biahflow-hml` seguem sendo gate humano de
+operação com credencial de nuvem, não executados por esta fatia nem pela do #78. O critério
+(4) da issue (`gcloud run jobs list` sem prefixo `cockpit-`) só é satisfeito quando o
+operador aplica o Passo 2.
 
 ## Proposta original (26/08/2026), superada
 

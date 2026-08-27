@@ -4,8 +4,19 @@
 
 ## Status
 
-`READY_FOR_SPEC` — Feature Contract redigido; aguarda gate de Design Approval (DAP r1) e a ADR do
-contrato de projeção versionado (ver *Gates humanos*) antes de `READY_FOR_PLANNING`.
+`BLOCKED` — o escopo **construível neste repositório está entregue e mergeado**, e a feature **não
+fecha por inteiro** por dependência cross-repo. Trilha percorrida: Design Approval (DAP r1
+`Approved`, 26/08), ADR 0076 aceita, plano `PLAN_VALID` (rev. 1 e rev. 2 aprovadas, 26–27/08),
+build em duas fatias — T01–T05 (projeção versionada, frescor, reconciliação anti-regressão,
+guarda client-safe) no **PR #73**, e T06–T08 (superfície de frescor/stale/indisponível +
+evidência de navegador) no **PR #75**.
+
+**O que bloqueia o fechamento pleno (`DEPENDENCY_BLOCKED`, decidido no gate de 27/08):** a
+ancoragem decisão→fase na timeline — o critério de aceite "decisões/gates entendíveis por fase" —
+depende de `phase_ref` carimbado pelo **lado Pulse/Biahflow**. A heurística por `decided_on` foi
+**recusada** no gate (é a falsa precisão que `results.py` nega, e contradiz "o One não origina nem
+bifurca estado do Pulse"). Enquanto o Pulse não expõe `phase_ref`, essa superfície fica fora, por
+decisão registrada, não por omissão. Ver `plan.md` (rev. 2, `planning_findings`) e `evidence.md`.
 
 > **Classificação: `INTEGRATION_CHANGE` · `BROWSER_REQUIRED`.** Origem: Issue #62. Concretiza a
 > consequência escrita da ADR 0067 — "o webhook/snapshot existente evolui para **contrato de

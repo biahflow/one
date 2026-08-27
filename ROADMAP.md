@@ -27,7 +27,7 @@ contratos de tarefa e evidências, está em [`docs/features/README.md`](docs/fea
 | `F-025` — One: identidade e fundação de design | Selecionada em 25/08/2026 (Issue #46) | `DONE` | [FDD 025](docs/fdd/025-o-nome-que-a-tela-ainda-nao-sabia.md) | Implementada, validada (ADR 0069) e mergeada em 25/08/2026 (PR #47); Issue #46 fechada. |
 | `F-026` — Aplicar o One Design System ao shell real | Selecionada em 26/08/2026 (Issue #60) | `READY_FOR_BUILD` | [FDD 026](docs/fdd/026-a-pele-que-o-shell-ainda-nao-vestiu.md) | DAP r1 aprovado; Open questions resolvidas (nav `brand-50`, abas nesta fatia); plano `PLAN_VALID` (aprovado 26/08). Task Contracts podem ser derivados. |
 | `F-027` — Revisão e aceite do cliente | Selecionada em 26/08/2026 (Issue #61) | `READY_FOR_BUILD` | [FDD 027](docs/fdd/027-o-aceite-que-a-tela-so-desenhou.md) | DAP r1 aprovado; ADR 0077 aceita; plano `PLAN_VALID` (aprovado 26/08). Task Contracts podem ser derivados. |
-| `F-028` — Projeção Pulse→One da jornada | Selecionada em 26/08/2026 (Issue #62) | `READY_FOR_BUILD` | [FDD 028](docs/fdd/028-o-frescor-que-a-jornada-nunca-teve.md) | DAP r1 aprovado; ADR 0076 aceita; plano `PLAN_VALID` (aprovado 26/08). Task Contracts podem ser derivados. |
+| `F-028` — Projeção Pulse→One da jornada | Selecionada em 26/08/2026 (Issue #62) | `BLOCKED` | [FDD 028](docs/fdd/028-o-frescor-que-a-jornada-nunca-teve.md) | Contrato da ADR 0076 (aceita) entregue e mergeado — T01–T05 no PR #73, T06–T08 no PR #75. Não fecha por inteiro: a ancoragem decisão→fase é `DEPENDENCY_BLOCKED` no `phase_ref` do Pulse (gate de 27/08). |
 
 `Não selecionada` não é prioridade implícita: exige seleção humana antes de especificação,
 planejamento ou execução.

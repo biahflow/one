@@ -30,7 +30,7 @@ contraste melhora — elas são o motivo de o gate existir.
 | Approved by | Daniel Campos |
 | Date | 26/08/2026 |
 | Revision approved | **1** |
-| Explicitly **not** approved | As *Open questions* deste pacote seguem em aberto (a aprovação não as resolve): `.nav-item` ativo em `brand-50` vs neutro; abas longas nesta fatia ou na seguinte. Além de: tema escuro · troca das classes utilitárias de raio (`rounded-2xl/xl/full`) pelos tokens de raio · qualquer valor visual novo · superfícies `/admin/*` · o laço de aceite (F-027) e a projeção de jornada (F-028) |
+| Explicitly **not** approved | Tema escuro · troca das classes utilitárias de raio (`rounded-2xl/xl/full`) pelos tokens de raio · qualquer valor visual novo · superfícies `/admin/*` · o laço de aceite (F-027) e a projeção de jornada (F-028). *As duas Open questions do pacote foram **resolvidas** no gate — `.nav-item` ativo = `brand-50`, abas longas = nesta fatia; ver §Open questions.* |
 
 Aprovação desta revisão não é aprovação de uma posterior. Aprovação de **visual** não é aprovação
 de **cópia** (a única mudança de cópia é "Notificações no portal" → "Notificações no One") — se só
@@ -161,17 +161,18 @@ existentes. Não há affordance inerte a marcar.
    toda superfície de uma vez e é redesenho disfarçado; a F-025 fixou os tokens como política sem
    substituir as classes, e esta fatia respeita isso.
 
-## Open questions
+## Open questions — **resolvidas no gate (26/08/2026, Daniel Campos)**
 
-Tudo abaixo continua decisão em aberto depois desta aprovação e **não** pode ser resolvido por um
-agente na implementação.
+As três foram decididas no momento da aprovação; ficam registradas para não serem reabertas por
+leitura.
 
-- **`.nav-item` ativo: `brand-50` (marca) ou `surface-sunken` (neutro)?** A decisão 3. Proponho
-  `brand-50`; é a única cor nova de fato (não de contraste) na fatia.
+- **`.nav-item` ativo: `brand-50` (marca) ou `surface-sunken` (neutro)?** → **`brand-50`**. O item
+  ativo cita o roxo da marca (decisão 3, confirmada). É a única cor nova de fato (não de contraste)
+  da fatia.
 - **As abas longas (Resultados/Documentos/Cronograma/Reuniões/Decisões) entram nesta fatia ou na
-  seguinte?** Elas herdam o mesmo mapa §1–§3 sem decisão visual nova; incluí-las é mais commit, não
-  mais decisão. O gate escolhe o tamanho da fatia.
-- **A cópia** "Notificações no portal" → "Notificações no One": aprovar como cópia.
+  seguinte?** → **nesta fatia**. Herdam o mesmo mapa §1–§3, sem decisão visual nova; estende o
+  escopo de aplicação do mapa (T03 do plano), não o conjunto de decisões.
+- **A cópia** "Notificações no portal" → "Notificações no One": **aprovada como cópia**.
 
 ## Notes for the implementer
 

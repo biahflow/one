@@ -8,9 +8,9 @@ Produzido pelo Planner a partir da [FDD 026](../../fdd/026-a-pele-que-o-shell-ai
 > **Plano real — o gate de design foi atravessado.** A versão anterior deste arquivo era um
 > registro de bloqueio (`DESIGN_APPROVAL_REQUIRED`, `tasks: []`), porque F-026 é integralmente
 > superfície e o DAP r1 estava `Awaiting approval`. Com o DAP r1 **Approved**, o mapeamento
-> utilitário→token está fixado e o Planner pode decompor. Duas *Open questions* do DAP **seguem em
-> aberto** (a aprovação não as resolveu) e estão registradas em `planning_findings`; o Planner
-> **não** as decide — uma é design (`.nav-item` ativo), a outra é escopo (abas longas).
+> utilitário→token está fixado e o Planner decompôs. As duas *Open questions* do DAP foram
+> **resolvidas no gate** (26/08/2026, Daniel Campos): `.nav-item` ativo = **`brand-50`** e as abas
+> longas entram **nesta fatia** — dobradas em T02 e T03 abaixo.
 
 ## FEATURE EXECUTION PLAN
 
@@ -27,9 +27,8 @@ assumptions:
 
 risks:
   - PARALLELISM_RISK: T02, T03 e T04 editam app/globals.css (seletores disjuntos). Merge, não
-    lógica — sequenciadas para não conflitar no mesmo arquivo.
-  - Uma OPEN QUESTION do DAP (`.nav-item` ativo: brand-50 vs neutro) é decisão de DESIGN, não do
-    Planner. T02 aplica todo o mapa §1 exceto esse valor, que fica pendente de micro-decisão.
+    lógica — sequenciadas para não conflitar no mesmo arquivo. Com as abas nesta fatia, T03 cresce
+    (mesmos seletores, mais telas), mas segue no mesmo arquivo e na mesma ordem.
 
 tasks:
   - id: T01
@@ -50,8 +49,8 @@ tasks:
     role: builder
     goal: Mapa §1 — sidebar e topbar: @apply cru → token semântico.
     scope: remapear .sidebar/.topbar/.sidebar-toggle/.nav-item/.breadcrumb em app/globals.css
-           conforme a tabela §1 do DAP (bg-white→bg-surface, slate→muted/surface-sunken, etc.).
-           EXCETO o valor de .nav-item ativo (ver planning_findings, open question de design).
+           conforme a tabela §1 do DAP (bg-white→bg-surface, slate→muted/surface-sunken, etc.),
+           INCLUSIVE o .nav-item ativo = bg-brand-50 text-brand-700 (decisão do gate).
     out_of_scope: status-card/métricas/jornada/pendências (T03); primitivas (T04).
     expected_areas: app/globals.css
     acceptance_criteria: guarda de consumo de token verde; nenhum slate-*/bg-white cru remanescente
@@ -64,13 +63,15 @@ tasks:
 
   - id: T03
     role: builder
-    goal: Mapa §2 — status-card, métricas, jornada, pendências.
+    goal: Mapa §2 — status-card, métricas, jornada, pendências, E as abas longas (decisão do gate).
     scope: remapear .status-card/.progress/.status-meta/.timeline-dot/.pending-avatar/
-           .priority-pill/.file-icon/.comment-input/.filter-chip em app/globals.css conforme §2.
+           .priority-pill/.file-icon/.comment-input/.filter-chip em app/globals.css conforme §2;
+           E aplicar o mesmo mapa §1–§2 aos seletores das abas longas (Resultados/Documentos/
+           Cronograma/Reuniões/Decisões) — herança do mapa, sem token novo (decisão do gate 26/08).
     out_of_scope: sidebar/topbar (T02); primitivas (T04).
     expected_areas: app/globals.css
-    acceptance_criteria: idem T02 para os seletores de §2; correção de contraste (slate-400→muted)
-                         aplicada.
+    acceptance_criteria: idem T02 para os seletores de §2 e das abas longas; correção de contraste
+                         (slate-400→muted) aplicada; nenhum slate-*/bg-white cru remanescente nelas.
     depends_on: [T02]
     validation: web-unit-contract.
     required_capabilities: [tailwind, css]
@@ -126,21 +127,18 @@ human_gates:
     e decisão humana.
 
 planning_findings:
-  - OPEN QUESTION (design, DAP §Open questions): .nav-item ativo em brand-50 (marca, proposto) vs
-    surface-sunken (neutro). É decisão de DESIGN; o Planner não a decide. T02 aplica o resto do
-    mapa §1 e deixa esse único valor pendente de micro-decisão — não bloqueia a estrutura do plano.
-  - OPEN QUESTION (escopo, DAP §Open questions): as abas longas (Resultados/Documentos/Cronograma/
-    Reuniões/Decisões) herdam o mesmo mapa §1–§3 sem decisão visual nova. Incluí-las é MAIS COMMIT,
-    não mais decisão. Se o gate de plano optar por incluí-las, estende o escopo de T03 (mesmos
-    seletores, outras telas); se não, ficam para fatia seguinte. Não assumido aqui.
+  - RESOLVED (design, DAP §Open questions, gate 26/08/2026): .nav-item ativo = bg-brand-50 (marca).
+    Dobrado no escopo de T02.
+  - RESOLVED (escopo, DAP §Open questions, gate 26/08/2026): as abas longas entram nesta fatia.
+    Dobrado no escopo de T03 (mesmo mapa, mais telas).
 ```
 
 ## Validação do plano
 
-`PLAN_VALIDATION: PENDENTE`. O gate de **design** foi cumprido (DAP r1 Approved), o que destravou
-este plano; falta o **gate humano de aprovação deste plano** antes de congelar para execução —
-diferente de F-027/F-028, cujos planos já foram aprovados. Enquanto pendente, nenhum Task Contract é
-derivado. Não me auto-aprovei.
+`PLAN_VALIDATION: PLAN_VALID`. O gate de **design** foi cumprido (DAP r1 Approved) e o **gate humano
+de aprovação de plano** também — aprovado por Daniel Campos em 26/08/2026, com as duas Open questions
+resolvidas (nav `brand-50`; abas nesta fatia). O plano está **congelado para execução**: os Task
+Contracts (`tasks/T01.md`…) podem ser derivados; qualquer mudança vira `PLAN_DEVIATION`.
 
 Auto-checagem do Planner (não substitui a validação): IDs únicos (T01–T05); todo `depends_on` nomeia
 tarefa existente; sem ciclos (T01 isolado; T02→T03→T04→T05); `parallel_groups` só junta T01 (sem

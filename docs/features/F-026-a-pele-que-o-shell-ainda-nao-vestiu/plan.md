@@ -146,4 +146,65 @@ overlap com o resto); caminho crítico nomeado, esforço dominante em T04.
 
 ## PLAN_DEVIATION
 
-Nenhum registrado (plano ainda não congelado).
+Registrados pela sessão de execução em 27/08/2026, com autorização humana. O plano congelado
+**não** foi editado acima; estes são os desvios entre o planejado e o executado.
+
+### 1 — Uma branch por feature, não por Task Contract
+
+| Campo | Valor |
+| --- | --- |
+| Tarefa | T01–T05 |
+| Planejado | `integration_strategy`: uma branch de tarefa por Task Contract; T02→T03→T04 integradas em série |
+| Real | Uma branch/PR por **feature**, com as cinco tarefas em série dentro dela |
+| Impacto | Menos pontos de merge humano; diff de revisão maior. A ordem T02→T03→T04 sobre `app/globals.css` foi **preservada** dentro da branch, então o `PARALLELISM_RISK` original segue resolvido |
+| Resolução | Autorizado por Daniel Campos em 27/08/2026 |
+
+### 2 — T04 migrou parcialmente: três vocabulários legados permanecem
+
+| Campo | Valor |
+| --- | --- |
+| Tarefa | T04 |
+| Planejado | `scope`: substituir o desenho à mão de estado (`.state--*`/`.health-pill`/`.priority-pill`) por `<StatePill>` e os botões crus (`.ai-button`/`.text-button`) por `<Button>`, "removendo os seletores legados órfãos". `acceptance_criteria`: "nenhum seletor de estado/botão legado sem uso" |
+| Real | Migrados `.state--*` (6 sítios) e o `.ai-button` do herói. **Não** migrados `.health-pill`, `.priority-pill` e `.text-button`; `.state--done` removido por ficar órfão |
+| Impacto | O shell passa a ter dois vocabulários de estado convivendo. Nenhum valor visual mudou — que era a restrição mais forte |
+| Resolução | **Aceito por Daniel Campos em 27/08/2026** como desvio consciente |
+
+**Por que o desvio é a leitura correta dos artefatos aprovados, e não uma tarefa inacabada.**
+A migração completa é impossível sem violar um dos dois artefatos que governam a fatia, e a
+medição está registrada:
+
+- **Falta variante neutra.** `components/one/StatePill.tsx` expõe exatamente quatro variantes
+  (`success`, `warning`, `danger`, `info`). `.health-pill--archived`, `.priority-pill--low` e
+  `.state--2` são **cinzas neutros**, sem correspondente. Criá-la é alterar a primitiva, que o
+  §Out of Scope da própria T04 proíbe ("não mudar as primitivas").
+- **As geometrias divergem.** `.state-pill` é `px-2.5 py-1 text-[10.5px]`; `.health-pill` é
+  `px-3 py-1.5 text-[11px]`; `.priority-pill` é `px-2 py-0.5 text-[10px]`. Migrar redimensiona
+  a pastilha — um **valor visual novo**, que o DAP aprovado proíbe ("Nenhum valor novo").
+  `.state--*` não tem esse problema (mesmo padding e raio de `.state-pill`), e por isso migrou.
+- **`.text-button` não tem variante isovalente.** É `text-brand-600 font-bold text-xs`, sem borda
+  e sem `min-h-11`; `ghost` é `text-muted` e `secondary` é superfície branca com borda. Converter
+  mudaria cor, peso e altura de "Ver cronograma", "Ver todas as pendências" e "Ver a pergunta".
+
+`.state--1/0/2/3`, `.ai-button` e `.text-button` **não são órfãos**: `/admin/*` e `app/error.tsx`
+seguem os usando, então removê-los quebraria superfície fora do escopo desta fatia.
+
+**Fica aberto (não é dívida silenciosa).** Fechar o vocabulário exige uma revisão de design que
+decida a variante neutra e a geometria única — trabalho de DAP, não de build. Some-se a isso uma
+**contradição entre dois artefatos aprovados**, achada ao executar: `design/one-shell-tokens.html`
+(linha 130) desenha o neutro `p-grey-d` **com ícone de cadeado**, enquanto as
+`../F-025-.../design/captures-r4/` — o alvo de aparência que este plano declara em `assumptions` —
+o desenham **sem ícone**. A fatia seguiu o alvo de aparência; a divergência precisa de decisão de
+design, e está registrada aqui para não se perder.
+
+### Achados fora de escopo, registrados e não corrigidos
+
+- `aria-current="page"` não existe no item de navegação ativo, embora o DAP o liste em "o que a
+  implementação garante". Nenhum Task Contract o possui.
+- O DAP afirma que o chat "já consome os tokens; nada muda de forma nem de cor" — **falso**:
+  `.chat-panel`, `.message--assistant p`, `.chat-suggestions button` e `.message-feedback*` ainda
+  têm `bg-white`, e `.chat-header span i` tem `bg-emerald-500`. Chat está fora de escopo.
+- O DAP afirma que vazio/carregando/erro/404 estão "já tokenizados na F-025" — **falso**:
+  `.state-card p` é `text-slate-600` e `.state-code code` é `bg-slate-100`. A instrução era
+  "conferidos, não reescritos"; foram conferidos e não reescritos.
+- Três utilitários crus sem token de destino: `.project-logo` e `.pending-avatar--blue`
+  (`sky-50/700`), `.metric-icon--purple` (`fuchsia-50/700`). Não há `sky`/`fuchsia` no `@theme`.

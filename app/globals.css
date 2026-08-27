@@ -104,8 +104,11 @@
     @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold;
   }
   .state--0 { @apply bg-brand-50 text-brand-700; }
-  .state--1, .state--done { @apply bg-success-50 text-success-600; }
-  .state--2 { @apply bg-slate-100 text-slate-500; }
+  /* `.state--done` saiu com a adoção da primitiva (F-026 §3): o único sítio que
+     o escrevia era a lista de reuniões do shell, e ela agora rende `<StatePill
+     variant="success">`. O `.state--1` fica porque `/admin/*` ainda o usa. */
+  .state--1 { @apply bg-success-50 text-success-600; }
+  .state--2 { @apply bg-surface-sunken text-muted; }
   /* Um expurgo que falhou é obrigação contratual não cumprida (ADR 0027), e o
      cinza de `state--2` o esconderia entre os pendentes. */
   .state--3 { @apply bg-danger-50 text-danger-600; }
@@ -146,7 +149,7 @@
   }
 
   .avatar {
-    @apply grid h-8 w-8 shrink-0 place-items-center rounded-full bg-amber-100 text-[11px] font-extrabold text-amber-800;
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-full bg-warning-50 text-[11px] font-extrabold text-warning-600;
   }
   .avatar--small { @apply h-7 w-7 text-[9px]; }
   .avatar--lg { @apply h-13 w-13 text-base; }
@@ -155,7 +158,7 @@
   .portal-shell { @apply flex min-h-screen; }
 
   .sidebar {
-    @apply z-30 flex w-[254px] shrink-0 grow-0 basis-[254px] flex-col border-r border-line bg-white px-3.5 pt-6 pb-3.5;
+    @apply z-30 flex w-[254px] shrink-0 grow-0 basis-[254px] flex-col border-r border-line bg-surface px-3.5 pt-6 pb-3.5;
     transition: width 0.18s ease, flex-basis 0.18s ease;
   }
   .sidebar--menu-open { @apply z-60; }
@@ -173,8 +176,8 @@
   .one-brand-word { @apply text-[19px] font-bold tracking-[-0.03em] text-ink; }
   .one-brand-dot { @apply text-brand-500; }
   .one-brand-sub { @apply text-[10px] font-semibold tracking-[0.04em] text-muted; }
-  .sidebar-close { @apply hidden border-0 bg-transparent text-slate-500; }
-  .sidebar-toggle { @apply ml-auto grid rounded-lg transition-colors hover:bg-slate-100; }
+  .sidebar-close { @apply hidden border-0 bg-transparent text-muted; }
+  .sidebar-toggle { @apply ml-auto grid rounded-lg transition-colors hover:bg-surface-sunken; }
 
   .project-switcher {
     @apply flex w-full items-center gap-2.5 rounded-xl border border-line p-2.5 text-left text-ink transition-colors hover:border-brand-200 hover:bg-brand-50/40;
@@ -199,23 +202,31 @@
   nav { @apply pt-6; }
   .nav-label { @apply px-3 pb-2; }
   .nav-item {
-    @apply flex h-10 w-full items-center gap-3 rounded-xl border-0 bg-transparent px-3 text-left text-[13px] text-slate-500 transition-colors hover:bg-slate-100 hover:text-ink;
+    @apply flex h-10 w-full items-center gap-3 rounded-xl border-0 bg-transparent px-3 text-left text-[13px] text-muted transition-colors hover:bg-surface-sunken hover:text-ink;
   }
+  /* O item ativo cita a marca (F-026 DAP §1, decisão do gate de 26/08/2026). Já
+     era `brand-50` antes desta fatia: o pacote propunha a mudança contra um
+     `bg-slate-100` que o CSS não tinha mais, e o CSS é quem vence. */
   .nav-item--active { @apply bg-brand-50 font-bold text-brand-700 hover:bg-brand-50; }
   .nav-item em {
-    @apply ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-slate-100 text-[10px] not-italic text-slate-500;
+    @apply ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-surface-sunken text-[10px] not-italic text-muted;
   }
   .nav-item--active em { @apply bg-brand-100 text-brand-700; }
 
   .sidebar-bottom { @apply mt-auto; }
+  /* O único par repouso/hover que o mapa §1 colidiria: `slate-50` e `slate-100`
+     mapeiam os dois para `surface-sunken`, e o hover deixaria de existir. O
+     repouso fica no tom nomeado e o hover desce um degrau para `line`, que já é
+     fundo em `.health-pill--archived` — perder a resposta ao ponteiro seria
+     perder affordance, não só um tom. */
   .profile-card {
-    @apply flex w-full items-center gap-2 rounded-xl border-0 bg-slate-50 p-2.5 text-left text-ink transition-colors hover:bg-slate-100;
+    @apply flex w-full items-center gap-2 rounded-xl border-0 bg-surface-sunken p-2.5 text-left text-ink transition-colors hover:bg-line;
   }
   .profile-card > span:nth-child(2) { @apply grid flex-1 gap-0.5; }
 
   .content-area { @apply min-w-0 flex-1; }
   .topbar {
-    @apply sticky top-0 z-20 flex h-17 items-center justify-between border-b border-line bg-white/85 px-11 backdrop-blur-xl;
+    @apply sticky top-0 z-20 flex h-17 items-center justify-between border-b border-line bg-surface/85 px-11 backdrop-blur-xl;
   }
   /* O `backdrop-filter` da barra cria contexto de empilhamento sozinho, então o
      `z-60` do popover vale só **dentro** dela: quem disputa com o
@@ -228,16 +239,21 @@
   .topbar--menu-open { @apply z-60; }
   .breadcrumb { @apply flex gap-2 text-xs text-muted; }
   .breadcrumb strong { @apply text-ink; }
-  .breadcrumb b { @apply font-normal text-slate-300; }
+  /* O separador é traço, não texto: vai para `line`, o token do que divide
+     (F-026 DAP §1). Todo `b` de separação deste arquivo segue a mesma regra —
+     o que se lê vai para `muted`, o que só separa vai para `line`. */
+  .breadcrumb b { @apply font-normal text-line; }
   .topbar-actions { @apply flex items-center gap-4; }
   .icon-button {
-    @apply grid place-items-center rounded-lg border-0 bg-transparent p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-ink;
+    @apply grid place-items-center rounded-lg border-0 bg-transparent p-1.5 text-muted transition-colors hover:bg-surface-sunken hover:text-ink;
   }
   .notification-button {
-    @apply relative grid place-items-center rounded-lg border-0 bg-transparent p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-ink;
+    @apply relative grid place-items-center rounded-lg border-0 bg-transparent p-1.5 text-muted transition-colors hover:bg-surface-sunken hover:text-ink;
   }
+  /* O ponto do sino é o vermelho **semântico** e não o `rose-500` do utilitário
+     (F-026 DAP §3): há um aviso por ler, e o produto tem um só vermelho. */
   .notification-button i {
-    @apply absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-white bg-rose-500;
+    @apply absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-surface bg-danger-600;
   }
   .mobile-menu { @apply hidden; }
 
@@ -254,7 +270,7 @@
   }
 
   .status-card {
-    @apply flex min-h-23 items-center gap-6 rounded-2xl border border-line bg-white px-5 py-5;
+    @apply flex min-h-23 items-center gap-6 rounded-2xl border border-line bg-surface px-5 py-5;
     box-shadow: var(--shadow-card);
   }
   .status-main { @apply flex min-w-[245px] items-center gap-3; }
@@ -264,13 +280,13 @@
   .status-meta {
     @apply grid flex-1 grid-cols-[auto_minmax(100px,1fr)_auto] items-center gap-2.5 text-[11px] text-muted;
   }
-  .progress { @apply h-1.5 overflow-hidden rounded-full bg-slate-200/70; }
+  .progress { @apply h-1.5 overflow-hidden rounded-full bg-line; }
   .progress i {
     @apply block h-full rounded-[inherit];
     width: 68%;
     background: linear-gradient(90deg, var(--color-brand-500), var(--color-brand-300));
   }
-  .status-meta small { @apply text-[10px] text-slate-400; }
+  .status-meta small { @apply text-[10px] text-muted; }
   .text-button {
     @apply flex items-center gap-1.5 border-0 bg-transparent text-xs font-bold whitespace-nowrap text-brand-600 transition-colors hover:text-brand-700;
   }
@@ -281,7 +297,7 @@
   .metric-card h3 { @apply mt-3 mb-1.5 text-xl font-semibold tracking-[-0.02em]; }
   .metric-card > span { @apply text-[11px] text-muted; }
   .metric-card--delivery h3 { @apply mt-3.5 text-[15px]; }
-  .metric-card--delivery > span b { @apply px-1 font-normal text-slate-300; }
+  .metric-card--delivery > span b { @apply px-1 font-normal text-line; }
   .metric-icon { @apply float-right grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-600; }
   .metric-icon--green { @apply bg-success-50 text-success-600; }
   .metric-icon--purple { @apply bg-fuchsia-50 text-fuchsia-700; }
@@ -303,13 +319,13 @@
     @apply absolute top-5 -bottom-7 w-px bg-line;
   }
   .milestone:last-child .timeline-dot:after { @apply hidden; }
-  .timeline-dot span { @apply z-1 h-2.5 w-2.5 rounded-full border-2 border-brand-200 bg-white; }
+  .timeline-dot span { @apply z-1 h-2.5 w-2.5 rounded-full border-2 border-brand-200 bg-surface; }
   .timeline-dot--0 span {
     @apply border-brand-500 bg-brand-500;
     box-shadow: 0 0 0 3px var(--color-brand-50);
   }
   .timeline-dot--1 span { @apply border-brand-500; }
-  .timeline-dot--2 span { @apply border-slate-300; }
+  .timeline-dot--2 span { @apply border-line; }
   .timeline-dot--done span {
     @apply border-success-600 bg-success-600;
     box-shadow: 0 0 0 3px var(--color-success-50);
@@ -317,30 +333,30 @@
   .milestone-date { @apply pt-0.5 text-[11px] text-muted; }
   .milestone-title { @apply grid gap-0.5; }
   .milestone-title strong { @apply text-xs; }
-  .milestone-title span, .pending-row span, .source-row span { @apply text-[10px] text-slate-400; }
+  .milestone-title span, .pending-row span, .source-row span { @apply text-[10px] text-muted; }
 
   .pending-list { @apply mt-1 grid gap-3.5; }
   .pending-row { @apply flex items-center gap-2.5; }
   .pending-row > div { @apply grid min-w-0 flex-1 gap-0.5; }
   .pending-row strong { @apply truncate text-[11px]; }
   .pending-avatar { @apply grid h-7 w-7 place-items-center rounded-full text-[10px]! font-bold; }
-  .pending-avatar--amber { @apply bg-amber-100 text-amber-700!; }
+  .pending-avatar--amber { @apply bg-warning-50 text-warning-600!; }
   .pending-avatar--violet { @apply bg-brand-50 text-brand-600!; }
   /* O fio da pendência (ADR 0032). Fora da `.pending-row`, que é flex de uma
      linha — uma lista dentro dela desalinharia avatar e selo. */
   .pending-entry { @apply grid gap-1.5; }
   .pending-thread { @apply pl-9.5; }
-  .comment-list { @apply mt-1.5 grid gap-2 rounded-xl border border-line bg-slate-50/60 p-3; }
+  .comment-list { @apply mt-1.5 grid gap-2 rounded-xl border border-line bg-surface-sunken/60 p-3; }
   .comment-row { @apply grid gap-0.5 border-b border-line/70 pb-2 last:border-b-0 last:pb-0; }
   .comment-row p { @apply m-0 text-xs leading-relaxed text-ink; }
-  .comment-row small { @apply text-[10px] text-slate-400; }
+  .comment-row small { @apply text-[10px] text-muted; }
   /* Quem falou de cada lado. O cliente lê "Biahflow" em roxo e o próprio time
      em cinza: a cor diz o lado, não a importância. */
-  .comment-side { @apply text-[10px] font-bold text-slate-500; }
+  .comment-side { @apply text-[10px] font-bold text-muted; }
   .comment-side--internal { @apply text-brand-600; }
   .comment-form { @apply mt-1 flex gap-2; }
   .comment-form input {
-    @apply min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-brand-300;
+    @apply min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink outline-none focus:border-brand-300;
   }
   .comment-form button {
     @apply rounded-xl border-0 bg-brand-500 px-3.5 py-2 text-[11px] font-bold text-white transition-colors hover:bg-brand-600 disabled:opacity-50;
@@ -353,16 +369,16 @@
     @apply shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap;
   }
   .priority-pill--high { @apply bg-danger-50 text-danger-600; }
-  .priority-pill--low { @apply bg-slate-100 text-slate-500; }
+  .priority-pill--low { @apply bg-surface-sunken text-muted; }
 
   /* O filtro das abas longas. `em` é a contagem, e ela é o que distingue um
      chip útil de um enfeite: sem o número, escolher é adivinhar. */
   .filter-bar { @apply mb-3.5 flex flex-wrap gap-1.5; }
   .filter-chip {
-    @apply rounded-full border border-line bg-white px-2.5 py-1 text-[11px] font-semibold text-muted transition-colors;
+    @apply rounded-full border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted transition-colors;
     @apply hover:border-brand-300 hover:text-brand-600;
   }
-  .filter-chip em { @apply ml-1 text-[10px] font-bold text-slate-400 not-italic; }
+  .filter-chip em { @apply ml-1 text-[10px] font-bold text-muted not-italic; }
   .filter-chip--on { @apply border-brand-500 bg-brand-50 text-brand-700; }
   .filter-chip--on em { @apply text-brand-600; }
   .pending-avatar--green { @apply bg-success-50 text-success-600!; }
@@ -374,10 +390,10 @@
   .source-row { @apply flex items-center gap-2.5; }
   .source-row > div { @apply grid min-w-0 flex-1 gap-0.5; }
   .source-row strong { @apply truncate text-xs; }
-  .source-row span b, .pending-row span b { @apply px-0.5 font-normal text-slate-300; }
-  .file-icon { @apply grid h-7.5 w-7.5 place-items-center rounded-lg border border-line text-slate-400!; }
-  .source-row > svg { @apply text-slate-300; }
-  .source-row > a { @apply grid place-items-center text-slate-300 transition-colors hover:text-brand-600; }
+  .source-row span b, .pending-row span b { @apply px-0.5 font-normal text-line; }
+  .file-icon { @apply grid h-7.5 w-7.5 place-items-center rounded-lg border border-line text-muted!; }
+  .source-row > svg { @apply text-line; }
+  .source-row > a { @apply grid place-items-center text-muted transition-colors hover:text-brand-600; }
 
   .insight-card {
     @apply relative overflow-hidden rounded-2xl p-5 text-white;
@@ -472,14 +488,14 @@
   .topbar-menu, .sidebar-menu { @apply relative flex; }
   .menu-backdrop { @apply fixed inset-0 z-40 border-0 bg-transparent; }
   .popover {
-    @apply absolute top-[calc(100%+10px)] right-0 z-60 min-w-[250px] overflow-hidden rounded-2xl border border-line bg-white;
+    @apply absolute top-[calc(100%+10px)] right-0 z-60 min-w-[250px] overflow-hidden rounded-2xl border border-line bg-surface;
     box-shadow: var(--shadow-pop);
   }
   .popover--search { @apply p-3; }
   .popover--search input {
     @apply w-full rounded-xl border border-line px-3 py-2.5 text-xs text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
   }
-  .popover-hint { @apply mx-0.5 mt-2.5 mb-0.5 text-[11px] text-slate-400; }
+  .popover-hint { @apply mx-0.5 mt-2.5 mb-0.5 text-[11px] text-muted; }
   /* Resultados da busca (ADR 0024). A lista rola dentro de si: um projeto com
      muitos documentos não pode empurrar o popover para fora da tela. */
   .popover--search { @apply w-[min(380px,calc(100vw-2rem))]; }
@@ -489,27 +505,27 @@
   }
   .search-result strong { @apply text-xs leading-snug text-ink; }
   .search-result-kind { @apply text-[10px] font-semibold tracking-wide text-brand-600 uppercase; }
-  .search-result-detail { @apply text-[11px] leading-snug text-slate-400; }
+  .search-result-detail { @apply text-[11px] leading-snug text-muted; }
   .popover-head { @apply border-b border-line px-3.5 py-3 text-xs font-bold; }
   .popover-row { @apply grid gap-0.5 border-b border-line/70 px-3.5 py-3; }
   .popover-row:last-child { @apply border-b-0; }
   .popover-row strong { @apply text-xs; }
-  .popover-row span { @apply text-[10px] text-slate-400; }
-  .popover-row span b { @apply px-0.5 font-normal text-slate-300; }
+  .popover-row span { @apply text-[10px] text-muted; }
+  .popover-row span b { @apply px-0.5 font-normal text-line; }
   /* A linha do sino virou link (ADR 0057). Espelha o `a.notification-row` da
      Central de propósito: as duas são a mesma linha em duas superfícies, e dois
      estados de hover diferentes para o mesmo aviso ensinariam a ler dois
      vocabulários — o argumento do `.is-anchored`, que reusa o anel do turno em
      foco. `text-ink` porque o `<a>` traz a cor de link do navegador e a linha
      não é um link de texto: o alvo é a linha inteira. */
-  a.popover-row { @apply text-ink no-underline transition-colors hover:bg-slate-50; }
+  a.popover-row { @apply text-ink no-underline transition-colors hover:bg-surface-sunken; }
   .popover-all {
     @apply flex w-full items-center justify-center gap-1.5 border-0 border-t border-line bg-transparent px-3.5 py-2.5 text-[11px] font-semibold text-brand-600 transition-colors hover:bg-brand-50;
   }
   .popover-menu { @apply min-w-[210px] p-1.5; }
   .popover-menu button,
   .popover-menu a {
-    @apply flex w-full items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-2.5 text-left text-xs text-slate-600 no-underline transition-colors hover:bg-slate-100 hover:text-ink;
+    @apply flex w-full items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-2.5 text-left text-xs text-muted no-underline transition-colors hover:bg-surface-sunken hover:text-ink;
   }
   .popover-user { @apply mb-1 flex items-center gap-2 border-b border-line px-2.5 pt-2.5 pb-3; }
   .popover-user strong { @apply block text-xs; }
@@ -525,10 +541,10 @@
   .notification-row:last-child { @apply border-b-0; }
   .notification-row strong { @apply block text-xs text-ink; }
   .notification-row > div > span { @apply text-[11px] text-muted; }
-  .notification-row small { @apply text-[10px] whitespace-nowrap text-slate-400; }
-  a.notification-row { @apply transition-colors hover:bg-slate-50; }
+  .notification-row small { @apply text-[10px] whitespace-nowrap text-muted; }
+  a.notification-row { @apply transition-colors hover:bg-surface-sunken; }
   .notification-icon {
-    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500;
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-muted;
   }
   /* Não lida: o mesmo roxo da marca, para o olho achar sem precisar de legenda. */
   .notification-row--unread .notification-icon { @apply bg-brand-50 text-brand-600; }
@@ -553,7 +569,7 @@
   .profile-head { @apply mb-4 flex items-center gap-3.5 border-b border-line pt-1 pb-4.5; }
   .profile-head strong { @apply block text-[15px]; }
   .profile-head > div > span { @apply text-[11px] text-muted; }
-  .profile-head span b { @apply px-1 font-normal text-slate-300; }
+  .profile-head span b { @apply px-1 font-normal text-line; }
   .field-list { @apply grid gap-0.5; }
   .field-row { @apply flex items-center justify-between gap-3.5 border-b border-line/70 px-0.5 py-3; }
   .field-row:last-child { @apply border-b-0; }
@@ -580,9 +596,9 @@
      não é um erro. Sobrescreve pelo papel, não pela posição. */
   .setting-row span[role="alert"] { @apply mt-1 block text-danger-600; }
 
-  .switch { @apply relative h-5 w-9 shrink-0 rounded-full bg-slate-200 transition-colors; }
+  .switch { @apply relative h-5 w-9 shrink-0 rounded-full bg-line transition-colors; }
   .switch i {
-    @apply absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-[left];
+    @apply absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-surface transition-[left];
     box-shadow: 0 1px 3px rgba(30, 44, 68, 0.2);
   }
   .switch--on { @apply bg-brand-500; }
@@ -599,20 +615,20 @@
   .project-card--active { @apply border-brand-300 bg-brand-50/40; }
   .project-card-head { @apply mb-1.5 flex w-full items-center justify-between; }
   .project-card strong { @apply text-sm; }
-  .project-meta { @apply mt-2 flex items-center gap-1.5 text-[10px] text-slate-400; }
-  .project-meta b { @apply font-normal text-slate-300; }
+  .project-meta { @apply mt-2 flex items-center gap-1.5 text-[10px] text-muted; }
+  .project-meta b { @apply font-normal text-line; }
 
   .results-strip {
-    @apply mb-4 grid grid-cols-4 gap-4 rounded-2xl border border-line bg-white px-4.5 py-4;
+    @apply mb-4 grid grid-cols-4 gap-4 rounded-2xl border border-line bg-surface px-4.5 py-4;
     box-shadow: var(--shadow-card);
   }
   .results-strip > div { @apply grid gap-1; }
-  .results-strip span { @apply text-[10px] tracking-[0.04em] uppercase text-slate-400; }
+  .results-strip span { @apply text-[10px] tracking-[0.04em] uppercase text-muted; }
   .results-strip strong { @apply text-lg font-semibold text-ink; }
 
   /* ---------- Jornada ---------- */
   .journey-panel, .employees-panel {
-    @apply mb-4 rounded-2xl border border-line bg-white px-5 py-5;
+    @apply mb-4 rounded-2xl border border-line bg-surface px-5 py-5;
     box-shadow: var(--shadow-card);
   }
   .journey-head, .employees-head { @apply mb-4 flex items-start justify-between gap-3; }
@@ -623,36 +639,42 @@
   .journey-track { @apply m-0 mb-4.5 flex list-none gap-1.5 overflow-x-auto p-0; }
   .journey-step { @apply flex-auto grow-0 basis-auto; }
   .journey-step button {
-    @apply flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border-0 bg-transparent p-2 transition-colors hover:bg-slate-50;
+    @apply flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border-0 bg-transparent p-2 transition-colors hover:bg-surface-sunken;
   }
   .journey-step.is-selected button { @apply bg-brand-50; }
-  .journey-dot { @apply grid h-6.5 w-6.5 place-items-center rounded-full border-2 border-slate-300 bg-white text-white; }
+  .journey-dot { @apply grid h-6.5 w-6.5 place-items-center rounded-full border-2 border-line bg-surface text-white; }
   .journey-step--done .journey-dot { @apply border-success-600 bg-success-600; }
   .journey-step--active .journey-dot { @apply border-brand-500; }
-  .journey-step--locked .journey-dot { @apply border-slate-200 text-slate-300; }
+  .journey-step--locked .journey-dot { @apply border-line text-muted; }
   .journey-pulse {
     @apply h-2.5 w-2.5 rounded-full bg-brand-500;
     box-shadow: 0 0 0 3px var(--color-brand-50);
   }
-  .journey-name { @apply text-[11px] font-bold whitespace-nowrap text-slate-500; }
-  .journey-step--locked .journey-name { @apply text-slate-400; }
+  .journey-name { @apply text-[11px] font-bold whitespace-nowrap text-muted; }
+  /* Hoje esta regra não muda nada, e isso é consequência declarada do mapa: o
+     sistema tem **um** cinza de texto, e `slate-500` (nome de fase) e
+     `slate-400` (fase bloqueada) mapeiam os dois para `muted` (F-026 DAP §1/§2).
+     Fica escrita porque quem distingue a fase bloqueada é o cadeado no
+     `.journey-dot`, não o tom — e reabrir a diferença seria decisão de cor
+     nova, que esta fatia não toma. */
+  .journey-step--locked .journey-name { @apply text-muted; }
   .journey-step--active .journey-name { @apply text-brand-700; }
   .journey-detail { @apply border-t border-line pt-4; }
   .journey-detail-head { @apply mb-3.5 flex items-start justify-between gap-3.5; }
   .journey-detail-head h3 { @apply mt-2 mb-1 text-[17px] font-semibold tracking-[-0.02em]; }
   .journey-detail-head p { @apply m-0 max-w-110 text-xs text-muted; }
   .journey-target { @apply text-right whitespace-nowrap; }
-  .journey-target span { @apply block text-[10px] text-slate-400; }
-  .journey-target strong { @apply text-[13px] text-slate-500; }
-  .journey-deliverables-label { @apply mt-0 mb-2.5 text-[10px] font-extrabold tracking-[0.11em] uppercase text-slate-400; }
+  .journey-target span { @apply block text-[10px] text-muted; }
+  .journey-target strong { @apply text-[13px] text-muted; }
+  .journey-deliverables-label { @apply mt-0 mb-2.5 text-[10px] font-extrabold tracking-[0.11em] uppercase text-muted; }
   .journey-deliverables { @apply m-0 grid list-none gap-2 p-0; }
-  .journey-deliverables li { @apply flex items-center gap-2.5 text-xs text-slate-700; }
-  .journey-deliverables li.is-locked { @apply text-slate-400; }
+  .journey-deliverables li { @apply flex items-center gap-2.5 text-xs text-ink; }
+  .journey-deliverables li.is-locked { @apply text-muted; }
   .journey-deliverables a { @apply inline-flex items-center gap-1 font-bold text-brand-600 hover:text-brand-700; }
   .deliverable-icon { @apply grid h-5.5 w-5.5 place-items-center rounded-lg; }
   .is-unlocked .deliverable-icon { @apply bg-success-50 text-success-600; }
-  .is-locked .deliverable-icon { @apply bg-slate-100 text-slate-400; }
-  .journey-empty { @apply m-0 text-xs text-slate-400; }
+  .is-locked .deliverable-icon { @apply bg-surface-sunken text-muted; }
+  .journey-empty { @apply m-0 text-xs text-muted; }
 
   .health-pill { @apply ml-1.5 self-center rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap; }
   .health-pill--green { @apply bg-success-50 text-success-600; }
@@ -674,11 +696,11 @@
   .employee-status { @apply rounded-full px-2 py-1 text-[10px] font-bold whitespace-nowrap; }
   .employee-status--green { @apply bg-success-50 text-success-600; }
   .employee-status--amber { @apply bg-warning-50 text-warning-600; }
-  .employee-status--muted { @apply bg-slate-100 text-slate-500; }
+  .employee-status--muted { @apply bg-surface-sunken text-muted; }
   .employee-desc { @apply mt-2.5 mb-0 text-[11px] leading-relaxed text-muted; }
   .employee-metrics { @apply mt-3 flex flex-wrap gap-3; }
   .employee-metrics > div { @apply grid gap-0.5; }
-  .employee-metrics span { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-slate-400; }
+  .employee-metrics span { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
   .employee-metrics strong { @apply text-[13px] text-ink; }
 
   /* ---------- Estados de página (carregando, erro, sem projeto) ---------- */
@@ -856,8 +878,13 @@
   .hero { align-items: flex-start; gap: 17px; }
   .hero h1 { font-size: 25px; }
   .hero-copy { max-width: 220px; }
-  .ai-button { padding: 10px; font-size: 0; }
-  .ai-button svg { width: 18px; height: 18px; }
+  /* No celular o botão do herói vira só o ícone. `.hero .btn` entra ao lado de
+     `.ai-button` porque o herói do shell passou a usar a primitiva (F-026 §3) e
+     as outras superfícies que ainda desenham `.ai-button` à mão continuam
+     valendo — sem as duas, a versão móvel do herói voltaria a mostrar o rótulo
+     e a empurrar o título. */
+  .ai-button, .hero .btn { padding: 10px; font-size: 0; }
+  .ai-button svg, .hero .btn svg { width: 18px; height: 18px; }
   .status-card { align-items: flex-start; flex-wrap: wrap; padding: 16px; }
   .status-main { min-width: 0; width: 100%; }
   .status-meta { flex: 1; min-width: 0; grid-template-columns: auto 1fr; }
@@ -867,7 +894,10 @@
   .chat-fab { bottom: 16px; right: 16px; }
   .chat-panel { right: 12px; bottom: 12px; height: min(590px, calc(100dvh - 24px)); }
   .milestone { grid-template-columns: 20px 49px 1fr; }
-  .milestone .state { grid-column: 3; width: max-content; margin-top: -7px; }
+  /* O selo do marco desce para a terceira coluna. As duas classes porque o mesmo
+     lugar rende `<StatePill>` quando há variante e o `.state` de sempre no tom
+     neutro (F-026 §3, `PILL_VARIANT`). */
+  .milestone .state, .milestone .state-pill { grid-column: 3; width: max-content; margin-top: -7px; }
   .timeline-dot:after { bottom: -42px; }
   .source-panel { overflow: hidden; }
   .source-row { min-width: 350px; }

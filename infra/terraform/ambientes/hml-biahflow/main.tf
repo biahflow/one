@@ -97,6 +97,17 @@ module "trabalhos" {
 
   variaveis = local.servicos_http[each.value.servico].variaveis
   segredos  = local.servicos_http[each.value.servico].segredos
+
+  # A trava de destruição, que até aqui **não era repassada**: sem esta linha
+  # toda instância herdava o `true` do `modulos/job`, e nenhum trabalho podia
+  # ser destruído por plano revisado — o que travou o passo final da ADR 0075,
+  # cujo `cockpit-createsuperuser` precisa ser importado e então destruído.
+  #
+  # `try` e não um atributo obrigatório porque o mapa é heterogêneo de
+  # propósito: um trabalho só declara `protegido` quando está de saída, e os
+  # outros não deveriam ganhar uma linha de ruído por isso. O default continua
+  # sendo o do módulo (`true`) — desproteger é ato explícito, escrito no mapa.
+  protegido = try(each.value.protegido, true)
 }
 
 # --- Os dois portões de segredo, agora deste produto ----------------------------

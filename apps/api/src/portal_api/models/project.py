@@ -85,6 +85,21 @@ class DeliverableState(str, enum.Enum):
     delivered = "delivered"
 
 
+class DeliverableAcceptanceAction(str, enum.Enum):
+    """A decisão que o cliente tomou sobre um entregável (ADR 0077).
+
+    Dois valores, e a ausência dos outros é decisão e não recorte: a escada de
+    aceite desenhada na F-025 §10 tem cinco rótulos, e ``superseded``/
+    ``cancelled`` **não** entram sem revisão de design própria — supersessão é
+    consequência de uma segunda linha, não uma terceira espécie de decisão.
+    ``done`` nunca entra: quem conclui a entrega é o lifecycle de Delivery, e o
+    One registra o evento sem concluir nada (ADR 0067).
+    """
+
+    accepted = "accepted"
+    changes_requested = "changes_requested"
+
+
 class DigitalEmployeeStatus(str, enum.Enum):
     building = "building"
     active = "active"
@@ -323,6 +338,85 @@ class PhaseDeliverable(Base, _ProjectChildMixin, TimestampMixin):
         default=DeliverableState.pending,
     )
     link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Id do entregável no Biahflow, quando o snapshot o traz (ADR 0077).
+    #:
+    #: **É a identidade que o uuid desta linha não é.** O sync apaga e recria as
+    #: linhas de ``phase_deliverable`` a cada snapshot, então o ``id`` de hoje não
+    #: é o de amanhã — a mesma armadilha que ``notifications.ITEM_ANCHOR``
+    #: documenta ao recusar apontar um link por uuid. Um fato que precise nomear
+    #: *este entregável* meses depois — o aceite do cliente, ADR 0077 — aponta
+    #: para cá, no precedente de ``PendingItem.external_ref`` e de
+    #: ``Document.external_id``.
+    #:
+    #: ``nullable`` pelo argumento de ``Project.archived_at``: um Biahflow que não
+    #: mande a chave manda um corpo sem ela, e ausência é ausência de afirmação —
+    #: não um id inventado deste lado.
+    external_ref: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+
+
+class DeliverableAcceptance(Base, _ProjectChildMixin, TimestampMixin):
+    """O que o cliente decidiu sobre um entregável (Fase 7, ADR 0077).
+
+    A **quarta** tabela que o caminho de requisição origina, depois de
+    ``conversation``, ``conversation_message`` e ``pending_item_comment`` — e a
+    forma é a da terceira, pela mesma razão declarada lá: o registro existe
+    **para o outro lado ler**, então o predicado da policy é o de tenant simples
+    e "quem decidiu" fica na coluna, não no ``WHERE``.
+
+    **Append-only, e a imutabilidade é privilégio e não convenção.** ``portal_app``
+    recebe ``SELECT`` e ``INSERT`` na migração 0035 e nada mais: uma segunda
+    decisão **acrescenta** uma linha, e a anterior aparece superada na leitura —
+    nunca reescrita. Não existe rota de "editar aceite" porque o banco a
+    recusaria; seria funcionalidade errada, não funcionalidade faltando.
+
+    **O vínculo é o ``external_ref`` e não uma chave estrangeira.** ``sync_snapshot``
+    apaga e recria ``phase_deliverable`` a cada webhook, então um FK ao uuid do
+    read model seria destruído no sync seguinte, levando junto a decisão do
+    cliente. Pelo mesmo motivo ``phase_name`` e ``deliverable_name`` são
+    denormalizados: eles sobrevivem ao entregável sumir da origem, como
+    ``author_label`` sobrevive à remoção do autor.
+
+    O One registra o evento; **não** conclui a fase. ``accepted`` autoriza o outro
+    lado a transicionar para ``ACCEPTED``, e só o lifecycle de Delivery conclui
+    ``DONE`` (ADR 0067).
+    """
+
+    __tablename__ = "deliverable_acceptance"
+
+    #: A identidade estável do entregável, vinda do Biahflow (migração 0034).
+    deliverable_external_ref: Mapped[str] = mapped_column(
+        String(80), nullable=False, index=True
+    )
+    #: Nome da fase e do entregável **como estavam no momento da decisão**. Sem
+    #: eles, um entregável que saiu do snapshot deixaria o registro sem dizer
+    #: sobre o quê alguém decidiu — e é justamente o registro que precisa
+    #: sobreviver ao read model.
+    phase_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    deliverable_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    action: Mapped[DeliverableAcceptanceAction] = mapped_column(
+        Enum(DeliverableAcceptanceAction, name="deliverable_acceptance_action"),
+        nullable=False,
+    )
+    #: Quem decidiu. ``SET NULL`` e não ``CASCADE``, pelo argumento de
+    #: ``PendingItemComment.author_user_id``: revogar o acesso de alguém não pode
+    #: apagar o aceite que ele deu — e aqui isso vale mais, porque é o registro
+    #: que o outro lado projeta.
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    actor_label: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: ``True`` quando quem decidiu era da Biahflow. Guardado e não derivado do
+    #: papel atual: alguém que deixa de ser interno não muda o lado de quem
+    #: decidiu naquele dia.
+    actor_is_internal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    #: Opcional em "aprovar", esperado em "pedir ajuste". Texto do cliente — não
+    #: vai para o log nem para o ``audit_log``.
+    comment: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
 
 class DigitalEmployee(Base, _ProjectChildMixin, TimestampMixin):

@@ -26,6 +26,7 @@ from portal_api.repositories.milestone import MilestoneRepository
 from portal_api.repositories.notification import NotificationRepository
 from portal_api.repositories.organization import OrganizationRepository, UserRepository
 from portal_api.repositories.pending_item import PendingItemRepository
+from portal_api.repositories.phase_deliverable import PhaseDeliverableRepository
 from portal_api.repositories.project import ProjectRepository
 
 __all__ = [
@@ -46,6 +47,7 @@ __all__ = [
     "NotificationRepository",
     "OrganizationRepository",
     "PendingItemRepository",
+    "PhaseDeliverableRepository",
     "ProjectRepository",
     "Repository",
     "TenantContext",

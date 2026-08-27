@@ -485,3 +485,148 @@ def test_the_comment_notice_falls_back_to_the_tab_when_the_pending_is_gone(
 
     links = {item.link for item in _notifications(db_session, project.id)}
     assert links == {f"/?project={project.id}&tab=Pend%C3%AAncias"}
+
+
+# --- o aceite do entregável (Fase 7, FDD 027, ADR 0077) ----------------------
+
+
+def _acceptance(session: Session, project, *, actor_id, action) -> uuid.UUID:
+    from portal_api.models import DeliverableAcceptance
+
+    decision = DeliverableAcceptance(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        deliverable_external_ref="91",
+        phase_name="Prove",
+        deliverable_name="Funcionário Digital",
+        action=action,
+        actor_user_id=actor_id,
+        actor_label="Cliente",
+        actor_is_internal=False,
+        comment="Pode seguir.",
+    )
+    session.add(decision)
+    session.flush()
+    return decision.id
+
+
+def test_o_aviso_de_aceite_vai_para_o_time_e_nao_para_o_cliente(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A audiência é ``_INTERNAL_ONLY``, e é o risco central desta fatia.
+
+    O ``.get(kind, _CLIENT_ONLY)`` de :func:`notifications.recipients` tem o
+    cliente como padrão: esquecer a linha em ``AUDIENCE`` mandaria ao cliente o
+    aviso da **própria** decisão. O terceiro aviso só do time, depois do funil e
+    da resposta pelo canal.
+    """
+    from portal_api.models import DeliverableAcceptanceAction
+
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=171, client_id=121)
+    )
+    client_id, internal_id = _with_members(db_session, project, "m171")
+    decision_id = _acceptance(
+        db_session,
+        project,
+        actor_id=client_id,
+        action=DeliverableAcceptanceAction.accepted,
+    )
+
+    _system_session(monkeypatch, db_session)
+    worker.notify_deliverable_acceptance(str(project.id), str(decision_id))
+
+    emitted = _notifications(db_session, project.id)
+    assert [item.kind for item in emitted] == [NotificationKind.deliverable_reviewed]
+    assert {item.user_id for item in emitted} == {internal_id}
+    assert client_id not in {item.user_id for item in emitted}
+    assert emitted[0].title == "Cliente aprovou um entregável"
+    assert emitted[0].detail == "Funcionário Digital (Prove)"
+    # Interno não abre aba de cliente: sem entrada no `LINK_TAB`, `deep_link`
+    # devolve `None` antes de olhar a âncora (ADR 0056).
+    assert emitted[0].link is None
+
+
+def test_o_aviso_de_aceite_nao_avisa_quem_decidiu(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Quando é alguém do time que registra a decisão, ele não recebe o eco.
+
+    É o único caso em que ``exclude_user_id`` morde numa audiência interna — e é
+    exatamente o caso que existe, porque o time interno alcança a tela do cliente
+    pelo vínculo org-wide que já tem.
+    """
+    from portal_api.models import DeliverableAcceptanceAction
+
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=172, client_id=122)
+    )
+    _, internal_id = _with_members(db_session, project, "m172")
+    decision_id = _acceptance(
+        db_session,
+        project,
+        actor_id=internal_id,
+        action=DeliverableAcceptanceAction.changes_requested,
+    )
+
+    _system_session(monkeypatch, db_session)
+    worker.notify_deliverable_acceptance(str(project.id), str(decision_id))
+
+    assert _notifications(db_session, project.id) == []
+
+
+def test_pedir_ajuste_depois_de_aprovar_avisa_de_novo(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """O ``dedupe_key`` é ``(external_ref, action)``, e o preço está declarado.
+
+    Repetir a **mesma** decisão não avisa duas vezes — a segunda aprovação não é
+    informação nova para quem lê a fila, e a decisão em si nunca se perde porque
+    ela está gravada em ``deliverable_acceptance``. Mudar de decisão avisa, que é
+    o caso em que algo mudou.
+    """
+    from portal_api.models import DeliverableAcceptanceAction
+
+    project = biahflow.sync_snapshot(
+        db_session, _snapshot(biahflow_project_id=173, client_id=123)
+    )
+    client_id, internal_id = _with_members(db_session, project, "m173")
+
+    _system_session(monkeypatch, db_session)
+    for action in (
+        DeliverableAcceptanceAction.accepted,
+        DeliverableAcceptanceAction.accepted,
+        DeliverableAcceptanceAction.changes_requested,
+    ):
+        decision_id = _acceptance(
+            db_session, project, actor_id=client_id, action=action
+        )
+        worker.notify_deliverable_acceptance(str(project.id), str(decision_id))
+
+    titles = [item.title for item in _notifications(db_session, project.id)]
+    assert sorted(titles) == [
+        "Cliente aprovou um entregável",
+        "Cliente pediu ajuste num entregável",
+    ]
+    assert {item.user_id for item in _notifications(db_session, project.id)} == {
+        internal_id
+    }
+
+
+def test_toda_especie_de_aviso_declara_a_audiencia() -> None:
+    """Nenhuma espécie cai no padrão do ``.get``, que é o cliente.
+
+    A guarda de completude que a ADR 0040 abriu, cobrada de todo o enum: uma
+    espécie nova sem linha em ``AUDIENCE`` não fica sem destinatário — ela vai
+    para o **cliente**, em silêncio. Foi por isso que o funil precisou dela, e é
+    por isso que o aceite precisa dela agora.
+    """
+    faltando = sorted(
+        kind.value for kind in NotificationKind if kind not in notifications.AUDIENCE
+    )
+    assert faltando == [], (
+        "estas espécies não declaram audiência e cairiam no padrão `_CLIENT_ONLY`: "
+        + ", ".join(faltando)
+        + ". Acrescente a linha em `notifications.AUDIENCE` — o padrão do `.get`"
+        " manda o aviso ao cliente."
+    )

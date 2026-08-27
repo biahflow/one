@@ -54,6 +54,17 @@ class NotificationKind(str, enum.Enum):
     #: A resposta vira aviso aqui dentro justamente para não virar conversa lá fora —
     #: "spoke, nunca hub" é o que impede o canal de esvaziar o portal.
     whatsapp_reply = "whatsapp_reply"
+    #: O cliente aprovou um entregável ou pediu ajuste (FDD 027, ADR 0077). O
+    #: **terceiro** aviso só do time, e por um motivo que é a soma dos dois
+    #: anteriores: o cliente acabou de tomar a decisão — devolvê-la a ele seria
+    #: contar-lhe o que ele mesmo decidiu — e quem precisa agir é a operação.
+    #:
+    #: **Uma espécie e não duas**, com a decisão no título e no ``dedupe_key``: a
+    #: pergunta que o aviso responde é "o cliente revisou", e quem lê precisa dos
+    #: dois desfechos na mesma fila. É a granularidade de ``pending_commented`` e
+    #: não a de ``pending_opened``/``pending_resolved``, que são dois momentos da
+    #: vida da mesma linha.
+    deliverable_reviewed = "deliverable_reviewed"
 
 
 class Notification(Base, _ProjectChildMixin, TimestampMixin):

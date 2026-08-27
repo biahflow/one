@@ -39,9 +39,11 @@ from portal_api.models.notification import Notification, NotificationKind
 from portal_api.models.onboarding import OnboardingStep, OnboardingStepName
 from portal_api.models.organization import Organization
 from portal_api.models.project import (
+    DeliverableAcceptance,
+    DeliverableAcceptanceAction,
+    DeliverableState,
     Delivery,
     DeliveryStatus,
-    DeliverableState,
     DigitalEmployee,
     DigitalEmployeeStatus,
     Milestone,
@@ -81,6 +83,8 @@ __all__ = [
     "ConversationRole",
     "DataErasureRequest",
     "Decision",
+    "DeliverableAcceptance",
+    "DeliverableAcceptanceAction",
     "DeliverableState",
     "Delivery",
     "DeliveryStatus",

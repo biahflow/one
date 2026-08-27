@@ -422,6 +422,17 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
                         deliverable["status"], DeliverableState.pending
                     ),
                     link=deliverable.get("link"),
+                    # O id de lá, que é a única identidade do entregável que
+                    # sobrevive ao `delete` acima (ADR 0077). `.get` sem default
+                    # pelo argumento do `artifact_accepted_at`: um Biahflow que
+                    # não mande a chave está calado, não negando — e `str()`
+                    # porque lá é a chave primária inteira do Django, como no
+                    # `external_ref` da pendência.
+                    external_ref=(
+                        str(deliverable["id"])
+                        if deliverable.get("id") is not None
+                        else None
+                    ),
                 )
             )
             if (

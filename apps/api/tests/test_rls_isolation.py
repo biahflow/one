@@ -1273,3 +1273,152 @@ def test_the_app_role_cannot_spend_or_forge_its_own_budget(
             ),
             {"org": tenant_a.organization_id, "user": tenant_a.user_id},
         )
+
+
+# 10 — o aceite do entregável (Fase 7, FDD 027, ADR 0077) ------------------------
+#
+# A quarta tabela originada pelo caminho de requisição, e a cópia da terceira:
+# escopo de **projeto**, porque o registro existe para o outro lado projetar. O que
+# estes testes fixam não é a leitura — é a **ausência** de `UPDATE` e `DELETE`, que
+# é o controle inteiro: uma segunda decisão acrescenta uma linha, e a primeira não
+# pode ser reescrita nem sumir. Sem esta seção, conceder um dos dois "por
+# conveniência" ao ligar a tela passaria despercebido.
+
+
+@pytest.fixture
+def acceptances(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    from portal_api.models import DeliverableAcceptance, DeliverableAcceptanceAction
+
+    ids: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in tenants:
+            record = DeliverableAcceptance(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                deliverable_external_ref="91",
+                phase_name="Prove",
+                deliverable_name="Funcionário Digital",
+                action=DeliverableAcceptanceAction.accepted,
+                actor_user_id=tenant.user_id,
+                actor_label="Cliente",
+                actor_is_internal=False,
+                comment="Pode seguir.",
+            )
+            session.add(record)
+            session.flush()
+            ids[tenant.organization_id] = record.id
+        session.commit()
+
+    yield ids
+
+    with Session(migrated_engine) as session:
+        from portal_api.models import DeliverableAcceptance as _Acceptance
+
+        session.execute(delete(_Acceptance).where(_Acceptance.id.in_(list(ids.values()))))
+        session.commit()
+
+
+def test_an_acceptance_from_another_tenant_is_invisible(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant], acceptances
+) -> None:
+    from portal_api.models import DeliverableAcceptance
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = {
+        row for row in rls_session.execute(select(DeliverableAcceptance.id)).scalars()
+    }
+
+    assert acceptances[tenant_a.organization_id] in visible
+    assert acceptances[tenant_b.organization_id] not in visible
+
+
+def test_accepting_a_deliverable_for_another_tenant_is_rejected(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """O `WITH CHECK` da policy, e o `external_ref` é o que torna o caso realista.
+
+    O vínculo do aceite não é uma chave estrangeira e sim um id da origem —
+    portanto um valor que o chamador **digita**. Se a policy não comparasse o
+    tenant da linha, escrever o aceite de outro projeto seria escrever a string
+    certa. É o caso literal da regra 1 do `AGENTS.md`.
+    """
+    from portal_api.models import DeliverableAcceptance, DeliverableAcceptanceAction
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    rls_session.add(
+        DeliverableAcceptance(
+            organization_id=tenant_b.organization_id,
+            project_id=tenant_b.project_id,
+            deliverable_external_ref="91",
+            phase_name="Prove",
+            deliverable_name="Funcionário Digital",
+            action=DeliverableAcceptanceAction.accepted,
+            actor_user_id=tenant_a.user_id,
+            actor_label="Intruso",
+            actor_is_internal=False,
+        )
+    )
+
+    with pytest.raises(ProgrammingError, match="row-level security"):
+        rls_session.flush()
+
+
+def test_the_app_role_records_a_decision_but_cannot_rewrite_it(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant], acceptances
+) -> None:
+    """A segunda decisão **acrescenta**; a primeira não é reescrita nem apagada.
+
+    O `SELECT` vem do default privilege do `roles.sql`, reafirmado na 0035; o
+    `INSERT` vem de lá. `UPDATE` e `DELETE` **não foram concedidos**, e é isso que
+    faz "supersessão" ser uma linha nova em vez de uma edição — a tela de "editar
+    aceite" não existe porque o banco a recusaria (ADR 0077).
+    """
+    from portal_api.models import DeliverableAcceptance, DeliverableAcceptanceAction
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    segunda = uuid.uuid4()
+    rls_session.execute(
+        insert(DeliverableAcceptance).values(
+            id=segunda,
+            organization_id=tenant_a.organization_id,
+            project_id=tenant_a.project_id,
+            deliverable_external_ref="91",
+            phase_name="Prove",
+            deliverable_name="Funcionário Digital",
+            action=DeliverableAcceptanceAction.changes_requested,
+            actor_user_id=tenant_a.user_id,
+            actor_label="Cliente",
+            actor_is_internal=False,
+            comment="Mudei de ideia.",
+        )
+    )
+    # As duas convivem: acrescentar é o desenho, e não há unicidade a violar.
+    assert {
+        row
+        for row in rls_session.execute(select(DeliverableAcceptance.id)).scalars()
+    } >= {acceptances[tenant_a.organization_id], segunda}
+
+    primeira = acceptances[tenant_a.organization_id]
+    with pytest.raises(ProgrammingError) as no_update:
+        rls_session.execute(
+            update(DeliverableAcceptance)
+            .where(DeliverableAcceptance.id == primeira)
+            .values(action=DeliverableAcceptanceAction.changes_requested)
+        )
+    assert "permission denied" in str(no_update.value).lower()
+    rls_session.rollback()
+
+    _bind_full(bind_context, tenant_a)
+    with pytest.raises(ProgrammingError) as no_delete:
+        rls_session.execute(
+            delete(DeliverableAcceptance).where(DeliverableAcceptance.id == primeira)
+        )
+    assert "permission denied" in str(no_delete.value).lower()

@@ -33,6 +33,8 @@ from sqlalchemy.orm import Session
 
 from portal_api import anchors, tabs
 from portal_api.models import (
+    DeliverableAcceptance,
+    DeliverableAcceptanceAction,
     DeliverableState,
     Document,
     Meeting,
@@ -84,6 +86,13 @@ AUDIENCE: dict[NotificationKind, frozenset[MemberRole]] = {
     # lá o cliente não deve saber que está sendo medido; aqui ele **escreveu** a
     # mensagem, e devolvê-la seria contar-lhe o que acabou de digitar.
     NotificationKind.whatsapp_reply: _INTERNAL_ONLY,
+    # O terceiro aviso só do time (FDD 027, ADR 0077), e o motivo é a soma dos dois
+    # anteriores: o cliente **acabou de decidir**, então devolver-lhe o aviso seria
+    # contar-lhe o que ele mesmo decidiu; e quem precisa agir é a operação, que é
+    # quem leva a decisão de volta ao Biahflow. Esta linha é **obrigatória** — sem
+    # ela o `.get(kind, _CLIENT_ONLY)` de `recipients` manda ao cliente o aviso do
+    # próprio aceite, que é o defeito mais caro que esta fatia podia introduzir.
+    NotificationKind.deliverable_reviewed: _INTERNAL_ONLY,
 }
 
 _MAX_DEDUPE_KEY = 255
@@ -184,6 +193,13 @@ ANCHORLESS: dict[NotificationKind, str] = {
     NotificationKind.onboarding_stuck: (
         "interno, traz `link` explícito para `/admin/funil` e nunca passa por "
         "`deep_link` — o explícito vence, em `fan_out`"
+    ),
+    NotificationKind.deliverable_reviewed: (
+        "interno, e sem tela para apontar: a superfície de revisão do cliente está "
+        "atrás do gate de Design Approval da F-027, e o entregável não é linha de "
+        "nenhuma tela de `/admin`. Sem entrada no `LINK_TAB`, `deep_link` devolve "
+        "`None` antes de olhar a âncora — mandá-lo para uma aba de cliente seria "
+        "levar o time à tela do cliente (FDD 027, ADR 0077)"
     ),
 }
 
@@ -596,6 +612,51 @@ def fan_out(
         .returning(Notification.id)
     )
     return list(session.execute(stmt).scalars())
+
+
+#: Como o time lê cada desfecho da revisão do cliente (FDD 027, ADR 0077).
+#:
+#: Mora numa tabela pelo motivo do ``LINK_TAB``: é resposta **por espécie de
+#: decisão** e cabe em duas linhas, enquanto espalhá-la pelas construções a faria
+#: divergir uma a uma.
+_ACCEPTANCE_TITLE: dict[DeliverableAcceptanceAction, str] = {
+    DeliverableAcceptanceAction.accepted: "Cliente aprovou um entregável",
+    DeliverableAcceptanceAction.changes_requested: "Cliente pediu ajuste num entregável",
+}
+
+
+def acceptance_change(decision: DeliverableAcceptance) -> Change:
+    """O aviso interno de uma decisão de aceite (FDD 027, ADR 0077).
+
+    **Fora do :func:`diff`**, e a razão é a mesma do comentário na pendência: o
+    aceite nasce da requisição do cliente, não da comparação de dois snapshots.
+    O ``diff`` compara estados; aqui o fato é a escrita.
+
+    Mora neste módulo, e não na task que o enfileira, porque título, ``dedupe_key``
+    e audiência são o vocabulário do aviso — e este arquivo é o único lugar onde
+    esse vocabulário vive (ADR 0012).
+
+    **O ``dedupe_key`` é ``(external_ref, action)``**, como a ADR 0077 decidiu, e o
+    preço está declarado: aprovar duas vezes o mesmo entregável avisa uma vez só.
+    É o que se quer — a segunda aprovação não é informação nova para quem lê a
+    fila —, e a decisão em si nunca se perde, porque ela está gravada em
+    ``deliverable_acceptance``, que é a fonte da verdade. Alternar aprovar e pedir
+    ajuste avisa das duas vezes, que é o caso em que algo mudou.
+
+    Sem ``item``: a espécie é interna e não abre aba de cliente nenhuma (ver
+    ``ANCHORLESS``).
+    """
+    return Change(
+        kind=NotificationKind.deliverable_reviewed,
+        title=_ACCEPTANCE_TITLE[decision.action],
+        # O nome do entregável e o da fase, **como estavam quando a decisão foi
+        # tomada** — o comentário do cliente **não** entra: ele é texto dele, e o
+        # aviso leva ao registro, não o reproduz.
+        detail=f"{decision.deliverable_name} ({decision.phase_name})",
+        dedupe_key=_key(
+            "acceptance", decision.deliverable_external_ref, decision.action.value
+        ),
+    )
 
 
 def emit_changes(

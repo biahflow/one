@@ -37,6 +37,7 @@ from portal_api.models import (
     Organization,
     PendingItem,
     PendingOrigin,
+    PhaseDeliverable,
     Project,
     ProjectStatus,
 )
@@ -76,10 +77,12 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
             "phases": [
                 {"name": "Welcome", "description": "", "position": 0, "status": "done",
                  "target_date": None, "deliverables": [
-                     {"name": "Acesso ao portal", "status": "delivered", "link": None}]},
+                     {"id": 91, "name": "Acesso ao portal", "status": "delivered",
+                      "link": None}]},
                 {"name": "Prove", "description": "", "position": 1, "status": "active",
                  "target_date": "2026-09-20", "deliverables": [
-                     {"name": "Funcionário Digital", "status": "pending", "link": None}]},
+                     {"id": 92, "name": "Funcionário Digital", "status": "pending",
+                      "link": None}]},
                 {"name": "Scale", "description": "", "position": 2, "status": "locked",
                  "target_date": None, "deliverables": []},
             ],
@@ -414,6 +417,74 @@ def test_sync_snapshot_replaces_phases_and_deliverables(db_session: Session) -> 
 
     assert dashboard["journey"]["current_phase"] == "Scale"
     assert len(dashboard["journey"]["phases"]) == 3  # substituídas, não duplicadas
+
+
+@pytest.mark.integration
+def test_o_external_ref_do_entregavel_sobrevive_ao_delete_recreate_do_sync(
+    db_session: Session,
+) -> None:
+    """A identidade que o uuid do read model não é (ADR 0077).
+
+    O par de asserções é o teste: o uuid **muda** entre as duas passagens — é o
+    ``delete`` + ``insert`` de ``sync_snapshot`` acontecendo — e o ``external_ref``
+    **não**. Sem a primeira metade, a segunda passaria num sync que não tivesse
+    recriado nada, e a guarda nasceria verde sem exercer o caminho que importa.
+
+    É o pré-requisito medido da FDD 027: um aceite com chave estrangeira para o
+    uuid daqui seria destruído no webhook seguinte, levando junto a decisão do
+    cliente.
+    """
+    snap = _snapshot(biahflow_project_id=61, client_id=59)
+    project = biahflow.sync_snapshot(db_session, snap)
+    antes = {
+        row.external_ref: row.id
+        for row in db_session.execute(
+            select(PhaseDeliverable).where(PhaseDeliverable.project_id == project.id)
+        ).scalars()
+    }
+    assert set(antes) == {"91", "92"}
+
+    # Segunda passagem do mesmo projeto: o entregável avança de estado, e a fase
+    # dele também — nada disso pode mudar a identidade que veio da origem.
+    snap["journey"]["phases"][1]["deliverables"][0]["status"] = "delivered"
+    project = biahflow.sync_snapshot(db_session, snap)
+    depois = {
+        row.external_ref: row.id
+        for row in db_session.execute(
+            select(PhaseDeliverable).where(PhaseDeliverable.project_id == project.id)
+        ).scalars()
+    }
+
+    assert set(depois) == set(antes)
+    assert all(depois[ref] != antes[ref] for ref in antes), (
+        "as linhas não foram recriadas; sem isso o teste não prova nada"
+    )
+
+
+@pytest.mark.integration
+def test_um_entregavel_sem_id_na_origem_fica_sem_external_ref(
+    db_session: Session,
+) -> None:
+    """Ausência é ausência de afirmação, nunca um id inventado deste lado.
+
+    Mesmo argumento do ``archived_at`` que o snapshot não traz (ADR 0036) e do
+    ``artifact_accepted_at`` (ADR 0041): um Biahflow que não mande a chave está
+    calado. Inventar aqui um identificador — o nome, a posição — devolveria a
+    instabilidade que o campo existe para tirar, e ainda com aparência de dado
+    da origem.
+    """
+    snap = _snapshot(biahflow_project_id=62, client_id=60)
+    del snap["journey"]["phases"][0]["deliverables"][0]["id"]
+
+    project = biahflow.sync_snapshot(db_session, snap)
+
+    refs = {
+        row.name: row.external_ref
+        for row in db_session.execute(
+            select(PhaseDeliverable).where(PhaseDeliverable.project_id == project.id)
+        ).scalars()
+    }
+    assert refs == {"Acesso ao portal": None, "Funcionário Digital": "92"}
 
 
 # --- integration: documentos, reuniões, pendências e resultados -------------

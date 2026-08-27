@@ -443,6 +443,64 @@ class PendingCommentsOut(Out):
     items: list[PendingCommentOut]
 
 
+# --- aceite do entregável (ADR 0077) ----------------------------------------
+
+
+class DeliverableAcceptanceIn(BaseModel):
+    """O que o cliente decidiu, e por quê quando ele quis dizer.
+
+    O **primeiro modelo de requisição declarado aqui** — os outros moram ao lado
+    da rota, em ``main.py``. Mora neste módulo porque a FDD 027 e o contrato da
+    tarefa o nomeiam junto da resposta, e porque a decisão é a única entrada de
+    cliente cujo vocabulário (``accepted``/``changes_requested``) é contrato com
+    o outro lado, não formato de formulário.
+
+    ``extra="forbid"``: um corpo com ``action: "done"`` ou com um campo a mais é
+    **422**, nunca um aceite gravado pela metade. O padrão do Pydantic é
+    descartar em silêncio, e descartar em silêncio aqui seria gravar uma decisão
+    diferente da que a pessoa tomou.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Os dois valores do enum do banco, e o Literal os repete de propósito: o
+    #: contrato publicado tem de dizer quais são, senão o cliente descobre
+    #: mandando. ``superseded``/``cancelled`` não entram sem revisão de design, e
+    #: ``done`` nunca entra — quem conclui a entrega é o outro lado (ADR 0067).
+    action: Literal["accepted", "changes_requested"]
+    #: Opcional em aprovar, esperado em pedir ajuste — e a espera é da tela, não
+    #: da API: um pedido de ajuste sem texto continua sendo uma decisão válida
+    #: que o time precisa ver.
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class DeliverableAcceptanceOut(Out):
+    """Uma decisão como o histórico a mostra.
+
+    ``actor_label`` e ``actor_is_internal`` vêm da **linha**, não do papel atual
+    de quem decidiu, pelo argumento de :class:`PendingCommentOut` — e aqui ele
+    pesa mais, porque é este registro que o outro lado projeta.
+
+    Não há campo de "em vigor": a decisão em vigor é a última da lista, e
+    calculá-la aqui inventaria um estado que a tabela não guarda.
+    """
+
+    id: str
+    deliverable_external_ref: str
+    phase_name: str
+    deliverable_name: str
+    action: Literal["accepted", "changes_requested"]
+    actor_label: str
+    actor_is_internal: bool
+    comment: str | None
+    created_at: str
+
+
+class DeliverableAcceptancesOut(Out):
+    deliverable_external_ref: str
+    items: list[DeliverableAcceptanceOut]
+
+
 class NotificationsReadOut(Out):
     marked: int
 

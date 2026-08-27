@@ -347,6 +347,29 @@ const NOT_CONSUMED = {
     reason: "idem.",
     review_by: "2026-11-30",
   },
+  // O aceite do entregável (ADR 0077). As duas primeiras são **eco**, na forma
+  // exata do `PendingCommentsOut.pending_item_id`: o BFF acabou de pedir o
+  // histórico *por este* `external_ref`, e ele já o tem em mãos.
+  "DeliverableAcceptancesOut.deliverable_external_ref": {
+    reason: "eco do id que o BFF acabou de mandar no caminho da rota.",
+  },
+  "DeliverableAcceptanceOut.deliverable_external_ref": {
+    reason: "idem, na linha: é a chave por onde o histórico foi pedido.",
+  },
+  // As duas seguintes não são eco, e a razão é outra: elas existem **para o outro
+  // lado**. `phase_name` e `deliverable_name` são congelados na escrita para que o
+  // registro continue dizendo sobre o quê alguém decidiu depois de o entregável
+  // sumir do read model — e quem projeta esse registro é o Biahflow, não a tela. O
+  // card de revisão nasce da jornada, que é a verdade de hoje, e repetir na linha
+  // do histórico o rótulo que está no cabeçalho do card seria ruído.
+  "DeliverableAcceptanceOut.phase_name": {
+    reason:
+      "denormalizado na escrita para o registro sobreviver ao read model (ADR 0077); " +
+      "quem o lê é o outro lado, e a tela monta o card a partir da jornada.",
+  },
+  "DeliverableAcceptanceOut.deliverable_name": {
+    reason: "idem — o nome congelado no momento da decisão, para o outro lado.",
+  },
   "MeProjectOut.slug": {
     reason:
       "o slug identifica o projeto no Biahflow; aqui a chave é o `id` e o rótulo é o `name`. " +
@@ -379,14 +402,6 @@ const NOT_CALLED = {
     reason:
       "mesma projeção que o dashboard já embute em `MyDashboardOut.measured` (um `$ref` para `ResultsOut`), " +
       "e é por lá que os campos chegam à tela. Existe para o detalhamento por período, que ainda não tem tela.",
-    review_by: "2027-02-01",
-  },
-  "/api/v1/me/deliverables/{external_ref}/acceptance": {
-    reason:
-      "o registro de aceite existe antes da tela, e de propósito (FDD 027, ADR 0077): o evento " +
-      "persistido é a fonte da verdade e não pode esperar pela superfície. A superfície de revisão " +
-      "está atrás do gate de Design Approval do DAP r1, que é humano — o plano da F-027 foi " +
-      "congelado sem tarefa de interface por causa dele. A linha some no commit que liga a tela.",
     review_by: "2027-02-01",
   },
 };
@@ -634,13 +649,6 @@ const NOT_THE_BFF = {
     "rota de agente, autenticada por chave: quem monta este corpo é o produtor de eventos, " +
     "não o navegador (ADR 0013). Mesma isenção que a rota tem em NOT_CALLED.",
 };
-const AWAITING_DESIGN_APPROVAL = {
-  reason:
-    "a entrada do aceite existe antes da tela que a envia (FDD 027, ADR 0077): a superfície de " +
-    "revisão está atrás do gate de Design Approval do DAP r1. A rota inteira está isenta em " +
-    "NOT_CALLED pelo mesmo motivo, e as duas linhas somem no commit que liga a tela.",
-  review_by: "2027-02-01",
-};
 const NO_SCREEN_YET = {
   reason:
     "o recorte por período de `GET /projects/{id}/results`, que ainda não tem tela — a rota " +
@@ -674,10 +682,6 @@ const NOT_SENT = {
       "o painel de `/admin/assistente` mostra a janela padrão; recortá-la é pergunta que " +
       "a tela ainda não faz.",
   },
-  "GET /api/v1/me/deliverables/{external_ref}/acceptance project": AWAITING_DESIGN_APPROVAL,
-  "POST /api/v1/me/deliverables/{external_ref}/acceptance project": AWAITING_DESIGN_APPROVAL,
-  "POST /api/v1/me/deliverables/{external_ref}/acceptance action": AWAITING_DESIGN_APPROVAL,
-  "POST /api/v1/me/deliverables/{external_ref}/acceptance comment": AWAITING_DESIGN_APPROVAL,
   "POST /api/v1/admin/projects/{project_id}/keys expires_in_days": {
     reason:
       "a tela cria a chave com o vencimento padrão da API; escolher o prazo é decisão que " +

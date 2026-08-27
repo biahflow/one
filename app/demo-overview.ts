@@ -42,9 +42,9 @@ export const DEMO_OVERVIEW: Overview = {
   journey: {
     currentPhase: "Prove",
     phases: [
-      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", targetDate: "", deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null }] },
-      { name: "Discover", description: "Mapeamento dos processos.", state: "done", targetDate: "", deliverables: [{ name: "Mapa dos processos", state: "delivered", link: null }, { name: "AI Score", state: "delivered", link: null }] },
-      { name: "Prove", description: "Piloto do funcionário digital.", state: "active", targetDate: "20 set", deliverables: [{ name: "Funcionário Digital", state: "pending", link: null }, { name: "Dashboard de KPIs", state: "pending", link: null }] },
+      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", targetDate: "", deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null, externalRef: null, decisions: [] }] },
+      { name: "Discover", description: "Mapeamento dos processos.", state: "done", targetDate: "", deliverables: [{ name: "Mapa dos processos", state: "delivered", link: null, externalRef: null, decisions: [] }, { name: "AI Score", state: "delivered", link: null, externalRef: null, decisions: [] }] },
+      { name: "Prove", description: "Piloto do funcionário digital.", state: "active", targetDate: "20 set", deliverables: [{ name: "Funcionário Digital", state: "pending", link: null, externalRef: null, decisions: [] }, { name: "Dashboard de KPIs", state: "pending", link: null, externalRef: null, decisions: [] }] },
       { name: "Scale", description: "Expansão para mais áreas.", state: "locked", targetDate: "", deliverables: [] },
       { name: "Optimize", description: "Evolução contínua.", state: "locked", targetDate: "", deliverables: [] },
     ],

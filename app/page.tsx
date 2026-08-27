@@ -6,6 +6,7 @@ import { TracedError, logError, logWarn } from "@/app/lib/log";
 import { authorizationHeader } from "@/app/lib/session";
 import { traceId } from "@/app/lib/trace";
 import DashboardClient, {
+  type DeliverableDecision,
   type JourneyPhase,
   type DecisionView,
   type MeetingView,
@@ -71,6 +72,24 @@ function relativeAge(iso: string | null | undefined): string {
   return months === 1 ? "há 1 mês" : `há ${months} meses`;
 }
 
+/**
+ * Quando a decisão foi tomada, em PT-BR — formatado **aqui**, no servidor.
+ *
+ * O histórico do aceite é renderizado no SSR, ao contrário do fio da pendência,
+ * que só existe depois de um clique. Um `toLocaleString` dentro do componente
+ * cliente formataria com o fuso do navegador sobre um HTML que o servidor já
+ * escreveu com o dele, e a hidratação acusaria a diferença. Data e hora juntas
+ * porque duas decisões do mesmo dia são exatamente o caso que a supersessão
+ * existe para mostrar.
+ */
+function decisionMoment(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const dia = parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  const hora = parsed.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dia}, ${hora}`;
+}
+
 function initialsOf(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -115,7 +134,16 @@ type ApiMeasured = {
   assumption_basis: { days_per_month: number; formula: string };
   gaps: string[];
 };
-type ApiDeliverable = { name: string; state: string; link: string | null };
+type ApiDeliverable = { name: string; state: string; link: string | null; external_ref: string | null };
+/** Uma decisão como `GET /me/deliverables/{ref}/acceptance` a devolve (ADR 0077). */
+type ApiAcceptance = {
+  id: string;
+  action: "accepted" | "changes_requested";
+  actor_label: string;
+  actor_is_internal: boolean;
+  comment: string | null;
+  created_at: string;
+};
 type ApiPhase = { name: string; description: string | null; state: string; target_date: string | null; deliverables: ApiDeliverable[] };
 type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null };
 type ApiMe = {
@@ -140,7 +168,13 @@ type ApiNotification = {
 };
 type ApiNotifications = { unread_count: number; items: ApiNotification[] };
 
-function toOverview(data: Record<string, unknown>, organization: string): Overview {
+function toOverview(
+  data: Record<string, unknown>,
+  organization: string,
+  /** O histórico de aceite por `external_ref`; `null` no valor quer dizer "não
+   *  consegui carregar", que é diferente de "ninguém decidiu" (lista vazia). */
+  acceptances: Map<string, DeliverableDecision[] | null> = new Map(),
+): Overview {
   const apiMilestones: ApiMilestone[] = (data.milestones as ApiMilestone[]) ?? [];
   const next = apiMilestones.find((milestone) => milestone.state !== "done");
   const journey = data.journey as { current_phase?: string; phases?: ApiPhase[] } | undefined;
@@ -183,6 +217,20 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
           name: deliverable.name,
           state: deliverable.state === "delivered" ? "delivered" : "pending",
           link: deliverable.link,
+          // A identidade da origem (ADR 0077). Sem ela não há rota de aceite a
+          // chamar, e a aba de Revisão diz isso em vez de esconder a entrega.
+          externalRef: deliverable.external_ref,
+          // Só o entregável elegível teve o histórico buscado; o resto nasce
+          // vazio e nunca é renderizado.
+          //
+          // `has` e não `?? []`, e a diferença é o defeito que o teste da leitura
+          // falha pegou: `null` é "não consegui carregar" e `??` o transformaria
+          // em lista vazia — que é a tela afirmando "ninguém decidiu" sobre um
+          // histórico que ela não leu.
+          decisions:
+            deliverable.external_ref && acceptances.has(deliverable.external_ref)
+              ? (acceptances.get(deliverable.external_ref) as DeliverableDecision[] | null)
+              : [],
         })),
       })),
     },
@@ -355,6 +403,83 @@ async function apiFailure(url: string, status: number): Promise<Error> {
   return new TracedError(`${url} respondeu ${status}`, trace);
 }
 
+/**
+ * O histórico de aceite de cada entregável elegível, buscado no servidor (ADR 0077).
+ *
+ * **No SSR e não num efeito**, pela razão que a nota de âncora já escreveu: o
+ * contador de "aguardando você" fica na barra lateral, visível de qualquer aba, e
+ * um contador que só aparece depois da hidratação pisca — e nenhuma asserção de
+ * HTML renderizado o alcança.
+ *
+ * Uma chamada por entregável **entregue e identificado**, em paralelo. Não há
+ * rota de "histórico do projeto inteiro" e não é esta fatia que a cria: o
+ * contrato da anterior é o que ele é, e inventar uma rota aqui seria mexer no que
+ * a T03 fechou. O `pending` não é buscado porque não há decisão a tomar sobre uma
+ * entrega que a operação ainda não entregou.
+ *
+ * **Uma falha não derruba o dashboard**, como a caixa de avisos: o valor vira
+ * `null`, e o card daquele entregável diz que não conseguiu carregar em vez de
+ * afirmar que ninguém decidiu — que é a mentira que uma lista vazia contaria.
+ */
+async function fetchAcceptances(
+  base: string,
+  authorization: Record<string, string>,
+  dashboard: Record<string, unknown>,
+  projectId?: string,
+): Promise<Map<string, DeliverableDecision[] | null>> {
+  const journey = dashboard.journey as { phases?: ApiPhase[] } | undefined;
+  const refs = [
+    ...new Set(
+      (journey?.phases ?? [])
+        .flatMap((phase) => phase.deliverables ?? [])
+        .filter((deliverable) => deliverable.state === "delivered" && deliverable.external_ref)
+        .map((deliverable) => deliverable.external_ref as string),
+    ),
+  ];
+  // Omitido quando a URL não nomeia projeto, nunca mandado vazio (ADR 0059).
+  const query = projectId ? `?project=${encodeURIComponent(projectId)}` : "";
+
+  const entries = await Promise.all(
+    refs.map(async (ref): Promise<[string, DeliverableDecision[] | null]> => {
+      const path = `/api/v1/me/deliverables/${encodeURIComponent(ref)}/acceptance`;
+      try {
+        const response = await fetch(`${base}${path}` + query, {
+          headers: authorization,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          logWarn("api.rejected", {
+            trace_id: await traceId(),
+            path,
+            status: response.status,
+          });
+          return [ref, null];
+        }
+        const body = (await response.json()) as { items: ApiAcceptance[] };
+        return [
+          ref,
+          body.items.map((decision) => ({
+            id: decision.id,
+            action: decision.action,
+            actorLabel: decision.actor_label,
+            actorIsInternal: decision.actor_is_internal,
+            comment: decision.comment,
+            decidedAt: decisionMoment(decision.created_at),
+          })),
+        ];
+      } catch (error) {
+        logWarn("api.unreachable", {
+          trace_id: await traceId(),
+          path,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return [ref, null];
+      }
+    }),
+  );
+  return new Map(entries);
+}
+
 export default async function Page({
   searchParams,
 }: {
@@ -424,7 +549,11 @@ export default async function Page({
   }
 
   const dashboard: Record<string, unknown> = await dashboardResponse.json();
-  const overview = toOverview(dashboard, user.org);
+  const overview = toOverview(
+    dashboard,
+    user.org,
+    await fetchAcceptances(base, authorization, dashboard, projectId),
+  );
   // Sem `?project=`, o atual é o que a API **disse** que serviu (ADR 0061).
   //
   // Até aqui isto era um casamento por **nome**, porque `MyDashboardOut` não publicava

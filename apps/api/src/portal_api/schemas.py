@@ -200,6 +200,18 @@ class DeliverableOut(Out):
     name: str
     state: str
     link: str | None
+    #: A identidade estável do entregável no Biahflow (migração 0034, ADR 0077).
+    #:
+    #: Publicada aqui porque é o **caminho** de
+    #: ``/me/deliverables/{external_ref}/acceptance``: sem ela a tela não tem como
+    #: montar a URL da decisão, e o cliente veria um card de revisão sem para onde
+    #: mandar o aceite. O uuid da linha não serve e não é alternativa —
+    #: ``sync_snapshot`` apaga e recria ``phase_deliverable`` a cada webhook.
+    #:
+    #: Nula quando a origem não mandou a chave, e a tela **diz isso** em vez de
+    #: esconder o entregável: ausência é ausência de afirmação, nunca um id
+    #: inventado deste lado.
+    external_ref: str | None
 
 
 class PhaseOut(Out):

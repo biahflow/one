@@ -6,7 +6,7 @@ import test, { after } from "node:test";
 
 import { encode } from "next-auth/jwt";
 
-import { DASHBOARD, ME, NOTIFICATIONS, SEARCH } from "./fixtures/dashboard.mjs";
+import { ACCEPTANCES, DASHBOARD, ME, NOTIFICATIONS, SEARCH } from "./fixtures/dashboard.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 
@@ -75,6 +75,17 @@ let dashboardOverride = null;
 let meOverride = null;
 
 /**
+ * Idem para o histórico de aceite (ADR 0077), e existe por dois casos que só a
+ * injeção alcança: o histórico com **duas** decisões, onde a primeira aparece
+ * superada, e a falha de leitura, onde a tela não pode afirmar "pendente" — ela
+ * não sabe.
+ *
+ * `null` é o padrão e é o estado comum: entrega elegível sobre a qual ninguém
+ * decidiu ainda. `"fail"` faz o stub responder 500.
+ */
+let acceptanceOverride = null;
+
+/**
  * Stands in for the FastAPI. Lets the SSR path be exercised for real — the same
  * fetches, the same projection — without Postgres, Keycloak or Python.
  */
@@ -82,15 +93,26 @@ function startApiStub() {
   const server = createServer((request, response) => {
     seenTraceIds.push(request.headers["x-request-id"]);
     seenServiceTokens.push(request.headers["x-serverless-authorization"]);
+    // O histórico de aceite vem **antes** do `/api/v1/me` genérico: o caminho é
+    // `/api/v1/me/deliverables/…`, e o casador solto o serviria com o corpo do
+    // `/me`, deixando a tela receber um perfil onde espera uma lista de decisões.
+    const acceptance = /^\/api\/v1\/me\/deliverables\/([^/?]+)\/acceptance/.exec(
+      request.url ?? "",
+    );
     const body = request.url?.startsWith("/api/v1/me/dashboard")
       ? (dashboardOverride ?? DASHBOARD)
       : request.url?.startsWith("/api/v1/me/notifications")
         ? NOTIFICATIONS
         : request.url?.startsWith("/api/v1/me/search")
           ? SEARCH
-          : request.url?.startsWith("/api/v1/me")
-            ? (meOverride ?? ME)
-            : null;
+          : acceptance
+            ? (acceptanceOverride ?? {
+                deliverable_external_ref: decodeURIComponent(acceptance[1]),
+                items: [],
+              })
+            : request.url?.startsWith("/api/v1/me")
+              ? (meOverride ?? ME)
+              : null;
     if (!body) {
       response.writeHead(404).end("{}");
       return;
@@ -106,6 +128,12 @@ function startApiStub() {
     // que `authorizationHeader()` tem uma chave a mais no objeto.
     if (!request.headers["x-request-id"]) {
       response.writeHead(400, { "content-type": "application/json" }).end("{}");
+      return;
+    }
+    // Depois das duas recusas acima, e não antes: a indisponibilidade encenada não
+    // pode encobrir a prova de que o token e o `trace_id` viajaram.
+    if (acceptance && acceptanceOverride === "fail") {
+      response.writeHead(500, { "content-type": "application/json" }).end("{}");
       return;
     }
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body));
@@ -592,6 +620,159 @@ test("o entregável de uma fase já concluída abre a fase que o contém", async
   assert.doesNotMatch(semAncora, /Acesso ao portal/, "a fase concluída não abre sozinha");
 
   const markup = await anchored("Visão geral", "deliverable:Acesso ao portal");
+  assert.ok(anchoredRow(markup, "deliverable:Acesso ao portal"));
+});
+
+/** A aba de Revisão, renderizada pelo servidor. */
+async function reviewTab() {
+  const response = await render("/?tab=Revis%C3%A3o", {
+    headers: { cookie: await sessionCookie() },
+  });
+  assert.equal(response.status, 200);
+  return renderedMarkup(await response.text());
+}
+
+/**
+ * A superfície de aceite deixou de ser reservada (F-027, DAP r1).
+ *
+ * Até esta fatia a F-025 §10 a desenhava e a declarava **não renderizada** — o
+ * manifesto de evidência da F-025 chegou a registrar isso em `reserved`. Estas
+ * asserções são o que separa "a superfície existe" de "a superfície foi desenhada".
+ */
+test("a aba de Revisão desenha o card do entregável entregue", async () => {
+  const markup = await reviewTab();
+
+  // O entregável elegível vem do estado que o snapshot já traz: `delivered`.
+  assert.match(markup, /Acesso ao portal/);
+  // E o que a operação ainda não entregou não pede decisão nenhuma do cliente.
+  assert.doesNotMatch(markup, /Funcionário Digital/);
+
+  // A distinção que a fatia inteira existe para afirmar: o merge de engenharia
+  // não é o aceite do cliente, e a tela os separa em duas metades.
+  assert.match(markup, /Entrega de engenharia/);
+  assert.match(markup, /Concluída pela operação/);
+  assert.match(markup, /Seu aceite/);
+  assert.match(markup, /Pendente — aguardando você/);
+  assert.match(markup, /merge de engenharia ≠ seu aceite/);
+
+  // Os controles existem e são os do pacote aprovado.
+  assert.match(markup, /Aprovar entrega/);
+  assert.match(markup, /Pedir ajuste/);
+});
+
+test("a escada de aceite mostra os cinco rótulos, e `done` em cinza", async () => {
+  const markup = await reviewTab();
+
+  assert.match(markup, /Pronto para revisão/);
+  assert.match(markup, /Em revisão/);
+  assert.match(markup, /Aprovado/);
+  assert.match(markup, /Ajuste pedido/);
+  assert.match(markup, /Concluído pela operação/);
+
+  // O tom de cada um, e não só o texto. `done` é **cinza** (`.state--2`) porque
+  // quem conclui a entrega é a operação: o aceite do cliente autoriza `accepted`,
+  // nunca `done` (ADR 0067). Pintá-lo de verde diria que o cliente o conquistou.
+  assert.match(markup, /class="state state--2"[^>]*>Concluído pela operação/);
+  assert.match(markup, /class="state state--0"[^>]*>Pronto para revisão/);
+  // A janela é larga porque a primitiva põe um ícone entre a classe e o texto —
+  // e o ícone é justamente o que faz o estado não depender só de cor (F-025 §04).
+  assert.match(markup, /state-pill--info[^>]*>[\s\S]{0,800}?Em revisão/);
+  assert.match(markup, /state-pill--success[^>]*>[\s\S]{0,800}?Aprovado/);
+  assert.match(markup, /state-pill--warning[^>]*>[\s\S]{0,800}?Ajuste pedido/);
+});
+
+test("uma segunda decisão acrescenta, e a primeira aparece superada", async () => {
+  // O reflexo na tela do `GRANT` só de `INSERT` (ADR 0077): quem escreve não
+  // reescreve. A asserção que importa é a **negativa** — a decisão anterior
+  // continua na tela, com o comentário que ela trazia.
+  acceptanceOverride = ACCEPTANCES;
+  try {
+    const markup = await reviewTab();
+
+    assert.match(markup, /Aprovado\. Pode seguir para produção\./);
+    assert.match(markup, /Faltou o anexo de custos na seção 4\./);
+    assert.match(markup, /superada/);
+    assert.match(markup, /is-superseded/);
+    // E o card veste o degrau da decisão em vigor, que é a última da lista.
+    assert.doesNotMatch(markup, /Pendente — aguardando você/);
+    // Nenhuma affordance de edição de decisão: o banco recusaria, e a tela não
+    // pode sequer sugerir que existe.
+    assert.doesNotMatch(markup, /Editar decisão|Refazer decisão|Apagar decisão/);
+  } finally {
+    acceptanceOverride = null;
+  }
+});
+
+test("o histórico que não carregou não vira 'ninguém decidiu'", async () => {
+  // Uma lista vazia diria "existe e ninguém decidiu". Não conseguir ler diz outra
+  // coisa, e a tela precisa dizer a que é verdadeira — é a mesma regra do
+  // `scan_state=skipped` não ser `clean`.
+  acceptanceOverride = "fail";
+  try {
+    const markup = await reviewTab();
+
+    assert.match(markup, /Não consegui carregar/);
+    assert.doesNotMatch(markup, /Pendente — aguardando você/);
+    assert.doesNotMatch(markup, /Nenhuma decisão registrada ainda/);
+  } finally {
+    acceptanceOverride = null;
+  }
+});
+
+test("o projeto sem escrita mantém o histórico e fecha a decisão", async () => {
+  // A API responde 409 aqui (ADR 0036/0037), então o formulário sai antes de a
+  // pessoa digitar — em vez de falhar depois.
+  dashboardOverride = { ...DASHBOARD, archived_at: "2026-08-06T22:23:24.171853+00:00" };
+  try {
+    const markup = await reviewTab();
+
+    assert.match(markup, /o histórico de decisões fica para consulta/);
+    assert.doesNotMatch(markup, /Aprovar entrega/);
+    assert.doesNotMatch(markup, /Pedir ajuste/);
+    // E a entrega continua listada: consulta é consulta, não desaparecimento.
+    assert.match(markup, /Acesso ao portal/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("o entregável sem identidade na origem diz por que não recebe decisão", async () => {
+  // `external_ref` é nulo quando o Biahflow não mandou a chave, e aí não há rota de
+  // aceite a chamar. Esconder a entrega seria a degradação silenciosa de sempre;
+  // um botão que não leva a lugar nenhum seria o controle inerte da ADR 0026.
+  dashboardOverride = {
+    ...DASHBOARD,
+    journey: {
+      ...DASHBOARD.journey,
+      phases: DASHBOARD.journey.phases.map((phase) => ({
+        ...phase,
+        deliverables: phase.deliverables.map((deliverable) => ({
+          ...deliverable,
+          external_ref: null,
+        })),
+      })),
+    },
+  };
+  try {
+    const markup = await reviewTab();
+
+    assert.match(markup, /ainda não tem identificador na origem/);
+    assert.doesNotMatch(markup, /Aprovar entrega/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("a jornada oferece o atalho para a revisão da entrega identificada", async () => {
+  // O `[Revisar]` do card do entregável, que é a outra metade da resolução do gate
+  // ("aba própria **mais** atalho a partir do entregável"). A fase Welcome é aberta
+  // pela âncora, como o `deliverable_delivered` a abre.
+  const markup = await anchored("Visão geral", "deliverable:Acesso ao portal");
+  assert.match(markup, />Revisar</);
+});
+
+test("a âncora do entregável destaca o card na aba de Revisão", async () => {
+  const markup = await anchored("Revisão", "deliverable:Acesso ao portal");
   assert.ok(anchoredRow(markup, "deliverable:Acesso ao portal"));
 });
 

@@ -58,8 +58,10 @@ export const DASHBOARD = {
   journey: {
     current_phase: "Prove",
     phases: [
-      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", target_date: null, deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null }] },
-      { name: "Prove", description: "Piloto do funcionário digital.", state: "active", target_date: "2026-09-20", deliverables: [{ name: "Funcionário Digital", state: "pending", link: null }] },
+      // `external_ref` é a identidade do entregável no Biahflow (ADR 0077) e o caminho
+      // da rota de aceite. Os mesmos ids do snapshot semeado.
+      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", target_date: null, deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null, external_ref: "91" }] },
+      { name: "Prove", description: "Piloto do funcionário digital.", state: "active", target_date: "2026-09-20", deliverables: [{ name: "Funcionário Digital", state: "pending", link: null, external_ref: "92" }] },
       { name: "Scale", description: "Expansão para mais áreas.", state: "locked", target_date: null, deliverables: [] },
     ],
   },
@@ -191,6 +193,43 @@ export const SEARCH = {
       tab: "Documentos",
       document_id: "cccccccc-1111-4222-8333-444444444444",
       item_anchor: "document:Contrato de manutenção",
+    },
+  ],
+};
+
+/** `GET /api/v1/me/deliverables/{ref}/acceptance` — o histórico de aceite (ADR 0077).
+ *
+ *  Duas decisões e nesta ordem, que é a da escrita: a supersessão só existe
+ *  porque a **última** é a que vale, e uma fixture com uma decisão só deixaria o
+ *  histórico riscado — o núcleo da fatia — sem exercício nenhum.
+ *
+ *  Não é o que o stub serve por padrão: o estado comum é "ninguém decidiu ainda",
+ *  e é ele que o contador de "aguardando você" precisa saber contar. Quem quer o
+ *  histórico o injeta, como `archivedDashboard()` injeta o projeto encerrado. */
+export const ACCEPTANCES = {
+  deliverable_external_ref: "91",
+  items: [
+    {
+      id: "dddddddd-1111-4222-8333-444444444441",
+      deliverable_external_ref: "91",
+      phase_name: "Welcome",
+      deliverable_name: "Acesso ao portal",
+      action: "changes_requested",
+      actor_label: "Marina Farias",
+      actor_is_internal: false,
+      comment: "Faltou o anexo de custos na seção 4.",
+      created_at: "2026-08-18T09:10:00+00:00",
+    },
+    {
+      id: "dddddddd-1111-4222-8333-444444444442",
+      deliverable_external_ref: "91",
+      phase_name: "Welcome",
+      deliverable_name: "Acesso ao portal",
+      action: "accepted",
+      actor_label: "Marina Farias",
+      actor_is_internal: false,
+      comment: "Aprovado. Pode seguir para produção.",
+      created_at: "2026-08-19T14:22:00+00:00",
     },
   ],
 };

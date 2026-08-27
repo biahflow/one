@@ -965,6 +965,17 @@
               }
             ]
           },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
           "pendings": {
             "items": {
               "$ref": "#/components/schemas/PendingOut"
@@ -975,6 +986,17 @@
           "project": {
             "title": "Project",
             "type": "string"
+          },
+          "projection_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projection Version"
           },
           "results": {
             "$ref": "#/components/schemas/MilestoneCountsOut"
@@ -996,6 +1018,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
           }
         },
         "required": [
@@ -1004,6 +1037,9 @@
           "completion",
           "archived_at",
           "source_deleted_at",
+          "observed_at",
+          "synced_at",
+          "projection_version",
           "health",
           "journey",
           "digital_employees",
@@ -2227,6 +2263,17 @@
               }
             ]
           },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
           "organization": {
             "anyOf": [
               {
@@ -2253,6 +2300,17 @@
             "title": "Project Id",
             "type": "string"
           },
+          "projection_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projection Version"
+          },
           "results": {
             "$ref": "#/components/schemas/MilestoneCountsOut"
           },
@@ -2273,6 +2331,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
           }
         },
         "required": [
@@ -2281,6 +2350,9 @@
           "completion",
           "archived_at",
           "source_deleted_at",
+          "observed_at",
+          "synced_at",
+          "projection_version",
           "health",
           "journey",
           "digital_employees",

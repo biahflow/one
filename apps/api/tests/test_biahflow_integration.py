@@ -287,6 +287,121 @@ def test_sync_carrega_o_arquivamento_do_biahflow_nos_dois_sentidos(db_session: S
 
 
 @pytest.mark.integration
+def test_o_carimbo_da_origem_atravessa_e_a_projecao_o_chama_de_observado(
+    db_session: Session,
+) -> None:
+    """O caminho bom do contrato de projeção versionado (ADR 0076).
+
+    Quando o Biahflow carimba `observed_at` e `projection_version` no envelope, é a hora
+    **dele** que fica — a idade do dado, não a da cópia — e a proveniência é `observed`.
+    `synced_at` fica nulo de propósito: as duas colunas são mutuamente exclusivas, e é isso
+    que impede o rótulo de discordar do instante.
+    """
+    snap = _snapshot(biahflow_project_id=61, client_id=57)
+    snap["observed_at"] = "2026-08-20T09:00:00+00:00"
+    snap["projection_version"] = 7
+
+    project = biahflow.sync_snapshot(db_session, snap)
+
+    assert project.observed_at == datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)
+    assert project.projection_version == 7
+    assert project.synced_at is None
+    assert biahflow.freshness(project) == (
+        biahflow.FRESHNESS_OBSERVED,
+        datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc),
+    )
+
+
+@pytest.mark.integration
+def test_sem_carimbo_da_origem_a_projecao_diz_sincronizado_e_nao_observado(
+    db_session: Session,
+) -> None:
+    """O fallback declarado da ADR 0076, e o rótulo é o ponto dele.
+
+    Um Biahflow anterior a esta fatia não manda os campos. O portal grava a hora da **cópia**
+    e a projeção a chama de `synced` — "sincronizado há X", nunca "observado há X". Carimbar
+    `now()` como se fosse a observação da origem seria a falsa precisão que `results.py`
+    recusa e que a ADR 0026 apagou da tela ao remover um "Atualizado há 2 dias" inventado.
+
+    A asserção que importa é a do **rótulo**, não a do timestamp: o timestamp existiria de
+    qualquer jeito; o que a fatia entrega é a honestidade sobre o que ele significa.
+    """
+    snap = _snapshot(biahflow_project_id=62, client_id=58)
+    assert "observed_at" not in snap and "projection_version" not in snap
+    antes = datetime.now(timezone.utc)
+
+    project = biahflow.sync_snapshot(db_session, snap)
+
+    assert project.observed_at is None
+    assert project.projection_version is None
+    assert project.synced_at is not None and project.synced_at >= antes
+    rotulo, instante = biahflow.freshness(project)
+    assert rotulo == biahflow.FRESHNESS_SYNCED
+    assert instante == project.synced_at
+
+
+@pytest.mark.integration
+def test_a_origem_que_para_de_carimbar_degrada_para_sincronizado(db_session: Session) -> None:
+    """`None` é um valor, não "não mexa" — o argumento do `archived_at` (ADR 0036).
+
+    Se o carimbo some do envelope (rollback do outro lado, instância antiga), a projeção tem
+    de **degradar** para a hora da cópia. Manter o `observed_at` velho faria a tela afirmar
+    uma observação que a origem parou de fazer, que é exatamente o que esta fatia existe
+    para não deixar acontecer.
+    """
+    snap = _snapshot(biahflow_project_id=63, client_id=59)
+    snap["observed_at"] = "2026-08-20T09:00:00+00:00"
+    snap["projection_version"] = 3
+    project = biahflow.sync_snapshot(db_session, snap)
+    assert project.observed_at is not None
+
+    snap.pop("observed_at")
+    snap.pop("projection_version")
+    project = biahflow.sync_snapshot(db_session, snap)
+
+    assert project.observed_at is None
+    assert project.projection_version is None
+    assert biahflow.freshness(project)[0] == biahflow.FRESHNESS_SYNCED
+
+
+@pytest.mark.integration
+def test_o_dashboard_projeta_o_frescor_e_nunca_as_duas_datas_juntas(
+    db_session: Session,
+) -> None:
+    """A projeção do frescor, nos dois caminhos (ADR 0076 §2).
+
+    A asserção que carrega a fatia é a da **exclusão mútua**: se as duas datas viessem
+    preenchidas, a tela teria dois instantes e nenhuma regra escrita sobre qual mostrar — e
+    aí "observado há X" e "sincronizado há X" deixariam de ser afirmações diferentes.
+    """
+    snap = _snapshot(biahflow_project_id=64, client_id=60)
+    snap["observed_at"] = "2026-08-20T09:00:00+00:00"
+    snap["projection_version"] = 12
+
+    dashboard = biahflow.build_dashboard(db_session, biahflow.sync_snapshot(db_session, snap))
+
+    assert dashboard["observed_at"] == "2026-08-20T09:00:00+00:00"
+    assert dashboard["synced_at"] is None
+    assert dashboard["projection_version"] == 12
+
+    snap.pop("observed_at")
+    snap.pop("projection_version")
+    dashboard = biahflow.build_dashboard(db_session, biahflow.sync_snapshot(db_session, snap))
+
+    assert dashboard["observed_at"] is None
+    assert dashboard["synced_at"] is not None
+    assert dashboard["projection_version"] is None
+
+
+def test_um_projeto_sem_passagem_nenhuma_nao_ganha_carimbo_inventado() -> None:
+    """Sem hora de verdade, **não há carimbo** (ADR 0076 §2).
+
+    Unitário: não precisa de banco porque a pergunta é sobre a função, não sobre a linha.
+    """
+    assert biahflow.freshness(Project(name="x", slug="x")) is None
+
+
+@pytest.mark.integration
 def test_sync_snapshot_replaces_phases_and_deliverables(db_session: Session) -> None:
     snap = _snapshot(biahflow_project_id=16, client_id=14)
     biahflow.sync_snapshot(db_session, snap)

@@ -332,6 +332,55 @@ function inertButtons(source) {
   return found;
 }
 
+/**
+ * Todo `.ai-button` carrega um ícone — e isto é sobre a **forma do controle**,
+ * como o `inertButtons()` acima, só que o que some não é o handler: é o nome.
+ *
+ * A regra móvel de `app/globals.css` colapsa o rótulo abaixo de 760px
+ * (`.ai-button { padding: 10px; font-size: 0 }`) e foi escrita para o botão do
+ * herói, que tem `<Sparkles />` e vira o ícone dele. Quem não tem ícone não vira
+ * nada: vira um círculo roxo vazio, e o HTML continua idêntico ao de um botão
+ * correto — nenhuma asserção sobre string o distingue, e o Playwright clica nele
+ * normalmente, porque o controle *funciona*; ele só não tem como ser lido.
+ *
+ * Foi assim que o "Tentar de novo" de `app/error.tsx` atravessou o produto sendo
+ * o **único** dos doze `.ai-button` sem ícone — e logo o único caminho de
+ * recuperação da tela de erro, sem nome, no celular. Achado ao fotografar a
+ * evidência da F-028 (#75), não por leitura de código.
+ *
+ * A alternativa era restringir a regra ao herói, o que devolveria rótulo aos
+ * botões do `/admin` — mudança visual numa superfície fora do escopo de uma
+ * correção. Doze controles seguem a mesma convenção; o defeito era a exceção.
+ */
+function iconlessAiButtons(source) {
+  const found = [];
+  for (let at = source.indexOf("<button"); at !== -1; at = source.indexOf("<button", at + 1)) {
+    if (/[\w-]/.test(source[at + "<button".length] ?? "")) continue;
+    let depth = 0;
+    let quote = "";
+    let end = at + "<button".length;
+    for (; end < source.length; end += 1) {
+      const char = source[end];
+      if (quote) {
+        if (char === quote) quote = "";
+      } else if (char === '"' || char === "'" || char === "`") quote = char;
+      else if (char === "{") depth += 1;
+      else if (char === "}") depth -= 1;
+      else if (char === ">" && depth === 0) break;
+    }
+    const tag = source.slice(at, end + 1);
+    if (!/className=(?:"[^"]*\bai-button\b|\{`[^`]*\bai-button\b)/.test(tag)) continue;
+    const close = source.indexOf("</button>", end);
+    if (close === -1) continue;
+    // Um componente React (`<Sparkles />`, `<Mail />`) ou um `<svg>` cru. Basta
+    // existir: o que a regra móvel preserva é o glifo, não qual é.
+    const inner = source.slice(end + 1, close);
+    if (/<[A-Z][\w]*[\s/>]|<svg[\s>]/.test(inner)) continue;
+    found.push(`linha ${source.slice(0, at).split("\n").length}: ${tag.replace(/\s+/g, " ")}`);
+  }
+  return found;
+}
+
 test("closes the portal to anonymous visitors", async () => {
   const response = await render("/", { redirect: "manual" });
 
@@ -1028,6 +1077,14 @@ test("keeps product metadata and avoids disposable starter artifacts", async () 
       inertButtons(source),
       [],
       `${path} tem <button> sem onClick nem type="submit" (ADR 0026)`,
+    );
+    // E nenhum `.ai-button` fica sem ícone: abaixo de 760px o rótulo é colapsado
+    // por CSS, então um botão sem glifo perde o **nome** e não a função.
+    assert.deepEqual(
+      iconlessAiButtons(source),
+      [],
+      `${path} tem .ai-button sem ícone — no celular ele vira um círculo sem` +
+        ` rótulo, porque a regra móvel zera a fonte (achado em #75)`,
     );
   }
 

@@ -374,7 +374,7 @@ export default function KnowledgeClient({
                     disabled={pending}
                     onClick={() => pickFolder(folder)}
                   >
-                    Autorizar
+                    <Link2 size={16} /> Autorizar
                   </button>
                 </div>
               ))}

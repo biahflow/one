@@ -2,7 +2,7 @@
 
 Classification: INTERFACE_CHANGE (superfície de uma `FEATURE_CHANGE`)
 Revision: 1
-Status: Awaiting approval
+Status: Approved
 Date: 2026-08-26
 Produced by: Claude Opus 4.8 (1M context), sob a Engineering OS
 
@@ -26,10 +26,10 @@ aceite de negócio fica **visivelmente distinto** do merge de engenharia, e a c�
 
 | Campo | Valor |
 | --- | --- |
-| What was approved | `{{visual / cópia / ambos / nada ainda}}` — **pendente** |
-| Approved by | `{{pessoa}}` |
-| Date | `{{aaaa-mm-dd}}` |
-| Revision approved | `{{n}}` |
+| What was approved | **visual e cópia** (as *Open questions* seguem em aberto — a aprovação não as resolve) |
+| Approved by | Daniel Campos |
+| Date | 26/08/2026 |
+| Revision approved | **1** |
 | Explicitly **not** approved | `superseded`/`cancelled` como rótulos visuais (não desenhados aqui — exigem revisão própria) · qualquer superfície de administração do aceite pelo time · assinatura eletrônica · exibição de estado de PR/CI ao cliente · tema escuro |
 
 Aprovação de visual não é de cópia; aprovação desta revisão não é de uma posterior.

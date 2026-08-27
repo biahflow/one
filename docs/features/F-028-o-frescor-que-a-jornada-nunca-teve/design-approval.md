@@ -2,7 +2,7 @@
 
 Classification: INTERFACE_CHANGE (superfície de uma `INTEGRATION_CHANGE`)
 Revision: 1
-Status: Awaiting approval
+Status: Approved
 Date: 2026-08-26
 Produced by: Claude Opus 4.8 (1M context), sob a Engineering OS
 
@@ -25,10 +25,10 @@ distintos), e como uma decisão/gate aparece ancorada à fase que desbloqueou.
 
 | Campo | Valor |
 | --- | --- |
-| What was approved | `{{visual / cópia / ambos / nada ainda}}` — **pendente** |
-| Approved by | `{{pessoa}}` |
-| Date | `{{aaaa-mm-dd}}` |
-| Revision approved | `{{n}}` |
+| What was approved | **visual e cópia** (as *Open questions* seguem em aberto — a aprovação não as resolve) |
+| Approved by | Daniel Campos |
+| Date | 26/08/2026 |
+| Revision approved | **1** |
 | Explicitly **not** approved | Exibição de qualquer campo internal-only (GitHub/CI/ClickUp/LangGraph/LangSmith/margens — ADR 0067) · o limiar numérico exato do stale (é decisão de operação, não de design) · tema escuro |
 
 ## Artifact

@@ -1,7 +1,7 @@
 """a identidade do entregável que o sync não podia apagar (Fase 7, FDD 027, ADR 0077)
 
 Revision ID: 0034_deliverable_external_ref
-Revises: 0030_whatsapp_reply_kind
+Revises: 0031_projection_freshness
 Create Date: 2026-08-27
 
 Uma coluna, nullable, com índice — e nenhum GRANT nem policy novos, porque
@@ -40,7 +40,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '0034_deliverable_external_ref'
-down_revision: str | None = '0030_whatsapp_reply_kind'
+down_revision: str | None = '0031_projection_freshness'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

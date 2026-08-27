@@ -252,5 +252,17 @@ locals {
       servico = "pulse-api"
       comando = ["python", "manage.py", "check_integrations", "--all"]
     }
+    # Ao contrário dos dois acima, este não é invocado por workflow de deploy nenhum:
+    # `createsuperuser --noinput` cria o admin inaugural de um ambiente, uma vez na vida
+    # dele, não a cada publicação de imagem. Ganha casa permanente mesmo assim — a
+    # alternativa é recriar o admin por `gcloud run jobs create` improvisado na próxima
+    # vez que um ambiente precisar de um, que foi exatamente como `cockpit-createsuperuser`
+    # nasceu fora deste arquivo em 20/08/2026, sem que o Terraform o soubesse (ADR 0075).
+    # Sobreviveu ao desmonte dos `cockpit-*` (ADR 0070) só porque nenhuma configuração o
+    # conhecia; agora conhece, com o nome `pulse-*` que os outros cinco já usam.
+    pulse-createsuperuser = {
+      servico = "pulse-api"
+      comando = ["python", "manage.py", "createsuperuser", "--noinput"]
+    }
   }
 }

@@ -24,6 +24,10 @@ TAB_OVERVIEW = "Visão geral"
 TAB_SCHEDULE = "Cronograma"
 TAB_DOCUMENTS = "Documentos"
 TAB_MEETINGS = "Reuniões"
+#: Onde o cliente aprova a entrega ou pede ajuste (FDD 027, ADR 0077). Vizinha de
+#: ``TAB_PENDINGS`` de propósito: são as duas abas em que a bola está com ele, e
+#: as duas carregam contador de "aguardando você" na barra lateral.
+TAB_REVIEW = "Revisão"
 TAB_PENDINGS = "Pendências"
 TAB_DECISIONS = "Decisões"
 TAB_RESULTS = "Resultados"
@@ -34,6 +38,7 @@ ALL: tuple[str, ...] = (
     TAB_SCHEDULE,
     TAB_DOCUMENTS,
     TAB_MEETINGS,
+    TAB_REVIEW,
     TAB_PENDINGS,
     TAB_DECISIONS,
     TAB_RESULTS,

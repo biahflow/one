@@ -262,3 +262,95 @@ export async function addPendingCommentAction(
   if (ok) revalidatePath("/");
   return ok;
 }
+
+/**
+ * A decisão do cliente sobre um entregável (FDD 027, ADR 0077).
+ *
+ * Server Action pela razão do comentário da pendência: o token sai de
+ * `authorizationHeader()` no servidor e o navegador só vê o desfecho. A API é
+ * quem autoriza, e ela responde sobre o projeto do próprio chamador.
+ *
+ * **Não devolve a linha gravada, e isso é escolha.** A resposta do `POST` traz a
+ * decisão inteira, mas quem a mostra é o histórico do próximo render — e ele vem
+ * do servidor, pelo `revalidatePath` abaixo, exatamente como a contagem do fio da
+ * pendência. Espelhar a linha aqui criaria uma segunda fonte para "o que foi
+ * decidido", que é a divisão que `deliverable_acceptance.py` existe para não ter.
+ */
+export type DecisionOutcome =
+  | { ok: true }
+  | { ok: false; reason: "read_only" | "rate_limited" | "failed" };
+
+/**
+ * `callApi` que devolve o **status**, e não só o `ok`.
+ *
+ * Quarta porta neste arquivo, pela razão que a terceira já escreveu: "o que a tela
+ * escreve", "o que ela lê" e "o que o servidor guardou" são perguntas diferentes.
+ * Aqui a pergunta é a quarta — *por que* a escrita foi recusada —, e ela existe
+ * porque as duas recusas que o cliente consegue entender têm nome: o projeto sem
+ * escrita (409, ADR 0036/0037) e o ritmo (429). Qualquer outra vira a mesma frase
+ * opaca, que é o que impede a tela de fabricar um motivo que ela não sabe.
+ *
+ * `null` é "não cheguei a falar com a API": sem base, sem token, ou rede caída.
+ */
+async function postApiStatus(path: string, body: object): Promise<number | null> {
+  const base = process.env.API_BASE_URL;
+  const authorization = await authorizationHeader();
+  if (!base || !authorization) return null;
+
+  try {
+    const response = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authorization },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      logWarn("api.rejected", {
+        trace_id: await traceId(),
+        path,
+        status: response.status,
+      });
+    }
+    return response.status;
+  } catch (error) {
+    logWarn("api.unreachable", {
+      trace_id: await traceId(),
+      path,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Aprovar a entrega, ou pedir ajuste.
+ *
+ * O comentário é **opcional em aprovar e esperado em pedir ajuste**, e a espera é
+ * da tela: a API aceita os dois sem texto, porque um pedido de ajuste sem
+ * comentário continua sendo uma decisão que o time precisa ver. Vazio vira `null`
+ * em vez de string vazia — é o mesmo `.strip() or None` do outro lado, e mandar
+ * `""` gravaria "comentou nada" em vez de "não comentou".
+ */
+export async function recordDeliverableDecisionAction(
+  externalRef: string,
+  action: "accepted" | "changes_requested",
+  comment: string,
+  projectId?: string | null,
+): Promise<DecisionOutcome> {
+  const text = comment.trim();
+  const status = await postApiStatus(
+    `/api/v1/me/deliverables/${encodeURIComponent(externalRef)}/acceptance` +
+      projectQuery(projectId),
+    { action, comment: text ? text : null },
+  );
+  if (status === 201) {
+    // Revalida para o histórico do próximo render vir do servidor, pela razão do
+    // contador do sino e da contagem do fio: a linha é imutável, e a única cópia
+    // dela que a tela deve mostrar é a que o banco devolveu.
+    revalidatePath("/");
+    return { ok: true };
+  }
+  if (status === 409) return { ok: false, reason: "read_only" };
+  if (status === 429) return { ok: false, reason: "rate_limited" };
+  return { ok: false, reason: "failed" };
+}

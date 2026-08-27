@@ -1241,6 +1241,17 @@
       "DeliverableOut": {
         "additionalProperties": false,
         "properties": {
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
           "link": {
             "anyOf": [
               {
@@ -1264,7 +1275,8 @@
         "required": [
           "name",
           "state",
-          "link"
+          "link",
+          "external_ref"
         ],
         "title": "DeliverableOut",
         "type": "object"

@@ -9,6 +9,7 @@ import {
   CalendarClock,
   Check,
   ChevronDown,
+  ClipboardCheck,
   Clock3,
   Download,
   FileText,
@@ -53,6 +54,8 @@ import {
   addPendingCommentAction,
   listPendingCommentsAction,
   markNotificationsReadAction,
+  recordDeliverableDecisionAction,
+  type DecisionOutcome,
   type PendingComment,
   type ChannelPreferences,
   setEmailPreferenceAction,
@@ -102,6 +105,9 @@ const navItems = [
   { label: "Cronograma", icon: CalendarClock },
   { label: "Documentos", icon: FolderOpen },
   { label: "Reuniões", icon: UsersRound },
+  // Onde o cliente aprova a entrega ou pede ajuste (FDD 027, ADR 0077). A ordem é a
+  // de `portal_api/tabs.py`, e `test_tabs.py` reprova se as duas divergirem.
+  { label: "Revisão", icon: ClipboardCheck },
   { label: "Pendências", icon: Inbox },
   { label: "Decisões", icon: Scale },
   { label: "Resultados", icon: TrendingUp },
@@ -132,6 +138,118 @@ function openPendings(overview: Overview): PendingItemView[] {
       (a, b) =>
         (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9),
     );
+}
+
+/**
+ * A escada de aceite (DAP F-027; os cinco rótulos e seus tons são **retidos** da
+ * F-025 §10, não novos).
+ *
+ * Duas coisas separadas de propósito. A escada é a **legenda** — os cinco degraus,
+ * na ordem, com o rótulo e o tom que o pacote aprovou. O estado do card é
+ * **derivado do dado** por `acceptanceState`, e derivar não é o mesmo que ter
+ * produtor: hoje o snapshot traz `pending`/`delivered` e o registro traz
+ * `accepted`/`changes_requested`, e nada neste produto emite `client_review` nem
+ * `done`. Eles ficam na legenda, que é onde o artefato aprovado os põe, e nenhum
+ * card os veste — porque a tela só desenha o que a API entregou.
+ *
+ * `done` é **cinza** e a decisão é do ADR 0067: quem conclui a entrega é o
+ * lifecycle de Delivery. O aceite do cliente autoriza `accepted`, nunca `done`, e
+ * um `done` colorido como conquista do cliente diria o contrário.
+ */
+type AcceptanceState =
+  | "ready_for_acceptance"
+  | "client_review"
+  | "accepted"
+  | "changes_requested"
+  | "done";
+
+const ACCEPTANCE_LADDER: readonly AcceptanceState[] = [
+  "ready_for_acceptance",
+  "client_review",
+  "accepted",
+  "changes_requested",
+  "done",
+];
+
+const ACCEPTANCE_LABEL: Record<AcceptanceState, string> = {
+  ready_for_acceptance: "Pronto para revisão",
+  client_review: "Em revisão",
+  accepted: "Aprovado",
+  changes_requested: "Ajuste pedido",
+  done: "Concluído pela operação",
+};
+
+/**
+ * O tom de cada degrau, e os dois que a primitiva ainda não cobre.
+ *
+ * `StatePill` tem quatro variantes semânticas (F-025 T02) e nenhuma de marca nem
+ * neutra — é a mesma lacuna que o `PILL_VARIANT` acima já declara ao deixar o `"2"`
+ * sem entrada. `brand` e `grey` caem no `.state` legado, que tem exatamente os
+ * valores do pacote (`.state--0` é `brand-50/brand-700`, `.state--2` é
+ * `surface-sunken/muted`). Acrescentar variante à primitiva está fora do escopo
+ * desta fatia, e o preço é declarado: os dois saem **sem ícone**. O rótulo carrega
+ * o sentido nos dois casos, então o estado não depende só de cor.
+ */
+const ACCEPTANCE_TONE: Record<AcceptanceState, StatePillVariant | "brand" | "grey"> = {
+  ready_for_acceptance: "brand",
+  client_review: "info",
+  accepted: "success",
+  changes_requested: "warning",
+  done: "grey",
+};
+
+/** O degrau em que a entrega está, ou `null` quando o histórico não carregou. */
+function acceptanceState(decisions: DeliverableDecision[] | null): AcceptanceState | null {
+  if (decisions === null) return null;
+  // A decisão em vigor é a **última**, e as anteriores continuam lá — é o que a
+  // ordem da API significa, e é o que torna a supersessão legível sem coluna
+  // nenhuma. Sem decisão, a entrega está pronta para a revisão do cliente.
+  return decisions.at(-1)?.action ?? "ready_for_acceptance";
+}
+
+/** O selo do degrau: a primitiva quando há variante, o `.state` legado quando não há. */
+function AcceptancePill({ state }: { state: AcceptanceState }) {
+  const tone = ACCEPTANCE_TONE[state];
+  const label = ACCEPTANCE_LABEL[state];
+  if (tone === "brand") return <span className="state state--0">{label}</span>;
+  if (tone === "grey") return <span className="state state--2">{label}</span>;
+  return <StatePill variant={tone}>{label}</StatePill>;
+}
+
+/** Um entregável que a operação já entregou, com a fase em que ele vive. */
+type ReviewItem = { phaseName: string; deliverable: JourneyDeliverable };
+
+/**
+ * O que aparece na aba de Revisão.
+ *
+ * A elegibilidade sai do **estado que o snapshot já traz** (resolução do gate de
+ * 27/08/2026): entregue pela operação é o que abre a revisão do cliente. O que a
+ * operação ainda não entregou não tem decisão a receber, e listá-lo pediria ao
+ * cliente que aprovasse o que não existe.
+ */
+function reviewItems(overview: Overview): ReviewItem[] {
+  return overview.journey.phases.flatMap((phase) =>
+    phase.deliverables
+      .filter((deliverable) => deliverable.state === "delivered")
+      .map((deliverable) => ({ phaseName: phase.name, deliverable })),
+  );
+}
+
+/**
+ * Quantas entregas estão **com o cliente** — o contador da barra lateral.
+ *
+ * Só conta o que ele pode decidir: entregue, identificado na origem e ainda sem
+ * decisão nenhuma. Depois de aprovar ou de pedir ajuste a bola está do outro lado,
+ * e um contador que continuasse marcando pediria uma ação que já foi feita. O
+ * histórico que não carregou também não conta — não se sabe de quem é a bola.
+ */
+function awaitingReview(overview: Overview): number {
+  return reviewItems(overview).filter(
+    ({ deliverable }) =>
+      deliverable.externalRef !== null &&
+      deliverable.decisions !== null &&
+      deliverable.decisions.length === 0,
+  ).length;
 }
 
 /**
@@ -408,7 +526,38 @@ export type MeasuredResults = {
   basis: MeasuredBasis;
   gaps: string[];
 };
-export type JourneyDeliverable = { name: string; state: "pending" | "delivered"; link: string | null };
+/**
+ * Uma decisão do cliente sobre um entregável, como o histórico a mostra (ADR 0077).
+ *
+ * `decidedAt` chega **formatado** de `app/page.tsx`, e não em ISO: este histórico é
+ * renderizado no servidor, e formatar no cliente escreveria com o fuso do navegador
+ * sobre um HTML que o servidor já escreveu com o dele.
+ *
+ * Não há campo de "em vigor", e a ausência é a mesma da API: a decisão em vigor é a
+ * última da lista, e calculá-la do outro lado inventaria um estado que a tabela não
+ * guarda. Também não há nada aqui que **edite** uma decisão — o `GRANT` de
+ * `portal_app` é `SELECT, INSERT` e nada mais, e a tela não pode sequer sugerir o
+ * contrário.
+ */
+export type DeliverableDecision = {
+  id: string;
+  action: "accepted" | "changes_requested";
+  actorLabel: string;
+  actorIsInternal: boolean;
+  comment: string | null;
+  decidedAt: string;
+};
+export type JourneyDeliverable = {
+  name: string;
+  state: "pending" | "delivered";
+  link: string | null;
+  /** A identidade do entregável no Biahflow — o caminho da rota de aceite (ADR 0077).
+   *  Nula quando a origem não a mandou, e aí não há decisão a registrar. */
+  externalRef: string | null;
+  /** O histórico, do mais antigo para o mais novo. `null` é "não consegui carregar",
+   *  que **não** é a mesma coisa que a lista vazia de "ninguém decidiu ainda". */
+  decisions: DeliverableDecision[] | null;
+};
 export type DigitalEmployeeView = { name: string; area: string | null; description: string | null; status: string; kpiLabel: string | null; kpiValue: string | null; hoursSavedMonth: number | null; roiMonth: number | null };
 export type JourneyPhase = {
   name: string;
@@ -426,7 +575,13 @@ export type JourneyPhase = {
  * forte — um projeto pode ter sido encerrado antes de ser apagado —, e é a mesma ordem de
  * `_refuse_when_read_only` na API, de propósito.
  */
-type ReadOnlyReason = { pill: string; chat: string; comments: string } | null;
+type ReadOnlyReason = {
+  pill: string;
+  chat: string;
+  comments: string;
+  /** A mesma recusa na aba de Revisão: a API responde 409 ali também (ADR 0036/0037). */
+  decisions: string;
+} | null;
 
 function readOnlyReason(overview: Overview): ReadOnlyReason {
   if (overview.sourceDeletedAt !== null) {
@@ -438,6 +593,9 @@ function readOnlyReason(overview: Overview): ReadOnlyReason {
       comments:
         "O projeto foi removido no Biahflow: os comentários ficam para consulta e não é " +
         "possível escrever novos.",
+      decisions:
+        "O projeto foi removido no Biahflow: o histórico de decisões fica para consulta e " +
+        "não é possível registrar novas.",
     };
   }
   if (overview.archivedAt !== null) {
@@ -449,6 +607,9 @@ function readOnlyReason(overview: Overview): ReadOnlyReason {
       comments:
         "O projeto foi encerrado: os comentários ficam para consulta e não é possível escrever " +
         "novos.",
+      decisions:
+        "O projeto foi encerrado: o histórico de decisões fica para consulta e não é possível " +
+        "registrar novas.",
     };
   }
   return null;
@@ -821,6 +982,10 @@ export default function DashboardClient({
     [overview, aiPendings],
   );
   const openCount = openPendings(view).length;
+  // Quantas entregas aguardam a decisão do cliente (FDD 027). Derivado no render e
+  // vindo do SSR, como o `openCount` ao lado: um contador que só aparecesse depois
+  // da hidratação piscaria, e nenhuma asserção de HTML renderizado o alcançaria.
+  const reviewCount = awaitingReview(view);
   // Toda linha que esta tela consegue destacar. Memoizado porque passou a ter dois
   // leitores (a nota do aviso e o clique da busca) e a lista percorre cinco coleções
   // do `overview` — antes era uma chamada por render, dentro do próprio `if`.
@@ -1018,6 +1183,12 @@ export default function DashboardClient({
         return <DocumentsView onAsk={askAi} overview={view} focusedItem={focusedItem} />;
       case "Reuniões":
         return <MeetingsView onAsk={askAi} overview={view} focusedItem={focusedItem} />;
+      // Numa linha, sem parênteses e sem nada entre o `case` e o `return`, como os
+      // vizinhos: `test_item_anchor.py` lê este `switch` por regex para saber qual aba
+      // desenha qual âncora, e um `return (` — ou um comentário no meio — faz a aba
+      // contar como a do `default:`.
+      case "Revisão":
+        return <ReviewView onAsk={askAi} overview={view} focusedItem={focusedItem} projectId={activeProject?.id ?? null} />;
       case "Pendências":
         return <PendingView onAsk={askAi} overview={view} onOpenTurn={openTurn} focusedItem={focusedItem} projectId={activeProject?.id ?? null} />;
       case "Decisões":
@@ -1108,6 +1279,7 @@ export default function DashboardClient({
               <Icon size={18} strokeWidth={1.9} />
               <span>{label}</span>
               {label === "Pendências" && openCount > 0 && <em>{openCount}</em>}
+              {label === "Revisão" && reviewCount > 0 && <em>{reviewCount}</em>}
             </button>
           ))}
         </nav>
@@ -1502,7 +1674,22 @@ function FreshnessStamp({ freshness }: { freshness: FreshnessView }) {
   );
 }
 
-function JourneyPanel({ journey, freshness, focusedItem }: { journey: Overview["journey"]; freshness: FreshnessView | null; focusedItem?: string | null }) {
+function JourneyPanel({
+  journey,
+  freshness,
+  focusedItem,
+  onNavigate,
+}: {
+  journey: Overview["journey"];
+  /** O carimbo de frescor da projeção (ADR 0076); `null` quando nunca houve sync. */
+  freshness: FreshnessView | null;
+  focusedItem?: string | null;
+  /** O atalho `[Revisar]` para a aba de Revisão, na linha do entregável (FDD 027).
+   *  É o `goTo` de sempre — troca de aba **e** carrega a âncora —, e não uma URL:
+   *  a navegação deste componente é estado, e o `?tab=`/`?item=` existe para quem
+   *  chega de fora (ADR 0043/0056). */
+  onNavigate?: (label: string, item?: string) => void;
+}) {
   const phases = journey.phases;
   const activeIndex = phases.findIndex((phase) => phase.state === "active");
   /**
@@ -1589,6 +1776,18 @@ function JourneyPanel({ journey, freshness, focusedItem }: { journey: Overview["
                   ) : (
                     <span>{deliverable.name}</span>
                   )}
+                  {/* Só o que a operação entregou e a origem identificou: sem
+                      `external_ref` não há rota de aceite, e um atalho para um card
+                      que não decide nada é o controle inerte da ADR 0026 com outro
+                      nome. */}
+                  {unlocked && deliverable.externalRef && onNavigate && (
+                    <button
+                      className="text-button"
+                      onClick={() => onNavigate("Revisão", `deliverable:${deliverable.name}`)}
+                    >
+                      Revisar
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -1620,7 +1819,7 @@ function compact(value: number): string {
   return value.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 }
 
-function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user, focusedItem }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string) => void; onOpenTurn: (messageId: string, conversationId: string | null) => void; overview: Overview; user: PortalUser; focusedItem?: string | null }) {
+function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user, focusedItem }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string, item?: string) => void; onOpenTurn: (messageId: string, conversationId: string | null) => void; overview: Overview; user: PortalUser; focusedItem?: string | null }) {
   const timeline = overview.milestones;
   const open = openPendings(overview);
   const roi = roiValue(overview.roi);
@@ -1634,7 +1833,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
     <>
       <ViewHero eyebrow={overview.project.toLocaleUpperCase("pt-BR")} title={`Bom dia, ${firstName(user.name)}.`} subtitle="Veja o que está acontecendo no seu projeto." onAsk={onAsk} />
 
-      <JourneyPanel journey={overview.journey} freshness={overview.freshness} focusedItem={focusedItem} />
+      <JourneyPanel journey={overview.journey} freshness={overview.freshness} focusedItem={focusedItem} onNavigate={onNavigate} />
 
       <DigitalEmployees employees={overview.digitalEmployees} />
 
@@ -1880,6 +2079,290 @@ function MeetingsView({ onAsk, overview, focusedItem }: { onAsk: () => void; ove
         </div>
       </article>
     </>
+  );
+}
+
+/**
+ * A aba de Revisão (FDD 027, DAP r1 aprovado em 26/08/2026).
+ *
+ * A superfície que a F-025 §10 desenhou como **reservada**, agora viva: o card do
+ * entregável elegível, os controles que agem, o histórico imutável e a distinção
+ * entre a entrega de engenharia e o aceite do cliente.
+ *
+ * Aba própria (resolução do gate de 27/08/2026), com contador de "aguardando você"
+ * na barra lateral e atalho a partir do card do entregável na jornada.
+ */
+function ReviewView({
+  onAsk,
+  overview,
+  focusedItem,
+  projectId,
+}: {
+  onAsk: () => void;
+  overview: Overview;
+  focusedItem?: string | null;
+  projectId?: string | null;
+}) {
+  const items = reviewItems(overview);
+  const readOnly = readOnlyReason(overview);
+  return (
+    <>
+      <ViewHero
+        eyebrow="REVISÃO"
+        title="Revisão e aceite"
+        subtitle="Aprove a entrega ou peça ajuste. Sua decisão fica registrada e vai para o time da Biahflow."
+        onAsk={onAsk}
+      />
+
+      {/* Uma coluna, e não o `dashboard-grid` de duas: a escada é uma faixa larga —
+          cinco selos numa linha — e o card de revisão respira. Numa metade de tela os
+          selos quebram em duas linhas e o painel ao lado fica com um vazio do tamanho
+          da lista. */}
+      <section className="dashboard-grid dashboard-grid--single">
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">A ESCADA DE ACEITE</p>
+              <h2>Como uma entrega anda</h2>
+            </div>
+          </div>
+          {/* Os cinco degraus, na ordem e com os tons do pacote aprovado. É legenda,
+              não estado: nenhum card veste um degrau que o produto não emite. */}
+          <div className="review-ladder">
+            {ACCEPTANCE_LADDER.map((state, index) => (
+              <span className="review-step" key={state}>
+                {index > 0 && <span className="review-arrow" aria-hidden="true">→</span>}
+                <AcceptancePill state={state} />
+              </span>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">ENTREGAS</p>
+              <h2>Para revisar <span>{items.length}</span></h2>
+            </div>
+          </div>
+          {items.length === 0 ? (
+            <p className="empty-state">
+              Nada aguardando você. Quando houver uma entrega para revisar, ela aparece aqui.
+            </p>
+          ) : (
+            <div className="review-list">
+              {items.map((item) => (
+                <ReviewCard
+                  focusedItem={focusedItem}
+                  item={item}
+                  key={`${item.phaseName}/${item.deliverable.name}`}
+                  projectId={projectId}
+                  readOnly={readOnly}
+                />
+              ))}
+            </div>
+          )}
+        </article>
+      </section>
+    </>
+  );
+}
+
+/**
+ * O card de uma entrega, e o único caminho de escrita desta aba.
+ *
+ * **A separação do meio é o invariante da fatia**, não decoração: "entrega de
+ * engenharia concluída" é fato da operação, "seu aceite" é decisão do cliente, e
+ * sem as duas metades lado a lado a tela sugeriria que uma é a outra — que é
+ * exatamente o que a feature inteira nega.
+ *
+ * Os dois botões continuam disponíveis **depois** de uma decisão, e isso é o
+ * desenho e não descuido: uma segunda decisão **acrescenta** e a primeira aparece
+ * superada no histórico. Não há, e não pode haver, controle que edite uma decisão
+ * — o `GRANT` de `portal_app` naquela tabela é `SELECT, INSERT`, então o banco
+ * recusaria; um botão de editar seria funcionalidade errada, não funcionalidade
+ * faltando.
+ */
+function ReviewCard({
+  item,
+  readOnly,
+  projectId,
+  focusedItem,
+}: {
+  item: ReviewItem;
+  readOnly: ReadOnlyReason;
+  projectId?: string | null;
+  focusedItem?: string | null;
+}) {
+  const { phaseName, deliverable } = item;
+  const [comment, setComment] = useState("");
+  const [sending, startSending] = useTransition();
+  const [outcome, setOutcome] = useState<DecisionOutcome | null>(null);
+  const router = useRouter();
+
+  const decisions = deliverable.decisions;
+  const state = acceptanceState(decisions);
+  const current = decisions?.at(-1) ?? null;
+  const externalRef = deliverable.externalRef;
+
+  function decide(action: "accepted" | "changes_requested") {
+    if (!externalRef || sending) return;
+    startSending(async () => {
+      const result = await recordDeliverableDecisionAction(externalRef, action, comment, projectId);
+      setOutcome(result);
+      if (!result.ok) return;
+      setComment("");
+      // O histórico vem do servidor no próximo render, pela razão do fio da
+      // pendência: a linha gravada é a fonte, e espelhá-la aqui criaria uma
+      // segunda versão do que foi decidido.
+      router.refresh();
+    });
+  }
+
+  return (
+    <section
+      aria-label={`Revisão de ${deliverable.name}`}
+      className={`review-card panel ${`deliverable:${deliverable.name}` === focusedItem ? "is-anchored" : ""}`}
+      data-item={`deliverable:${deliverable.name}`}
+    >
+      <div className="review-head">
+        <div>
+          <h3>{deliverable.name}</h3>
+          <p className="review-phase">Fase: {phaseName}</p>
+        </div>
+        {state && <AcceptancePill state={state} />}
+      </div>
+
+      <div className="review-split">
+        <div className="review-half review-half--engineering">
+          <p className="review-lab">Entrega de engenharia</p>
+          <p className="review-val">Concluída pela operação</p>
+          <p className="review-note">o que a Biahflow entregou</p>
+        </div>
+        <div className="review-half">
+          <p className="review-lab">Seu aceite</p>
+          {/* O que a API disse, e nada além. Sem histórico carregado a tela não
+              afirma "pendente" — ela não sabe. */}
+          {decisions === null ? (
+            <p className="review-val">Não consegui carregar</p>
+          ) : current === null ? (
+            <p className="review-val review-val--pending">Pendente — aguardando você</p>
+          ) : (
+            <p className="review-val">
+              {ACCEPTANCE_LABEL[current.action]} · {current.decidedAt}
+            </p>
+          )}
+          <p className="review-note">merge de engenharia ≠ seu aceite</p>
+        </div>
+      </div>
+
+      {deliverable.link && (
+        <>
+          <p className="review-lab">Contexto e evidência</p>
+          <div className="review-evidence">
+            <a href={deliverable.link} target="_blank" rel="noreferrer">
+              <FileText size={13} /> {deliverable.name} <ArrowUpRight size={13} />
+            </a>
+          </div>
+        </>
+      )}
+
+      {/* Três recusas de escrita, e cada uma diz o motivo que sabe. Nenhuma delas
+          inventa um estado: sem `external_ref` não há rota; com o projeto sem
+          escrita a API responde 409, então o formulário sai antes de a pessoa
+          digitar (ADR 0036/0037). */}
+      {!externalRef ? (
+        <p className="empty-note">
+          Esta entrega ainda não tem identificador na origem, então não é possível registrar
+          uma decisão sobre ela aqui.
+        </p>
+      ) : readOnly ? (
+        <p className="empty-note">{readOnly.decisions}</p>
+      ) : (
+        <>
+          <textarea
+            aria-label="Comentário da decisão"
+            className="review-field"
+            maxLength={2000}
+            onChange={(event) => setComment(event.target.value)}
+            placeholder="Comentário (opcional ao aprovar; esperado ao pedir ajuste)"
+            value={comment}
+          />
+          <div className="review-actions">
+            <Button disabled={sending} onClick={() => decide("accepted")} variant="primary">
+              {sending ? "Enviando…" : "Aprovar entrega"}
+            </Button>
+            <Button disabled={sending} onClick={() => decide("changes_requested")} variant="secondary">
+              {sending ? "Enviando…" : "Pedir ajuste"}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {outcome?.ok && (
+        <p className="review-confirm" role="status">
+          <Check size={16} /> Enviado ao time da Biahflow
+        </p>
+      )}
+      {outcome && !outcome.ok && (
+        <p className="auth-error" role="status">
+          {outcome.reason === "read_only"
+            ? readOnly?.decisions ??
+              "Este projeto não recebe mais decisões. Nada foi enviado."
+            : outcome.reason === "rate_limited"
+              ? "Muitas ações em pouco tempo. Nada foi enviado — tente de novo em instantes."
+              : "Não conseguimos registrar sua decisão. Nada foi enviado. Tente de novo."}
+        </p>
+      )}
+
+      <DecisionLog decisions={decisions} />
+    </section>
+  );
+}
+
+/**
+ * O histórico, e a supersessão visível (DAP F-027, decisão 2).
+ *
+ * Uma linha por decisão, da mais nova para a mais antiga. Uma segunda decisão
+ * **acrescenta**, e a anterior aparece **superada** — riscada, com o rótulo — e
+ * nunca apagada. É o reflexo na tela do `GRANT` só de `INSERT`: quem escreve não
+ * reescreve.
+ *
+ * A ordem chega da API do mais antigo para o mais novo, que é o que torna a
+ * supersessão legível sem coluna nenhuma; aqui ela é invertida porque a decisão em
+ * vigor é a que interessa primeiro.
+ */
+function DecisionLog({ decisions }: { decisions: DeliverableDecision[] | null }) {
+  if (decisions === null) {
+    return (
+      <p className="auth-error" role="status">
+        Não consegui carregar o histórico de decisões agora. Nada foi perdido — tente de novo.
+      </p>
+    );
+  }
+  if (decisions.length === 0) {
+    return <p className="empty-note">Nenhuma decisão registrada ainda.</p>;
+  }
+  return (
+    <ul className="decision-log">
+      {[...decisions].reverse().map((decision, index) => (
+        <li className={index > 0 ? "is-superseded" : ""} key={decision.id}>
+          <span className={`decision-dot decision-dot--${decision.action}`} />
+          <div>
+            <span className="decision-who">
+              {decision.actorLabel} {decision.action === "accepted" ? "aprovou" : "pediu ajuste"}
+            </span>
+            {/* Do lado que decidiu, e vindo da **linha** e não do papel de hoje:
+                quem deixa de ser interno não muda o lado de quem decidiu naquele
+                dia. Mesmo argumento do `.comment-side--internal`. */}
+            {decision.actorIsInternal && <span className="decision-internal">Biahflow</span>}
+            <span className="decision-when"> · {decision.decidedAt}</span>
+            {index > 0 && <span className="decision-superseded">superada</span>}
+            {decision.comment && <div className="decision-comment">{decision.comment}</div>}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -94,7 +94,7 @@ DEPENDENCY_BLOCKED
 
 `DEPENDENCY_BLOCKED` means one task must wait for another task, artifact, migration, Design Approval, or architectural decision.
 
-Worktree isolation prevents Git-state collisions; it does not prove architectural independence.
+Worktree isolation prevents Git-state collisions; it does not prove architectural independence, and it does not isolate shared external state. Tasks that write to the same database, object store, broker, or scratch directory are concurrent writers to one resource however separate their worktrees are; see [`worktree-execution.md`](worktree-execution.md).
 
 Each parallel task keeps a distinct Builder Report and Review Evidence Package. Do not merge multiple task reports into a summary that loses attribution.
 
@@ -189,6 +189,7 @@ If comparable harness executions produce materially different evidence for the s
 - **Invented command:** validation uses a plausible but unverified command.
 - **Shared writable checkout:** parallel Builders mutate the same worktree/index.
 - **Worktree equals safe parallelism:** assuming filesystem isolation proves dependency independence.
+- **Shared external state:** concurrent tasks writing one database, object store, broker, or scratch directory. The collision surfaces as a failing test in a task that did not cause it, not as a merge conflict.
 - **Reviewer as human gate:** stopping for a person on an in-scope defect the Builder can repair automatically.
 - **Silent reassignment:** executor changes without evidence.
 - **Local-main integration:** task branch is merged locally to bypass the PR/Human Gate.

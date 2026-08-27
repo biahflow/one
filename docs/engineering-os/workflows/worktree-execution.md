@@ -32,6 +32,53 @@ DEPENDENCY_BLOCKED
 
 Worktrees isolate Git state; they do not prove semantic parallel safety.
 
+They also do not isolate **shared external state**. Classification MUST therefore cover
+both questions:
+
+```text
+1. Do these tasks depend on each other?          -> semantic safety
+2. Do they write to the same external resource?  -> execution safety
+```
+
+Two tasks can be fully independent by the first question and still collide by the second.
+
+## Shared external state
+
+A dedicated worktree isolates the working tree, the index, and branch ownership. It isolates
+nothing outside the repository. A database, a schema-migration history, an object store, a
+cache, a message broker, a fixture directory, or a scratch/temporary directory shared by two
+concurrent Builders is a single mutable resource with concurrent writers.
+
+Before authorizing concurrent writable execution, the orchestration layer MUST identify the
+external resources each task writes to, and either isolate them per task or record
+`PARALLELISM_RISK` with the resolution.
+
+```text
+EXTERNAL STATE ISOLATION
+
+task_id: <value>
+resource: <database | object store | broker | cache | scratch directory | other>
+isolation: <dedicated | shared-read-only | shared-writable>
+resolution: <required when shared-writable>
+```
+
+Provisioning a per-task instance is usually cheap — creating a database costs seconds — and
+is the default answer whenever a task runs schema migrations.
+
+**Why this deserves its own rule.** A shared-external-state collision does not look like a
+collision. Git conflicts announce themselves at merge; this one arrives as a failing test in
+a task that did not cause it. One task applies a migration the other's branch does not
+contain, and the second task's fixtures fail with an error naming a revision it has never
+heard of. The natural reading is "my change broke something", and the cost is a wrong
+diagnosis before the real cause is found.
+
+An ordering convention is also part of isolation when the resource is a shared linear
+history. Migration identifiers drawn from the same head by two concurrent tasks produce
+divergent chains; the range each task may use SHOULD be declared before execution starts,
+and rebased onto the true head at integration.
+
+Isolation is provisioned **before** the Builder starts, not after the first collision.
+
 ## One task, one execution ownership
 
 ```text
@@ -221,7 +268,7 @@ Planner and Reviewer may use an existing checkout when truly read-only. Reviewer
 
 ## Evidence
 
-Execution evidence SHOULD record task ID, branch, worktree identity when useful, base revision, parallelism classification, synchronization events, final commit SHA(s), PR URL, merge commit SHA, and cleanup state (`POST_MERGE_CLEANUP_COMPLETE` or `POST_MERGE_CLEANUP_BLOCKED`).
+Execution evidence SHOULD record task ID, branch, worktree identity when useful, base revision, parallelism classification, external state isolation, synchronization events, final commit SHA(s), PR URL, merge commit SHA, and cleanup state (`POST_MERGE_CLEANUP_COMPLETE` or `POST_MERGE_CLEANUP_BLOCKED`).
 
 Cleanup evidence SHOULD also record:
 

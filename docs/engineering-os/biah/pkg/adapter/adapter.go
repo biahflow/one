@@ -2,8 +2,24 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
+
+// ErrNotImplemented is returned by every adapter that does not yet invoke a real
+// worker. Returning a BuildReport of Status BUILD_COMPLETE with no files changed and
+// no validation executed would be evidence that a build happened when none did — the
+// exact failure the Definition of Done exists to prevent. A caller that cannot reach a
+// worker must fail, not synthesise a green report.
+var ErrNotImplemented = errors.New("adapter does not invoke a real worker yet")
+
+func notImplemented(worker string) error {
+	return fmt.Errorf(
+		"%w: %s. Until it does, the operating model is the convention in "+
+			"workflows/execution.md, followed by a harness and verified by a human",
+		ErrNotImplemented, worker,
+	)
+}
 
 // BuildReport represents the fixed-format output from a worker
 type BuildReport struct {
@@ -35,7 +51,8 @@ type Adapter interface {
 	InvokeWithContext(ctx context.Context, taskID string, worktreePath string) (*BuildReport, error)
 }
 
-// ClaudeAdapter is the stub adapter for Claude
+// ClaudeAdapter declares Claude's capabilities for routing. It does not invoke
+// Claude yet; Invoke and InvokeWithContext fail rather than report a build.
 type ClaudeAdapter struct{}
 
 func (a *ClaudeAdapter) Name() string {
@@ -51,34 +68,15 @@ func (a *ClaudeAdapter) Capabilities() []string {
 }
 
 func (a *ClaudeAdapter) Invoke(ctx *WorktreeContext) (*BuildReport, error) {
-	fmt.Printf("Claude adapter invoking task %s (stub)\n", ctx.TaskID)
-	return &BuildReport{
-		Status:               "BUILD_COMPLETE",
-		FilesChanged:         []string{},
-		ValidationExecuted:   []string{},
-		ValidationSkipped:    []string{},
-		Assumptions:          []string{},
-		RemainingRisks:       []string{},
-		HumanDecisionsNeeded: []string{},
-	}, nil
+	return nil, notImplemented("claude")
 }
 
 func (a *ClaudeAdapter) InvokeWithContext(ctx context.Context, taskID string, worktreePath string) (*BuildReport, error) {
-	fmt.Printf("Claude adapter invoking task %s (stub with context)\n", taskID)
-	return &BuildReport{
-		Status:               "BUILD_COMPLETE",
-		FilesChanged:         []string{},
-		ValidationExecuted:   []string{},
-		ValidationSkipped:    []string{},
-		Assumptions:          []string{},
-		RemainingRisks:       []string{},
-		HumanDecisionsNeeded: []string{},
-		WorkerName:           "claude",
-		TaskID:               taskID,
-	}, nil
+	return nil, notImplemented("claude")
 }
 
-// CodexAdapter is the stub adapter for Codex
+// CodexAdapter declares Codex's capabilities for routing. It does not invoke
+// Codex yet; Invoke and InvokeWithContext fail rather than report a build.
 type CodexAdapter struct{}
 
 func (a *CodexAdapter) Name() string {
@@ -95,34 +93,15 @@ func (a *CodexAdapter) Capabilities() []string {
 }
 
 func (a *CodexAdapter) Invoke(ctx *WorktreeContext) (*BuildReport, error) {
-	fmt.Printf("Codex adapter invoking task %s (stub)\n", ctx.TaskID)
-	return &BuildReport{
-		Status:               "BUILD_COMPLETE",
-		FilesChanged:         []string{},
-		ValidationExecuted:   []string{},
-		ValidationSkipped:    []string{},
-		Assumptions:          []string{},
-		RemainingRisks:       []string{},
-		HumanDecisionsNeeded: []string{},
-	}, nil
+	return nil, notImplemented("codex")
 }
 
 func (a *CodexAdapter) InvokeWithContext(ctx context.Context, taskID string, worktreePath string) (*BuildReport, error) {
-	fmt.Printf("Codex adapter invoking task %s (stub with context)\n", taskID)
-	return &BuildReport{
-		Status:               "BUILD_COMPLETE",
-		FilesChanged:         []string{},
-		ValidationExecuted:   []string{},
-		ValidationSkipped:    []string{},
-		Assumptions:          []string{},
-		RemainingRisks:       []string{},
-		HumanDecisionsNeeded: []string{},
-		WorkerName:           "codex",
-		TaskID:               taskID,
-	}, nil
+	return nil, notImplemented("codex")
 }
 
-// CopilotAdapter is the stub adapter for Copilot
+// CopilotAdapter declares Copilot's capabilities for routing. It does not invoke
+// Copilot yet; Invoke and InvokeWithContext fail rather than report a build.
 type CopilotAdapter struct{}
 
 func (a *CopilotAdapter) Name() string {
@@ -138,31 +117,11 @@ func (a *CopilotAdapter) Capabilities() []string {
 }
 
 func (a *CopilotAdapter) Invoke(ctx *WorktreeContext) (*BuildReport, error) {
-	fmt.Printf("Copilot adapter invoking task %s (stub)\n", ctx.TaskID)
-	return &BuildReport{
-		Status:               "BUILD_COMPLETE",
-		FilesChanged:         []string{},
-		ValidationExecuted:   []string{},
-		ValidationSkipped:    []string{},
-		Assumptions:          []string{},
-		RemainingRisks:       []string{},
-		HumanDecisionsNeeded: []string{},
-	}, nil
+	return nil, notImplemented("copilot")
 }
 
 func (a *CopilotAdapter) InvokeWithContext(ctx context.Context, taskID string, worktreePath string) (*BuildReport, error) {
-	fmt.Printf("Copilot adapter invoking task %s (stub with context)\n", taskID)
-	return &BuildReport{
-		Status:               "BUILD_COMPLETE",
-		FilesChanged:         []string{},
-		ValidationExecuted:   []string{},
-		ValidationSkipped:    []string{},
-		Assumptions:          []string{},
-		RemainingRisks:       []string{},
-		HumanDecisionsNeeded: []string{},
-		WorkerName:           "copilot",
-		TaskID:               taskID,
-	}, nil
+	return nil, notImplemented("copilot")
 }
 
 // AdapterRegistry holds all available adapters

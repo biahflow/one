@@ -2,7 +2,7 @@
 
 Status: Generated
 Responsável: Engineering
-Última revisão: 2026-08-26
+Última revisão: 2026-08-27
 
 Este diretório é um **espelho pinado** da camada global da Engineering OS, vendorizado para
 que CI, colaborador novo e agente em nuvem enxerguem as mesmas regras que o operador carrega
@@ -12,10 +12,10 @@ este registro, que é gerado pelo script.
 | Campo | Valor |
 |---|---|
 | Origem | `https://github.com/biahflow/engineeringOS.git` |
-| Tag de origem | `v0.1.0` |
-| Commit de origem | `7bc938ec4527e5ee95f83fc1993bbd4961028c9c` |
-| Sincronizado em | 2026-08-26 |
-| Arquivos espelhados | 91 |
+| Tag de origem | `v0.2.0` |
+| Commit de origem | `2db00c6f39f7592bdcb3324ba4490be7bbf10645` |
+| Sincronizado em | 2026-08-27 |
+| Arquivos espelhados | 97 |
 
 ## Ressincronizar
 

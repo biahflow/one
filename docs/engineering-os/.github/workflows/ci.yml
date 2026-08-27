@@ -59,6 +59,30 @@ jobs:
       - name: Instalação renderiza sem escrever
         run: scripts/install-adapters.sh --dry-run
 
+      - name: Testes dos checkers de conformidade
+        # Os checkers leem artefato escrito à mão e decidem se ele tem a forma que os
+        # contratos exigem. O risco deles não é falhar, é reprovar artefato bom: um
+        # portão com falso vermelho é desligado pela primeira pessoa que o encontra.
+        run: python3 -m unittest discover -s tests -q
+
+  pull-request:
+    name: Base do PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: A base é main
+        # Um PR baseado noutro branch de tarefa empilha a fila: um rebase no meio
+        # desmonta todos, e a CI de cada um testa uma base que não existirá depois do
+        # merge. Se as tarefas dependem uma da outra isso não é paralelismo, é sequência,
+        # e a dependência pertence ao DAG do plano.
+        run: |
+          if [ "${{ github.base_ref }}" != "main" ]; then
+            echo "PR baseado em '${{ github.base_ref }}', não em main." >&2
+            echo "Releases e tarefas saem de main; ver workflows/worktree-execution.md." >&2
+            exit 1
+          fi
+          echo "base: main"
+
   go:
     name: Biah (Go)
     runs-on: ubuntu-latest

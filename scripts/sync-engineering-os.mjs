@@ -67,7 +67,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESTINATION = join(ROOT, "docs", "engineering-os");
 const DEFAULT_ORIGIN = "https://github.com/biahflow/engineeringOS.git";
-const PINNED_TAG = "v0.1.0";
+const PINNED_TAG = "v0.2.0";
 const PROVENANCE_NAME = "PROVENANCE.md";
 
 // Um `.gitignore` aninhado mudaria a semântica de ignore deste repositório dentro

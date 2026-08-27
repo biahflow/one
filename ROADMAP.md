@@ -1637,6 +1637,19 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       referência: era o defeito da regra 6 da ADR 0035 noutra superfície, a citação que nenhum
       portão conferia. **Fica aberto:** o espelho envelhece em silêncio entre sincronizações.
 
+- [x] **O job que sobrou do desmonte** *(ADR 0075)*: o desmonte dos `cockpit-*` (ADR 0070)
+      destruiu os sete recursos que o Terraform gerenciava e deixou um oitavo de pé —
+      `cockpit-createsuperuser`, criado à mão em 20/08/2026 e que o state nunca conheceu. A
+      proposta de 26/08 recomendava apagá-lo sem lhe dar casa; Daniel Campos, que o criou,
+      reverteu essa recomendação em 27/08 e decidiu declará-lo como `pulse-createsuperuser`
+      em `local.trabalhos`, herdando o ambiente da `pulse-api` como os outros dois trabalhos,
+      e remover o antigo por caminho declarado — `import` para trazê-lo ao state, depois
+      remoção da configuração para que o `plan` produza o `destroy`, nunca `gcloud`
+      imperativo. **Fica aberto:** o `destroy` do job antigo depende de `module "trabalhos"`
+      passar a repassar `protegido` por entrada do mapa (hoje sempre `true`), ajuste de
+      módulo fora do escopo desta fatia; e os três `apply`s (criar o novo, importar e
+      destruir o antigo) seguem sendo gate humano de operação, não executados aqui.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

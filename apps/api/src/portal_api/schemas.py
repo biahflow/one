@@ -342,6 +342,24 @@ class DashboardOut(Out):
     #: encerrado antes de ser apagado. Ao contrário do arquivamento, não tem volta: a fonte não
     #: tem mais o que declarar sobre este projeto.
     source_deleted_at: str | None
+    #: Quando o **Biahflow observou** este estado (ADR 0076). É a idade do dado, e não a da
+    #: cópia. `str` e não `datetime` pela regra deste módulo: o produtor já entregou texto.
+    #:
+    #: Vem preenchido **ou** ``synced_at`` vem, nunca os dois: qual dos dois chegou é o
+    #: próprio rótulo — "observado há X" aqui, "sincronizado há X" lá. Os dois nulos
+    #: significam um projeto que ainda não passou por um sync, e aí **não há carimbo**: sem
+    #: hora de verdade a tela não inventa uma (ADR 0026).
+    observed_at: str | None
+    #: Quando o **portal copiou** este estado, e só isso (ADR 0076, *Fallback declarado*).
+    #: Preenchido exatamente quando a origem ainda não carimba ``observed_at``. Rotular a
+    #: hora da cópia como observação da origem seria a falsa precisão que ``results.py``
+    #: recusa; declarar o limite é a decisão, no precedente do respondedor offline e do
+    #: ``scan_state=skipped``.
+    synced_at: str | None
+    #: A versão monotônica por projeto que produziu este estado, quando a origem a carimba
+    #: (ADR 0076). É o que torna a reconciliação determinística e o que dá sentido ao
+    #: ``applied_version`` do ``projection.stale_rejected``.
+    projection_version: int | None
     health: ProjectHealthOut | None
     journey: JourneyOut
     digital_employees: list[DigitalEmployeeOut]

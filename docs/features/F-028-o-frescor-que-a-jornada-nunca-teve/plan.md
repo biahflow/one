@@ -165,4 +165,160 @@ causa do `PARALLELISM_RISK` em `biahflow.py`; caminho crítico nomeado com o esf
 
 ## PLAN_DEVIATION
 
-Nenhum registrado (plano ainda não congelado).
+Registrados pela sessão de execução em 27/08/2026, com autorização humana. O plano congelado
+**não** foi editado acima.
+
+### 1 — Uma branch por feature, não por Task Contract
+
+| Campo | Valor |
+| --- | --- |
+| Tarefa | T01–T05 |
+| Planejado | `integration_strategy`: uma branch de tarefa por Task Contract |
+| Real | Uma branch/PR por **feature**, com as cinco tarefas em série dentro dela |
+| Impacto | Menos pontos de merge humano; diff maior. A ordem T02→T03→T04 sobre `integrations/biahflow.py` foi preservada, então o `PARALLELISM_RISK` original segue resolvido |
+| Resolução | Autorizado por Daniel Campos em 27/08/2026 |
+
+### 2 — T04 escreveu em `tests/` do BFF, fora do seu `expected_areas`
+
+| Campo | Valor |
+| --- | --- |
+| Tarefa | T04 |
+| Planejado | `expected_areas`: `integrations/biahflow.py`, `schemas.py`, `openapi.py`, `docs/api/openapi.json`. `out_of_scope`: "renderização no BFF/tela (gated por Design Approval)" |
+| Real | Também `tests/fixtures/dashboard.mjs` e `tests/api-contract.test.mjs`, com **seis entradas em `NOT_CONSUMED`** (`review_by: 2026-11-30`) |
+| Impacto | Nenhuma mudança de comportamento; a allowlist passa a carregar dívida datada |
+| Resolução | Aceito pela sessão em 27/08/2026 |
+
+**Por quê.** É consequência estrutural do split do plano, não descuido. A guarda de consumo da
+ADR 0033 exige que todo campo de resposta tenha leitor no BFF; T04 entrega os três campos de
+frescor e tem a renderização **proibida** pelo próprio contrato (gate de design). Sem a isenção,
+o critério de aceite do T04 (`npm run test:contract` verde) era inalcançável. As duas
+alternativas eram piores e estão registradas: mapear no BFF sem renderizar produz código morto
+que a guarda **daria por consumido** — o defeito exato que a ADR 0033 existe para pegar —, e
+segurar a API até a tela existir deixaria a origem sem onde carimbar. A isenção **vence**
+(`review_by` real), no prazo da rodada de UI: se a tela não chegar, a guarda cobra de novo.
+
+### Registro de qualidade da execução
+
+Sem achados de revisão. A guarda nova (T05) foi **medida por mutação** — três mutações sobre a
+projeção (campo interno no `return`; campo interno também declarado no contrato, o "atacante
+diligente"; campo só no contrato, sem produtor) e uma sobre a de telemetria, cada uma verificada
+vermelha e restaurada. Confirmado de forma independente pela sessão: **688 passed, 0 failed**
+(baseline do `main`: 665), com a cadeia `0001…0031` aplicada do zero em banco isolado e
+`alembic check` sem deriva.
+
+---
+
+# F-028 — Execution Plan · Revisão 2 (superfície de frescor e jornada)
+
+> **Por que existe uma revisão 2.** A revisão 1 acima foi congelada com o gate de design **aberto**:
+> o Planner registrou `DESIGN_APPROVAL_REQUIRED` e decompôs só o trabalho não-interface. O gate foi
+> atravessado — **DAP r1 `Approved`** (Daniel Campos, 26/08/2026) — e as *Open questions* foram
+> tratadas no gate de 27/08/2026. Com o desenho fixado, o Planner decompõe a superfície **exceto uma**
+> (ver abaixo: a ancoragem decisão→fase ficou `DEPENDENCY_BLOCKED`, por decisão e não por omissão).
+>
+> A revisão 1 **não é reescrita**: T01–T05 permanecem como executados. Esta revisão **acrescenta**
+> T06–T08.
+
+## Resoluções do gate (27/08/2026, Daniel Campos)
+
+| Open question do DAP r1 | Resolução | Efeito no plano |
+| --- | --- | --- |
+| `observed_at` da origem ou `synced_at` da cópia | **`observed_at` da origem**; sem carimbo, fallback para a hora da cópia **dito como tal** | Já implementado em T02 (rev. 1); T06 apenas **rotula com honestidade** |
+| Limiar do stale | **Parâmetro de operação**, não de design | Fora do escopo de build; a tela reflete o resultado |
+| Ancoragem decisão→fase | **Marcação explícita do Pulse** (`phase_ref` no snapshot) — o One projeta, **não infere** | **`DEPENDENCY_BLOCKED`**: exige campo novo no repositório Biahflow. **Não vira Task Contract aqui.** |
+
+**A superfície "decisão/gate ancorada à fase" do DAP §Surfaces fica de fora desta fatia.** Não por
+esquecimento: a alternativa (heurística por data) foi considerada e **recusada no gate**, porque
+inferir a fase a partir de `decided_on` é exatamente a falsa precisão que `results.py` recusa por
+princípio e contradiz "o One não origina nem bifurca estado do Pulse". A superfície entra quando o
+lado Biahflow carimbar `phase_ref`.
+
+## FEATURE EXECUTION PLAN (revisão 2 — acréscimo)
+
+```text
+feature_id: F-028
+
+goal: Mostrar na jornada o frescor que T01–T04 passaram a medir — com rótulo honesto sobre O QUE foi
+      medido — e representar visivelmente o stale, o indisponível e o carregando.
+
+assumptions:
+  - DAP r1 Approved é a autoridade visual; a pele é a da F-025, que a F-026 aplicou ao shell.
+  - T01–T05 (revisão 1) estão integrados: as colunas existem, o sync as popula, a reconciliação
+    recusa regressão, build_dashboard projeta e a guarda client-safe protege a fronteira.
+  - O limiar do stale chega por configuração, não por constante no componente.
+
+risks:
+  - A tentação de rotular a hora da cópia como frescor da origem. É o defeito que a fatia inteira
+    existe para negar; o rótulo é o entregável, não um detalhe de cópia.
+  - A jornada já respeita encerrado/removido (ADR 0036/0037) — não regredir esse comportamento.
+
+tasks:
+  - id: T06
+    role: builder
+    goal: Carimbo de frescor na jornada, com rótulo honesto, e o estado stale.
+    scope: renderizar "Atualizado há X" quando o dado vem de observed_at da origem, e
+           "Sincronizado há X" quando vem do fallback — NUNCA a hora da cópia disfarçada de frescor
+           da origem; acima do limiar, pill de stale + mensagem, no padrão readOnlyReason.
+    out_of_scope: decidir o limiar (é operação); ancoragem decisão→fase (DEPENDENCY_BLOCKED).
+    expected_areas: app/ (JourneyPanel/status-card)
+    acceptance_criteria: os dois rótulos são distinguíveis e corretos por origem do dado (teste
+                         cobrindo AMBOS); o stale aparece acima do limiar; nenhum token novo.
+    depends_on: []
+    validation: web-unit-contract.
+    required_capabilities: [react, tailwind]
+    risk: médio — o rótulo é a promessa da fatia.
+    relative_effort: M
+
+  - id: T07
+    role: builder
+    goal: Projeção indisponível e carregando, sem passar cache por atual.
+    scope: estado de falha de fetch da projeção mostrado COMO indisponível (não como dado velho
+           silencioso) e estado de carregando; preservar o comportamento de encerrado/removido.
+    out_of_scope: fabricar qualquer dado de fallback.
+    expected_areas: app/
+    acceptance_criteria: falha de projeção NÃO renderiza dado cacheado sem indicação; encerrado e
+                         removido seguem como antes (asserções existentes verdes).
+    depends_on: [T06]
+    validation: web-unit-contract.
+    required_capabilities: [react]
+    risk: baixo.
+    relative_effort: S
+
+  - id: T08
+    role: builder
+    goal: Evidência de navegador da revisão aprovada.
+    scope: capturas desktop + mobile 390×844 de recente, stale e indisponível; foco/teclado.
+    out_of_scope: mudança de estilo.
+    expected_areas: (evidência) docs/features/F-028-.../evidence/
+    acceptance_criteria: capturas presas à revisão aprovada do DAP; os três estados cobertos.
+    depends_on: [T07]
+    validation: web-unit-contract; browser-runtime-validation.
+    required_capabilities: [playwright]
+    risk: baixo.
+    relative_effort: S
+
+parallel_groups:
+  - []  # T06→T07→T08 compartilham a superfície da jornada; execução linear.
+
+critical_path: T06 → T07 → T08
+
+integration_strategy: Uma branch para a superfície (ver PLAN_DEVIATION 1), integrando após T01–T05
+                      estarem em main — a tela consome o que a projeção passou a devolver.
+
+human_gates:
+  - Aprovação desta revisão 2 antes de READY_FOR_BUILD da superfície.
+  - Merge humano. DONE só após evidência desktop+mobile, revisão e decisão humana.
+
+planning_findings:
+  - DEPENDENCY_BLOCKED (decidido no gate de 27/08/2026): a ancoragem decisão→fase exige `phase_ref`
+    carimbado pelo Pulse. É trabalho no repositório Biahflow e NÃO é planejado aqui. A superfície do
+    DAP §Surfaces correspondente fica declaradamente fora desta fatia.
+  - OPS PARAMETER: o limiar do stale é configuração de operação, fora do escopo de build.
+  - A Issue #62 NÃO fecha por inteiro enquanto a ancoragem decisão→fase não existir — o critério
+    "decisões/gates" depende dela. Registrado para não virar verde por omissão.
+```
+
+`PLAN_VALIDATION: PLAN_VALID` — pendente do gate humano de aprovação desta revisão 2.
+Auto-checagem: IDs únicos e não colidentes com a revisão 1 (T06–T08); `depends_on` nomeia tarefa
+existente; sem ciclos; `parallel_groups` vazio é honesto (superfície compartilhada).
+

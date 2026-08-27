@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import uuid
 from datetime import date, datetime, timezone
 from typing import Any
@@ -48,6 +49,8 @@ from portal_api.models import (
     User,
 )
 from portal_api.repositories import TenantContext
+
+logger = logging.getLogger(__name__)
 
 # Biahflow status/state → portal enums.
 PROJECT_STATUS_MAP: dict[str, ProjectStatus] = {
@@ -154,6 +157,103 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value)
 
 
+#: A hora que a projeção carimba veio da **origem**: o Biahflow observou aquele estado
+#: naquele instante. É a idade do dado.
+FRESHNESS_OBSERVED = "observed"
+
+#: A hora que a projeção carimba é a da **cópia**: o portal sincronizou naquele instante e
+#: não sabe quando a origem observou. É o fallback declarado da ADR 0076 — uma resposta pior
+#: à mesma pergunta, dita honestamente, no precedente do embedder offline e do
+#: ``scan_state=skipped``.
+FRESHNESS_SYNCED = "synced"
+
+
+def _projection_version(value: Any) -> int | None:
+    """A versão de projeção do envelope, quando a origem a carimba.
+
+    Tolera o inteiro vindo como texto (é o que um JSON gerado à mão costuma trazer) e
+    devolve ``None`` para qualquer coisa que não seja um inteiro — inclusive ``bool``, que
+    em Python é ``int`` e viraria "versão 1" sem esta linha. Ausência e lixo caem no mesmo
+    lugar de propósito: **ausência de afirmação**, nunca "versão zero", que faria a
+    reconciliação da ADR 0076 ler o desconhecido como o mais velho possível.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def freshness(project: Project) -> tuple[str, datetime] | None:
+    """Como o portal soube a hora que projeta, e qual hora é essa (ADR 0076).
+
+    ``(FRESHNESS_OBSERVED, …)`` quando a origem carimbou ``observed_at``;
+    ``(FRESHNESS_SYNCED, …)`` quando não carimbou e tudo o que existe é a hora da cópia;
+    ``None`` quando não há carimbo nenhum — um projeto anterior a esta fatia que ainda não
+    passou por um sync. **Sem hora de verdade não se inventa uma**: a ADR 0026 já removeu da
+    tela um "Atualizado há 2 dias" que ninguém tinha como sustentar, e a ADR 0076 repete a
+    regra ao dizer que sem ``observed_at`` real não há carimbo.
+
+    A escolha não é uma preferência avaliada aqui e sim uma consequência: ``sync_snapshot``
+    mantém as duas colunas **mutuamente exclusivas**, então no máximo uma está preenchida e
+    não há como o rótulo discordar do instante. Um terceiro campo com o rótulo escrito seria
+    a mesma regra em dois lugares — o argumento do ``textfold.py`` — e poderia divergir.
+    """
+    if project.observed_at is not None:
+        return (FRESHNESS_OBSERVED, project.observed_at)
+    if project.synced_at is not None:
+        return (FRESHNESS_SYNCED, project.synced_at)
+    return None
+
+
+def _regression(
+    project: Project, version: int | None, observed_at: datetime | None
+) -> str | None:
+    """Por que este snapshot é mais **velho** que o já aplicado — ou ``None`` se não é.
+
+    Generaliza o que ``mark_project_deleted`` já fazia para uma coluna ("a primeira
+    observação é a verdadeira") para o snapshot inteiro (ADR 0076 §3). O sync é idempotente
+    por **substituição** — apaga e reinsere fases, marcos, decisões e pendências —, então
+    um webhook atrasado ou reentregue dispara um fetch, e até esta fatia o fetch de um
+    estado mais velho era aplicado por cima do mais novo sem que nada percebesse.
+
+    A ordem dos critérios é a da ADR, e cada um existe porque o outro não basta:
+
+    1. **``projection_version``**, quando os dois lados a têm. É o inteiro monotônico por
+       projeto, e é o único critério que sobrevive a um relógio de origem que regride.
+    2. **``observed_at``**, no **empate** de versão — e também quando a versão não está nos
+       dois lados, porque uma observação estritamente anterior da origem é uma regressão
+       ainda que ninguém tenha numerado.
+
+    E há duas ausências deliberadas:
+
+    - **Versão só de um lado não recusa nada.** Tratar ausência como "menor" barraria um
+      snapshot legítimo de uma origem que ainda não numera — e ausência é ausência de
+      afirmação, não versão zero. É o comportamento atual, declarado (ADR 0076).
+    - **``synced_at`` não entra na comparação.** Ele é ``now()`` por construção, então
+      ordena as *cópias* e não os *estados*: comparar por ele nunca recusaria nada, e
+      pareceria proteção. O limite é declarado, não fingido.
+    """
+    current = project.projection_version
+    if version is not None and current is not None:
+        if version < current:
+            return "version"
+        if version > current:
+            return None
+    if (
+        observed_at is not None
+        and project.observed_at is not None
+        and observed_at < project.observed_at
+    ):
+        return "observed_at"
+    return None
+
+
 def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     """Upsert a Biahflow snapshot into the portal read model. Idempotent.
 
@@ -161,6 +261,11 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     então a única forma de saber que algo *mudou* é comparar o read model antes e
     depois do upsert. O estado é fotografado antes de qualquer escrita e o diff
     sai no fim — ver :mod:`portal_api.notifications`.
+
+    E é onde a projeção **recusa regressão** (ADR 0076): um snapshot mais velho que o já
+    aplicado — por ``projection_version`` ou, no empate, por ``observed_at`` — é ignorado
+    por inteiro, com ``projection.stale_rejected`` no log e o projeto devolvido como está.
+    Ver :func:`_regression` para os critérios e para o que **não** entra neles.
     """
     project_data = snapshot["project"]
     client_data = project_data["client"]
@@ -172,8 +277,6 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
         organization = Organization(name=client_data["name"], slug=org_slug(client_data["id"]))
         session.add(organization)
         session.flush()
-    else:
-        organization.name = client_data["name"]
 
     slug = project_slug(project_data["id"])
     project = session.execute(
@@ -181,6 +284,33 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             Project.organization_id == organization.id, Project.slug == slug
         )
     ).scalar_one_or_none()
+
+    # Reconciliação anti-regressão (ADR 0076 §3), **antes de qualquer escrita**: um snapshot
+    # mais velho do que o já aplicado é ignorado por inteiro. Não é o portal decidindo a fase
+    # — ele continua sem originar status (ADR 0006/0008) — é o portal não desaprendendo o que
+    # já observou.
+    #
+    # A recusa vem antes do retrato de `snapshot_state` e antes do rename da organização de
+    # propósito: recusar "quase tudo" deixaria o cliente com o nome velho vindo de um webhook
+    # atrasado, e uma recusa que aplica metade do snapshot não é uma recusa.
+    observed_at = _parse_datetime(snapshot.get("observed_at"))
+    incoming_version = _projection_version(snapshot.get("projection_version"))
+    if project is not None:
+        regression = _regression(project, incoming_version, observed_at)
+        if regression is not None:
+            logger.warning(
+                "projection.stale_rejected",
+                extra={
+                    "project_id": str(project.id),
+                    "biahflow_project_id": project_data["id"],
+                    "reason": regression,
+                    "applied_version": project.projection_version,
+                    "rejected_version": incoming_version,
+                },
+            )
+            return project
+
+    organization.name = client_data["name"]
     # Antes de qualquer escrita: é este retrato que vira notificação lá embaixo.
     # `None` para um projeto que ainda não existe, e é o que faz o primeiro sync
     # chegar em silêncio em vez de com uma caixa de entrada cheia.
@@ -212,6 +342,25 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     # depois de o arquivamento ser desfeito.
     archived_at = project_data.get("archived_at")
     project.archived_at = datetime.fromisoformat(archived_at) if archived_at else None
+    # Frescor e versão do **envelope** (ADR 0076), e não por entidade: o snapshot descreve
+    # um estado do projeto inteiro, e uma hora por linha diria coisas diferentes sobre a
+    # mesma observação. Lidos com `.get`, como todo o resto — um Biahflow anterior a esta
+    # fatia não manda as chaves, e ausência é ausência de afirmação.
+    #
+    # As duas colunas de hora são **mutuamente exclusivas**, e é o que torna o rótulo
+    # impossível de errar (ver `freshness()`): carimbar as duas deixaria a projeção com dois
+    # instantes e nenhuma regra escrita sobre qual deles a tela mostra. Com a origem
+    # carimbando, vale a hora dela; sem ela, o fallback declarado é a hora da cópia —
+    # rotulada como cópia, nunca disfarçada de observação da origem, que é a falsa precisão
+    # que `results.py` recusa e que a ADR 0026 apagou da tela.
+    #
+    # A atribuição é incondicional pelo argumento do `archived_at` logo acima: `None` é um
+    # valor, não "não mexa". Se a origem parar de carimbar, a projeção precisa **degradar**
+    # para "sincronizado há X" em vez de seguir exibindo um `observed_at` velho como se
+    # fosse a última observação.
+    project.observed_at = observed_at
+    project.synced_at = None if observed_at is not None else datetime.now(timezone.utc)
+    project.projection_version = incoming_version
     # `source_deleted_at` **não** entra aqui, e a ausência é a decisão (ADR 0037): um projeto
     # apagado no Biahflow não tem snapshot, então chegar até esta função já significaria que o id
     # voltou a existir — outro projeto reusando o número, que é problema diferente e não uma
@@ -658,6 +807,27 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         "source_deleted_at": (
             project.source_deleted_at.isoformat() if project.source_deleted_at else None
         ),
+        # Frescor da projeção (ADR 0076), e as duas datas nunca vêm preenchidas juntas —
+        # `sync_snapshot` as mantém mutuamente exclusivas, e é **qual delas veio** que é o
+        # rótulo: `observed_at` é "observado há X" (a origem carimbou o instante em que
+        # observou aquele estado), `synced_at` é "sincronizado há X" (o fallback declarado,
+        # que é só a hora da cópia). Um terceiro campo escrevendo o rótulo seria a mesma
+        # regra em dois lugares, e poderia divergir do par — o argumento do `textfold.py`.
+        #
+        # As duas nulas significam um projeto que nunca passou por um sync: **não há
+        # carimbo**, e a tela não inventa um. É a ADR 0026 outra vez, que removeu daqui um
+        # "Atualizado há 2 dias" que ninguém tinha como sustentar.
+        #
+        # A **idade** não sai daqui de propósito, embora o produtor pudesse calculá-la: ela
+        # depende de `now()`, e um número calculado no servidor envelhece dentro da própria
+        # resposta. Quem deriva "há X" é quem renderiza, no instante em que renderiza —
+        # mesma razão pela qual `_results_projection` recebe `today` por parâmetro.
+        "observed_at": project.observed_at.isoformat() if project.observed_at else None,
+        "synced_at": project.synced_at.isoformat() if project.synced_at else None,
+        # A versão da projeção que produziu este estado. Não é para a tela mostrar: é o que
+        # torna "o Biahflow parou de avançar" respondível sem abrir o Postgres, e o que dá
+        # sentido ao `applied_version` do `projection.stale_rejected`.
+        "projection_version": project.projection_version,
         "health": (
             {"label": project.health_label, "level": project.health_level}
             if project.health_level

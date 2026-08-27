@@ -42,6 +42,14 @@ export const DASHBOARD = {
   archived_at: null,
   // Idem para a exclusão na origem (ADR 0037), que só chega por webhook.
   source_deleted_at: null,
+  // Frescor da projeção (ADR 0076). As duas datas são mutuamente exclusivas e **qual delas
+  // veio é o rótulo**: aqui a origem carimbou, então é "observado há X". O caminho do
+  // fallback (`observed_at: null`, `synced_at` preenchido, "sincronizado há X") é o do
+  // Biahflow que ainda não numera, e vale a pena lembrar que os dois nulos também são um
+  // estado legítimo — projeto sem passagem de sync não ganha carimbo inventado.
+  observed_at: "2026-08-20T09:00:00+00:00",
+  synced_at: null,
+  projection_version: 12,
   milestones: [
     { title: "Validação de integrações", state: "in_progress", due_date: "2026-09-09", owner_label: "Acme Brasil" },
     { title: "Treinamento da operação", state: "planned", due_date: "2026-09-18", owner_label: "Biahflow" },

@@ -146,6 +146,29 @@ class Project(Base, TenantMixin, TimestampMixin):
     source_deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # --- contrato de projeção versionado (Fase 7, ADR 0076) ------------------------------
+    #
+    # As três colunas respondem a **duas** perguntas, e é por isso que são três.
+    #
+    # ``observed_at`` é quando o **Biahflow observou** aquele estado, carimbado na origem: é
+    # a idade do dado. ``synced_at`` é quando o portal **copiou**: é a idade da cópia, e só
+    # isso. Uma coluna só faria a segunda passar pela primeira — a falsa precisão que
+    # ``results.py`` recusa e que a ADR 0026 apagou da tela ao remover um "Atualizado há 2
+    # dias" que ninguém tinha como sustentar. Separadas, a projeção diz "observado há X"
+    # quando é verdade e "sincronizado há X" quando é só o que se sabe.
+    #
+    # ``projection_version`` é o inteiro monotônico por projeto que a origem incrementa a
+    # cada mudança de estado projetável. É o que torna a reconciliação determinística quando
+    # dois ``observed_at`` empatam ou o relógio da origem regride: ordenar por hora sozinho
+    # não sobrevive a um relógio que anda para trás.
+    #
+    # As três são nullable, e a nulidade é significativa: as linhas que já existem não têm
+    # nenhuma delas, e um Biahflow anterior a esta fatia não manda os campos — ausência é
+    # ausência de afirmação, nunca "versão zero". ``NOT NULL`` quebraria o upgrade sobre os
+    # dados existentes e faria a reconciliação ler o desconhecido como o mais velho possível.
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    projection_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Milestone(Base, _ProjectChildMixin, TimestampMixin):

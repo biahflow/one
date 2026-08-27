@@ -308,44 +308,28 @@ const NOT_CONSUMED = {
       "a tela navega para a URL assinada no mesmo clique e não a guarda; o vencimento importa " +
       "a quem retém o link, que aqui é ninguém (ADR 0017).",
   },
-  // Os três campos de frescor da projeção (F-028, ADR 0076) chegam ao BFF e **ainda não têm
-  // leitor**, e isso é a consequência declarada de um recorte, não descuido: o plano da
-  // feature foi congelado com o Design Approval do DAP r1 **em aberto**, então a fatia
-  // entrega o contrato (coluna, sync, reconciliação, projeção) e **nenhuma superfície** —
-  // carimbo de frescor, estado stale e a timeline são a rodada seguinte, depois do gate.
+  // Quatro das seis linhas de frescor da F-028 saíram aqui, e é o prazo funcionando: elas
+  // diziam "a superfície está gated pelo Design Approval", o DAP r1 foi aprovado e a
+  // superfície existe — `app/page.tsx` lê `observed_at` e `synced_at` e a jornada carimba.
   //
-  // É a única forma honesta de a allowlist descrever isto. As alternativas eram mapear no
-  // BFF sem renderizar (código morto que a guarda daria por consumido, que é pior) ou
-  // segurar a API até a tela existir — e aí a origem não teria para onde carimbar.
+  // `projection_version` fica, com o motivo **verdadeiro** desta vez, e não com o do
+  // recorte: ele não é para a tela mostrar. Existe para "o Biahflow parou de avançar" ser
+  // respondível sem abrir o Postgres e para dar sentido ao `applied_version` do
+  // `projection.stale_rejected` — nada disso é pergunta de cliente. Mapeá-lo no BFF só para
+  // esvaziar esta lista seria o código morto que a guarda daria por consumido, que é o
+  // defeito exato que a ADR 0033 existe para pegar.
   //
-  // As três vencem juntas, no prazo da rodada de UI: se a tela não chegar, a pergunta volta.
-  "DashboardOut.observed_at": {
-    reason:
-      "frescor da projeção (ADR 0076); a superfície que o renderiza está gated pelo Design " +
-      "Approval do DAP r1 da F-028 e é a rodada seguinte.",
-    review_by: "2026-11-30",
-  },
-  "DashboardOut.synced_at": {
-    reason: "idem — a metade do fallback declarado, e ela nasce junto do par ou o rótulo mente.",
-    review_by: "2026-11-30",
-  },
+  // **Sem prazo, e não é sedimento**: o precedente é o `PINNED_BY_EXCEPTION` da ADR 0063 e
+  // não o `advisories.json` — a razão não vence por calendário, e quem a vence é a asserção
+  // de obsolescência abaixo, no dia em que o campo ganhar leitor de verdade.
   "DashboardOut.projection_version": {
     reason:
-      "idem; e este não é para a tela mostrar — existe para 'o Biahflow parou de avançar' " +
-      "ser respondível sem abrir o Postgres.",
-    review_by: "2026-11-30",
-  },
-  "MyDashboardOut.observed_at": {
-    reason: "o mesmo campo, na rota que o BFF chama de fato. Ver `DashboardOut.observed_at`.",
-    review_by: "2026-11-30",
-  },
-  "MyDashboardOut.synced_at": {
-    reason: "idem.",
-    review_by: "2026-11-30",
+      "a versão da projeção não é para a tela: existe para 'o Biahflow parou de avançar' " +
+      "ser respondível sem abrir o Postgres, e para dar sentido ao `applied_version` do " +
+      "`projection.stale_rejected` (ADR 0076).",
   },
   "MyDashboardOut.projection_version": {
-    reason: "idem.",
-    review_by: "2026-11-30",
+    reason: "o mesmo campo, na rota que o BFF chama de fato. Ver `DashboardOut.projection_version`.",
   },
   "MeProjectOut.slug": {
     reason:

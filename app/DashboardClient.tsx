@@ -454,6 +454,42 @@ function readOnlyReason(overview: Overview): ReadOnlyReason {
   return null;
 }
 
+/**
+ * O frescor da projeção, já reduzido ao que a tela desenha (ADR 0076).
+ *
+ * `kind` **é** o rótulo, e não um adjetivo sobre ele. A API entrega `observed_at` e
+ * `synced_at` mutuamente exclusivos: o primeiro é o instante em que a **origem observou**
+ * aquele estado, o segundo é o instante em que o **portal copiou**. Chamar o segundo de
+ * "atualizado" é a falsa precisão que `results.py` recusa por princípio e que a ADR 0026
+ * removeu desta tela — é o defeito que esta fatia inteira existe para negar, e por isso a
+ * distinção mora no tipo, onde não dá para esquecê-la.
+ *
+ * `null` é a terceira resposta e não é o mesmo que velho: sem hora de verdade não há
+ * carimbo, e a tela não inventa um.
+ */
+export type FreshnessView = { kind: "observed" | "synced"; age: string; stale: boolean };
+
+/**
+ * O que o carimbo diz, por origem do dado — na forma de `readOnlyReason` e pela mesma
+ * razão: as duas frases juntas num lugar só é o que impede a tela de prometer observação
+ * da origem num canto e hora da cópia noutro.
+ */
+const FRESHNESS_LABEL: Record<FreshnessView["kind"], (age: string) => string> = {
+  observed: (age) => `Atualizado ${age} · sincronizado com o Biahflow`,
+  // A segunda metade não é enfeite: sem ela, "Sincronizado há 3 horas" continua sendo lido
+  // como idade do dado, quando é a idade da cópia. É o *Fallback declarado* da ADR 0076
+  // dito na tela — uma resposta pior à mesma pergunta, dita honestamente.
+  synced: (age) => `Sincronizado ${age} · hora da cópia, não da origem`,
+};
+
+/** E acima do limiar, o motivo — o padrão pill + mensagem de `readOnlyReason` reusado. */
+const STALE_MESSAGE: Record<FreshnessView["kind"], (age: string) => string> = {
+  observed: (age) =>
+    `Última observação no Biahflow ${age}. O que você vê pode não refletir o estado atual do projeto.`,
+  synced: (age) =>
+    `Última sincronização ${age}. O que você vê pode não refletir o estado atual do projeto.`,
+};
+
 export type Overview = {
   project: string;
   organization: string;
@@ -466,6 +502,9 @@ export type Overview = {
   /** Quando o Biahflow apagou o projeto de vez, ou `null` (ADR 0037). Mesmo modo de consulta,
    *  motivo diferente — e este não tem volta, porque a fonte não tem mais o que declarar. */
   sourceDeletedAt: string | null;
+  /** O carimbo de frescor da projeção, ou `null` quando não há hora de verdade para
+   *  carimbar (ADR 0076). A idade já vem derivada: quem a calcula é quem renderiza. */
+  freshness: FreshnessView | null;
   nextDelivery: { title: string; detail: string } | null;
   milestones: OverviewMilestone[];
   journey: { currentPhase: string | null; phases: JourneyPhase[] };
@@ -1433,7 +1472,37 @@ const PHASE_STATE_LABEL: Record<JourneyPhase["state"], string> = {
 
 // "Você está aqui": a jornada de transformação pela perspectiva do cliente — sem nada
 // técnico. Cada fase concluída/ativa revela seus entregáveis; as bloqueadas ficam veladas.
-function JourneyPanel({ journey, focusedItem }: { journey: Overview["journey"]; focusedItem?: string | null }) {
+/**
+ * O carimbo de frescor e, acima do limiar, o estado *stale* (ADR 0076, DAP r1 §Surfaces).
+ *
+ * Mora na cabeça da jornada porque é ali que o cliente lê "Você está aqui": a pergunta
+ * "aqui **quando**?" é a mesma pergunta, e separá-las deixaria a resposta longe de onde ela
+ * é feita. `role="status"` no invólucro, e não uma vez por linha, para o leitor de tela
+ * anunciar carimbo e motivo como uma coisa só.
+ *
+ * Nada aqui decide se o dado está velho: o limiar é de operação e a comparação já foi
+ * feita no servidor, no instante da renderização. Esta função só escolhe a frase.
+ */
+function FreshnessStamp({ freshness }: { freshness: FreshnessView }) {
+  return (
+    <div className="journey-freshness" role="status">
+      <p className="journey-fresh">
+        <Clock3 size={13} aria-hidden="true" />
+        {FRESHNESS_LABEL[freshness.kind](freshness.age)}
+      </p>
+      {/* Velho, indisponível e encerrado são três estados distintos, com três cores
+          distintas (ADR 0076): aqui é o `warning` — há dado, e ele pode não valer mais. */}
+      {freshness.stale && (
+        <p className="journey-stale">
+          <StatePill variant="warning">Pode estar desatualizado</StatePill>
+          <span>{STALE_MESSAGE[freshness.kind](freshness.age)}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function JourneyPanel({ journey, freshness, focusedItem }: { journey: Overview["journey"]; freshness: FreshnessView | null; focusedItem?: string | null }) {
   const phases = journey.phases;
   const activeIndex = phases.findIndex((phase) => phase.state === "active");
   /**
@@ -1466,9 +1535,12 @@ function JourneyPanel({ journey, focusedItem }: { journey: Overview["journey"]; 
           <p className="eyebrow">SUA JORNADA</p>
           <h2>Você está aqui</h2>
         </div>
-        {journey.currentPhase && (
-          <span className="journey-here"><MapPin size={15} /> {journey.currentPhase}</span>
-        )}
+        <div className="journey-status">
+          {journey.currentPhase && (
+            <span className="journey-here"><MapPin size={15} /> {journey.currentPhase}</span>
+          )}
+          {freshness && <FreshnessStamp freshness={freshness} />}
+        </div>
       </div>
 
       <ol className="journey-track">
@@ -1562,7 +1634,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
     <>
       <ViewHero eyebrow={overview.project.toLocaleUpperCase("pt-BR")} title={`Bom dia, ${firstName(user.name)}.`} subtitle="Veja o que está acontecendo no seu projeto." onAsk={onAsk} />
 
-      <JourneyPanel journey={overview.journey} focusedItem={focusedItem} />
+      <JourneyPanel journey={overview.journey} freshness={overview.freshness} focusedItem={focusedItem} />
 
       <DigitalEmployees employees={overview.digitalEmployees} />
 

@@ -636,6 +636,15 @@
   .journey-here {
     @apply inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-bold whitespace-nowrap text-brand-700;
   }
+  /* ---- Carimbo de frescor da projeção (F-028, ADR 0076) ----
+     A coluna direita do `.journey-head` passa a ter duas linhas: o "Você está aqui" e,
+     abaixo dele, quando o dado tem hora de verdade, o carimbo. Nenhum token novo — o
+     stale usa a variante `warning` da primitiva, que já existe. */
+  .journey-status { @apply flex min-w-0 shrink flex-col items-end gap-1.5; }
+  .journey-freshness { @apply flex min-w-0 flex-col items-end gap-1.5; }
+  .journey-fresh { @apply m-0 inline-flex items-center gap-1.5 text-[11px] text-muted; }
+  .journey-fresh svg { @apply shrink-0; }
+  .journey-stale { @apply m-0 flex max-w-80 flex-col items-end gap-1 text-right text-[11px] text-muted; }
   .journey-track { @apply m-0 mb-4.5 flex list-none gap-1.5 overflow-x-auto p-0; }
   .journey-step { @apply flex-auto grow-0 basis-auto; }
   .journey-step button {
@@ -708,6 +717,13 @@
   .state-card { @apply max-w-125 text-center; }
   .state-card h1 { @apply mt-0 mb-2.5 text-xl font-semibold tracking-[-0.02em]; }
   .state-card p { @apply text-[13px] leading-relaxed text-slate-600; }
+  /* O cartão passou a ter dois parágrafos (o que o estado é, e o que fazer com ele — ADR
+     0076), e a preflight zera a margem do `p`: sem esta linha os dois saem colados. */
+  .state-card p + p { @apply mt-2.5; }
+  /* O selo do estado no cartão de estado — hoje só a projeção indisponível (ADR 0076).
+     `.state-card p` centraliza texto, e o selo é inline: sem esta linha ele fica colado
+     ao `.eyebrow` acima. */
+  .state-badge { @apply mt-0 mb-3; }
   /* O código que a pessoa repete ao suporte: discreto, mas selecionável e
      legível em voz alta — é a ponta visível do `trace_id` (ADR 0018). */
   .state-code { @apply mt-3 text-xs text-muted; }
@@ -902,6 +918,11 @@
   .source-panel { overflow: hidden; }
   .source-row { min-width: 350px; }
   .journey-step { flex: 0 0 auto; }
+  /* No celular a cabeça da jornada empilha: o carimbo é uma frase inteira e, ao lado do
+     "Você está aqui" em 390px, espremeria os dois. */
+  .journey-head { flex-direction: column; gap: 10px; }
+  .journey-status, .journey-freshness, .journey-stale { align-items: flex-start; }
+  .journey-stale { text-align: left; max-width: none; }
   .journey-detail-head { flex-direction: column; gap: 8px; }
   .journey-target { text-align: left; }
 }

@@ -75,6 +75,15 @@ let dashboardOverride = null;
 let meOverride = null;
 
 /**
+ * O status HTTP com que o stub responde ao dashboard, ou `null` para o 200 de sempre.
+ *
+ * Existe para o estado **indisponível** (ADR 0076): ele é falha de fetch, e não um corpo
+ * diferente — não há override de dashboard capaz de produzi-lo, porque o que o produz é a
+ * ausência de dashboard.
+ */
+let dashboardStatus = null;
+
+/**
  * Stands in for the FastAPI. Lets the SSR path be exercised for real — the same
  * fetches, the same projection — without Postgres, Keycloak or Python.
  */
@@ -82,6 +91,10 @@ function startApiStub() {
   const server = createServer((request, response) => {
     seenTraceIds.push(request.headers["x-request-id"]);
     seenServiceTokens.push(request.headers["x-serverless-authorization"]);
+    if (dashboardStatus !== null && request.url?.startsWith("/api/v1/me/dashboard")) {
+      response.writeHead(dashboardStatus, { "content-type": "application/json" }).end("{}");
+      return;
+    }
     const body = request.url?.startsWith("/api/v1/me/dashboard")
       ? (dashboardOverride ?? DASHBOARD)
       : request.url?.startsWith("/api/v1/me/notifications")
@@ -165,6 +178,11 @@ async function startServer() {
       // na sua máquina não pode virar erro de servidor por falta de metadados.
       K_SERVICE: "portal-web",
       GCE_METADATA_HOST: metadataHost,
+      // O limiar do stale é parâmetro de operação (ADR 0076), e **48 não é o default**:
+      // com 24 h, a projeção de 30 h do teste abaixo apareceria velha. É o que faz aquela
+      // asserção provar que o número sai da configuração, e não de uma constante no
+      // componente.
+      PROJECTION_STALE_HOURS: "48",
     },
   });
 
@@ -384,6 +402,14 @@ test("server-renders the dashboard for an authenticated session", async () => {
   // seguintes passariam mesmo com o selo aparecendo sempre.
   assert.doesNotMatch(html, /Projeto encerrado/);
   assert.doesNotMatch(html, /Projeto removido na origem/);
+  // O carimbo de frescor, com o rótulo da **origem** (ADR 0076): a fixture traz
+  // `observed_at` preenchido, então a frase é "Atualizado há X". A ADR 0026 tinha removido
+  // desta tela um "Atualizado há 2 dias" que era frescor inventado; ele volta derivado de
+  // uma hora que a origem carimbou.
+  assert.match(html, /Atualizado há 2 horas/);
+  // E dentro do limiar não há aviso de velho — sem isto, o teste do stale passaria com o
+  // aviso aparecendo sempre.
+  assert.doesNotMatch(html, /Pode estar desatualizado/);
 });
 
 test("o projeto encerrado é marcado na tela e fecha a pergunta", async () => {
@@ -446,6 +472,156 @@ test("encerrado e removido juntos mostram o motivo mais forte", async () => {
   } finally {
     dashboardOverride = null;
   }
+});
+
+/**
+ * O rótulo do carimbo é o entregável desta fatia (F-028, ADR 0076).
+ *
+ * `observed_at` e `synced_at` chegam mutuamente exclusivos, e **qual dos dois veio é o
+ * rótulo**: o primeiro é o instante em que a origem observou aquele estado, o segundo é o
+ * instante em que o portal copiou. Chamar o segundo de "atualizado" é a falsa precisão que
+ * `results.py` recusa e que a ADR 0026 removeu desta tela — os dois testes abaixo existem
+ * para que a troca não possa acontecer em silêncio, e é por isso que cada um afirma
+ * também a **ausência** da frase do outro.
+ */
+test("o fallback é rotulado como hora da cópia, e nunca como observação da origem", async () => {
+  dashboardOverride = {
+    ...DASHBOARD,
+    observed_at: null,
+    synced_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+  };
+  try {
+    const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+    assert.match(html, /Sincronizado há 3 horas/);
+    assert.match(html, /hora da cópia, não da origem/);
+    // A frase da origem não pode aparecer aqui de jeito nenhum: é o defeito inteiro.
+    assert.doesNotMatch(html, /Atualizado há/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("sem hora nenhuma não há carimbo, e a tela não inventa um", async () => {
+  // Projeto que ainda não passou por um sync. É o terceiro estado, e ele **não** é "velho":
+  // é a ausência do insumo, que o DAP r1 manda tratar não carimbando.
+  dashboardOverride = { ...DASHBOARD, observed_at: null, synced_at: null };
+  try {
+    const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+    assert.match(html, /Você está aqui/);
+    assert.doesNotMatch(html, /Atualizado há/);
+    assert.doesNotMatch(html, /Sincronizado há/);
+    assert.doesNotMatch(html, /Pode estar desatualizado/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("acima do limiar a jornada diz que o dado pode estar velho", async () => {
+  dashboardOverride = {
+    ...DASHBOARD,
+    observed_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+  try {
+    const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+    assert.match(html, /Atualizado há 5 dias/);
+    assert.match(html, /Pode estar desatualizado/);
+    // Pill **e** motivo, no padrão de `readOnlyReason`: o selo sozinho não diz o que fazer
+    // com ele, e a variante `warning` é o que separa "velho" de "indisponível" (`danger`)
+    // e de "encerrado" (cinza).
+    assert.match(html, /state-pill--warning/);
+    assert.match(html, /Última observação no Biahflow há 5 dias/);
+    // E continua sendo dado: o histórico não some porque envelheceu.
+    assert.match(html, /Plano de implantação v3\.pdf/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("o limiar do stale sai da configuração, não de uma constante na tela", async () => {
+  // 30 horas: velho pelo default de 24 do BFF, novo pelo `PROJECTION_STALE_HOURS=48` que
+  // este servidor de teste declara. É o que prova que o número é de quem opera — o DAP r1
+  // o deixa explicitamente fora do que aprova, e uma constante no componente tornaria a
+  // decisão nossa sem que nada ficasse vermelho.
+  dashboardOverride = {
+    ...DASHBOARD,
+    observed_at: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(),
+  };
+  try {
+    const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+    assert.match(html, /Atualizado há 1 dia/);
+    assert.doesNotMatch(html, /Pode estar desatualizado/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+/**
+ * Indisponível é **sem dado**, e não pode virar projeto vazio (ADR 0076, DAP r1 §Surfaces).
+ *
+ * O estado nasce de uma falha de fetch, que sobe para `app/error.tsx` — a mesma fronteira
+ * que a Fase 1 criou para que indisponibilidade parasse de virar dashboard de demonstração.
+ *
+ * **O que este teste pode afirmar foi medido, e é menos do que parece.** O documento do
+ * SSR sai com o `loading.tsx` dentro do limite de Suspense e um `$RX(...)` no fim: o
+ * componente de servidor lançou depois de os cabeçalhos terem ido embora, então a resposta
+ * é 200 e **quem desenha o cartão de erro é o cliente**, depois da hidratação. Nenhuma
+ * asserção sobre HTML renderizado alcança aquele markup — o que o alcança é a captura de
+ * navegador da T08, e é lá que ele está.
+ *
+ * O que sobra aqui é a asserção que importa e é justamente a **negativa**: nenhum pedaço
+ * do projeto pode atravessar. Um resto de tela renderizado sobre uma projeção que não
+ * chegou é dado velho passado por atual, que é o que a fatia nega no outro extremo com o
+ * carimbo. A forma do cartão fica sob guarda de fonte, ao lado dela.
+ */
+test("a projeção que não chegou não vira projeto vazio, e o erro viaja com código", async () => {
+  const cookie = await sessionCookie();
+  const saudavel = await (await render("/", { headers: { cookie } })).text();
+
+  dashboardStatus = 503;
+  try {
+    const response = await render("/", { headers: { cookie } });
+    const html = await response.text();
+
+    // Nada do projeto atravessa: nem o nome, nem a jornada, nem o histórico.
+    assert.doesNotMatch(html, /Automação Financeira/);
+    assert.doesNotMatch(html, /Você está aqui/);
+    assert.doesNotMatch(html, /Plano de implantação v3\.pdf/);
+    // E nem carimbo: sem projeção não há frescor a declarar. As duas frases, porque as
+    // duas mentiriam igual.
+    assert.doesNotMatch(html, /Atualizado há/);
+    assert.doesNotMatch(html, /Sincronizado há/);
+    // O erro viajou com o `digest` que a tela mostra ao cliente e que amarra a linha
+    // `web.request_error` (ADR 0018). A render saudável acima é o que torna esta asserção
+    // não-vacuosa: o código só aparece quando alguma coisa falhou de verdade.
+    assert.match(html, /digest/);
+    assert.doesNotMatch(saudavel, /digest/);
+  } finally {
+    dashboardStatus = null;
+  }
+
+  // E a forma do cartão que o cliente desenha, já que o HTML do SSR não a carrega: o selo
+  // `danger` é o que separa indisponível (sem dado) de stale (`warning`, há dado velho) e
+  // de encerrado (cinza). Colapsar as três cores é colapsar os três estados.
+  const errorPage = (await readSources()).get("app/error.tsx");
+  assert.match(errorPage, /StatePill variant="danger"/);
+  assert.match(errorPage, /Projeção indisponível/);
+  assert.match(errorPage, /não um projeto vazio/);
+});
+
+test("a espera não desenha projeto nenhum", async () => {
+  // O carregando do SSR (`app/loading.tsx`). Ele não é assertável por HTTP — quando a
+  // resposta chega, a espera acabou —, então o que se afirma é a **forma**: um esqueleto
+  // com número no lugar do dado que ainda não chegou seria dado inventado com outra roupa,
+  // e o HTML dele seria indistinguível do verdadeiro.
+  const loading = (await readSources()).get("app/loading.tsx");
+
+  assert.ok(loading, "app/loading.tsx sumiu: a espera do SSR voltou a ser tela em branco");
+  assert.match(loading, /CARREGANDO/);
+  assert.doesNotMatch(loading, /\d+\s*%|R\$|Atualizado há|Sincronizado há/);
 });
 
 /**

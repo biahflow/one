@@ -1196,6 +1196,59 @@ def notify_pending_comment(project_id: str, comment_id: str) -> dict[str, int]:
         return {"created": len(created)}
 
 
+@celery_app.task(name="portal_api.notify_deliverable_acceptance")
+def notify_deliverable_acceptance(project_id: str, acceptance_id: str) -> dict[str, int]:
+    """Avisa **o time** de que o cliente aprovou ou pediu ajuste (FDD 027, ADR 0077).
+
+    Uma task, e pelo mesmo motivo de :func:`notify_pending_comment`: a rota roda
+    sob ``portal_app``, que não tem ``INSERT`` em ``notification`` — e essa
+    ausência é o desenho. O caminho de requisição não origina aviso.
+
+    A audiência é ``_INTERNAL_ONLY`` (``notifications.AUDIENCE``): o cliente
+    acabou de decidir, e devolver-lhe o aviso seria contar-lhe o que ele mesmo
+    decidiu.
+
+    ``exclude_user_id`` é quem decidiu, e aqui ele importa mesmo com a audiência
+    interna: quando é alguém do time que registra a decisão pela tela do cliente,
+    é ele quem seria avisado do próprio ato.
+    """
+    from portal_api.models import DeliverableAcceptance
+
+    with get_session(role=DbRole.system) as session:
+        decision = session.get(DeliverableAcceptance, uuid.UUID(acceptance_id))
+        project = session.get(Project, uuid.UUID(project_id))
+        if decision is None or project is None:
+            return {"created": 0}
+        created = notifications.fan_out(
+            session,
+            project,
+            [notifications.acceptance_change(decision)],
+            exclude_user_id=decision.actor_user_id,
+        )
+        return {"created": len(created)}
+
+
+def queue_deliverable_acceptance_notification(
+    project_id: str, acceptance_id: str
+) -> None:
+    """Mesma tolerância a broker morto das demais filas.
+
+    E aqui ela custa ainda menos que no comentário: a decisão já está gravada e é
+    **a fonte da verdade do aceite** (ADR 0077). Um broker fora do ar atrasa o
+    aviso; não perde a decisão, e não muda o que o outro lado vai ler.
+    """
+    try:
+        notify_deliverable_acceptance.delay(project_id, acceptance_id)
+    except Exception:
+        logger.warning(
+            "queue.unavailable",
+            extra={
+                "task": "notify_deliverable_acceptance",
+                "acceptance_id": acceptance_id,
+            },
+        )
+
+
 def queue_pending_comment_notification(project_id: str, comment_id: str) -> None:
     """Mesma tolerância a broker morto das demais filas.
 

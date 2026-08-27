@@ -1119,6 +1119,125 @@
         "title": "DecisionOut",
         "type": "object"
       },
+      "DeliverableAcceptanceIn": {
+        "additionalProperties": false,
+        "description": "O que o cliente decidiu, e por quê quando ele quis dizer.\n\nO **primeiro modelo de requisição declarado aqui** — os outros moram ao lado\nda rota, em ``main.py``. Mora neste módulo porque a FDD 027 e o contrato da\ntarefa o nomeiam junto da resposta, e porque a decisão é a única entrada de\ncliente cujo vocabulário (``accepted``/``changes_requested``) é contrato com\no outro lado, não formato de formulário.\n\n``extra=\"forbid\"``: um corpo com ``action: \"done\"`` ou com um campo a mais é\n**422**, nunca um aceite gravado pela metade. O padrão do Pydantic é\ndescartar em silêncio, e descartar em silêncio aqui seria gravar uma decisão\ndiferente da que a pessoa tomou.",
+        "properties": {
+          "action": {
+            "enum": [
+              "accepted",
+              "changes_requested"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "DeliverableAcceptanceIn",
+        "type": "object"
+      },
+      "DeliverableAcceptanceOut": {
+        "additionalProperties": false,
+        "description": "Uma decisão como o histórico a mostra.\n\n``actor_label`` e ``actor_is_internal`` vêm da **linha**, não do papel atual\nde quem decidiu, pelo argumento de :class:`PendingCommentOut` — e aqui ele\npesa mais, porque é este registro que o outro lado projeta.\n\nNão há campo de \"em vigor\": a decisão em vigor é a última da lista, e\ncalculá-la aqui inventaria um estado que a tabela não guarda.",
+        "properties": {
+          "action": {
+            "enum": [
+              "accepted",
+              "changes_requested"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_is_internal": {
+            "title": "Actor Is Internal",
+            "type": "boolean"
+          },
+          "actor_label": {
+            "title": "Actor Label",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "deliverable_external_ref": {
+            "title": "Deliverable External Ref",
+            "type": "string"
+          },
+          "deliverable_name": {
+            "title": "Deliverable Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "phase_name": {
+            "title": "Phase Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deliverable_external_ref",
+          "phase_name",
+          "deliverable_name",
+          "action",
+          "actor_label",
+          "actor_is_internal",
+          "comment",
+          "created_at"
+        ],
+        "title": "DeliverableAcceptanceOut",
+        "type": "object"
+      },
+      "DeliverableAcceptancesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "deliverable_external_ref": {
+            "title": "Deliverable External Ref",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeliverableAcceptanceOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deliverable_external_ref",
+          "items"
+        ],
+        "title": "DeliverableAcceptancesOut",
+        "type": "object"
+      },
       "DeliverableOut": {
         "additionalProperties": false,
         "properties": {
@@ -6120,6 +6239,192 @@
           }
         ],
         "summary": "My Dashboard"
+      }
+    },
+    "/api/v1/me/deliverables/{external_ref}/acceptance": {
+      "get": {
+        "description": "O histórico de decisões de um entregável do projeto atual (ADR 0077).\n\nEntregável de outro projeto é **404 e não lista vazia**, pela razão do fio da\npendência: uma lista vazia diria \"existe e ninguém decidiu\", que é informação\nsobre um recurso que o chamador não alcança.\n\nA ordem é a da escrita, e é ela que torna a supersessão legível: a decisão em\nvigor é a última, e as anteriores continuam lá. A resposta **não** marca qual\ndelas vale — isso seria um estado que a tabela não guarda.",
+        "operationId": "list_deliverable_acceptances_api_v1_me_deliverables__external_ref__acceptance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "External Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverableAcceptancesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "List Deliverable Acceptances"
+      },
+      "post": {
+        "description": "O cliente aprova ou pede ajuste, e a decisão vira linha imutável (ADR 0077).\n\nÉ a **quarta** escrita que o caminho de requisição origina, depois da\nconversa, do feedback e do comentário — e a primeira que o **outro lado**\nconsome como fato: este registro é a fonte da verdade do aceite, e o retorno\nao Pulse é uma projeção dele.\n\n``201`` e nunca ``200``: uma segunda decisão **acrescenta** uma linha em vez\nde reescrever a anterior, e o banco garante isso sozinho — ``portal_app`` não\ntem ``UPDATE`` nem ``DELETE`` nesta tabela (migração 0035).\n\nO que esta rota **não** faz: concluir a entrega. ``accepted`` autoriza o\nBiahflow a transicionar para ``ACCEPTED``; só o lifecycle de Delivery declara\n``DONE`` (ADR 0067). E ela não devolve nada ao Pulse — o mecanismo do retorno\né decisão em aberto, e o desenho é o evento não esperar por ela.",
+        "operationId": "record_deliverable_acceptance_api_v1_me_deliverables__external_ref__acceptance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "external_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "External Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliverableAcceptanceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliverableAcceptanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Token ausente, inválido, expirado, de outro emissor ou com e-mail não verificado. A resposta é sempre a mesma, e o motivo vive só no log (`auth.rejected`): distinguir os casos aqui permitiria sondar qual claim falhou."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O chamador não tem vínculo com o recurso — ou ele não existe. **A API nunca responde 403**: um 403 confirmaria que o projeto existe a quem não deveria saber disso."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "O projeto foi encerrado ou apagado no Biahflow e está em modo de consulta. A leitura continua aberta — o histórico é a evidência das respostas já dadas —, mas nada novo é escrito nele."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OIDCBearer": []
+          }
+        ],
+        "summary": "Record Deliverable Acceptance"
       }
     },
     "/api/v1/me/documents/{document_id}/download": {

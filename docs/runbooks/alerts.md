@@ -142,6 +142,18 @@ ignorar o painel:
 - `backup.objects.dumped` / `backup.objects.restored` — curso normal da
   operação. O que alerta é a **ausência** de backup (26 h, acima) e o
   `backup.objects.rejected`.
+- `deliverable.accepted` / `deliverable.changes_requested` — o cliente decidiu
+  sobre um entregável (FDD 027, ADR 0077). É a fatia funcionando, e nos dois
+  desfechos: pedir ajuste não é falha, é a razão de a superfície existir. Quem
+  precisa agir **já foi avisado** — sai um `deliverable_reviewed` no sino do time,
+  e é lá que a ação mora; um alerta em cima disso seria a segunda cópia do mesmo
+  chamado, que é como se ensina a ignorar o painel. Mesmo enquadramento do
+  `onboarding.step_reached` acima. `extra` traz `project_id`,
+  `deliverable_external_ref` e `acceptance_id`, e **nunca o comentário** — é texto
+  do cliente. O que valeria alerta é a decisão **não** chegar ao outro lado, e
+  esse sinal ainda não existe: o mecanismo do retorno ao Pulse é decisão em aberto
+  (ADR 0077 §Aberto). Até lá, a decisão nunca se perde porque o registro é
+  imutável e o retorno reconcilia por releitura.
 
 ## Como consultar
 

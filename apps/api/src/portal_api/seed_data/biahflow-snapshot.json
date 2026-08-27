@@ -50,7 +50,7 @@
         "status": "done",
         "target_date": null,
         "deliverables": [
-          { "name": "Acesso ao portal", "status": "delivered", "link": null }
+          { "id": 101, "name": "Acesso ao portal", "status": "delivered", "link": null }
         ]
       },
       {
@@ -60,8 +60,8 @@
         "status": "done",
         "target_date": null,
         "deliverables": [
-          { "name": "Mapa dos processos", "status": "delivered", "link": null },
-          { "name": "AI Score", "status": "delivered", "link": null }
+          { "id": 102, "name": "Mapa dos processos", "status": "delivered", "link": null },
+          { "id": 103, "name": "AI Score", "status": "delivered", "link": null }
         ]
       },
       {
@@ -71,8 +71,8 @@
         "status": "active",
         "target_date": "2026-09-20",
         "deliverables": [
-          { "name": "Funcionário Digital", "status": "pending", "link": null },
-          { "name": "Dashboard de KPIs", "status": "pending", "link": null }
+          { "id": 104, "name": "Funcionário Digital", "status": "pending", "link": null },
+          { "id": 105, "name": "Dashboard de KPIs", "status": "pending", "link": null }
         ]
       },
       {

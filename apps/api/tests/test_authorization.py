@@ -1034,6 +1034,210 @@ def test_a_comment_records_who_wrote_it_and_which_side(
     assert [item["body"] for item in listed["items"]] == ["Já enviei ontem."]
 
 
+# --- aceite do entregável (Fase 7, FDD 027, ADR 0077) ------------------------
+
+
+def _deliverable_of(engine: Engine, tenant: Tenant, external_ref: str) -> str:
+    """Um entregável **commitado** no tenant, com o id da origem.
+
+    Commitado pela razão do módulo: a API responde por outra conexão e não veria
+    a transação aberta do `db_session`.
+
+    Devolve o `external_ref` e não o uuid, e é o ponto da fatia: o caminho da
+    rota é o identificador **da origem**, porque `sync_snapshot` apaga e recria
+    esta linha a cada webhook (ADR 0077).
+    """
+    from portal_api.models import PhaseDeliverable, ProjectPhase
+
+    with Session(engine) as session:
+        phase = ProjectPhase(
+            organization_id=tenant.organization_id,
+            project_id=tenant.project_id,
+            name="Prove",
+        )
+        session.add(phase)
+        session.flush()
+        session.add(
+            PhaseDeliverable(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                phase_id=phase.id,
+                name="Funcionário Digital",
+                external_ref=external_ref,
+            )
+        )
+        session.commit()
+    return external_ref
+
+
+def test_a_client_cannot_read_or_write_the_acceptance_of_another_project(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """O caso negativo da rota nova: 404, nunca 403 (regra 6 do `AGENTS.md`).
+
+    E o `external_ref` é o que torna o caso realista, em vez de uma formalidade:
+    ele vem da **origem**, então dois projetos podem legitimamente ter
+    entregáveis com o mesmo id lá — é o "identificador fornecido pelo cliente"
+    da regra 1, e acertá-lo não pode bastar para alcançar a linha.
+
+    Leitura é 404 e **não lista vazia**, pela razão do fio da pendência: uma
+    lista vazia diria "existe e ninguém decidiu".
+    """
+    outro = _deliverable_of(migrated_engine, world.globex, "d-globex-1")
+    authenticated(world.acme.client)
+
+    read = client.get(f"/api/v1/me/deliverables/{outro}/acceptance")
+    write = client.post(
+        f"/api/v1/me/deliverables/{outro}/acceptance", json={"action": "accepted"}
+    )
+
+    assert read.status_code == 404
+    assert write.status_code == 404
+    # E a negação é indistinguível de "não existe": o corpo é o mesmo dos demais
+    # 404 do contrato, sem dizer qual dos dois motivos valeu.
+    assert read.json()["detail"] == "Not found"
+
+
+def test_o_aceite_grava_quem_decidiu_de_que_lado_e_sobre_o_que(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """Aprovar e pedir ajuste gravam, com a proveniência copiada na hora.
+
+    `phase_name` e `deliverable_name` são denormalizados no momento da decisão
+    porque o sync recria essas linhas: sem eles, um entregável que saísse do
+    snapshot deixaria o registro sem dizer sobre o quê alguém decidiu.
+    """
+    meu = _deliverable_of(migrated_engine, world.acme, "d-acme-1")
+    authenticated(world.acme.client)
+
+    aprovado = client.post(
+        f"/api/v1/me/deliverables/{meu}/acceptance",
+        json={"action": "accepted", "comment": "Pode seguir."},
+    )
+
+    assert aprovado.status_code == 201
+    body = aprovado.json()
+    assert body["action"] == "accepted"
+    assert body["actor_label"] == world.acme.client.full_name
+    assert body["actor_is_internal"] is False
+    assert body["phase_name"] == "Prove"
+    assert body["deliverable_name"] == "Funcionário Digital"
+    assert body["comment"] == "Pode seguir."
+
+
+def test_uma_segunda_decisao_acrescenta_e_nao_apaga_a_primeira(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """A supersessão é uma linha nova, e o banco é quem garante isso.
+
+    `portal_app` não tem `UPDATE` nem `DELETE` em `deliverable_acceptance`
+    (migração 0035), então não existe caminho pelo qual a primeira decisão possa
+    ser reescrita — a tela de "editar aceite" não existe porque o banco a
+    recusaria. A decisão em vigor é a última da lista; as anteriores continuam
+    lá, que é o que a FDD 027 chama de histórico imutável.
+    """
+    meu = _deliverable_of(migrated_engine, world.acme, "d-acme-2")
+    authenticated(world.acme.client)
+
+    primeira = client.post(
+        f"/api/v1/me/deliverables/{meu}/acceptance", json={"action": "accepted"}
+    )
+    segunda = client.post(
+        f"/api/v1/me/deliverables/{meu}/acceptance",
+        json={"action": "changes_requested", "comment": "Faltou o relatório."},
+    )
+
+    assert (primeira.status_code, segunda.status_code) == (201, 201)
+    assert primeira.json()["id"] != segunda.json()["id"]
+
+    historico = client.get(f"/api/v1/me/deliverables/{meu}/acceptance").json()
+    assert [item["action"] for item in historico["items"]] == [
+        "accepted",
+        "changes_requested",
+    ]
+    # Sem comentário não vira string vazia: ausência de texto é ausência.
+    assert [item["comment"] for item in historico["items"]] == [
+        None,
+        "Faltou o relatório.",
+    ]
+
+
+def test_o_aceite_recusa_um_vocabulario_que_o_contrato_nao_declara(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """`extra="forbid"` e o `Literal` na entrada, e os dois importam aqui.
+
+    `done` **não** é decisão do cliente — quem conclui a entrega é o lifecycle de
+    Delivery (ADR 0067) —, e um campo a mais descartado em silêncio gravaria uma
+    decisão diferente da que a pessoa tomou.
+    """
+    meu = _deliverable_of(migrated_engine, world.acme, "d-acme-3")
+    authenticated(world.acme.client)
+
+    vocabulario = client.post(
+        f"/api/v1/me/deliverables/{meu}/acceptance", json={"action": "done"}
+    )
+    campo_a_mais = client.post(
+        f"/api/v1/me/deliverables/{meu}/acceptance",
+        json={"action": "accepted", "superseded": True},
+    )
+
+    assert vocabulario.status_code == 422
+    assert campo_a_mais.status_code == 422
+    assert client.get(f"/api/v1/me/deliverables/{meu}/acceptance").json()["items"] == []
+
+
+def test_o_projeto_encerrado_recusa_o_aceite_com_409_depois_do_404(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """A ordem é a de sempre: o vínculo primeiro, o estado do projeto depois.
+
+    Um 409 levantado antes de resolver o vínculo contaria a um estranho que o
+    projeto existe — que é o que "404, nunca 403" existe para impedir (ADR
+    0036/0037). A leitura do histórico continua aberta: encerrar não apaga o que
+    foi decidido.
+    """
+    meu = _deliverable_of(migrated_engine, world.acme, "d-acme-4")
+    authenticated(world.acme.client)
+
+    with _read_only(migrated_engine, world.acme.project_id):
+        recusado = client.post(
+            f"/api/v1/me/deliverables/{meu}/acceptance", json={"action": "accepted"}
+        )
+        assert recusado.status_code == 409
+        assert client.get(f"/api/v1/me/deliverables/{meu}/acceptance").status_code == 200
+
+
+def test_o_aceite_enfileira_o_aviso_do_time_fora_da_transacao(
+    world: World, authenticated, migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rota grava e **enfileira**; quem avisa é a task, sob `portal_system`.
+
+    Emitir dentro da transação falharia: `portal_app` não tem `INSERT` em
+    `notification`, e essa ausência é o desenho (ADR 0012). Este é o elo entre a
+    escrita e o aviso, e é o único lugar onde ele aparece — a task tem os seus
+    testes, a rota tem os dela, e sem esta asserção nada diz que uma chama a
+    outra.
+    """
+    from portal_api import worker
+
+    meu = _deliverable_of(migrated_engine, world.acme, "d-acme-5")
+    authenticated(world.acme.client)
+    enfileirados: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        worker,
+        "queue_deliverable_acceptance_notification",
+        lambda *args: enfileirados.append(args),
+    )
+
+    criado = client.post(
+        f"/api/v1/me/deliverables/{meu}/acceptance", json={"action": "accepted"}
+    )
+
+    assert criado.status_code == 201
+    assert enfileirados == [(str(world.acme.project_id), criado.json()["id"])]
+
+
 def test_a_cross_tenant_attempt_leaves_a_trace_the_runbook_can_count(
     world: World, authenticated
 ) -> None:

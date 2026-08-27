@@ -381,6 +381,14 @@ const NOT_CALLED = {
       "e é por lá que os campos chegam à tela. Existe para o detalhamento por período, que ainda não tem tela.",
     review_by: "2027-02-01",
   },
+  "/api/v1/me/deliverables/{external_ref}/acceptance": {
+    reason:
+      "o registro de aceite existe antes da tela, e de propósito (FDD 027, ADR 0077): o evento " +
+      "persistido é a fonte da verdade e não pode esperar pela superfície. A superfície de revisão " +
+      "está atrás do gate de Design Approval do DAP r1, que é humano — o plano da F-027 foi " +
+      "congelado sem tarefa de interface por causa dele. A linha some no commit que liga a tela.",
+    review_by: "2027-02-01",
+  },
 };
 
 const CORPUS_BY_SCHEMA = schemaCorpus();
@@ -626,6 +634,13 @@ const NOT_THE_BFF = {
     "rota de agente, autenticada por chave: quem monta este corpo é o produtor de eventos, " +
     "não o navegador (ADR 0013). Mesma isenção que a rota tem em NOT_CALLED.",
 };
+const AWAITING_DESIGN_APPROVAL = {
+  reason:
+    "a entrada do aceite existe antes da tela que a envia (FDD 027, ADR 0077): a superfície de " +
+    "revisão está atrás do gate de Design Approval do DAP r1. A rota inteira está isenta em " +
+    "NOT_CALLED pelo mesmo motivo, e as duas linhas somem no commit que liga a tela.",
+  review_by: "2027-02-01",
+};
 const NO_SCREEN_YET = {
   reason:
     "o recorte por período de `GET /projects/{id}/results`, que ainda não tem tela — a rota " +
@@ -659,6 +674,10 @@ const NOT_SENT = {
       "o painel de `/admin/assistente` mostra a janela padrão; recortá-la é pergunta que " +
       "a tela ainda não faz.",
   },
+  "GET /api/v1/me/deliverables/{external_ref}/acceptance project": AWAITING_DESIGN_APPROVAL,
+  "POST /api/v1/me/deliverables/{external_ref}/acceptance project": AWAITING_DESIGN_APPROVAL,
+  "POST /api/v1/me/deliverables/{external_ref}/acceptance action": AWAITING_DESIGN_APPROVAL,
+  "POST /api/v1/me/deliverables/{external_ref}/acceptance comment": AWAITING_DESIGN_APPROVAL,
   "POST /api/v1/admin/projects/{project_id}/keys expires_in_days": {
     reason:
       "a tela cria a chave com o vencimento padrão da API; escolher o prazo é decisão que " +

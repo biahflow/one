@@ -7,7 +7,7 @@ from uuid import UUID
 
 import httpx
 import redis
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,6 +21,7 @@ from portal_api import (
     agent_auth,
     chat_limit,
     conversations,
+    deliverable_acceptance,
     notifications,
     onboarding,
     pending_comments,
@@ -43,6 +44,7 @@ from portal_api.models import (
     AgentEventOutcome,
     AuditLog,
     ConversationMessage,
+    DeliverableAcceptanceAction,
     Document,
     NotificationKind,
     OnboardingStepName,
@@ -1310,6 +1312,138 @@ def add_pending_comment(
         onboarding.stamp(
             organization_id, OnboardingStepName.first_pending_answered, user_id=author_id
         )
+    return response
+
+
+# --- o aceite do entregável (Fase 7, FDD 027, ADR 0077) ---------------------
+#
+# O molde é o par acima, e a diferença que importa está no identificador: aqui o
+# caminho traz o `external_ref` **da origem**, e não um uuid deste banco, porque
+# `sync_snapshot` apaga e recria `phase_deliverable` a cada webhook. Um aceite
+# ancorado no uuid do read model seria destruído no sync seguinte.
+
+
+def _acceptance_payload(decision) -> dict:
+    return {
+        "id": str(decision.id),
+        "deliverable_external_ref": decision.deliverable_external_ref,
+        "phase_name": decision.phase_name,
+        "deliverable_name": decision.deliverable_name,
+        "action": decision.action.value,
+        "actor_label": decision.actor_label,
+        "actor_is_internal": decision.actor_is_internal,
+        "comment": decision.comment,
+        "created_at": decision.created_at.isoformat(),
+    }
+
+
+@app.get(
+    "/api/v1/me/deliverables/{external_ref}/acceptance",
+    response_model=schemas.DeliverableAcceptancesOut,
+    responses=CLIENT_ERRORS,
+)
+def list_deliverable_acceptances(
+    external_ref: str = Path(min_length=1, max_length=80),
+    *,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
+    """O histórico de decisões de um entregável do projeto atual (ADR 0077).
+
+    Entregável de outro projeto é **404 e não lista vazia**, pela razão do fio da
+    pendência: uma lista vazia diria "existe e ninguém decidiu", que é informação
+    sobre um recurso que o chamador não alcança.
+
+    A ordem é a da escrita, e é ela que torna a supersessão legível: a decisão em
+    vigor é a última, e as anteriores continuam lá. A resposta **não** marca qual
+    delas vale — isso seria um estado que a tabela não guarda.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.chosen_project(session, user, project_id)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        ctx = TenantContext(project.organization_id, project.id)
+        decisions = deliverable_acceptance.list_for_deliverable(
+            session, ctx, external_ref
+        )
+        if decisions is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+        return {
+            "deliverable_external_ref": external_ref,
+            "items": [_acceptance_payload(decision) for decision in decisions],
+        }
+
+
+@app.post(
+    "/api/v1/me/deliverables/{external_ref}/acceptance",
+    response_model=schemas.DeliverableAcceptanceOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={**CLIENT_ERRORS, **READ_ONLY_PROJECT_ERROR},
+)
+def record_deliverable_acceptance(
+    payload: schemas.DeliverableAcceptanceIn,
+    external_ref: str = Path(min_length=1, max_length=80),
+    *,
+    principal: CurrentPrincipal,
+    project_id: UUID | None = Query(default=None, alias="project"),
+) -> dict:
+    """O cliente aprova ou pede ajuste, e a decisão vira linha imutável (ADR 0077).
+
+    É a **quarta** escrita que o caminho de requisição origina, depois da
+    conversa, do feedback e do comentário — e a primeira que o **outro lado**
+    consome como fato: este registro é a fonte da verdade do aceite, e o retorno
+    ao Pulse é uma projeção dele.
+
+    ``201`` e nunca ``200``: uma segunda decisão **acrescenta** uma linha em vez
+    de reescrever a anterior, e o banco garante isso sozinho — ``portal_app`` não
+    tem ``UPDATE`` nem ``DELETE`` nesta tabela (migração 0035).
+
+    O que esta rota **não** faz: concluir a entrega. ``accepted`` autoriza o
+    Biahflow a transicionar para ``ACCEPTED``; só o lifecycle de Delivery declara
+    ``DONE`` (ADR 0067). E ela não devolve nada ao Pulse — o mecanismo do retorno
+    é decisão em aberto, e o desenho é o evento não esperar por ela.
+    """
+    with get_session(principal) as session:
+        user = resolve_user(session, principal)
+        project = access.chosen_project(session, user, project_id)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No project for client")
+        _refuse_when_read_only(project)
+        ctx = TenantContext(project.organization_id, project.id)
+        decision = deliverable_acceptance.record_acceptance(
+            session,
+            ctx,
+            deliverable_external_ref=external_ref,
+            actor=user,
+            action=DeliverableAcceptanceAction(payload.action),
+            comment=payload.comment,
+        )
+        if decision is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+        response = _acceptance_payload(decision)
+        queued = (str(project.id), str(decision.id))
+        recorded = decision.action
+
+    # Fora da transação, como o comentário e o expurgo: o worker lê a linha do
+    # banco sob `portal_system`, porque `portal_app` não tem `INSERT` em
+    # `notification` — e essa ausência é o desenho.
+    from portal_api.worker import queue_deliverable_acceptance_notification
+
+    queue_deliverable_acceptance_notification(*queued)
+    # Dois nomes literais e um `if`, e não um nome montado: o `event` interpolado
+    # muda a cada ocorrência e o limiar do `alerts.md` deixa de valer (ADR
+    # 0018/0034). O **comentário do cliente não entra** — é texto dele, e o log é
+    # onde a regra 5 do `AGENTS.md` custa mais caro.
+    detail = {
+        "project_id": queued[0],
+        "acceptance_id": queued[1],
+        "deliverable_external_ref": external_ref,
+    }
+    if recorded is DeliverableAcceptanceAction.accepted:
+        logger.info("deliverable.accepted", extra=detail)
+    else:
+        logger.info("deliverable.changes_requested", extra=detail)
     return response
 
 

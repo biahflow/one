@@ -1,6 +1,9 @@
 # Evidência — F-028
 
-**Estado:** baseline registrado; nenhuma implementação (aguarda Design Approval + ADR).
+**Estado:** T01–T08 entregues e mergeados (PR #73 e PR #75); feature `BLOCKED` para fechamento
+pleno por dependência cross-repo (`phase_ref` do Pulse). As seções abaixo estão em ordem
+cronológica: o baseline de 26/08, a fatia não-interface (T01–T05) e a superfície (T06–T08). A nota
+de fechamento está ao final.
 
 ## Baseline (26/08/2026, `main`)
 
@@ -90,3 +93,24 @@ erro ficar sem nome no celular merece decisão de quem é dono daquela superfíc
 Ancoragem decisão→fase na timeline: `DEPENDENCY_BLOCKED` no gate de 27/08 — depende de
 `phase_ref` carimbado pelo Pulse. A heurística por `decided_on` foi **recusada** no gate. A
 Issue #62 não fecha por inteiro enquanto ela não existir.
+
+## Nota de fechamento (27/08/2026)
+
+O escopo construível **neste** repositório está entregue e em `main`:
+
+| Fatia | Tarefas | PR | O que entrou |
+| --- | --- | --- | --- |
+| Não-interface | T01–T05 | #73 | colunas de frescor/versão + migração `0031_projection_freshness`; `sync_snapshot` consome `observed_at`/`projection_version` com fallback rotulado; reconciliação anti-regressão (`projection.stale_rejected`); `build_dashboard` + schemas + OpenAPI; guarda client-safe medida por mutação |
+| Superfície | T06–T08 | #75 | carimbo "Atualizado há X" vs. "Sincronizado há X" (rótulo honesto por origem), `StatePill` de stale e de indisponível, limiar por `PROJECTION_STALE_HOURS`; evidência desktop+mobile |
+
+Critérios de aceite da Issue #62 atendidos neste repo: projeção autorizada com **proveniência e
+frescor** explícitos; campos internal-only **excluídos por contrato e teste** (guarda client-safe,
+ADR 0067); stale/indisponível **visivelmente representados**; eventos duplicados/fora de ordem
+**não corrompem** a projeção (reconciliação por versão); isolamento cross-tenant intacto
+(`test_authorization.py`/RLS); PRs abertos pelo harness, **merge humano**.
+
+**Único critério em aberto:** "decisões/gates entendíveis sem termos internos", que depende da
+ancoragem decisão→fase — `DEPENDENCY_BLOCKED` no `phase_ref` do Pulse (acima). Por isso a FDD está
+`BLOCKED` e não `DONE`: a feature entrega valor hoje, mas o fechamento pleno é gate cross-repo, não
+trabalho pendente aqui. Quando o Pulse carimbar `phase_ref`, a superfície correspondente do DAP
+entra em fatia própria e a FDD pode ir a `DONE` sob decisão humana.

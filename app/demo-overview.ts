@@ -33,6 +33,10 @@ export const DEMO_OVERVIEW: Overview = {
   source: "demo",
   archivedAt: null,
   sourceDeletedAt: null,
+  // A casca de demonstração **não** carimba frescor, e é o caso mais literal da regra
+  // (ADR 0026/0076): não há origem que tenha observado coisa nenhuma aqui, então qualquer
+  // hora escrita nesta linha seria inventada. Foi daqui que saiu o "Atualizado há 2 dias".
+  freshness: null,
   nextDelivery: { title: "Treinamento da operação", detail: "18 de setembro • Em 12 dias" },
   milestones: [
     { title: "Validação de integrações", owner: "Time Acme", state: "Em andamento", date: "09 set" },

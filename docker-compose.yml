@@ -433,6 +433,11 @@ services:
       # troca o código por token) — dois endereços do mesmo Keycloak.
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/portal-local}
       KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080/realms/portal-local}
+      # Limiar do stale da jornada, em horas (ADR 0076) — parâmetro de operação. Entra aqui
+      # porque uma variável que só existe no `.env.example` é uma variável que o contêiner
+      # nunca recebe: foi assim que a chave da Anthropic ficou três fases sem chegar ao
+      # `AnthropicResponder` (ADR 0022).
+      PROJECTION_STALE_HOURS: ${PROJECTION_STALE_HOURS:-24}
     ports:
       - "3000:3000"
     # `/login` é a única rota que o `proxy.ts` deixa passar sem sessão, então é

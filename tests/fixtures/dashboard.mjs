@@ -43,11 +43,17 @@ export const DASHBOARD = {
   // Idem para a exclusão na origem (ADR 0037), que só chega por webhook.
   source_deleted_at: null,
   // Frescor da projeção (ADR 0076). As duas datas são mutuamente exclusivas e **qual delas
-  // veio é o rótulo**: aqui a origem carimbou, então é "observado há X". O caminho do
+  // veio é o rótulo**: aqui a origem carimbou, então é "atualizado há X". O caminho do
   // fallback (`observed_at: null`, `synced_at` preenchido, "sincronizado há X") é o do
   // Biahflow que ainda não numera, e vale a pena lembrar que os dois nulos também são um
-  // estado legítimo — projeto sem passagem de sync não ganha carimbo inventado.
-  observed_at: "2026-08-20T09:00:00+00:00",
+  // estado legítimo — projeto sem passagem de sync não ganha carimbo inventado. Os três
+  // casos são exercitados por override em `rendered-html.test.mjs`, sobre esta mesma base.
+  //
+  // **Relativo ao instante do teste, e é o único campo desta fixture que precisa ser.** Um
+  // instante fixo aqui não descreve um estado fixo: "há 2 horas" hoje é "há 3 meses" no
+  // trimestre que vem, de modo que a fixture mudaria de significado sozinha e o caso
+  // recente viraria o caso stale sem ninguém tocar em nada.
+  observed_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   synced_at: null,
   projection_version: 12,
   milestones: [

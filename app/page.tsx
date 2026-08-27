@@ -8,6 +8,7 @@ import { traceId } from "@/app/lib/trace";
 import DashboardClient, {
   type JourneyPhase,
   type DecisionView,
+  type FreshnessView,
   type MeetingView,
   type NotificationCenter,
   type Overview,
@@ -69,6 +70,73 @@ function relativeAge(iso: string | null | undefined): string {
   if (days < 30) return `há ${days} dias`;
   const months = Math.floor(days / 30);
   return months === 1 ? "há 1 mês" : `há ${months} meses`;
+}
+
+/**
+ * A partir de quantas horas de idade a projeção passa a dizer que pode estar
+ * desatualizada (ADR 0076).
+ *
+ * **Vem de configuração porque é parâmetro de operação, não de desenho** — o DAP r1 desta
+ * fatia registra o limiar numérico em "Explicitly not approved", e as *Resoluções do gate*
+ * de 27/08/2026 o mandam de volta para quem opera. O default existe para a ausência da
+ * variável não significar "nunca fica velho", que seria o `skipped` fingindo `clean` da
+ * ADR 0017 nesta superfície; um valor inválido cai nele em vez de desligar o estado.
+ */
+const DEFAULT_STALE_HOURS = 24;
+
+function staleAfterHours(): number {
+  const declared = Number(process.env.PROJECTION_STALE_HOURS);
+  return Number.isFinite(declared) && declared > 0 ? declared : DEFAULT_STALE_HOURS;
+}
+
+/**
+ * "há 2 horas", com a granularidade que um carimbo de frescor exige.
+ *
+ * `relativeAge` acima serve documento e aviso, e o menor degrau dela é o **dia**: ela
+ * responde "hoje" a um sync de dois minutos atrás e a um de vinte horas atrás, que é
+ * exatamente a distinção que esta fatia existe para fazer.
+ *
+ * Idade negativa é relógio da origem à frente do nosso, não dado do futuro: vira "há menos
+ * de 1 minuto" em vez de sumir, porque a alternativa seria a tela deixar de carimbar por
+ * causa de alguns segundos de desvio.
+ */
+function freshnessAge(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (!Number.isFinite(minutes)) return "";
+  if (minutes < 1) return "há menos de 1 minuto";
+  if (minutes < 60) return minutes === 1 ? "há 1 minuto" : `há ${minutes} minutos`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? "há 1 hora" : `há ${hours} horas`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return days === 1 ? "há 1 dia" : `há ${days} dias`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "há 1 mês" : `há ${months} meses`;
+}
+
+/**
+ * O frescor da projeção, e **qual das duas colunas veio é o rótulo** (ADR 0076).
+ *
+ * A API mantém `observed_at` e `synced_at` mutuamente exclusivos de propósito — não há um
+ * terceiro campo dizendo qual é o caso, e não pode haver: seria a mesma regra em dois
+ * lugares, livre para divergir do par. Ler qual chegou é ler o contrato, não adivinhar.
+ *
+ * As duas nulas são a **terceira** resposta: projeto que nunca passou por um sync não ganha
+ * carimbo. A ADR 0026 removeu desta mesma tela um "Atualizado há 2 dias" que ninguém tinha
+ * como sustentar, e a regra desde então é não carimbar sem hora de verdade.
+ *
+ * A idade é derivada **aqui**, no instante em que a página é renderizada, e não na API: um
+ * "há X" calculado no servidor de dados envelheceria dentro da própria resposta. É o que
+ * `build_dashboard` escreveu ao projetar os instantes e recusar-se a projetar a idade.
+ */
+function freshnessOf(observedAt: string | null, syncedAt: string | null): FreshnessView | null {
+  const kind = observedAt ? "observed" : syncedAt ? "synced" : null;
+  const at = observedAt ?? syncedAt;
+  if (!kind || !at) return null;
+  const age = freshnessAge(at);
+  // Data ilegível não vira carimbo — mesma regra do par nulo.
+  if (!age) return null;
+  const hours = (Date.now() - new Date(at).getTime()) / 3_600_000;
+  return { kind, age, stale: hours >= staleAfterHours() };
 }
 
 function initialsOf(fullName: string): string {
@@ -165,6 +233,15 @@ function toOverview(data: Record<string, unknown>, organization: string): Overvi
     source: "live",
     archivedAt: (data.archived_at as string | null) ?? null,
     sourceDeletedAt: (data.source_deleted_at as string | null) ?? null,
+    // `projection_version` fica de fora de propósito, e não por esquecimento: ele existe
+    // para "o Biahflow parou de avançar" ser respondível sem abrir o Postgres, e não tem o
+    // que dizer a um cliente. Trazê-lo até aqui só para calar a guarda de consumo seria o
+    // código morto que a ADR 0033 existe para pegar — a linha continua em `NOT_CONSUMED`,
+    // agora com o motivo verdadeiro.
+    freshness: freshnessOf(
+      (data.observed_at as string | null) ?? null,
+      (data.synced_at as string | null) ?? null,
+    ),
     nextDelivery: next ? { title: next.title, detail: shortDate(next.due_date) } : null,
     milestones: apiMilestones.map((milestone) => ({
       title: milestone.title,

@@ -88,6 +88,17 @@ listas são a mesma e que toda citação por número resolve.*
   recusada**, que é a regra 4 na parte em que o gatilho é estrutural. Isenção é linha em
   `ADDITIVE_BY_EXCEPTION` com motivo e sem prazo. O `alembic check` **não** cobre isto: ele
   existe contra deriva, não contra perda.
+- Batizou um nome novo? **Ele sai do Language Map** (ADR 0083). `test_vocabulary.py` varre os
+  **dois** deployables e reprova identificador fora do vocabulário canônico — `opportunity` sem
+  qualificador, `client` como organização, `gate_outcome`, modelo em português — e texto visível
+  que chame o One de "Cockpit"/"portal do cliente", o Pulse de "portal Biahflow"/"o CRM" ou o
+  PROVE de piloto, POC ou MVP. Os termos saem do
+  [`docs/ontology/language-map.md`](docs/ontology/language-map.md), e a relação é bidirecional:
+  linha da §5 sem regra nem exclusão escrita reprova. O casamento é sobre **batismo**, nunca
+  sobre referência — a nota histórica que explica um rename continua legal. Sobrevivência é linha
+  em [`docs/ontology/legacy-allowlist.txt`](docs/ontology/legacy-allowlist.txt) com razão escrita
+  e **sem prazo**; quem a vence é a asserção de obsolescência, e a contagem é campo separado para
+  a ocorrência nova não pegar carona.
 - Apagou um diretório, criou um ambiente ou mudou o que a pilha tem? **O documento de
   arquitetura vem junto** (ADR 0064): `test_architecture_doc.py` cobra que todo ambiente
   declarado (`docker-compose*.yml`, `infra/terraform/ambientes/*/` com `backend.tf`) seja nomeado

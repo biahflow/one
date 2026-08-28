@@ -222,6 +222,20 @@ CI (`.github/workflows/ci.yml`) runs seven gates you should reproduce locally be
   perder linha. Migração que toca policy, RLS ou privilégio cita ADR ou RFC que exista e não tenha
   sido recusada — o corpus vem por `import` de `test_roadmap_index.py`, nunca recopiado. É a regra
   4 do `AGENTS.md`, a última das seis a ganhar portão.
+- **E agora o Language Map tem portão** (ADR 0083). `apps/api/tests/test_vocabulary.py` roda no
+  `api-quality` e varre os **dois** deployables — não é regra de eslint porque
+  `eslint.config.mjs` ignora `apps/**`, e "guarda que para na fronteira do pacote" é o defeito
+  que a ADR 0035 consertou. Seis regras, todas com o termo **derivado** das tabelas do
+  documento (inclusive as três exceções nomeadas da §5 — Opportunity Score, Opportunity Map,
+  Improvement Opportunity Backlog — e o **MVP**, que só a §2 tem), e a relação é bidirecional:
+  linha da §5 sem regra nem exclusão escrita reprova. O casamento é sobre **batismo** e nunca
+  sobre referência, senão a guarda cobraria que o repositório apagasse as duas notas que
+  explicam o rename de `GateOutcome`. A dívida era **zero** quando ela nasceu, então o
+  argumento inteiro é a mutação — e o par que a carrega é a isenção de React Client Component:
+  escopada ao **arquivo**, `clientRows` dentro de `FunnelClient.tsx` passa verde; escopada ao
+  **identificador** (o `export default function` que coincide com o basename, num módulo com
+  `"use client"`), reprova. `docs/ontology/legacy-allowlist.txt` nasce com as 27 sobrevivências
+  decididas, cada uma com razão, sem prazo e **só encolhe**.
 - **Nome de domínio novo sai do Language Map, e rota de domínio nasce em inglês** (ADR 0079).
   `docs/ontology/language-map.md` é o documento normativo do vocabulário nas quatro
   superfícies (Pulse, One, Notion, mercado): a organização é **Account**, o programa é

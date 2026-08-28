@@ -1,0 +1,150 @@
+# As sobrevivências decididas do vocabulário canônico (Issue #91, Language Map v1.1).
+#
+# Formato: caminho::regra::identificador::contagem
+#
+# Quem a lê é `apps/api/tests/test_vocabulary.py`, e ela **só encolhe**. Não há
+# `review_by` e não há prazo — ao contrário do `docs/security/advisories.json` e no
+# precedente do `PINNED_BY_EXCEPTION` (ADR 0063) e do `FOUNDATION_WITHOUT_A_LINE`
+# (ADR 0054): dívida de vocabulário não caduca por calendário, ela some no dia em que
+# o termo sai do código. O vencimento de cada linha abaixo é
+# `test_the_allowlist_does_not_keep_a_line_that_stopped_being_needed`, que reprova
+# quando a ocorrência desaparece **ou** quando a contagem cai.
+#
+# A contagem é campo separado de propósito: uma ocorrência nova sob uma chave já
+# isenta reprova, em vez de pegar carona na isenção da vizinha.
+#
+# Toda linha tem a razão escrita imediatamente acima dela, e a asserção que a cobra
+# tem piso — uma sobrevivência cuja razão ninguém consegue escrever é uma
+# sobrevivência que não devia existir (o argumento da lista positiva da ADR 0082).
+#
+# Esta lista **não nasceu vazia**, e isso é a decisão. Uma allowlist vazia é o defeito
+# que a ADR 0033 nomeou ("seguia vazia porque nada a consultava") e a asserção sobre
+# lista vazia que a ADR 0082 registrou ("não percorre ramo nenhum").
+
+
+# ---------------------------------------------------------------------------
+# 1. `client` como o LADO, e não como a organização
+# ---------------------------------------------------------------------------
+#
+# A §5 bane `Client` como nome de **modelo**: a organização é `Account` desde
+# prospect. As linhas abaixo não nomeiam a organização — nomeiam as pessoas do lado
+# do cliente, que é a mesma sobrevivência que a ADR 0079 já registrou por escrito
+# para `client_member` ("papel de pessoa, não a organização").
+
+# `MemberRole.client_member` é o papel de uma pessoa na `membership`, e a ADR 0079 o
+# registrou como sobrevivência decidida. Renomeá-lo trocaria o valor persistido do
+# enum `member_role` em todo vínculo já gravado.
+apps/api/src/portal_api/models/identity.py::client-como-organizacao::client_member::1
+
+# `Blame.client` responde "de que lado o funil travou" (ADR 0040), e o docstring dele
+# diz literalmente "O cliente tem tudo o que precisa e não veio". O outro valor é
+# `us` e não `team` pela mesma razão escrita ao lado: são os dois lados de uma
+# conversa, não duas entidades.
+apps/api/src/portal_api/onboarding.py::client-como-organizacao::client::1
+
+# `_client_has_authenticated` pergunta se **alguém do cliente** já entrou alguma vez,
+# pela evidência que não é do funil (`user.external_subject`, ADR 0040). O sujeito é
+# a pessoa; a organização entra na função como `organization_id`, com o nome certo.
+apps/api/src/portal_api/onboarding.py::client-como-organizacao::_client_has_authenticated::1
+
+# `_CLIENT_ONLY` é a audiência de um aviso (ADR 0012): quem recebe é a pessoa com
+# papel `client_member`, e o par dele é `_INTERNAL_ONLY`. É a mesma partição de
+# `Blame`, do lado das notificações.
+apps/api/src/portal_api/notifications.py::client-como-organizacao::_CLIENT_ONLY::1
+
+# `ensure_demo_client` provisiona o **usuário** de demonstração e o `client_member`
+# dele (só com `demo_mode`). Cria uma pessoa, não uma organização — a organização já
+# existe quando ele roda.
+apps/api/src/portal_api/integrations/biahflow.py::client-como-organizacao::ensure_demo_client::1
+
+# `portal_client_email` e `portal_client_name` são a identidade da **pessoa** semeada
+# no ambiente local (Marina Farias), lidas pelo `seed.py`. A organização do seed tem
+# nome próprio e não passa por aqui.
+apps/api/src/portal_api/config.py::client-como-organizacao::portal_client_email::1
+apps/api/src/portal_api/config.py::client-como-organizacao::portal_client_name::1
+
+# `stuckOnClient` é o espelho de `Blame.client` na tela do funil: as linhas que ele
+# filtra já são `AccountRow`, com o nome canônico, e o que ele particiona é o lado.
+# Esta é a linha que carrega a fatia: ela mora dentro de `FunnelClient.tsx`, e uma
+# isenção de React Client Component escopada ao *arquivo* a perdoaria sem que nada
+# ficasse vermelho.
+app/admin/funnel/FunnelClient.tsx::client-como-organizacao::stuckOnClient::1
+
+# `no_client_member` é uma chave de lacuna que a **API** publica
+# (`onboarding.py:544`, `gaps.append("no_client_member")`) e a tela traduz. Renomear
+# aqui quebraria o casamento com o servidor sem mudar dado nenhum.
+app/admin/funnel/FunnelClient.tsx::client-como-organizacao::no_client_member::1
+
+# `client_member` como chave de `ROLE_LABELS`: é o valor que a API devolve em
+# `GET /api/v1/me`, e a chave existe para traduzi-lo. Mesma razão da linha acima —
+# chave de vocabulário publicado, não batismo local.
+app/page.tsx::client-como-organizacao::client_member::1
+app/admin/page.tsx::client-como-organizacao::client_member::1
+
+# `client_review` é um valor de `DeliveryStatus` que vem do Pulse (FDD 027, ADR
+# 0077) — "em revisão do cliente", o estado em que a entrega está **com as pessoas do
+# cliente**. As duas ocorrências são a chave do rótulo e a chave do tom; as duas
+# traduzem o mesmo valor publicado.
+app/DashboardClient.tsx::client-como-organizacao::client_review::2
+
+
+# ---------------------------------------------------------------------------
+# 2. `client` do protocolo OAuth/OIDC — RFC 6749
+# ---------------------------------------------------------------------------
+#
+# `client_id` e `client_secret` são os nomes que o protocolo fixa para a credencial
+# de uma **aplicação** registrada num authorization server. Não há escolha de nome
+# aqui: o valor viaja com essa chave no corpo do token exchange, e o "client" da RFC
+# é o portal, não o cliente da Biahflow.
+
+# As duas credenciais confidenciais do Keycloak: o service account `portal-admin`
+# (`keycloak_admin.py`) e o client web `portal-web` (ADR 0010).
+apps/api/src/portal_api/config.py::client-como-organizacao::keycloak_admin_client_id::1
+apps/api/src/portal_api/config.py::client-como-organizacao::keycloak_admin_client_secret::1
+apps/api/src/portal_api/config.py::client-como-organizacao::keycloak_web_client_id::1
+
+# A credencial do app OAuth do Google Drive (ADR 0016), na forma que o Google exige.
+apps/api/src/portal_api/config.py::client-como-organizacao::google_drive_client_id::1
+apps/api/src/portal_api/config.py::client-como-organizacao::google_drive_client_secret::1
+
+# O mesmo par do lado do BFF: `clientId`/`clientSecret` são a forma que o Auth.js v5
+# usa no provider, e `client_id`/`client_secret` são a forma de fio do refresh que
+# `auth.ts` faz à mão contra `KEYCLOAK_INTERNAL_URL` (ADR 0010).
+auth.ts::client-como-organizacao::clientId::1
+auth.ts::client-como-organizacao::clientSecret::1
+auth.ts::client-como-organizacao::client_id::1
+auth.ts::client-como-organizacao::client_secret::1
+
+
+# ---------------------------------------------------------------------------
+# 3. `client` de transporte — quem fala com um servidor remoto
+# ---------------------------------------------------------------------------
+#
+# Aqui "client" é o lado que faz a chamada, vocabulário de HTTP e de SDK. Nenhum
+# deles conhece organização: os quatro são fábricas de conexão, e três existem como
+# **ponto de costura** para os testes injetarem um duplo — a forma que a ADR 0021
+# nomeou ao criar `anthropic_client()`.
+
+# O cliente HTTP do Anthropic, o ponto de costura que faz o `AnthropicResponder` ser
+# código que algum teste executa (ADR 0021).
+apps/api/src/portal_api/ai/responder.py::client-como-organizacao::anthropic_client::1
+
+# O cliente de JWKS que valida a assinatura do access token contra o realm (ADR 0010).
+apps/api/src/portal_api/auth.py::client-como-organizacao::_jwks_client::1
+
+# As duas sessões `httpx` reusadas: Drive (ADR 0016) e WhatsApp (ADR 0043).
+apps/api/src/portal_api/integrations/google_drive.py::client-como-organizacao::session_client::1
+apps/api/src/portal_api/integrations/whatsapp.py::client-como-organizacao::session_client::1
+
+# O cliente S3/MinIO de `storage.py` (ADR 0014).
+apps/api/src/portal_api/storage.py::client-como-organizacao::_client::1
+
+
+# ---------------------------------------------------------------------------
+# 4. `client` da família 4xx — RFC 9110
+# ---------------------------------------------------------------------------
+
+# `CLIENT_ERRORS` é o dicionário de respostas de erro que toda rota de cliente
+# declara no OpenAPI (`responses=CLIENT_ERRORS`, ADR 0020). "Client error" é o nome
+# que a RFC 9110 dá à família 4xx, e o "client" ali é o agente HTTP que chamou.
+apps/api/src/portal_api/main.py::client-como-organizacao::CLIENT_ERRORS::1

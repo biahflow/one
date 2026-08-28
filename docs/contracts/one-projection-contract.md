@@ -97,9 +97,22 @@ O recorte de visibilidade é o da §3 do Language Map, e o que o código já gar
 - do artefato comercial atravessa **só a data** de aceite (`artifact_accepted_at`),
   qualificada em emenda na ADR 0003 do Biahflow.
 
-O guard de visibilidade por campo — a lista positiva do que pode sair — ainda não existe.
-Está aberto e nomeado; até ele existir, o que sustenta a regra é o recorte do snapshot na
-origem mais o `extra="forbid"` deste lado.
+Desde a ADR 0082 isso deixou de ser prosa: [`one-visibility.json`](one-visibility.json) é a
+lista **positiva** do que pode sair, campo a campo, com a razão escrita de cada um — e a
+regra é a **negação por omissão**, campo que ninguém classificou não passa. Duas guardas
+leem aquele arquivo: `apps/api/tests/test_visibility.py` afirma a cobertura, e
+`tests/api-contract.test.mjs` afirma as nove proibições, sobre o contrato e sobre as
+fixtures do BFF.
+
+O recorte do corpus mora no mesmo arquivo, com a razão de cada exclusão: `/api/v1/admin/*` é
+superfície interna, as sondas e os dois webhooks não são leitura de cliente, e a rota de
+eventos é entrada. Filtrar campo **no BFF** foi decidido contra e está registrado: as seis
+rotas de `app/api/**` são passagem crua, e filtrar lá criaria uma segunda autoridade sobre a
+mesma pergunta.
+
+O que o `extra="forbid"` faz continua valendo e é outra coisa: ele fecha o contrato por
+construção, para um campo não declarado estourar em vez de sumir. O que a ADR 0082
+acrescenta é a revisão humana de cada campo **declarado**.
 
 ## Homologação de entregável
 

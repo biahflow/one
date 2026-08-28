@@ -1,0 +1,565 @@
+{
+  "$comment": [
+    "A fronteira do que o One expõe ao cliente, como dado (ADR 0082).",
+    "",
+    "Duas guardas leem este arquivo, e cada uma afirma uma coisa diferente:",
+    "  - apps/api/tests/test_visibility.py  -> COBERTURA. Todo campo de toda",
+    "    resposta de rota de cliente do docs/api/openapi.json está declarado em",
+    "    `schemas`, com razão escrita. Campo novo nasce VERMELHO até alguém o",
+    "    classificar: a regra é NEGAÇÃO POR OMISSÃO.",
+    "  - tests/api-contract.test.mjs        -> PROIBIÇÕES. As nove da §3 do",
+    "    Language Map, afirmadas sobre o contrato e sobre as fixtures do BFF.",
+    "",
+    "É um arquivo só, e não dois, pela lição do alerts.md (ADR 0034): duas",
+    "guardas sobre o MESMO arquivo divergem. Aqui não há duas guardas sobre a",
+    "mesma afirmação — há duas afirmações distintas sobre um dado só, e o",
+    "recorte do corpus (`corpus`) é declarado aqui justamente para as duas",
+    "metades não o reimplementarem cada uma do seu jeito.",
+    "",
+    "NÃO é append-only (não é o prompt-registry.json): quando um campo sai do",
+    "contrato, a linha sai daqui, e a asserção de obsolescência reprova a linha",
+    "órfã — a regra do NOT_CONSUMED e do advisories.json.",
+    "",
+    "NÃO tem prazo (`review_by`): pino de visibilidade não caduca por",
+    "calendário. Quem o vence é a asserção de obsolescência. É o precedente do",
+    "PINNED_BY_EXCEPTION (ADR 0063), não o do advisories.json.",
+    "",
+    "A razão de cada campo diz O QUE O CAMPO É e de onde vem. Um campo cuja",
+    "razão ninguém consegue escrever é um campo que não devia estar saindo."
+  ],
+
+  "corpus": {
+    "$comment": [
+      "Quais rotas são 'do One' — o recorte que as duas guardas aplicam.",
+      "Rota de cliente = a autenticada por Bearer que não está excluída abaixo.",
+      "É FAIL-CLOSED nos dois sentidos: rota do contrato que não está no corpus",
+      "nem numa exclusão escrita reprova, e corpus vazio reprova. Verde por não",
+      "ter olhado é o defeito do dependency-review (ADR 0023) e do `for` sobre",
+      "oito nomes (ADR 0033). Exclusão sem razão escrita é allowlist disfarçada."
+    ],
+    "security_scheme": "OIDCBearer",
+    "excluded_prefixes": [
+      {
+        "prefix": "/api/v1/admin/",
+        "reason": "Superfície interna, não é 'o que o cliente vê': roda sob portal_admin, exige internal_admin no projeto e é servida pelas telas de /admin. Quem a protege é o papel no banco (ADR 0011) e o caso negativo derivado do contrato em test_authorization.py. Classificar campo de admin aqui misturaria duas perguntas — o que sai para o cliente e o que o time vê — e afrouxaria a primeira para caber a segunda."
+      }
+    ],
+    "excluded_paths": [
+      {
+        "path": "/health",
+        "reason": "Sonda de liveness, sem autenticação e sem dado de tenant. Quem chama é o orquestrador, não um navegador de cliente."
+      },
+      {
+        "path": "/health/ready",
+        "reason": "Sonda de readiness, idem — diz se as dependências respondem, nunca o que elas contêm."
+      },
+      {
+        "path": "/api/v1/agent-events",
+        "reason": "Ingestão, não leitura: é a única rota autenticada por chave de agente (ADR 0013), e o que entra por ela é escrito, não exibido. O corpo dela é AgentEventIn, que nem chega a ser esquema de resposta."
+      },
+      {
+        "path": "/api/v1/integrations/biahflow/webhook",
+        "reason": "Entrada do snapshot, assinada pelo Biahflow (ADR 0006). Quem chama é o outro sistema; a projeção que ele alimenta é que vira resposta de cliente, e essa está no corpus."
+      },
+      {
+        "path": "/api/v1/integrations/whatsapp/webhook",
+        "reason": "Recibo de entrega e resposta do canal, assinado pelo fornecedor (ADR 0043). Também é entrada, e o cliente não a lê — ele lê a mensagem no WhatsApp."
+      }
+    ]
+  },
+
+  "schemas": {
+    "AssumptionBasisOut": {
+      "days_per_month": "Dias úteis por mês usados na conta de economia. Premissa financeira do próprio projeto, publicada para o cliente refazer a conta na mão (ADR 0013).",
+      "formula": "A fórmula do ROI em texto, como results.py a aplicou. Existe para o bloco 'Como calculamos' não afirmar uma conta diferente da que a API fez (ADR 0033)."
+    },
+    "CitationOut": {
+      "dated_at": "A data da fonte citada, congelada no turno (ADR 0038). É o que impede o rótulo de continuar igual depois de o arquivo ser reindexado.",
+      "document_id": "Ponteiro para o documento do próprio projeto, quando há arquivo por trás. Vazio quer dizer 'não há o que abrir' (ADR 0017).",
+      "label": "O rótulo da citação como foi exibido ao cliente. Congelado na linha da conversa, nunca recalculado."
+    },
+    "ChatOut": {
+      "answer": "A resposta do assistente sobre o projeto do próprio cliente, produzida só com evidência dele (regra 2 e 3 do AGENTS.md).",
+      "citations": "As fontes que sustentam a resposta, do índice do próprio projeto.",
+      "confidence": "A confiança declarada pelo respondedor. Rótulo do próprio turno, não score interno de outro sistema.",
+      "conversation_id": "Identificador da thread do próprio chamador; é o que faz o chat reabrir onde parou (ADR 0015).",
+      "message_id": "Identificador da mensagem gravada, para o polegar do feedback ter alvo.",
+      "pending_created": "Se a lacuna virou pendência. É a regra 3 do AGENTS.md visível na tela.",
+      "sources": "Os rótulos das fontes, na forma que a tela lista. Mesma procedência das citations."
+    },
+    "ConversationMessageOut": {
+      "citations": "As citações como foram exibidas naquele turno (ADR 0015/0038); nunca recalculadas na leitura.",
+      "confidence": "A confiança daquele turno, congelada com ele.",
+      "feedback": "O polegar que a própria pessoa deu. É dela, sobre a resposta dela.",
+      "id": "Identificador da mensagem na thread do próprio chamador.",
+      "pending_created": "Se aquele turno abriu pendência.",
+      "role": "Quem falou — pessoa ou assistente. Sem isto a thread não se lê.",
+      "sources": "Os rótulos das fontes daquele turno.",
+      "text": "O texto do turno: a pergunta do cliente ou a resposta dada a ele."
+    },
+    "ConversationOut": {
+      "conversation_id": "A thread corrente do chamador; nulo quer dizer 'ainda não perguntei nada', que não é ausência de recurso.",
+      "messages": "Os turnos da própria thread, em ordem.",
+      "title": "Rótulo curto da thread, derivado da primeira pergunta do próprio cliente."
+    },
+    "DashboardDocumentOut": {
+      "author": "Quem assina o documento na origem. Rótulo de pessoa do projeto do cliente, projetado do Biahflow.",
+      "link": "Endereço do documento na origem, quando a origem o publica.",
+      "title": "Nome do documento do projeto, como a aba Documentos o mostra.",
+      "type": "Espécie do documento (ata, contrato…), como a origem a classifica.",
+      "updated_at": "Quando a origem atualizou o documento. Projeção do Biahflow."
+    },
+    "DashboardOut": {
+      "archived_at": "Quando o projeto foi encerrado na origem (ADR 0036). Coluna própria porque encerrado e 'em implementação' são fatos diferentes.",
+      "completion": "Percentual de andamento do projeto, projetado do Biahflow. O portal não origina status (ADR 0006/0008).",
+      "decisions": "As decisões publicadas do projeto — as que o Biahflow marcou como do cliente (FDD 032 de lá).",
+      "digital_employees": "Os Digital Employees do projeto do cliente, com o que cada um faz.",
+      "documents": "Os documentos do projeto, como a aba Documentos os lista.",
+      "engagement": "O programa a que o projeto pertence: nome e estado, nada comercial (ADR 0079). O Engagement é o agrupamento, não o contrato.",
+      "health": "A saúde do projeto em rótulo e nível — e nunca o Health Score nem os sinais internos que o produziram.",
+      "journey": "A jornada de fases do projeto, projetada do Biahflow.",
+      "measured": "O apurado dos eventos de agente do próprio projeto (ResultsOut), embutido para o SSR não fazer segunda ida à rede.",
+      "meetings": "As reuniões do projeto, com o cliente presente. Nenhuma delas é de outra Account.",
+      "milestones": "Os marcos do projeto e seus prazos.",
+      "next_meeting": "A próxima reunião agendada do projeto.",
+      "observed_at": "Quando a origem observou este estado. Frescor da projeção (ADR 0076/F-028).",
+      "pendings": "As pendências abertas do projeto — o que trava o trabalho, do lado de quem for.",
+      "project": "Nome do projeto do cliente. Projeção do Biahflow.",
+      "projection_version": "Versão da projeção aplicada (ADR 0076). Não é para a tela; existe para 'o Biahflow parou de avançar' ser respondível, e está declarada como não consumida em NOT_CONSUMED pelo mesmo motivo.",
+      "results": "Contagem dos marcos: feitos, totais, atrasados e percentual no prazo. Derivado na leitura.",
+      "roi": "O ROI projetado que vem do Biahflow — do próprio projeto —, rotulado na tela como diferente do apurado.",
+      "source_deleted_at": "Quando o projeto foi excluído na origem (ADR 0037). Porta diferente do arquivamento, coluna diferente.",
+      "status": "Estado do projeto, projetado da origem.",
+      "synced_at": "Quando este lado gravou a projeção. Frescor do nosso lado, par do observed_at."
+    },
+    "DecisionOut": {
+      "decided_on": "A data da decisão publicada, como a origem a registrou.",
+      "meeting_title": "Rótulo da reunião em que se decidiu — rótulo e não id, porque o uuid da reunião muda a cada sync.",
+      "owner_label": "Quem é dono da decisão, em rótulo. Pessoa do projeto do cliente.",
+      "rationale": "O porquê da decisão PUBLICADA (FDD 032 do Pulse, ADR 0049) — o que o cliente não consegue reconstituir sozinho meses depois. NÃO confundir com PriorityAssessment.rationale, que é avaliação interna e está proibida: a proibição é sobre o recurso, nunca sobre a palavra.",
+      "title": "O que foi decidido, em uma linha."
+    },
+    "DeliverableAcceptanceOut": {
+      "action": "A decisão registrada sobre o entregável: accepted ou changes_requested (ADR 0077).",
+      "actor_is_internal": "De que lado estava quem decidiu, congelado na linha — o papel de hoje não muda quem falou naquele dia.",
+      "actor_label": "Rótulo de quem decidiu, congelado na escrita pelo mesmo motivo.",
+      "comment": "O comentário que acompanhou a decisão, escrito por alguém do projeto.",
+      "created_at": "Quando a decisão foi registrada.",
+      "deliverable_external_ref": "A chave do entregável na origem — eco do id que o próprio chamador mandou no caminho da rota.",
+      "deliverable_name": "Nome do entregável congelado no momento da decisão, para o registro sobreviver ao read model.",
+      "id": "Identificador da linha do histórico.",
+      "phase_name": "Nome da fase congelado na decisão, pelo mesmo motivo do deliverable_name."
+    },
+    "DeliverableAcceptancesOut": {
+      "deliverable_external_ref": "Eco da chave pela qual o histórico foi pedido.",
+      "items": "As decisões daquele entregável, append-only e em ordem."
+    },
+    "DeliverableOut": {
+      "external_ref": "A chave do entregável na origem, que é por onde o aceite o endereça.",
+      "link": "Endereço do entregável na origem, quando há um.",
+      "name": "Nome do entregável da fase.",
+      "state": "Estado do entregável, projetado do Biahflow."
+    },
+    "DigitalEmployeeOut": {
+      "area": "Área do projeto em que o Digital Employee atua.",
+      "description": "O que ele faz, em prosa da origem.",
+      "hours_saved_month": "Horas poupadas por mês, do projeto do próprio cliente.",
+      "kpi_label": "Rótulo do indicador que ele move.",
+      "kpi_value": "Valor do indicador dele. É medição do projeto do cliente — não é valor comercial nem de pipeline.",
+      "name": "Nome do Digital Employee.",
+      "roi_month": "ROI mensal atribuído a ele, projetado da origem.",
+      "status": "Se está ativo, em implantação ou parado."
+    },
+    "DocumentDownloadOut": {
+      "expires_at": "Vencimento da URL assinada de vida curta (ADR 0017).",
+      "url": "Endereço assinado do documento DO PRÓPRIO PROJETO, emitido depois de o vínculo ser validado. É endereço, nunca bytes."
+    },
+    "EngagementOut": {
+      "id": "Identificador do Engagement do próprio cliente.",
+      "name": "Nome do programa contratado (Language Map §2, ADR 0079). Só o nome — nenhum dado comercial atravessa.",
+      "status": "Estado do programa: active, paused ou closed. Não é estágio de pipeline."
+    },
+    "ErrorOut": {
+      "detail": "A mensagem de erro, a mesma para 401, 404, 409, 422 e 503. É opaca de propósito: a negação de vínculo responde 404 e nunca conta que o recurso existe."
+    },
+    "FeedbackOut": {
+      "feedback": "O polegar gravado, devolvido para a tela confirmar o que foi registrado.",
+      "id": "Identificador da mensagem avaliada."
+    },
+    "HTTPValidationError": {
+      "detail": "O envelope de erro de validação do FastAPI. Carrega só onde e o quê — o `input` que ecoaria o corpo enviado é removido no handler e no esquema (ADR 0023)."
+    },
+    "JourneyOut": {
+      "current_phase": "A fase corrente do projeto, projetada da origem.",
+      "phases": "As fases da jornada do projeto, na ordem da origem."
+    },
+    "MeOut": {
+      "email": "O e-mail do próprio chamador.",
+      "full_name": "O nome do próprio chamador.",
+      "is_internal": "Se o chamador é do time da Biahflow. É sobre ele mesmo, e é o que a tela usa para mostrar superfície interna.",
+      "notify_by_email": "A preferência de aviso por e-mail do próprio chamador.",
+      "notify_by_whatsapp": "A preferência de aviso por WhatsApp do próprio chamador (ADR 0043).",
+      "organization": "O nome da Account do próprio chamador — a dele, resolvida do vínculo no servidor, nunca de identificador que ele mande.",
+      "phone_hint": "Os últimos dígitos do telefone do próprio chamador, para ele conferir para onde o aviso vai. Está na allowlist de nome-de-segredo por decisão escrita (ADR 0043): é dica, não credencial.",
+      "projects": "Os projetos que o chamador alcança, derivados da membership. Lista vazia com 200 é resposta válida.",
+      "roles": "Os papéis do chamador nos projetos dele — a UI os lê daqui porque um papel de realm não sabe dizer qual projeto."
+    },
+    "MeProjectOut": {
+      "engagement_id": "O Engagement a que o projeto pertence, para o seletor agrupar (ADR 0079). Nulo é 'ainda não veio no snapshot', não é negação.",
+      "engagement_name": "O nome do programa, que é o cabeçalho do grupo no seletor.",
+      "id": "Identificador do projeto do próprio chamador.",
+      "name": "Nome do projeto.",
+      "slug": "O slug do projeto, que é como o Biahflow o identifica. Fica no contrato porque /admin casa com a origem por ele; declarado em NOT_CONSUMED do lado da tela.",
+      "status": "Estado do projeto."
+    },
+    "MeasuredAssumptionOut": {
+      "currency": "Moeda da premissa financeira do projeto.",
+      "days_in_period": "Dias do período a que a premissa se aplica.",
+      "effective_from": "Início da vigência da premissa — é o que faz o ROI ser computado pelo valor em vigor no dia do evento (ADR 0013).",
+      "effective_to": "Fim da vigência, nulo enquanto for a premissa corrente.",
+      "hourly_rate_cents": "Custo-hora acordado COM ESTE CLIENTE, cadastrado por quem opera a conta dele. É insumo da conta que o cliente confere, não preço de tabela nem margem — essas estão proibidas.",
+      "monthly_investment_cents": "O investimento mensal DESTE projeto, que é o denominador do ROI que a tela mostra. Mesmo argumento: é a conta do cliente, exibida para ele poder refazê-la.",
+      "note": "Observação escrita por quem cadastrou a premissa, para o cliente entender de onde ela vem."
+    },
+    "MeetingOut": {
+      "date": "Quando a reunião do projeto aconteceu ou acontecerá.",
+      "has_transcript": "Booleano: existe transcrição desta reunião. NÃO é a transcrição — o conteúdo bruto está proibido, e este campo é justamente o que permite dizer 'existe' sem expor.",
+      "recording_url": "A gravação da reunião DO PRÓPRIO CLIENTE, publicada pela origem. Não é transcrição bruta de discovery interno.",
+      "status": "Estado da reunião: realizada, agendada, cancelada.",
+      "title": "Assunto da reunião."
+    },
+    "MilestoneCountsOut": {
+      "milestones_done": "Marcos concluídos do projeto. Recalculado na leitura para não divergir do read model.",
+      "milestones_total": "Marcos totais do projeto.",
+      "on_time_percent": "Percentual de marcos no prazo.",
+      "overdue": "Marcos atrasados."
+    },
+    "MilestoneOut": {
+      "due_date": "Prazo do marco, como a origem o registrou.",
+      "owner_label": "Quem responde pelo marco, em rótulo.",
+      "state": "Estado do marco.",
+      "title": "O que é o marco."
+    },
+    "MyDashboardOut": {
+      "archived_at": "Idem DashboardOut.archived_at, na rota que o BFF chama de fato.",
+      "completion": "O mesmo campo de DashboardOut.completion, na rota que o BFF chama de fato.",
+      "decisions": "O mesmo campo de DashboardOut.decisions, na rota que o BFF chama de fato.",
+      "digital_employees": "O mesmo campo de DashboardOut.digital_employees, na rota que o BFF chama de fato.",
+      "documents": "O mesmo campo de DashboardOut.documents, na rota que o BFF chama de fato.",
+      "engagement": "O mesmo campo de DashboardOut.engagement, na rota que o BFF chama de fato.",
+      "health": "O mesmo campo de DashboardOut.health, na rota que o BFF chama de fato.",
+      "journey": "O mesmo campo de DashboardOut.journey, na rota que o BFF chama de fato.",
+      "measured": "O mesmo campo de DashboardOut.measured, na rota que o BFF chama de fato.",
+      "meetings": "O mesmo campo de DashboardOut.meetings, na rota que o BFF chama de fato.",
+      "milestones": "O mesmo campo de DashboardOut.milestones, na rota que o BFF chama de fato.",
+      "next_meeting": "O mesmo campo de DashboardOut.next_meeting, na rota que o BFF chama de fato.",
+      "observed_at": "O mesmo campo de DashboardOut.observed_at, na rota que o BFF chama de fato.",
+      "organization": "O nome da Account do próprio chamador, resolvida do vínculo. A chave que esta rota acrescenta ao dashboard.",
+      "pendings": "O mesmo campo de DashboardOut.pendings, na rota que o BFF chama de fato.",
+      "project": "O mesmo campo de DashboardOut.project, na rota que o BFF chama de fato.",
+      "project_id": "O id do projeto efetivamente servido, para a tela saber qual contexto está aberto.",
+      "projection_version": "O mesmo campo de DashboardOut.projection_version, na rota que o BFF chama de fato.",
+      "results": "O mesmo campo de DashboardOut.results, na rota que o BFF chama de fato.",
+      "roi": "O mesmo campo de DashboardOut.roi, na rota que o BFF chama de fato.",
+      "source_deleted_at": "O mesmo campo de DashboardOut.source_deleted_at, na rota que o BFF chama de fato.",
+      "status": "O mesmo campo de DashboardOut.status, na rota que o BFF chama de fato.",
+      "synced_at": "O mesmo campo de DashboardOut.synced_at, na rota que o BFF chama de fato."
+    },
+    "NextMeetingOut": {
+      "date": "Quando é a próxima reunião do projeto.",
+      "title": "Assunto da próxima reunião do projeto."
+    },
+    "NotificationOut": {
+      "detail": "O detalhe do aviso, sobre o projeto do próprio destinatário.",
+      "id": "Identificador da linha de aviso, que pertence a uma pessoa.",
+      "kind": "Espécie do aviso. Só as de audiência de cliente chegam aqui — as _INTERNAL_ONLY não têm essa pessoa como destinatária (ADR 0012/0040).",
+      "link": "Para onde o aviso leva, gravado na linha (ADR 0043/0080). É rota deste portal, sempre dentro do contexto do destinatário.",
+      "occurred_at": "Quando o fato avisado aconteceu.",
+      "read": "Se a própria pessoa já leu.",
+      "title": "O fato, em uma linha."
+    },
+    "NotificationsOut": {
+      "items": "Os avisos do próprio chamador — a linha de notificação pertence a uma pessoa, não a um tenant.",
+      "unread_count": "Quantos dele estão por ler."
+    },
+    "NotificationsReadOut": {
+      "marked": "Quantas linhas o PATCH marcou. Eco da própria escrita; declarado em NOT_CONSUMED."
+    },
+    "PendingCommentOut": {
+      "author_is_internal": "De que lado está quem comentou, congelado na linha — quem deixa de ser interno não muda o lado de quem falou naquele dia.",
+      "author_label": "Rótulo de quem comentou, congelado pelo mesmo motivo.",
+      "body": "O texto do comentário, escrito por alguém do projeto.",
+      "created_at": "Quando foi escrito.",
+      "id": "Identificador do comentário."
+    },
+    "PendingCommentsOut": {
+      "items": "Os comentários daquela pendência do próprio projeto.",
+      "pending_item_id": "Eco do id que o chamador acabou de mandar no caminho da rota."
+    },
+    "PendingOut": {
+      "comment_count": "Quantos comentários a pendência tem, para a tela não pedir a lista só para contar.",
+      "created_at": "Quando a pendência foi aberta — carimbada com o opened_at do Biahflow quando ela vem de lá (ADR 0038).",
+      "description": "O que está pendente, em prosa da origem ou da lacuna que o assistente declarou.",
+      "id": "Identificador da pendência do projeto.",
+      "opened_by_conversation_id": "A thread que originou a pendência, quando ela nasceu de uma lacuna do chat (regra 3 do AGENTS.md).",
+      "opened_by_message_id": "O turno exato que a originou, pelo mesmo motivo.",
+      "origin": "De onde a pendência veio: do Biahflow ou de uma lacuna do assistente.",
+      "owner_label": "De quem se espera a ação, em rótulo.",
+      "priority": "Prioridade da pendência, projetada da origem. É o campo que a ADR 0033 achou publicado e sem leitor.",
+      "resolved_at": "Quando foi resolvida; nulo enquanto aberta.",
+      "state": "Estado da pendência.",
+      "title": "O que está pendente, em uma linha."
+    },
+    "PeriodOut": {
+      "days": "Dias do período apurado.",
+      "from": "Início do período. Alias de `from_` porque `from` é palavra reservada em Python e não no JSON.",
+      "to": "Fim do período."
+    },
+    "PhaseOut": {
+      "canonical_stage": "O degrau da FDE a que a fase corresponde (ADR 0081). Nulo quer dizer 'esta fase não tem equivalente na metodologia', que é afirmação e não silêncio.",
+      "deliverables": "Os entregáveis daquela fase do projeto.",
+      "description": "O que a fase é, em prosa da origem.",
+      "gate_decision": "A decisão de gate da fase: go, conditional_go, redesign, no_go (Language Map D7). É a decisão publicada da fase, não avaliação interna.",
+      "name": "Nome da fase como a origem a chama.",
+      "requires_gate": "Se a fase tem gate a decidir — é o que separa 'não há decisão a esperar' de 'ninguém decidiu ainda'.",
+      "state": "Estado da fase.",
+      "target_date": "Data-alvo da fase."
+    },
+    "PreferencesOut": {
+      "notify_by_email": "A preferência de e-mail do próprio chamador, devolvida como o servidor a gravou.",
+      "notify_by_whatsapp": "A preferência de WhatsApp do próprio chamador; nasce desligada, ao contrário do e-mail (ADR 0043).",
+      "phone_hint": "Os últimos dígitos do telefone dele, derivados no servidor porque é lá que o número é normalizado."
+    },
+    "ProjectHealthOut": {
+      "label": "A saúde do projeto em rótulo amigável.",
+      "level": "O nível dela. Nunca o Health Score numérico nem os sinais internos que o produziram."
+    },
+    "ResultsOut": {
+      "accuracy": "Acurácia apurada dos eventos do próprio projeto; nula quando não há base, com a razão em gaps.",
+      "assumption_basis": "A conta em si, para o cliente refazê-la na mão.",
+      "assumptions": "As premissas vigentes que produziram cada número, viajando ao lado dele.",
+      "avoided_cost_cents": "Custo evitado apurado dos eventos de agente deste projeto.",
+      "benefit_cents": "Benefício total apurado deste projeto.",
+      "events_total": "Quantos eventos de agente entraram na conta.",
+      "events_without_assumption": "Quantos ficaram sem premissa vigente — a lacuna declarada em vez de contada como zero.",
+      "exceptions_handled": "Exceções tratadas pelos agentes deste projeto.",
+      "failed": "Execuções que falharam. O número desfavorável sai igual: o portal não maquia apuração.",
+      "gaps": "As lacunas da apuração, em texto. É a regra 3 do AGENTS.md aplicada a número.",
+      "hours_saved": "Horas poupadas apuradas neste projeto.",
+      "investment_cents": "O investimento deste projeto no período — denominador do ROI apurado, e a mesma decisão do MeasuredAssumptionOut.monthly_investment_cents.",
+      "labor_savings_cents": "Economia de mão de obra apurada.",
+      "net_cents": "Resultado líquido apurado.",
+      "period": "O período apurado.",
+      "roi_ratio": "A razão do ROI apurado; nula quando o investimento é zero, com a razão em gaps.",
+      "unattended_share": "Fração das execuções sem intervenção humana."
+    },
+    "RoiOut": {
+      "net": "O ROI líquido PROJETADO que vem do Biahflow — outra coisa que o apurado, e rotulado como tal na tela.",
+      "ratio": "A razão projetada, pelo mesmo motivo."
+    },
+    "SearchHitOut": {
+      "detail": "O trecho que casou, do read model ou do documento do próprio projeto (ADR 0024).",
+      "document_id": "O documento por trás do resultado, quando há um e ele passou pela varredura.",
+      "item_anchor": "Âncora do item dentro da aba, para o clique cair na coisa exata.",
+      "kind": "Que espécie de coisa foi encontrada.",
+      "location": "Onde ela está, em rótulo legível.",
+      "tab": "A aba para onde o clique leva, já pronta, para o navegador não manter um segundo mapa.",
+      "title": "O título do que foi encontrado."
+    },
+    "SearchOut": {
+      "results": "Os resultados da busca NO PRÓPRIO PROJETO. O filtro de tenant é aplicado por dentro do repositório, e a busca vazia é 200 — nunca o resultado mais próximo."
+    },
+    "ValidationError": {
+      "loc": "Onde no corpo enviado está o erro. Aponta o caminho, nunca o valor.",
+      "msg": "O que está errado, em texto genérico do validador.",
+      "type": "A espécie do erro de validação."
+    }
+  },
+
+  "forbidden_resources": [
+    {
+      "term": "lead",
+      "reason": "Aquisição. Um Lead é contato de entrada da Biahflow, e nunca aparece no One (Language Map §3 e §6, invariante 10). Nenhum esquema de resposta de cliente pode se chamar assim nem carregar campo cujo nome o nomeie."
+    },
+    {
+      "term": "qualification",
+      "reason": "A avaliação de aquisição e o resultado dela (qualified · nurture · disqualified, Language Map D2). O termo cobre as duas coisas de propósito: o resultado só existe como atributo da Qualification, então banir o recurso bane `qualification_outcome` junto."
+    },
+    {
+      "term": "commercial_opportunity",
+      "reason": "Proposta e negociação. Nunca no One (§3). Com ela ficam de fora, por serem atributos dela, o valor e a probabilidade do negócio — que também têm nome próprio proibido em forbidden_field_names, porque podem tentar entrar soltos."
+    },
+    {
+      "term": "pipeline_stage",
+      "reason": "Estágio de funil comercial. O cliente vê a fase do projeto (PhaseOut) e o estado do Engagement; onde a venda dele está no nosso pipeline não é assunto dele (§3)."
+    },
+    {
+      "term": "case",
+      "reason": "Case é repertório comercial: o §3 proíbe expor Case de OUTROS clientes, e o §2 admite o do próprio cliente 'só com autorização'. Como não há Case nenhum neste repositório, a proibição nasce total — negar por omissão é a decisão desta fatia. Publicar o case do próprio cliente é decisão de pessoa: tira-se esta linha daqui, com razão escrita e ADR."
+    }
+  ],
+
+  "forbidden_pairs": [
+    {
+      "resource": "PriorityAssessment",
+      "field": "rationale",
+      "reason": "O racional INTERNO da priorização (§3). O que o cliente vê do PriorityAssessment é o Opportunity Score (D5), nunca o porquê que o time escreveu para si. É um par e não um banimento da palavra: DecisionOut.rationale existe, é legítimo e é o que justifica a aba de decisões existir — banir `rationale` por substring nasceria vermelho em cima de campo correto, que é o `.priority` da ADR 0033 outra vez."
+    },
+    {
+      "resource": "Service",
+      "field": "price",
+      "reason": "Preço de tabela do catálogo de ofertas (§3). O cliente vê o nome do produto contratado, nunca a tabela de preços. Par explícito porque Service pode legitimamente aparecer no One; o que não pode é este campo dele."
+    }
+  ],
+
+  "forbidden_field_names": [
+    {
+      "name": "price",
+      "reason": "Preço de tabela. O que o cliente vê de dinheiro é a conta DO PROJETO DELE — investimento, custo-hora acordado e economia apurada —, nunca a lista de preços da Biahflow (§3)."
+    },
+    {
+      "name": "list_price",
+      "reason": "Preço de tabela sob outro nome, que é o nome que ele costuma ter no catálogo."
+    },
+    {
+      "name": "unit_price",
+      "reason": "Preço unitário da oferta: a mesma tabela, recortada por unidade."
+    },
+    {
+      "name": "price_cents",
+      "reason": "O mesmo preço na convenção de centavos que este repositório usa para todo dinheiro."
+    },
+    {
+      "name": "margin",
+      "reason": "Margem da Biahflow (§3). É a conta interna do fornecedor, e nenhuma leitura de cliente a responde."
+    },
+    {
+      "name": "margin_cents",
+      "reason": "A mesma margem em centavos; a convenção do repositório não a torna outra coisa."
+    },
+    {
+      "name": "gross_margin",
+      "reason": "A margem com o qualificador que costuma acompanhá-la na planilha do fornecedor."
+    },
+    {
+      "name": "markup",
+      "reason": "A diferença entre custo e preço é conta do fornecedor, e nenhuma leitura de cliente a responde."
+    },
+    {
+      "name": "probability",
+      "reason": "Probabilidade de fechamento do negócio (§3). Nada na leitura do cliente é probabilístico: o que sai é medido, com a lacuna declarada quando falta base."
+    },
+    {
+      "name": "win_probability",
+      "reason": "A mesma probabilidade de fechamento, com o nome que o CRM costuma dar a ela."
+    },
+    {
+      "name": "close_probability",
+      "reason": "A mesma probabilidade de fechamento, na terceira grafia usual."
+    },
+    {
+      "name": "deal_value",
+      "reason": "Valor do negócio (§3). O `kpi_value` do Digital Employee é medição do projeto do cliente e continua legítimo — por isso a proibição é por nome inteiro e não pelo token `value`."
+    },
+    {
+      "name": "commercial_value",
+      "reason": "O valor do negócio dito por extenso; é o nome mais provável de ele tentar entrar."
+    },
+    {
+      "name": "contract_value",
+      "reason": "O valor do contrato é do Engagement, e do Engagement o cliente vê nome e estado — mais nada."
+    },
+    {
+      "name": "expected_value",
+      "reason": "Valor ponderado por probabilidade é objeto de pipeline, e pipeline não atravessa."
+    },
+    {
+      "name": "pipeline_value",
+      "reason": "O valor agregado do funil, que é a conta comercial da Biahflow sobre a conta do cliente."
+    },
+    {
+      "name": "transcript",
+      "reason": "Transcrição bruta (§3). O que pode sair é MeetingOut.has_transcript — o booleano que diz que existe — e a gravação da reunião do próprio cliente; o texto corrido da sessão, não. Por isso a proibição é por nome inteiro: `has_transcript` não casa."
+    },
+    {
+      "name": "transcript_text",
+      "reason": "A transcrição com o nome mais provável de o conteúdo bruto entrar no contrato."
+    },
+    {
+      "name": "raw_transcript",
+      "reason": "A transcrição com o adjetivo que o §3 usa: bruta, isto é, sem revisão humana."
+    },
+    {
+      "name": "transcript_content",
+      "reason": "A transcrição sob o terceiro nome usual; o conteúdo é o mesmo e continua proibido."
+    },
+    {
+      "name": "transcription",
+      "reason": "A transcrição na grafia com sufixo de processo; mesma coisa, mesma proibição."
+    }
+  ],
+
+  "epistemic_resources": {
+    "$comment": [
+      "A regra do §3, regra 1: nada aparece no One antes de revisão humana, e um",
+      "Finding com epistemic_status=hypothesis aparece ROTULADO como hipótese ou",
+      "não aparece — nunca como fato.",
+      "",
+      "Hoje `members` está VAZIA porque nenhum recurso carrega epistemic_status:",
+      "Finding é a issue #90. O que dá para escrever agora, e é honesto, é a",
+      "regra pela qual o campo não pode ser esquecido no dia em que o recurso",
+      "chegar: esquema listado aqui TEM de declarar o campo. Tirar o campo da",
+      "resposta reprova.",
+      "",
+      "Lista vazia não percorre ramo nenhum, então a guarda tem um caso com",
+      "esquema sintético em memória que a faz morder — a lição do",
+      "_TEMPLATE_SAMPLE (ADR 0038): a cobertura de um portão é a dos ramos que a",
+      "amostra percorre."
+    ],
+    "field": "epistemic_status",
+    "members": []
+  },
+
+  "reviewed_resources": {
+    "$comment": [
+      "A outra metade da mesma regra: Evidence só atravessa QUANDO REVISADA",
+      "(§3, coluna da direita: 'Evidence não revisada, transcrição bruta').",
+      "",
+      "A transcrição bruta é proibição de campo, acima. A evidência não revisada",
+      "não é: ela é a MESMA entidade da revisada, e o que a separa é uma marca.",
+      "Daí a forma positiva — esquema listado aqui tem de declarar a marca —, e",
+      "não um banimento, que baniria a evidência revisada junto.",
+      "",
+      "Vazia hoje pelo mesmo motivo do epistemic_resources: Evidence não existe",
+      "neste repositório (issue #90). Mesma amostra sintética a faz morder."
+    ],
+    "field": "reviewed_at",
+    "members": []
+  },
+
+  "account_identifier_inputs": {
+    "$comment": [
+      "A metade CONTRATUAL do 'qualquer dado de outra Account' (§3).",
+      "",
+      "A metade que importa — 'token de uma Account nunca lê linha de outra' — já",
+      "tem duas guardas, e esta fatia deliberadamente NÃO constrói uma terceira:",
+      "test_authorization.py deriva do contrato publicado toda rota que promete",
+      "404 e cobra o caso negativo (ADR 0035), e test_rls_isolation.py prova a",
+      "segunda barreira no banco. Foi verificado: nenhuma rota de cliente ficou",
+      "sem prova.",
+      "",
+      "O que sobra para o contrato dizer é sobre a SUPERFÍCIE: nenhuma rota de",
+      "cliente aceita o cliente NOMEAR uma Account. Onde a organização é",
+      "parâmetro, a rota é de admin — e admin está fora do corpus. É a regra 1 do",
+      "AGENTS.md na forma em que um esquema consegue afirmá-la."
+    ],
+    "forbidden_parameter_names": [
+      "organization_id",
+      "organization_slug",
+      "account_id",
+      "account_slug",
+      "client_id",
+      "tenant_id"
+    ]
+  }
+}

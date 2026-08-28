@@ -1731,6 +1731,38 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       linguagem (#91), que é quem varre o repositório inteiro — a asserção desta fatia é
       pontual, sobre a superfície que ela tocou. Descoberto em `biahflow/one#88`.
 
+- [x] **O que o One nunca expõe, e a negação por omissão** *(ADR 0082)*: a §3 do
+      [Language Map](docs/ontology/language-map.md) é a única seção escrita como
+      **proibição** — nove linhas do que o portal nunca mostra —, e o que a sustentava aqui
+      era prosa mais o `extra="forbid"` da ADR 0020, que fecha o contrato por construção e
+      **não diz nada sobre um campo que alguém declarou**. O caminho pelo qual um dado
+      comercial chegaria à tela não é alguém escrever `deal_value`: é o Pulse acrescentar
+      uma chave ao snapshot, a projeção repassá-la e o `schemas.py` declará-la, com todo
+      mundo agindo de boa-fé. Agora `docs/contracts/one-visibility.json` classifica os
+      **223 campos dos 41 esquemas** que saem por rota de cliente, um a um, e a regra é a
+      **omissão**: campo que ninguém classificou não passa. Duas guardas e um artefato só —
+      cobertura do lado da API (é ela quem decide, e as seis rotas de `app/api/**` são
+      passagem crua; filtrar no BFF seria segunda autoridade sobre a mesma pergunta, e ficou
+      decidido **contra**) e as nove proibições no `npm run test:contract`, afirmadas
+      também sobre as fixtures. A proibição é por **recurso** e por **par explícito**, nunca
+      por palavra: `DecisionOut.rationale` é legítimo e é o proibido `PriorityAssessment.rationale`
+      que se quer pegar — banir a substring nasceria vermelho em cima de campo correto, que
+      é o `.priority` da ADR 0033 outra vez —, e `has_transcript` é o booleano que diz que a
+      transcrição existe sem expô-la. *Medido por mutação, dez vezes:* as três que carregam
+      o argumento são **verdes** ou quase — campo novo em esquema de **admin** passa (o
+      corpus é recortado por decisão executável), renomear `DecisionOut.rationale` deixa as
+      oito proibições verdes e acende só a **obsolescência** da linha órfã, e o `LeadOut`
+      classificado de propósito acende só a proibição. O critério "dado de outra Account"
+      **não** ganhou guarda nova: foi verificado que `test_authorization.py` (404 derivado do
+      contrato) e `test_rls_isolation.py` já o cobrem, e só entrou a metade que um contrato
+      afirma — nenhuma rota de cliente aceita o cliente **nomear** uma Account. **Fica
+      aberto:** `epistemic_resources` e `reviewed_resources` estão vazias até a #90 (a regra
+      existe e é provada por amostra sintética, pela lição do `_TEMPLATE_SAMPLE`); a guarda é
+      sobre **nome** e não sobre **valor**, então um campo legítimo que passe a carregar
+      conteúdo proibido não é alcançado; `Case` ficou proibido por inteiro, que é mais
+      estrito que a §3, por escolha registrada; e o lint de linguagem no front é a #91.
+      Descoberto em `biahflow/one#87`.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

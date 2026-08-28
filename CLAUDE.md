@@ -236,6 +236,20 @@ CI (`.github/workflows/ci.yml`) runs seven gates you should reproduce locally be
   (o portal está fora do ar desde 13/08); o que isso custa a um `notification.link` já gravado
   está medido e resolvido na ADR 0080.
 
+- **Campo novo de resposta de cliente vem com a razão escrita** (ADR 0082). A fronteira do
+  que o One expõe é **lista positiva**: `docs/contracts/one-visibility.json` classifica campo
+  a campo o que sai por rota de cliente, e a regra é **negação por omissão** — campo que
+  ninguém classificou reprova, e a linha órfã de um campo que saiu do contrato reprova
+  também. Duas guardas leem um artefato só: `test_visibility.py` afirma a **cobertura** (do
+  lado da API, porque é ela quem decide — as seis rotas de `app/api/**` são passagem crua, e
+  filtrar no BFF seria segunda autoridade sobre a mesma pergunta), e
+  `tests/api-contract.test.mjs` afirma as **nove proibições** da §3 do Language Map, sobre o
+  contrato e sobre as fixtures. A proibição é por **recurso** (token do identificador) e por
+  **par explícito** (esquema, campo), **nunca por substring**: `DecisionOut.rationale` é
+  legítimo e o proibido é o do `PriorityAssessment`; `has_transcript` é booleano e não é
+  transcrição. Corpus **fail-closed**, com razão escrita para cada exclusão — admin, sondas,
+  webhooks e a rota de eventos —, porque exclusão sem razão é allowlist disfarçada.
+
 - **Escreveu ADR, o número não se escolhe** (ADR 0072). `npm run adr -- "Título da decisão"`
   aloca o próximo, cria o arquivo com o cabeçalho da casa e escreve a linha em
   `docs/adr/number-registry.tsv` — o ledger a que toda ADR acrescenta **no fim**, de modo que

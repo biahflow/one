@@ -338,7 +338,7 @@ function anchorTarget(link: string): { project: string | null; tab: string | nul
  *    `?project=` e respondia pelo projeto mais recente da pessoa. F1 está
  *    fechado e a recusa continua, porque ela nunca foi só sobre isso: a lista
  *    que já está na tela é a do projeto corrente, e nenhum `goTo` a recarrega;
- * 3. **aba que a navegação não conhece**: `onboarding_stuck` traz `/admin/funil`,
+ * 3. **aba que a navegação não conhece**: `onboarding_stuck` traz `/admin/funnel`,
  *    que é outra rota e não uma aba deste componente.
  *
  * A degradação é monotônica, e é o mesmo critério que sustentou o drop do
@@ -479,13 +479,31 @@ const searchKindLabel: Record<string, string> = {
 const SEARCH_MIN_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 250;
 
+/**
+ * O que a tela acrescenta ao nome do programa quando o estado dele muda a leitura
+ * (ADR 0079). `active` não tem sufixo de propósito — ver `engagementLabel`.
+ */
+const ENGAGEMENT_STATE_SUFFIX: Record<string, string> = {
+  paused: " · pausado",
+  closed: " · encerrado",
+};
+
 /** Quem está logado, projetado de `GET /api/v1/me` — a membership é a autoridade. */
 export type PortalUser = { name: string; initials: string; email: string; role: string; org: string; isInternal: boolean; notifyByEmail: boolean; notifyByWhatsapp: boolean; phoneHint: string };
 export type NotificationView = { id: string; kind: string; title: string; detail: string | null; link: string | null; age: string; read: boolean };
 /** A caixa do projeto atual, vinda de `GET /api/v1/me/notifications`. */
 export type NotificationCenter = { unreadCount: number; items: NotificationView[] };
 /** Um projeto que o usuário alcança. `current` é o que está sendo exibido. */
-export type ProjectSummary = { id: string; name: string; status: string; current: boolean };
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  status: string;
+  current: boolean;
+  /** O programa a que este projeto pertence, ou `null` (ADR 0079). É por ele que o seletor
+   *  agrupa; sem ele o projeto cai no grupo sem cabeçalho, no fim — nunca some da lista. */
+  engagementId: string | null;
+  engagementName: string | null;
+};
 
 export type OverviewMilestone = { title: string; owner: string; state: string; date: string };
 export type ProjectDocument = { title: string; type: string | null; author: string | null; link: string | null; updated: string };
@@ -651,12 +669,25 @@ const STALE_MESSAGE: Record<FreshnessView["kind"], (age: string) => string> = {
     `Última sincronização ${age}. O que você vê pode não refletir o estado atual do projeto.`,
 };
 
+/**
+ * O programa a que o projeto na tela pertence (Language Map v1.1, ADR 0079).
+ *
+ * **"Engagement" não se traduz.** A regra de idioma do Language Map §1 vale para as
+ * quatro superfícies: traduz-se o texto em volta do termo, nunca o termo. Por isso o
+ * rótulo é `PROGRAMA (ENGAGEMENT)` na tela e o tipo se chama assim aqui.
+ */
+export type EngagementView = { id: string; name: string; status: string };
+
 export type Overview = {
   project: string;
   organization: string;
   status: string;
   completion: number;
   source: "live" | "demo";
+  /** O programa deste projeto, ou `null` enquanto o Biahflow não mandar a chave (ADR 0079).
+   *  Vem do dashboard e não da lista de `/me` de propósito: quando o projeto da tela não
+   *  está na lista (ADR 0062), esta é a única fonte que sabe de qual programa ele é. */
+  engagement: EngagementView | null;
   /** Quando o Biahflow encerrou o projeto, ou `null` se segue ativo (ADR 0036). Preenchido, a
    *  tela entra em modo de consulta: o histórico continua inteiro e as escritas fecham. */
   archivedAt: string | null;
@@ -830,6 +861,25 @@ export default function DashboardClient({
   // o parâmetro é **omitido** e as nove rotas voltam a `access.default_project` — que é
   // justamente o projeto que o dashboard serviu. A degradação aponta para o lugar certo.
   const activeProject = projects.find((project) => project.current) ?? null;
+  /**
+   * O programa que está sendo acompanhado (ADR 0079).
+   *
+   * O dashboard vem primeiro e a lista depois, pela razão que fez `activeProject` poder
+   * ser `null`: quando o projeto da tela não está em `me.projects`, a lista não sabe de
+   * qual programa ele é e o dashboard sabe — ele projetou justamente aquele projeto.
+   */
+  const activeEngagementId = overview.engagement?.id ?? activeProject?.engagementId ?? null;
+  /**
+   * O rótulo do programa no topo, com o estado dele quando ele não está corrente.
+   *
+   * `active` não vira texto: dizer "ativo" em toda tela seria ruído, e o que muda a
+   * leitura é o programa estar **pausado** ou **encerrado** — na mesma regra com que a
+   * ADR 0036 marca "Projeto encerrado" e não marca "Projeto ativo".
+   */
+  const engagementName = overview.engagement?.name ?? activeProject?.engagementName ?? null;
+  const engagementLabel = engagementName
+    ? `${engagementName}${ENGAGEMENT_STATE_SUFFIX[overview.engagement?.status ?? ""] ?? ""}`
+    : null;
   /**
    * O projeto da tela, no formato de query (ADR 0059).
    *
@@ -1208,8 +1258,8 @@ export default function DashboardClient({
         return <ProfileView onAsk={askAi} user={user} projectName={overview.project} />;
       case "Configurações":
         return <SettingsView onAsk={askAi} user={user} />;
-      case "Trocar projeto":
-        return <ProjectsView projects={projects} onSelect={selectProject} onAsk={askAi} />;
+      case "Trocar de contexto":
+        return <ProjectsView projects={projects} activeEngagementId={activeEngagementId} onSelect={selectProject} onAsk={askAi} />;
       default:
         return (
           <OverviewView
@@ -1255,13 +1305,18 @@ export default function DashboardClient({
         */}
         <button
           className={`project-switcher ${activeProject ? "" : "project-switcher--unlisted"}`}
-          aria-label="Trocar projeto"
+          aria-label="Trocar de contexto"
           title={activeProject ? undefined : "Este projeto não está na sua lista de projetos."}
-          onClick={() => goTo("Trocar projeto")}
+          onClick={() => goTo("Trocar de contexto")}
         >
           <span className="project-logo">{(activeProject?.name ?? overview.project).slice(0, 1)}</span>
           <span>
             <strong>{user.org}</strong>
+            {/* Conta → Engagement → Project, a hierarquia do Language Map v1.1 na ordem
+                em que ela existe (ADR 0079). A linha do programa só aparece quando há
+                programa: um projeto sem engagement não ganha rótulo inventado, e é o
+                mesmo silêncio com que a tela trata `freshness` nula. */}
+            {engagementLabel && <small>{engagementLabel}</small>}
             <small>{activeProject?.name ?? overview.project}</small>
             {!activeProject && <small className="project-unlisted">Fora da sua lista de projetos</small>}
           </span>
@@ -3003,27 +3058,93 @@ function SettingsView({ onAsk, user }: { onAsk: () => void; user: PortalUser }) 
   );
 }
 
-function ProjectsView({ projects, onSelect, onAsk }: { projects: ProjectSummary[]; onSelect: (project: ProjectSummary) => void; onAsk: () => void }) {
+/**
+ * Os projetos agrupados pelo programa a que pertencem (ADR 0079).
+ *
+ * A ordem é a que a lista já trazia — `/me` abre pelo projeto que o dashboard serviu
+ * (ADR 0062) —, e o grupo herda a posição do **primeiro** projeto dele: reordenar por
+ * nome de programa jogaria o projeto na tela para o meio da página.
+ *
+ * O grupo sem programa vai para o **fim** e não ganha cabeçalho. Não é um grupo chamado
+ * "sem programa": a ontologia diz que todo projeto pertence a um Engagement, e a
+ * ausência aqui é o Biahflow ainda não tendo dito qual — inventar um rótulo afirmaria o
+ * contrário. Esconder o projeto seria pior ainda; ele continua clicável.
+ */
+function groupByEngagement(
+  projects: ProjectSummary[],
+): { id: string | null; name: string | null; projects: ProjectSummary[] }[] {
+  const groups: { id: string | null; name: string | null; projects: ProjectSummary[] }[] = [];
+  const loose: ProjectSummary[] = [];
+  for (const project of projects) {
+    if (!project.engagementId) {
+      loose.push(project);
+      continue;
+    }
+    const found = groups.find((group) => group.id === project.engagementId);
+    if (found) found.projects.push(project);
+    else
+      groups.push({
+        id: project.engagementId,
+        // `null` quando `/me` trouxe o id e não o nome — o grupo existe (os projetos
+        // dele são os mesmos) e o cabeçalho fica sem nome em vez de com um inventado.
+        name: project.engagementName,
+        projects: [project],
+      });
+  }
+  if (loose.length > 0) groups.push({ id: null, name: null, projects: loose });
+  return groups;
+}
+
+function ProjectsView({
+  projects,
+  activeEngagementId,
+  onSelect,
+  onAsk,
+}: {
+  projects: ProjectSummary[];
+  activeEngagementId: string | null;
+  onSelect: (project: ProjectSummary) => void;
+  onAsk: () => void;
+}) {
+  const groups = groupByEngagement(projects);
   return (
     <>
-      <ViewHero eyebrow="PROJETOS" title="Trocar projeto" subtitle="Escolha qual projeto você quer acompanhar." onAsk={onAsk} />
+      <ViewHero
+        eyebrow="ENGAGEMENTS"
+        title="Trocar de contexto"
+        subtitle="Seus programas, e os projetos dentro de cada um."
+        onAsk={onAsk}
+      />
       {projects.length === 0 && <p className="empty-state">Nenhum projeto vinculado à sua conta ainda.</p>}
-      <section className="card-grid" aria-label="Lista de projetos">
-        {projects.map((project) => (
-          <button
-            className={`panel project-card ${project.current ? "project-card--active" : ""}`}
-            key={project.id}
-            onClick={() => onSelect(project)}
-          >
-            <div className="project-card-head">
-              <span className="project-logo project-logo--lg">{project.name.slice(0, 1)}</span>
-              {project.current && <StateBadge tone="1">Atual</StateBadge>}
+      {groups.map((group) => (
+        <div key={group.id ?? "sem-engagement"}>
+          {group.name && (
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">ENGAGEMENT</p>
+                <h2>{group.name}</h2>
+              </div>
+              {group.id === activeEngagementId && <StateBadge tone="1">Atual</StateBadge>}
             </div>
-            <strong>{project.name}</strong>
-            <div className="project-meta"><span>{project.status}</span></div>
-          </button>
-        ))}
-      </section>
+          )}
+          <section className="card-grid" aria-label={group.name ? `Projetos de ${group.name}` : "Lista de projetos"}>
+            {group.projects.map((project) => (
+              <button
+                className={`panel project-card ${project.current ? "project-card--active" : ""}`}
+                key={project.id}
+                onClick={() => onSelect(project)}
+              >
+                <div className="project-card-head">
+                  <span className="project-logo project-logo--lg">{project.name.slice(0, 1)}</span>
+                  {project.current && <StateBadge tone="1">Atual</StateBadge>}
+                </div>
+                <strong>{project.name}</strong>
+                <div className="project-meta"><span>{project.status}</span></div>
+              </button>
+            ))}
+          </section>
+        </div>
+      ))}
     </>
   );
 }
@@ -3037,7 +3158,7 @@ function ProfileMenu({ up, user, onNavigate }: { up?: boolean; user: PortalUser;
           popover não tem o link, e a central ficaria inalcançável. */}
       <button onClick={() => onNavigate("Notificações")}><Bell size={15} /> Notificações</button>
       <button onClick={() => onNavigate("Configurações")}><Settings size={15} /> Configurações</button>
-      <button onClick={() => onNavigate("Trocar projeto")}><Building2 size={15} /> Trocar projeto</button>
+      <button onClick={() => onNavigate("Trocar de contexto")}><Building2 size={15} /> Trocar de contexto</button>
       {/* Só para a equipe interna. A tela existe de qualquer forma; quem manda
           é a API, que responde 404 para quem não é `internal_admin`. */}
       {user.isInternal && <a href="/admin"><ShieldCheck size={15} /> Administração</a>}

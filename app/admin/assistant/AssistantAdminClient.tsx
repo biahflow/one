@@ -85,7 +85,7 @@ export default function AssistantAdminClient({
           {projects.map((project) => (
             <Link
               key={project.id}
-              href={`/admin/assistente?project=${project.id}`}
+              href={`/admin/assistant?project=${project.id}`}
               className={`state ${project.current ? "state--0" : "state--2"}`}
             >
               {project.name}
@@ -131,7 +131,7 @@ export default function AssistantAdminClient({
         <p className="panel-note">
           &ldquo;Declararam lacuna&rdquo; é o sinal mais objetivo dos dois: ninguém precisa
           clicar no polegar para ele contar. Uma taxa alta aqui costuma significar índice
-          pobre, não modelo ruim — o caminho é <Link href="/admin/conhecimento">Conhecimento</Link>.
+          pobre, não modelo ruim — o caminho é <Link href="/admin/knowledge">Conhecimento</Link>.
         </p>
       </article>
 

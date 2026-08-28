@@ -129,6 +129,23 @@ class Project(Base, TenantMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    # O Engagement a que este projeto pertence (Language Map v1.1 §2), e **nullable**.
+    #
+    # A ontologia diz que todo Project pertence a exatamente um Engagement (invariante 7),
+    # e este é o lado que **projeta**, não o que origina: um projeto sincronizado antes de o
+    # Biahflow passar a mandar a chave não tem engagement, e inventar um seria fabricar
+    # dado — o que este repositório recusa em `results.py`, em `freshness()` e na tela do
+    # funil. `NOT NULL` aqui exigiria um valor de aterro para toda linha existente, que é
+    # exatamente a falsa precisão que a ausência declara não ter.
+    #
+    # `SET NULL` e não `CASCADE`: apagar o programa não apaga o projeto do cliente — ele
+    # continua existindo e passa a não ter agrupamento, que é o estado anterior a esta fatia.
+    engagement_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("engagement.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus, name="project_status"),
         nullable=False,

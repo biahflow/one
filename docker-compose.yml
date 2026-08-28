@@ -231,7 +231,7 @@ services:
       # separação de OIDC_ISSUER/OIDC_JWKS_URL. Em produção só estas mudam.
       GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID:-portal-drive-local}
       GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET:-portal-drive-local-only}
-      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:-http://localhost:3000/admin/conhecimento/drive-callback}
+      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:-http://localhost:3000/admin/knowledge/drive-callback}
       GOOGLE_OAUTH_AUTHORIZE_URL: ${GOOGLE_OAUTH_AUTHORIZE_URL:-http://localhost:19100/authorize}
       GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-http://drive-stub:19100/token}
       GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-http://drive-stub:19100/drive/v3}
@@ -323,7 +323,7 @@ services:
       # consentimento e troca o código (ADR 0016).
       GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID:-portal-drive-local}
       GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET:-portal-drive-local-only}
-      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:-http://localhost:3000/admin/conhecimento/drive-callback}
+      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:-http://localhost:3000/admin/knowledge/drive-callback}
       GOOGLE_OAUTH_TOKEN_URL: ${GOOGLE_OAUTH_TOKEN_URL:-http://drive-stub:19100/token}
       GOOGLE_DRIVE_API_BASE_URL: ${GOOGLE_DRIVE_API_BASE_URL:-http://drive-stub:19100/drive/v3}
       DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}

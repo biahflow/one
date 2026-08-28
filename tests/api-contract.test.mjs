@@ -539,7 +539,7 @@ test("uma exceção com prazo vencido reprova", () => {
  * `.priority` da ADR 0033 e do `date`/`dated_at` da ADR 0038): com um corpus
  * único sobre `app/**`, `ChatIn.project_id` passa verde, porque as três
  * ocorrências de `project_id` em `app/` são leitura de **resposta** — o painel de
- * `/admin/assistente` e o callback do Drive —, nunca envio.
+ * `/admin/assistant` e o callback do Drive —, nunca envio.
  *
  * **E o casamento é sobre a posição de envio, não sobre o nome solto.** Também
  * medido: `\bproject\b` casa com `app/page.tsx` em `projects.map((project) =>` e
@@ -663,7 +663,7 @@ const NOT_SENT = {
   },
   "GET /api/v1/admin/projects/{project_id}/assistant-signal limit": {
     reason:
-      "o painel de `/admin/assistente` mostra a janela padrão; recortá-la é pergunta que " +
+      "o painel de `/admin/assistant` mostra a janela padrão; recortá-la é pergunta que " +
       "a tela ainda não faz.",
   },
   "POST /api/v1/admin/projects/{project_id}/keys expires_in_days": {

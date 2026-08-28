@@ -48,7 +48,7 @@ async function signIn(page: Page, user: { username: string; password: string }) 
 
 /** Conecta a pasta autorizada e espera a indexação terminar. */
 async function connectAndSync(page: Page) {
-  await page.goto("/admin/conhecimento");
+  await page.goto("/admin/knowledge");
   await expect(
     page.getByRole("heading", { name: /O que o assistente pode citar/ }),
   ).toBeVisible();
@@ -69,7 +69,7 @@ async function connectAndSync(page: Page) {
   if (await connect.isVisible()) {
     // O consentimento: o stub devolve o navegador na hora, com `code` e `state`.
     await connect.click();
-    await page.waitForURL(/\/admin\/conhecimento\?.*drive=connected/);
+    await page.waitForURL(/\/admin\/knowledge\?.*drive=connected/);
     await expect(page.getByText(/Drive conectado/)).toBeVisible();
   }
 
@@ -149,7 +149,7 @@ test("arquivo fora da pasta autorizada nunca entra no índice", async ({ page })
 test("o cliente não alcança o conector do Drive", async ({ page }) => {
   await signIn(page, CLIENT);
 
-  await page.goto("/admin/conhecimento");
+  await page.goto("/admin/knowledge");
 
   await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Conectar Google Drive/ })).toHaveCount(0);

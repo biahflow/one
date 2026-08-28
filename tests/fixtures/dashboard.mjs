@@ -23,6 +23,11 @@ export const ME = {
       name: "Automação Financeira",
       slug: "biahflow-7",
       status: "in_implementation",
+      // O programa a que ele pertence (ADR 0079). O caso `null` — projeto que o
+      // Biahflow ainda não associou — é exercitado por override em
+      // `rendered-html.test.mjs`, sobre esta mesma base.
+      engagement_id: "99999999-8888-4777-8666-555555555555",
+      engagement_name: "Transformação Financeira",
     },
   ],
   roles: ["client_member"],
@@ -30,6 +35,15 @@ export const ME = {
 
 export const DASHBOARD = {
   project: "Automação Financeira",
+  // O mesmo programa que `ME.projects[0]` traz, porque é o mesmo projeto servido
+  // (ADR 0079). É daqui que o topo lê o rótulo, e não da lista: quando o projeto da
+  // tela não está em `me.projects`, esta é a única fonte que sabe de qual programa
+  // ele é.
+  engagement: {
+    id: "99999999-8888-4777-8666-555555555555",
+    name: "Transformação Financeira",
+    status: "active",
+  },
   // Qual projeto a resposta serviu (ADR 0061) — o mesmo id que `ME.projects[0]` traz,
   // porque é o mesmo cliente semeado. É o que a tela lê para marcar o projeto atual, em
   // vez de compará-lo pelo nome.

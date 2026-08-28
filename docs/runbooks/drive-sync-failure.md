@@ -10,7 +10,7 @@ pessoa é diagnosticar e reconectar.
 
 ## Onde olhar primeiro
 
-A própria linha da conexão responde quase tudo, e a tela `/admin/conhecimento` a mostra:
+A própria linha da conexão responde quase tudo, e a tela `/admin/knowledge` a mostra:
 `last_sync_at`, `last_sync_error` e `last_sync_stats`. Não é preciso ler log para saber o que a
 última sincronização fez.
 
@@ -32,7 +32,7 @@ toda semana.
 
 ## Reconectar
 
-1. `/admin/conhecimento`, no projeto afetado.
+1. `/admin/knowledge`, no projeto afetado.
 2. "Conectar Google Drive" e consentir novamente. O `state` anterior já não vale — ele é de uso
    único e tem prazo.
 3. Conferir que a pasta autorizada continua a certa (a reconexão não a perde, mas trocar de

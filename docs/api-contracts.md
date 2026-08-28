@@ -13,6 +13,19 @@ rota autenticada e o 404 de toda rota escopada por tenant.
 
 **Os identificadores são snake_case**, em todo corpo de requisição e de resposta.
 
+**E os nomes são os canônicos do [Language Map](ontology/language-map.md)**, em inglês nas
+quatro superfícies (ADR 0079). A organização é **Account**, o programa é **Engagement**, o
+projeto é **Project** — e não se traduz o termo: traduz-se o texto em volta dele. Duas
+sobrevivências de `client` são deliberadas e estão registradas: o papel de pessoa
+`client_member`, que não é a organização, e o slug histórico `biahflow-client-{id}`, que é
+chave de persistência e não vocabulário.
+
+**Rota de domínio nasce em inglês.** `/admin/funnel`, `/admin/knowledge`,
+`/admin/organization`, `/admin/results`, `/admin/assistant` — o caminho é identificador, e
+identificador segue a mesma regra do modelo e do campo. O que continua em português é o
+**texto visível**, incluindo o rótulo de aba que a URL carrega em `?tab=` (`Visão geral`,
+`Pendências`, …): ali o valor é o que o cliente lê, e traduzi-lo mudaria a tela.
+
 `GET /api/v1/me` diz quem é o chamador e o que ele alcança. É uma das duas rotas de cliente que
 **não** respondem 404 (a outra é `PATCH /api/v1/me/preferences`): quem autentica sem membership
 recebe 200 com `projects` vazio, porque autenticar não é autorizar e o portal precisa poder dizer
@@ -26,6 +39,13 @@ API resolve para ele — nenhuma delas recebe id de usuário:
 - `POST /api/v1/me/notifications/read` — `ids` ou corpo vazio para marcar todas as suas; devolve
   quantas foram marcadas.
 - `PATCH /api/v1/me/preferences` — hoje só o e-mail das notificações.
+
+Cada projeto da lista traz `engagement_id` e `engagement_name` — o programa a que ele
+pertence (ADR 0079) —, e os dois podem ser `null`: a ontologia diz que todo Project pertence
+a um Engagement, e `null` aqui é o Biahflow ainda não ter dito qual. O projeto continua na
+lista de qualquer forma; o seletor o agrupa sem cabeçalho em vez de escondê-lo ou de lhe dar
+um rótulo inventado. `GET /api/v1/me/dashboard` traz o mesmo programa por extenso, em
+`engagement` (`id`, `name` e `status` em `active` · `paused` · `closed`).
 
 `GET /api/v1/me/search?q=` é a busca dentro do projeto resolvido (ADR 0024), e obedece às mesmas
 duas regras: sem projeto, 404; nunca 403. Cada resultado traz `kind`

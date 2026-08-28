@@ -46,6 +46,7 @@ from portal_api.models import (
     ConversationMessage,
     DeliverableAcceptanceAction,
     Document,
+    Engagement,
     NotificationKind,
     OnboardingStepName,
     Organization,
@@ -781,6 +782,25 @@ def me(principal: CurrentPrincipal) -> dict:
             record = session.get(Organization, visible[0][0].organization_id)
             organization = record.name if record else None
 
+        # O nome do programa de cada projeto (ADR 0079), para o seletor agrupar.
+        #
+        # Uma consulta só para todos os ids, e não um `session.get` por linha: esta
+        # rota já lista N projetos, e um `get` no laço a tornaria N+1 — o mesmo
+        # argumento do `outerjoin` das decisões em `build_dashboard`. A policy do
+        # `engagement` é por **vínculo** e não pela GUC de organização, exatamente
+        # porque `visible_projects` não fixa tenant (migração 0037).
+        wanted = {project.engagement_id for project, _ in visible if project.engagement_id}
+        engagement_names: dict[UUID, str] = (
+            {
+                engagement.id: engagement.name
+                for engagement in session.execute(
+                    select(Engagement).where(Engagement.id.in_(wanted))
+                ).scalars()
+            }
+            if wanted
+            else {}
+        )
+
         return {
             "email": user.email,
             "full_name": user.full_name,
@@ -795,6 +815,13 @@ def me(principal: CurrentPrincipal) -> dict:
                     "name": project.name,
                     "slug": project.slug,
                     "status": project.status.value,
+                    "engagement_id": (
+                        str(project.engagement_id) if project.engagement_id else None
+                    ),
+                    # `None` quando a linha do engagement não veio — vínculo revogado
+                    # entre as duas leituras, ou policy negando. O id fica assim mesmo:
+                    # o que se afirma é só o que se sabe.
+                    "engagement_name": engagement_names.get(project.engagement_id),
                 }
                 for project, _ in visible
             ],

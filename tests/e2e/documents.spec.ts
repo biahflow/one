@@ -36,7 +36,7 @@ test("o documento enviado na administração vira citação no chat do cliente",
   // declara lacuna. Sem o `?project=` a tela usa `me.projects[0]`, que é "o
   // projeto criado por último" e não tem relação com quem vai perguntar.
   const projeto = await projetoDoSeed(page);
-  await page.goto(`/admin/conhecimento?project=${projeto}`);
+  await page.goto(`/admin/knowledge?project=${projeto}`);
   await expect(
     page.getByRole("heading", { name: /O que o assistente pode citar/ }),
   ).toBeVisible();
@@ -129,7 +129,7 @@ test("o arquivo com assinatura de malware é recusado e não vira índice", asyn
   // por outro motivo: sem isso o destino é "o projeto criado por último", e o
   // lixo das execuções passa a se acumular em qualquer organização que alguém
   // tenha criado à mão. Os artefatos ficam onde o seed os espera.
-  await page.goto(`/admin/conhecimento?project=${await projetoDoSeed(page)}`);
+  await page.goto(`/admin/knowledge?project=${await projetoDoSeed(page)}`);
 
   await page.locator('input[name="file"]').setInputFiles({
     name: "anexo.txt",
@@ -159,7 +159,7 @@ test("o arquivo com assinatura de malware é recusado e não vira índice", asyn
 test("o cliente não alcança a administração de conhecimento", async ({ page }) => {
   await signIn(page, CLIENT);
 
-  await page.goto("/admin/conhecimento");
+  await page.goto("/admin/knowledge");
 
   // A API nega com 404 (nunca 403) e a tela não existe para ela — mesma
   // observação do `results.spec.ts` sobre o status HTTP ficar 200.

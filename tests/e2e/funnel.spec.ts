@@ -42,15 +42,15 @@ test("a lista do funil é alcançada a partir do /admin", async ({ page }) => {
   await signIn(page, ADMIN);
 
   await page.goto("/admin");
-  await page.getByRole("link", { name: /Clientes travados no funil/ }).click();
+  await page.getByRole("link", { name: /Contas travadas no funil/ }).click();
 
-  await expect(page).toHaveURL(/\/admin\/funil/);
-  await expect(page.getByRole("heading", { name: "Clientes travados" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/funnel/);
+  await expect(page.getByRole("heading", { name: "Contas travadas" })).toBeVisible();
 });
 
 test("os dois lados são painéis separados, e nunca uma soma", async ({ page }) => {
   await signIn(page, ADMIN);
-  await page.goto("/admin/funil");
+  await page.goto("/admin/funnel");
 
   // Os dois painéis existem por si, com títulos que dizem de quem é a vez.
   await expect(page.getByRole("heading", { name: /Ele tem tudo e não veio/ })).toBeVisible();
@@ -75,7 +75,7 @@ test("o cliente não alcança a lista do funil", async ({ page }) => {
   // é a classe mais sensível da `data-classification.md`.
   await signIn(page, CLIENT);
 
-  await page.goto("/admin/funil");
+  await page.goto("/admin/funnel");
 
-  await expect(page.getByRole("heading", { name: "Clientes travados" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Contas travadas" })).toHaveCount(0);
 });

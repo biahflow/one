@@ -790,6 +790,76 @@ test("sem casamento de id nenhum projeto é o atual, e a tela não elege o prime
 });
 
 /**
+ * O programa acima do projeto, no topo da barra lateral (ADR 0079).
+ *
+ * A hierarquia do Language Map v1.1 é Account → Engagement → Project, e o topo passou a
+ * desenhá-la nessa ordem. As três asserções abaixo cobrem os três estados que o campo
+ * tem, e cada uma nega a frase das outras: sem a negação, um rótulo que aparecesse
+ * **sempre** passaria verde nas três.
+ *
+ * O rótulo sai do **dashboard** e não da lista de `/me`, e é o que a terceira prova: com
+ * o projeto fora da lista (ADR 0062) o programa continua nomeado, porque quem o afirma é
+ * a resposta que serviu aquele projeto.
+ */
+test("o topo nomeia o programa acima do projeto", async () => {
+  const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+  const markup = renderedMarkup(html);
+
+  assert.match(markup, /<small>Transformação Financeira<\/small>/);
+  assert.match(markup, /<small>Automação Financeira<\/small>/);
+  // Programa corrente não ganha sufixo de estado: dizer "ativo" em toda tela é ruído,
+  // e é a mesma regra com que a ADR 0036 marca encerrado e não marca ativo.
+  assert.doesNotMatch(markup, /Transformação Financeira · /);
+});
+
+test("o projeto sem programa não ganha rótulo inventado", async () => {
+  // O Biahflow ainda pode não mandar a chave, e a ontologia diz que todo projeto
+  // pertence a um Engagement — então "sem programa" seria uma afirmação que ninguém fez.
+  // O silêncio é a resposta, na regra do carimbo de frescor ausente (ADR 0026/0076).
+  meOverride = {
+    ...ME,
+    projects: [{ ...ME.projects[0], engagement_id: null, engagement_name: null }],
+  };
+  dashboardOverride = { ...DASHBOARD, engagement: null };
+  try {
+    const markup = renderedMarkup(
+      await (await render("/", { headers: { cookie: await sessionCookie() } })).text(),
+    );
+
+    assert.doesNotMatch(markup, /Transformação Financeira/);
+    assert.doesNotMatch(markup, /sem programa|Sem programa|sem engagement/i);
+    // E o projeto continua na tela: ausência de programa não esconde projeto.
+    assert.match(markup, /<small>Automação Financeira<\/small>/);
+  } finally {
+    meOverride = null;
+    dashboardOverride = null;
+  }
+});
+
+test("o programa pausado é dito, e o rótulo vem do dashboard mesmo fora da lista", async () => {
+  // Duas coisas na mesma renderização, e as duas são sobre a fonte do rótulo. O projeto
+  // servido não está em `me.projects`, então `activeProject` é `null` e a lista não sabe
+  // de programa nenhum; quem sabe é o dashboard, que projetou aquele projeto.
+  meOverride = { ...ME, projects: [{ ...ME.projects[0], id: HOMONYMS.first }] };
+  dashboardOverride = {
+    ...DASHBOARD,
+    project_id: HOMONYMS.second,
+    engagement: { ...DASHBOARD.engagement, status: "paused" },
+  };
+  try {
+    const markup = renderedMarkup(
+      await (await render("/", { headers: { cookie: await sessionCookie() } })).text(),
+    );
+
+    assert.match(markup, /project-switcher--unlisted/);
+    assert.match(markup, /Transformação Financeira · pausado/);
+  } finally {
+    meOverride = null;
+    dashboardOverride = null;
+  }
+});
+
+/**
  * A linha ancorada, com a classe **e** o atributo no mesmo elemento (ADR 0056).
  *
  * Asserção de proximidade e não de presença, e a diferença é o que se prova:

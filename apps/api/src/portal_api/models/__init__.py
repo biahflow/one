@@ -32,6 +32,7 @@ from portal_api.models.drive import (
     DriveSyncState,
     ProjectDriveConnection,
 )
+from portal_api.models.engagement import Engagement, EngagementStatus
 from portal_api.models.financial import ProjectFinancialAssumption
 from portal_api.models.identity import MemberRole, Membership, User
 from portal_api.models.meeting import Meeting
@@ -96,6 +97,8 @@ __all__ = [
     "DocumentOrigin",
     "DocumentSource",
     "DriveSyncState",
+    "Engagement",
+    "EngagementStatus",
     "ErasureState",
     "Meeting",
     "MemberRole",

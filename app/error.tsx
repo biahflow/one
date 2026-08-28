@@ -49,7 +49,7 @@ export default function Error({
             o rótulo abaixo de 760px, e foi escrita para o botão do herói, que tem
             ícone. Sem um aqui, o único caminho de recuperação desta tela virava um
             círculo roxo vazio no celular. Dos outros onze `.ai-button` do produto, dez
-            já carregavam o seu; o décimo segundo ("Autorizar", em `/admin/conhecimento`)
+            já carregavam o seu; o décimo segundo ("Autorizar", em `/admin/knowledge`)
             era a outra exceção, e foi corrigido junto — a guarda o achou, o levantamento
             à mão não. `iconlessAiButtons()` agora reprova os dois. */}
         <button className="ai-button" onClick={reset}>

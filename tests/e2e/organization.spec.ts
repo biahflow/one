@@ -47,7 +47,7 @@ test("a administração alcança a organização a partir do /admin", async ({ p
     .getByRole("link", { name: /Retenção, gasto de IA e apagamento/ })
     .click();
 
-  await expect(page).toHaveURL(/\/admin\/organizacao/);
+  await expect(page).toHaveURL(/\/admin\/organization/);
   await expect(
     page.getByRole("heading", { name: /Por quanto tempo os dados ficam/ }),
   ).toBeVisible();
@@ -58,7 +58,7 @@ test("um prazo escolhido deixa de ser herdado, e apagá-lo devolve o padrão", a
   page,
 }) => {
   await signIn(page, ADMIN);
-  await page.goto("/admin/organizacao");
+  await page.goto("/admin/organization");
 
   // O rótulo carrega a distinção que `RetentionPolicyOut` existe para permitir:
   // sem ela, salvar o formulário fixaria o padrão sem querer.
@@ -80,7 +80,7 @@ test("um prazo escolhido deixa de ser herdado, e apagá-lo devolve o padrão", a
 
 test("o apagamento recusa a confirmação errada e não registra pedido", async ({ page }) => {
   await signIn(page, ADMIN);
-  await page.goto("/admin/organizacao");
+  await page.goto("/admin/organization");
 
   await page.getByLabel(/Por que o apagamento foi pedido/).fill("teste de confirmação");
   await page.getByLabel(/para confirmar/).fill("nao-e-esta-organizacao");

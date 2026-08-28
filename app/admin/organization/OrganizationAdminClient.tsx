@@ -149,7 +149,7 @@ export default function OrganizationAdminClient({
           {organizations.map((item) => (
             <Link
               key={item.id}
-              href={`/admin/organizacao?org=${item.id}`}
+              href={`/admin/organization?org=${item.id}`}
               className={`state ${item.current ? "state--0" : "state--2"}`}
             >
               {item.name}

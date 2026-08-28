@@ -26,7 +26,7 @@ import { STACK_REASON, serviceIsUp, stackIsMissing } from "./stack";
  * **não** alcança `/admin/*`, porque `admin.py:_authorized` exige
  * `internal_admin` e responde 404. `ADMIN` (`helena.dias`) é quem alcança.
  *
- * O terceiro teste deste arquivo usava o Rafael para abrir `/admin/assistente` e
+ * O terceiro teste deste arquivo usava o Rafael para abrir `/admin/assistant` e
  * por isso **nunca passou** — recebia o 404 do contrato e o media como se fosse
  * ausência do comentário. Trocar a constante compartilhada teria consertado ele
  * e estragado o segundo teste, onde o Rafael é o ator certo e insubstituível:
@@ -163,7 +163,7 @@ test("o comentário do cliente chega à tela do time interno", async ({ page, co
   // `me.projects[0]` — o projeto mais recente — enquanto o comentário foi
   // escrito na conversa da Marina, e o painel viria vazio pelo motivo errado.
   await signIn(page, ADMIN);
-  await page.goto(`/admin/assistente?project=${await projetoDoSeed(page)}`);
+  await page.goto(`/admin/assistant?project=${await projetoDoSeed(page)}`);
 
   // O comentário aparece; a pergunta do cliente, não — o GRANT de coluna da
   // ADR 0030 é quem garante a segunda metade, e ela é afirmada aqui de novo

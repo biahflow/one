@@ -156,7 +156,7 @@ export default function ResultsAdminClient({
           {projects.map((project) => (
             <Link
               key={project.id}
-              href={`/admin/resultados?project=${project.id}`}
+              href={`/admin/results?project=${project.id}`}
               className={`state ${project.current ? "state--0" : "state--2"}`}
             >
               {project.name}

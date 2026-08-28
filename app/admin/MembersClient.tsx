@@ -79,19 +79,19 @@ export default function MembersClient({
           {organization} · Projetos e organizações vêm do Biahflow; aqui você define quem tem
           acesso a eles.
         </p>
-        <Link className="text-button" href={`/admin/resultados?project=${projectId}`}>
+        <Link className="text-button" href={`/admin/results?project=${projectId}`}>
           Chaves dos agentes e premissas de ROI <ArrowRight size={15} />
         </Link>
-        <Link className="text-button" href={`/admin/conhecimento?project=${projectId}`}>
+        <Link className="text-button" href={`/admin/knowledge?project=${projectId}`}>
           Documentos que o assistente pode citar <ArrowRight size={15} />
         </Link>
-        <Link className="text-button" href={`/admin/assistente?project=${projectId}`}>
+        <Link className="text-button" href={`/admin/assistant?project=${projectId}`}>
           Como o assistente está indo <ArrowRight size={15} />
         </Link>
         {/* Sem `?project=`, e é a diferença que importa: o escopo desta é a
             organização inteira — prazo de retenção, teto de IA e apagamento não
             são perguntas que se façam projeto a projeto (ADR 0027). */}
-        <Link className="text-button" href="/admin/organizacao">
+        <Link className="text-button" href="/admin/organization">
           Retenção, gasto de IA e apagamento da organização <ArrowRight size={15} />
         </Link>
         {/* Também sem `?project=`, e por um motivo próprio: o funil pergunta sobre a
@@ -99,8 +99,8 @@ export default function MembersClient({
             projeto (ADR 0039). Esta é a única tela que olha **todas** as
             organizações administradas de uma vez, porque ranquear por gravidade é
             comparar clientes entre si (ADR 0040). */}
-        <Link className="text-button" href="/admin/funil">
-          Clientes travados no funil de onboarding <ArrowRight size={15} />
+        <Link className="text-button" href="/admin/funnel">
+          Contas travadas no funil de onboarding <ArrowRight size={15} />
         </Link>
       </header>
 

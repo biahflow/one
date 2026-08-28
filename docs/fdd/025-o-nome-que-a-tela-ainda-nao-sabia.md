@@ -47,7 +47,7 @@ lado da API. Não há token de espaçamento, de raio, de foco nem de estado **in
 não existe. E `app/globals.css` escreve o roxo da marca **à mão, em quatro lugares**, contra a
 regra que o próprio repositório publica ("nunca escreva hex num componente").
 
-Enquanto isso, ADR 0067 e o `docs/contracts/client-projection-contract.md` já fixaram o
+Enquanto isso, ADR 0067 e o `docs/contracts/one-projection-contract.md` já fixaram o
 vocabulário que a próxima superfície do One vai desenhar — `ready_for_acceptance`,
 `client_review`, `accepted`, `changes_requested` — e não há primitiva que saiba mostrá-lo.
 
@@ -156,7 +156,7 @@ não é do time.
 - **Bloco cercado com três ou mais linhas em forma de caminho** é lido como árvore de diretórios
   por `test_architecture_doc.py`, e todo caminho precisa existir. Documento novo desta fatia usa
   tabela, não árvore.
-- Depende da ADR 0067 (o nome) e do `docs/contracts/client-projection-contract.md` (o
+- Depende da ADR 0067 (o nome) e do `docs/contracts/one-projection-contract.md` (o
   vocabulário de homologação que o DAP desenha).
 
 ## Lacunas e riscos
@@ -239,7 +239,7 @@ A guarda bidirecional de `test_telemetry.py` continua verde por não ter o que c
 | Fonte | O que ela decide |
 | --- | --- |
 | `docs/adr/0067-one-como-projecao-client-facing.md` | O nome, e que o estado de Delivery é projeção |
-| `docs/contracts/client-projection-contract.md` | O vocabulário de homologação que o DAP desenha |
+| `docs/contracts/one-projection-contract.md` | O vocabulário de homologação que o DAP desenha |
 | `docs/adr/0026-*.md` | Controle inerte é defeito, não placeholder |
 | `docs/adr/0021-*.md` | Tela não fabrica dado; e o registro append-only de prompt |
 | `docs/adr/0054-*.md` | ADR aceita sem linha no roadmap é estado sem dono |

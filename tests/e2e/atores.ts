@@ -109,7 +109,7 @@ export async function signIn(page: Page, user: Ator) {
  *   este helper existe para fechar.
  */
 export async function projetoDoSeed(page: Page, nome = PROJETO_DO_SEED): Promise<string> {
-  await page.goto("/admin/conhecimento");
+  await page.goto("/admin/knowledge");
   await expect(page.getByRole("heading", { name: /O que o assistente pode citar/ })).toBeVisible();
 
   const seletor = page.getByRole("navigation", { name: "Escolher projeto" });

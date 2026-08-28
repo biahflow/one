@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { authorizationHeader } from "@/app/lib/session";
 
-import FunnelClient, { type ClientRow } from "./FunnelClient";
+import FunnelClient, { type AccountRow } from "./FunnelClient";
 
 // Como o resto da administração: por usuário e por requisição.
 export const dynamic = "force-dynamic";
@@ -41,7 +41,7 @@ const STEP_ORDER = [
 ];
 
 /**
- * A lista interna de clientes travados no funil de onboarding (RFC 001 passo 3, ADR 0040).
+ * A lista interna de contas travadas no funil de onboarding (RFC 001 passo 3, ADR 0040).
  *
  * O funil é carimbado desde a ADR 0039 e **nenhuma tela o mostrava** — a ordem foi
  * deliberada, porque a ADR 0033 achou um painel publicado sobre um campo que nunca teve
@@ -49,7 +49,7 @@ const STEP_ORDER = [
  * "ganho há nove dias, convite enviado, nunca logou".
  *
  * **Fan-out sobre as organizações administradas**, e não um seletor `?org=` como em
- * `/admin/organizacao`: a FDD 020 pede a lista *ordenada por gravidade*, e ranquear é
+ * `/admin/organization`: a FDD 020 pede a lista *ordenada por gravidade*, e ranquear é
  * comparar clientes entre si. A rota da API continua escopada por organização — `bind_admin_org`
  * é monotônica, então uma rota cross-org não conseguiria ler sob as policies do papel
  * administrativo — e o ranking acontece aqui, sobre dado que a API já autorizou uma a uma.
@@ -83,9 +83,9 @@ export default async function FunnelAdminPage() {
     ),
   );
 
-  const rows: ClientRow[] = [];
+  const rows: AccountRow[] = [];
   for (const [index, response] of readings.entries()) {
-    // 404 aqui **não** é o mesmo que em `/admin/organizacao`, e a diferença é deliberada.
+    // 404 aqui **não** é o mesmo que em `/admin/organization`, e a diferença é deliberada.
     // Lá o id vem da URL e um 404 responde "você não administra esta", então a página
     // inteira é `notFound()`. Aqui os ids vieram da listagem, que já é derivada dos
     // vínculos deste chamador — um 404 é corrida (vínculo revogado entre as duas chamadas),
@@ -118,7 +118,7 @@ export default async function FunnelAdminPage() {
   // recebeu nada. As linhas sem medição não entram nesta ordenação: elas vão para um bloco
   // próprio no cliente, e "não dá para dizer" não é "menos grave".
   rows.sort((a, b) => {
-    const excess = (row: ClientRow) =>
+    const excess = (row: AccountRow) =>
       row.daysStuck === null ? -Infinity : row.daysStuck - row.thresholdDays;
     const difference = excess(b) - excess(a);
     if (difference !== 0) return difference;

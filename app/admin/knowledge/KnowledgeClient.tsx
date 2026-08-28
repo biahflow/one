@@ -272,7 +272,7 @@ export default function KnowledgeClient({
           {projects.map((project) => (
             <Link
               key={project.id}
-              href={`/admin/conhecimento?project=${project.id}`}
+              href={`/admin/knowledge?project=${project.id}`}
               className={`state ${project.current ? "state--0" : "state--2"}`}
             >
               {project.name}

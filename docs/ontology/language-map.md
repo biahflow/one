@@ -171,3 +171,27 @@ Script de Qualification passa a terminar em `qualified` / `nurture` / `disqualif
 ## 8. Evolução
 
 Mudança de significado gera **nova versão desta página e da Ontology**, com registro explícito. Nunca se altera em silêncio o sentido de um termo já persistido. Termo novo entra primeiro aqui, depois no Pulse, depois no One.
+
+---
+
+## 9. Pendências abertas — decisão do Daniel
+
+A varredura de 28/08/2026 cobriu as 20 páginas de conteúdo do workspace Notion e os schemas das 4 databases vivas. Tudo que era violação de vocabulário foi corrigido. Sobraram cinco pontos que **não são de vocabulário — são decisão de negócio**.
+
+| # | Pendência | Onde | Por que ficou aberto |
+| --- | --- | --- | --- |
+| A1 | "Implementation Project" como venda direta de implementação, sem PROVE — um sétimo caminho comercial fora dos seis degraus | PROVE Framework | Ou vira degrau nomeado no catálogo, ou vira porta de entrada de Scale/Transformation Partnership |
+| A2 | "Design Partner" funciona como oferta de entrada (Discovery sem cobrança), mas o único gratuito é a Qualification Call | Home Care KB · Igreja · Founding Client | Condição comercial de um degrau (seis) vs. oferta própria (sete) |
+| A3 | Duração da Qualification Call: `30-45min` em três páginas, `45–60 min` em uma | Discovery Questions × demais | Conflito factual |
+| A4 | Preço da Technical Feasibility: `R$ 2.500–5.000` vs `R$ 5.000` | Feasibility Framework × Financeiro | Conflito de tabela de preço |
+| A5 | Playbook de Nova Vertical: "PROVE operando — cobrança: Não (ou simbólico)" na Fase 3–4, e §12 argumenta contra PROVE gratuito | Playbook Nova Vertical | Posição comercial |
+
+### Dívida estrutural conhecida
+
+As databases do Notion (Projects · Tasks · Meetings · Docs) **não implementam o modelo canônico** — `Project` é a raiz lá, sem `Account` nem `Engagement` acima. Coerente com a decisão de que o CRM vive no Pulse, mas significa que essas databases são camada de execução, não fonte da verdade do modelo.
+
+Na varredura, `Projects.Lead` foi renomeado para `Owner` (colidia com a entidade `Lead`) e `Projects.Stage` para `Execution Status`.
+
+### Regra de manutenção
+
+Termo novo entra **primeiro no Language Map**, depois no Pulse, depois no One. Página nova no Notion que use vocabulário de domínio referencia o mapa. Divergência encontrada em campo se registra no mapa antes de ser corrigida na página de origem.

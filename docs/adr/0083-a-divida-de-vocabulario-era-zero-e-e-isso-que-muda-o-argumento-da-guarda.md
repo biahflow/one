@@ -15,7 +15,7 @@
 
 A §6 do Language Map abre com a frase que esta fatia existe para cumprir: *"Estas viram
 teste automatizado no Pulse e revisão de PR nos dois repos."* Revisão de PR é o mecanismo
-que a [ADR 0034](0034-a-telemetria-que-o-runbook-prometia-e-o-codigo-nao-emitia.md) já
+que a [ADR 0034](0034-o-evento-nomeado-e-o-runbook-que-o-conhece.md) já
 mediu e reprovou — lá o `alerts.md` foi corrigido à mão, ficou sem portão, e **em dois
 dias divergiu de novo pelo outro lado**.
 
@@ -34,7 +34,7 @@ Isso não é erro de medição, é resultado das três fatias anteriores — e *
 argumento**. Uma guarda que nasce vermelha se justifica pelo vermelho: a ADR 0033 nasceu
 com catorze campos, a ADR 0035 com cinco pares, a ADR 0054 com catorze ADRs. Esta nasce
 verde, é **preventiva** e não pagadora de dívida, e por isso o peso inteiro dela cai na
-**medição por mutação** ([ADR 0065](0065-medir-a-guarda-por-mutacao.md)): sem vermelho de
+**medição por mutação** ([ADR 0065](0065-o-nome-que-a-borda-nao-soube-que-mudou.md)): sem vermelho de
 nascença para exibir, a única prova de que ela vale alguma coisa é a tabela de baixo.
 
 ## Decisão
@@ -46,7 +46,7 @@ de CI novo e sem regra de eslint**, e os três motivos são medidos:
 
 1. `eslint.config.mjs:9-17` ignora `apps/**`. Uma regra de eslint **nunca alcançaria o
    lado Python** — e "guarda que para na fronteira do pacote" é literalmente o defeito que
-   a [ADR 0035](0035-as-guardas-que-eram-listas-digitadas.md) consertou na varredura de
+   a [ADR 0035](0035-a-guarda-escrita-a-mao-e-a-regra-que-ninguem-verifica.md) consertou na varredura de
    telemetria, onde o BFF emitia quatro eventos e nenhum tinha runbook porque a guarda
    parava no pacote Python. Repetir aquele defeito ao construir a guarda que existe para
    impedi-lo seria difícil de defender.
@@ -58,7 +58,7 @@ de CI novo e sem regra de eslint**, e os três motivos são medidos:
 
 **O critério de aceite da issue que diz "`npm run lint` falha" fica emendado, não fingido.**
 O que ele quer é que o repositório reprove; o que ele nomeia é a ferramenta errada para
-metade do repositório. Precedente [ADR 0038](0038-a-citacao-sem-data-e-o-portao-que-nasceu-cego.md),
+metade do repositório. Precedente [ADR 0038](0038-a-citacao-sem-data.md),
 que corrigiu o `context-contract.md` em vez de carimbar data no marco: **corrige-se o
 documento, não se finge a promessa.** Quem quiser o portão no `npm run lint` está pedindo
 duas guardas sobre a mesma afirmação, e duas guardas sobre a mesma afirmação divergem.
@@ -100,8 +100,8 @@ nenhum"*). Esta nasce carregando o repositório inteiro, o que também é o que 
 **mensurável**: cada linha é um ramo que a suíte percorre a cada push.
 
 **Sem `review_by` e sem prazo**, no precedente do `PINNED_BY_EXCEPTION`
-([ADR 0063](0063-o-pino-que-a-varredura-nunca-viu.md)) e do `FOUNDATION_WITHOUT_A_LINE`
-([ADR 0054](0054-o-indice-canonico-e-as-decisoes-que-ele-nao-conhecia.md)) e **não** no do
+([ADR 0063](0063-o-pino-que-ninguem-conferia.md)) e do `FOUNDATION_WITHOUT_A_LINE`
+([ADR 0054](0054-o-indice-que-nao-sabia.md)) e **não** no do
 `advisories.json`: dívida de vocabulário não caduca por calendário — ela some no dia em que
 o termo sai do código. O vencimento é a asserção de obsolescência, e ela tem **duas** formas
 de acender, porque a contagem é campo separado: a ocorrência sumiu, ou a contagem caiu

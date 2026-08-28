@@ -734,3 +734,358 @@ test("uma exceção de parâmetro com prazo vencido reprova", () => {
 
   assert.deepEqual(expired, [], `estas exceções venceram: ${expired.join(", ")}.`);
 });
+
+/**
+ * ============================================================================
+ * O guard de visibilidade: as nove proibições (ADR 0082).
+ * ============================================================================
+ *
+ * A metade de **cobertura** — "todo campo que sai para o cliente está
+ * classificado" — vive em `apps/api/tests/test_visibility.py`, do lado da API,
+ * porque é a API quem decide o que sai: as seis rotas de `app/api/**` são
+ * passagem crua (`Response.json(await response.json())`, nenhuma filtra campo),
+ * e filtrar aqui seria uma segunda autoridade sobre a mesma pergunta.
+ *
+ * Esta metade afirma outra coisa: que o que sai **não é nenhuma das nove coisas
+ * proibidas** pela §3 do Language Map. E afirma sobre duas superfícies — o
+ * contrato publicado e as **fixtures** deste diretório —, porque a fixture é
+ * onde uma resposta forjada é livre para mentir, que é a razão de este arquivo
+ * existir desde a ADR 0020.
+ *
+ * As duas metades leem **um artefato só**, `docs/contracts/one-visibility.json`,
+ * inclusive o recorte do corpus. Não é o defeito da ADR 0034 (duas guardas sobre
+ * o mesmo arquivo divergem): lá eram duas guardas afirmando a mesma coisa; aqui
+ * são duas afirmações distintas sobre um dado só, e o corpus está no artefato
+ * justamente para as duas metades não o reimplementarem cada uma do seu jeito.
+ *
+ * As nove, e onde cada uma é afirmada:
+ *
+ *   1. `Lead` .......................... termo em `forbidden_resources`
+ *   2. `Qualification` e seu resultado . termo em `forbidden_resources`
+ *   3. `CommercialOpportunity`,
+ *      `PipelineStage`, valor,
+ *      probabilidade .................. dois termos + `forbidden_field_names`
+ *   4. Evidence não revisada e
+ *      transcrição bruta .............. `reviewed_resources` (a marca) e
+ *                                       `forbidden_field_names` (o texto bruto)
+ *   5. `PriorityAssessment.rationale` .. `forbidden_pairs`
+ *   6. preço de tabela, margem,
+ *      `Service.price` ................ `forbidden_field_names` + um par
+ *   7. Case de outros clientes ......... termo em `forbidden_resources`
+ *   8. qualquer dado de outra Account .. `account_identifier_inputs` aqui, e a
+ *                                       linha do banco em `test_authorization.py`
+ *                                       (404 derivado do contrato, ADR 0035) e
+ *                                       `test_rls_isolation.py`. Foi verificado:
+ *                                       nenhuma rota de cliente ficou sem prova,
+ *                                       e esta fatia deliberadamente **não**
+ *                                       constrói uma terceira guarda de tenant.
+ *   9. `epistemic_status=hypothesis`
+ *      como fato ...................... `epistemic_resources` (a marca)
+ *
+ * **Proibição por recurso e por par explícito, nunca por substring solta.**
+ * `DecisionOut.rationale` existe, é legítimo (FDD 032 do Pulse, ADR 0049) e é o
+ * que justifica a aba de decisões existir; o proibido é o `rationale` do
+ * `PriorityAssessment`. Um banimento da palavra nasceria vermelho em cima de
+ * campo correto — é o `.priority` da ADR 0033 outra vez. Pela mesma razão
+ * `MeetingOut.has_transcript` (booleano) e `recording_url` (a gravação da
+ * reunião do próprio cliente) continuam passando: o proibido é o texto bruto,
+ * banido por **nome inteiro**, e `has_transcript` não é `transcript`.
+ */
+const VISIBILITY = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../docs/contracts/one-visibility.json", import.meta.url)), "utf8"),
+);
+
+/** A razão escrita pela qual uma rota não é superfície de cliente, ou `null`. */
+function excludedReason(path) {
+  const rules = VISIBILITY.corpus;
+  const named = rules.excluded_paths.find((entry) => entry.path === path);
+  if (named) return named.reason;
+  const prefixed = rules.excluded_prefixes.find((entry) => path.startsWith(entry.prefix));
+  return prefixed ? prefixed.reason : null;
+}
+
+const CLIENT_PATHS = Object.keys(document.paths).filter((path) => excludedReason(path) === null);
+
+/** Só o que **sai** de uma rota de cliente, fechado transitivamente por `$ref`. */
+function clientResponseSchemas() {
+  const names = new Set();
+  for (const path of CLIENT_PATHS) {
+    for (const operation of Object.values(document.paths[path])) {
+      if (!operation || typeof operation !== "object") continue;
+      for (const name of referenced(operation.responses ?? {})) names.add(name);
+    }
+  }
+  return withNested(names);
+}
+
+const CLIENT_SCHEMAS = [...clientResponseSchemas()].sort();
+
+/**
+ * Os tokens de um identificador, em minúsculas — `CamelCase` e `snake_case` na
+ * mesma moeda. `LeadOut` → `[lead, out]`; `has_transcript` → `[has,
+ * transcript]`; `ShowcaseOut` → `[showcase, out]`, e é por isso que o termo
+ * `case` não o alcança.
+ */
+function tokens(identifier) {
+  return identifier
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+/**
+ * O identificador **nomeia** o recurso: os tokens do termo aparecem em
+ * sequência contígua nos tokens do identificador, com plural tolerado no
+ * último. É o que separa "proibir o recurso" de "proibir a palavra".
+ */
+function namesResource(identifier, term) {
+  const have = tokens(identifier);
+  const want = tokens(term);
+  for (let i = 0; i + want.length <= have.length; i += 1) {
+    const fits = want.every((token, j) => {
+      const found = have[i + j];
+      return found === token || (j === want.length - 1 && found === `${token}s`);
+    });
+    if (fits) return true;
+  }
+  return false;
+}
+
+const propertiesOf = (definitions, name) => Object.keys(definitions[name]?.properties ?? {});
+
+/** Esquema de resposta de cliente cujo **nome** é um recurso proibido. */
+function forbiddenSchemas(names) {
+  const offenders = [];
+  for (const name of names) {
+    for (const { term } of VISIBILITY.forbidden_resources) {
+      if (namesResource(name, term)) offenders.push(`${name} (recurso \`${term}\`)`);
+    }
+  }
+  return offenders.sort();
+}
+
+/** Campo cujo **nome** nomeia um recurso proibido (`lead_id`, `case_title`…). */
+function forbiddenFieldsByResource(definitions, names) {
+  const offenders = [];
+  for (const name of names) {
+    for (const field of propertiesOf(definitions, name)) {
+      for (const { term } of VISIBILITY.forbidden_resources) {
+        if (namesResource(field, term)) offenders.push(`${name}.${field} (recurso \`${term}\`)`);
+      }
+    }
+  }
+  return offenders.sort();
+}
+
+/** Campo proibido por **nome inteiro** — nunca por substring. */
+function forbiddenFieldsByName(definitions, names) {
+  const banned = new Set(VISIBILITY.forbidden_field_names.map((entry) => entry.name));
+  const offenders = [];
+  for (const name of names) {
+    for (const field of propertiesOf(definitions, name)) {
+      if (banned.has(field)) offenders.push(`${name}.${field}`);
+    }
+  }
+  return offenders.sort();
+}
+
+/** O par explícito (recurso, campo): o recurso pode sair, aquele campo dele não. */
+function forbiddenPairs(definitions, names) {
+  const offenders = [];
+  for (const name of names) {
+    for (const pair of VISIBILITY.forbidden_pairs) {
+      if (!namesResource(name, pair.resource)) continue;
+      if (propertiesOf(definitions, name).includes(pair.field)) {
+        offenders.push(`${name}.${pair.field} (par \`${pair.resource}.${pair.field}\`)`);
+      }
+    }
+  }
+  return offenders.sort();
+}
+
+/**
+ * A regra positiva: esquema listado **tem** de declarar a marca.
+ *
+ * É a forma honesta de escrever hoje a proibição que só morde amanhã. Nem
+ * `Finding` nem `Evidence` existem neste repositório (issue #90), e um
+ * banimento não serviria: a evidência revisada e a não revisada são a **mesma**
+ * entidade, e o que as separa é uma marca. Quando o recurso chegar, tirar a
+ * marca da resposta reprova.
+ */
+function missingMarker(definitions, block) {
+  return block.members
+    .filter((name) => !propertiesOf(definitions, name).includes(block.field))
+    .sort();
+}
+
+/** As chaves de um payload de fixture, recursivamente. */
+function keysOf(value, found = new Set()) {
+  if (Array.isArray(value)) {
+    for (const item of value) keysOf(item, found);
+  } else if (value && typeof value === "object") {
+    for (const [key, nested] of Object.entries(value)) {
+      found.add(key);
+      keysOf(nested, found);
+    }
+  }
+  return found;
+}
+
+test("o corpus de rotas de cliente não está vazio", () => {
+  // Fail-closed, e pela terceira vez neste arquivo: o `dependency-review` da
+  // ADR 0023 e o `for` sobre oito nomes da ADR 0033 eram verdes por não terem
+  // olhado. Um prefixo de exclusão escrito largo demais faria o mesmo aqui.
+  assert.ok(CLIENT_PATHS.length > 0, "nenhuma rota sobrou no corpus de cliente");
+  assert.ok(CLIENT_SCHEMAS.length > 0, "nenhum esquema de resposta de cliente no corpus");
+  assert.ok(VISIBILITY.forbidden_resources.length > 0, "a lista de recursos proibidos está vazia");
+  assert.ok(VISIBILITY.forbidden_field_names.length > 0, "a lista de campos proibidos está vazia");
+  assert.ok(VISIBILITY.forbidden_pairs.length > 0, "a lista de pares proibidos está vazia");
+});
+
+test("nenhum recurso proibido é esquema de resposta de cliente", () => {
+  // Proibições 1, 2, 3 e 7: Lead, Qualification, CommercialOpportunity,
+  // PipelineStage e Case não têm o que fazer numa resposta do One (§3).
+  assert.deepEqual(
+    forbiddenSchemas(CLIENT_SCHEMAS),
+    [],
+    "estes esquemas saem para o cliente e nomeiam um recurso que a §3 do Language Map" +
+      " proíbe no One. Tire-os do contrato de cliente — ou, se a decisão mudou, tire a" +
+      " linha de `forbidden_resources` com razão escrita e ADR.",
+  );
+});
+
+test("nenhum campo de cliente nomeia um recurso proibido", () => {
+  assert.deepEqual(
+    forbiddenFieldsByResource(document.components.schemas, CLIENT_SCHEMAS),
+    [],
+    "estes campos saem para o cliente e nomeiam um recurso proibido (§3).",
+  );
+});
+
+test("nenhum campo de cliente é preço, margem, valor de negócio ou transcrição bruta", () => {
+  // Proibições 3, 4 e 6. Por **nome inteiro**: `kpi_value` é medição do projeto
+  // do cliente e `has_transcript` é o booleano que diz que existe transcrição —
+  // os dois continuam legítimos, e é isso que separa esta guarda de um
+  // banimento por substring.
+  assert.deepEqual(
+    forbiddenFieldsByName(document.components.schemas, CLIENT_SCHEMAS),
+    [],
+    "estes campos saem para o cliente e a §3 do Language Map os proíbe.",
+  );
+});
+
+test("nenhum par proibido (recurso, campo) sai para o cliente", () => {
+  // Proibições 5 e 6: `PriorityAssessment.rationale` e `Service.price`. Os dois
+  // recursos podem legitimamente aparecer no One — o primeiro como Opportunity
+  // Score (D5), o segundo como nome do produto contratado; o que não pode é
+  // aquele campo deles.
+  assert.deepEqual(
+    forbiddenPairs(document.components.schemas, CLIENT_SCHEMAS),
+    [],
+    "estes campos saem para o cliente e o par (recurso, campo) está proibido (§3).",
+  );
+});
+
+test("o par proibido não alcança um campo de mesmo nome em outro recurso", () => {
+  // A prova de que a proibição **não** é por substring, e ela é sobre o campo
+  // que existe hoje: `DecisionOut.rationale` é o racional da decisão publicada.
+  assert.ok(
+    document.components.schemas.DecisionOut.properties.rationale,
+    "DecisionOut.rationale sumiu do contrato — reveja esta asserção e o artefato",
+  );
+  assert.deepEqual(forbiddenPairs(document.components.schemas, ["DecisionOut"]), []);
+  // E o mesmo campo, no recurso proibido, reprova.
+  const synthetic = { PriorityAssessmentOut: { properties: { rationale: {}, score: {} } } };
+  assert.deepEqual(forbiddenPairs(synthetic, ["PriorityAssessmentOut"]), [
+    "PriorityAssessmentOut.rationale (par `PriorityAssessment.rationale`)",
+  ]);
+});
+
+test("esquema com marca epistêmica declarada tem de declarar o campo", () => {
+  // Proibição 9. A lista de membros está **vazia** hoje (Finding é a issue #90),
+  // então a asserção sobre o contrato não percorre ramo nenhum — a lição do
+  // `_TEMPLATE_SAMPLE` (ADR 0038): a cobertura de um portão é a dos ramos que a
+  // amostra percorre. Daí a amostra sintética abaixo, que a faz morder.
+  const block = VISIBILITY.epistemic_resources;
+  assert.deepEqual(missingMarker(document.components.schemas, block), []);
+
+  const synthetic = { FindingOut: { properties: { id: {}, text: {} } } };
+  const armed = { field: block.field, members: ["FindingOut"] };
+  assert.deepEqual(missingMarker(synthetic, armed), ["FindingOut"]);
+  synthetic.FindingOut.properties[block.field] = {};
+  assert.deepEqual(missingMarker(synthetic, armed), []);
+});
+
+test("esquema de evidência declarado tem de declarar a marca de revisão", () => {
+  // Proibição 4, a metade que não é banimento: Evidence revisada e não revisada
+  // são a mesma entidade, e o que as separa é a marca. Mesma amostra sintética,
+  // pelo mesmo motivo.
+  const block = VISIBILITY.reviewed_resources;
+  assert.deepEqual(missingMarker(document.components.schemas, block), []);
+
+  const synthetic = { EvidenceOut: { properties: { id: {}, excerpt: {} } } };
+  const armed = { field: block.field, members: ["EvidenceOut"] };
+  assert.deepEqual(missingMarker(synthetic, armed), ["EvidenceOut"]);
+  synthetic.EvidenceOut.properties[block.field] = {};
+  assert.deepEqual(missingMarker(synthetic, armed), []);
+});
+
+test("a lista de marcas não guarda esquema que saiu do contrato", () => {
+  // Mesma regra do `NOT_CONSUMED`: a linha some quando o motivo some. Sem isto,
+  // um `FindingOut` removido deixaria a exigência apontando para o vazio — e
+  // uma exigência que não alcança nada passa verde para sempre.
+  const orphans = [VISIBILITY.epistemic_resources, VISIBILITY.reviewed_resources]
+    .flatMap((block) => block.members)
+    .filter((name) => !CLIENT_SCHEMAS.includes(name));
+  assert.deepEqual(orphans, [], `estes esquemas estão listados e não saem para o cliente: ${orphans}`);
+});
+
+test("nenhuma rota de cliente aceita o cliente nomear uma Account", () => {
+  // Proibição 8, a metade que um contrato consegue afirmar. A outra — "token de
+  // uma Account nunca lê linha de outra" — já tem duas guardas
+  // (`test_authorization.py`, derivada do contrato, e `test_rls_isolation.py`),
+  // e esta fatia deliberadamente não constrói uma terceira. O que sobra é a
+  // superfície: onde a organização é parâmetro, a rota é de admin — e admin está
+  // fora do corpus. É a regra 1 do `AGENTS.md` na forma em que um esquema
+  // consegue dizê-la.
+  const banned = new Set(VISIBILITY.account_identifier_inputs.forbidden_parameter_names);
+  const offenders = [];
+  for (const path of CLIENT_PATHS) {
+    for (const [method, operation] of Object.entries(document.paths[path])) {
+      if (!operation || typeof operation !== "object") continue;
+      for (const parameter of operation.parameters ?? []) {
+        if (banned.has(parameter.name)) offenders.push(`${method.toUpperCase()} ${path} ${parameter.name}`);
+      }
+      for (const { schema } of requestBodySchemas(operation)) {
+        for (const key of Object.keys(schema?.properties ?? {})) {
+          if (banned.has(key)) offenders.push(`${method.toUpperCase()} ${path} ${key}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(
+    offenders.sort(),
+    [],
+    "estas rotas de cliente aceitam um identificador de Account vindo do cliente." +
+      " O vínculo é resolvido no servidor a partir do token, nunca nomeado por quem chama.",
+  );
+});
+
+test("as fixtures do BFF não fabricam nenhuma das nove proibições", () => {
+  // A fixture é uma API de mentira, e uma API de mentira é livre para mentir —
+  // é o motivo de este arquivo existir (ADR 0020). O `ajv` acima já a casa com o
+  // contrato, então uma chave proibida só entraria por um esquema proibido; esta
+  // asserção é a que sobra caso o contrato mude junto, e é barata.
+  const banned = new Set(VISIBILITY.forbidden_field_names.map((entry) => entry.name));
+  const offenders = [];
+  for (const [name, payload] of [["ME", ME], ["DASHBOARD", DASHBOARD], ["SEARCH", SEARCH]]) {
+    for (const key of keysOf(payload)) {
+      if (banned.has(key)) offenders.push(`${name}.${key}`);
+      for (const { term } of VISIBILITY.forbidden_resources) {
+        if (namesResource(key, term)) offenders.push(`${name}.${key} (recurso \`${term}\`)`);
+      }
+    }
+  }
+  assert.deepEqual(offenders.sort(), [], "as fixtures trazem chaves que a §3 proíbe no One.");
+});

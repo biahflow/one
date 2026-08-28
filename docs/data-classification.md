@@ -27,6 +27,22 @@
   leitura pelo papel de requisição — aqui por uma policy que diz `USING (false)`, e não pela
   omissão das outras —, e o log com o tenant, a espécie e o motivo, nunca a pessoa.)*
 
+A fronteira entre essas classes e a tela do cliente deixou de ser convenção na ADR 0082: o que
+o One expõe é **lista positiva**, campo a campo, em [`docs/contracts/one-visibility.json`](contracts/one-visibility.json),
+com a razão escrita de cada campo — e a regra é a **negação por omissão**, de modo que campo que
+ninguém classificou não sai. Ela é o par das nove proibições da §3 do
+[Language Map](ontology/language-map.md): `Lead`, `Qualification` e seu resultado,
+`CommercialOpportunity`/`PipelineStage`/valor/probabilidade, Evidence não revisada e transcrição
+bruta, `PriorityAssessment.rationale`, preço de tabela/margem/`Service.price`, Case de outros
+clientes, dado de outra Account, e nada com `epistemic_status=hypothesis` como fato. *Duas
+qualificações que a medição impôs: a proibição é por **recurso** e por **par explícito**, nunca
+por palavra — `DecisionOut.rationale` é o racional da decisão publicada e é legítimo, enquanto o
+do `PriorityAssessment` é avaliação interna e não sai; e `MeetingOut.has_transcript` é o booleano
+que diz que a transcrição existe **sem** expô-la, que é o oposto de vazá-la. E o critério "dado de
+outra Account" não ganhou guarda nova: ele já tinha duas — `test_authorization.py`, derivada do
+contrato publicado, e `test_rls_isolation.py` —, e o que entrou foi só a metade que um contrato
+consegue afirmar, que nenhuma rota de cliente aceita o cliente **nomear** uma Account.*
+
 Desde a ADR 0016 há um segredo **em repouso no banco**: o refresh token do Google Drive, um por projeto. Ele é cifrado com AES-256-GCM sob uma chave que vive só no ambiente — nunca no banco que ela protege — e amarrado à organização e ao projeto pelo dado associado, de modo que um ciphertext movido de linha não abre. É o único segredo do portal que precisa voltar em claro; todos os outros são verificados por hash e nunca recuperados.
 
 Dados confidenciais e segredos não entram em logs. Conteúdo enviado ao provedor de IA segue a política contratada de não treinamento/retenção e deve ser removível por organização. *(A remoção existe desde a ADR 0017:

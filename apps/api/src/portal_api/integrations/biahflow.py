@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from portal_api import clock, notifications, pending_comments, results
 from portal_api.models import (
+    CanonicalStage,
     ConversationMessage,
     Decision,
     DeliverableState,
@@ -32,6 +33,7 @@ from portal_api.models import (
     DocumentSource,
     Engagement,
     EngagementStatus,
+    GateDecision,
     Meeting,
     MemberRole,
     Membership,
@@ -70,6 +72,42 @@ PHASE_STATE_MAP: dict[str, PhaseState] = {
     "locked": PhaseState.locked,
     "active": PhaseState.active,
     "done": PhaseState.done,
+}
+#: O degrau da FDE, no vocabulário do Language Map v1.1 §4 (ADR 0081).
+#:
+#: **O ausente, o vazio e o desconhecido caem todos em ``None``**, e cada um por um
+#: motivo próprio. O ``""`` é o que a origem manda quando a fase não tem equivalente
+#: FDE — uma ``Activation``, operacional da Biahflow —, e é legítimo por desenho. O
+#: ausente é um Biahflow anterior a esta fatia. E o desconhecido **não pode virar
+#: exceção**: derrubar o sync inteiro porque a origem acrescentou um sétimo degrau é
+#: pior do que mostrar a fase sem degrau, no argumento que o ``PROJECT_STATUS_MAP`` já
+#: escreveu.
+#:
+#: O que não existe aqui é derivação pelo nome da fase, e a ausência é a decisão: um
+#: casador por rótulo carimbaria ``prove`` numa fase chamada "Prova de conceito" que a
+#: metodologia não reconhece, e o palpite sairia com a autoridade de um enum. Só a
+#: origem afirma o degrau.
+CANONICAL_STAGE_MAP: dict[str, CanonicalStage] = {
+    "discover": CanonicalStage.discover,
+    "prioritize": CanonicalStage.prioritize,
+    "feasibility": CanonicalStage.feasibility,
+    "prove": CanonicalStage.prove,
+    "scale": CanonicalStage.scale,
+    "optimize": CanonicalStage.optimize,
+}
+#: A decisão que fecha o gate da fase (decisão D7 do mapa). ``""`` é "ninguém decidiu",
+#: que é outra coisa que "esta fase não tem gate" — quem diz a segunda é
+#: ``requires_gate``. Vocabulário desconhecido cai em ``None`` pelo mesmo argumento do
+#: mapa acima: a fase aparece sem decisão, e o sync não morre.
+#:
+#: O nome é o canônico (``gate_decision``) mesmo enquanto o modelo da origem ainda se
+#: chama ``gate_outcome``: ``Outcome`` é resultado de negócio medido, e a D7 renomeou
+#: justamente para os dois não disputarem a palavra.
+GATE_DECISION_MAP: dict[str, GateDecision] = {
+    "go": GateDecision.go,
+    "conditional_go": GateDecision.conditional_go,
+    "redesign": GateDecision.redesign,
+    "no_go": GateDecision.no_go,
 }
 DELIVERABLE_STATE_MAP: dict[str, DeliverableState] = {
     "pending": DeliverableState.pending,
@@ -493,6 +531,14 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             position=phase_data.get("position", position),
             state=PHASE_STATE_MAP.get(phase_data["status"], PhaseState.locked),
             target_date=date.fromisoformat(target) if target else None,
+            # O degrau da FDE e a decisão do gate (ADR 0081). Os três `.get` são o
+            # padrão desta função: um Biahflow anterior à fatia manda um corpo sem
+            # as chaves, e isso é ausência de afirmação. Os dois mapas devolvem
+            # `None` para ausente, vazio e desconhecido — nunca um degrau adivinhado
+            # a partir de `phase_data["name"]`.
+            canonical_stage=CANONICAL_STAGE_MAP.get(phase_data.get("canonical_stage") or ""),
+            gate_decision=GATE_DECISION_MAP.get(phase_data.get("gate_decision") or ""),
+            requires_gate=bool(phase_data.get("requires_gate", False)),
         )
         session.add(phase)
         session.flush()  # precisamos do phase.id para os entregáveis
@@ -812,6 +858,15 @@ def _journey_projection(session: Session, project: Project) -> dict[str, Any]:
                 "description": phase.description,
                 "state": phase.state.value,
                 "target_date": phase.target_date.isoformat() if phase.target_date else None,
+                # O degrau da FDE e a decisão da fase (ADR 0081). `None` nos dois
+                # primeiros diz coisas diferentes — "não tem equivalente FDE" e
+                # "ninguém decidiu" —, e é `requires_gate` quem separa o segundo de
+                # "esta fase não termina em gate".
+                "canonical_stage": (
+                    phase.canonical_stage.value if phase.canonical_stage else None
+                ),
+                "gate_decision": phase.gate_decision.value if phase.gate_decision else None,
+                "requires_gate": phase.requires_gate,
                 "deliverables": [
                     {
                         "name": deliverable.name,

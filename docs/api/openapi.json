@@ -3013,6 +3013,17 @@
       "PhaseOut": {
         "additionalProperties": false,
         "properties": {
+          "canonical_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Stage"
+          },
           "deliverables": {
             "items": {
               "$ref": "#/components/schemas/DeliverableOut"
@@ -3031,9 +3042,24 @@
             ],
             "title": "Description"
           },
+          "gate_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Decision"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "requires_gate": {
+            "title": "Requires Gate",
+            "type": "boolean"
           },
           "state": {
             "title": "State",
@@ -3056,6 +3082,9 @@
           "description",
           "state",
           "target_date",
+          "canonical_stage",
+          "gate_decision",
+          "requires_gate",
           "deliverables"
         ],
         "title": "PhaseOut",

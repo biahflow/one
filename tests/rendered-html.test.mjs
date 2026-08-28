@@ -860,6 +860,87 @@ test("o programa pausado é dito, e o rótulo vem do dashboard mesmo fora da lis
 });
 
 /**
+ * O degrau da FDE e a decisão da fase, na jornada (ADR 0081).
+ *
+ * A fase servida pela fixture é `Prove`, com `requires_gate: true` e sem decisão — o
+ * caso que **só existe porque `requires_gate` atravessa o contrato**: sem ele, "fase
+ * sem gate" e "gate ainda por decidir" seriam a mesma coisa aqui, e a tela teria de
+ * calar sobre as duas.
+ */
+test("a fase mostra o degrau da FDE e diz que o gate está por decidir", async () => {
+  const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+  assert.match(html, /Você está aqui/);
+  // O degrau vem do contrato, e não do nome da fase — a derivação que a ingestão
+  // recusa fazer.
+  assert.match(html, /PROVE/);
+  assert.match(html, /Decisão da fase/);
+  assert.match(html, /aguardando/);
+  // E não é Outcome: a decisão de gate mora na jornada, e a palavra "Outcome"
+  // pertence a `Measurement(kind=outcome)` (decisão D7 do Language Map). Sem esta
+  // asserção o selo poderia estar certo e o vocabulário errado.
+  assert.doesNotMatch(html, /Outcome/);
+});
+
+test("a fase decidida mostra o rótulo canônico da decisão", async () => {
+  // O ramo decidido, por override: uma fixture só desenha um caso, e os dois ramos
+  // do gate precisam de exemplo executado — é o mesmo motivo do projeto encerrado.
+  dashboardOverride = {
+    ...DASHBOARD,
+    journey: {
+      ...DASHBOARD.journey,
+      phases: DASHBOARD.journey.phases.map((phase) =>
+        phase.name === "Prove" ? { ...phase, gate_decision: "conditional_go" } : phase,
+      ),
+    },
+  };
+  try {
+    const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+    assert.match(html, /Decisão da fase/);
+    // O rótulo é o canônico do Language Map §2, em inglês e em maiúsculas: traduz-se
+    // o texto em volta do termo, nunca o termo.
+    assert.match(html, /CONDITIONAL GO/);
+    assert.doesNotMatch(html, /aguardando/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("a fase sem gate não ganha caixa de decisão", async () => {
+  // `Welcome` é `requires_gate: false` na fixture. Selecioná-la pela âncora do aviso
+  // é o único jeito de olhar uma fase que não é a ativa, e sem esta asserção as duas
+  // acima passariam com a caixa aparecendo em toda fase — que seria a tela afirmando
+  // uma decisão faltando onde nunca haverá decisão.
+  const markup = await anchored("Visão geral", "phase:Welcome");
+
+  assert.match(markup, /DISCOVER/);
+  assert.doesNotMatch(markup, /Decisão da fase/);
+});
+
+/**
+ * O vocabulário banido do Language Map §5, na superfície que esta fatia toca.
+ *
+ * "POC", "piloto" e "MVP" são o que o PROVE **não** é: ele é a menor implementação
+ * real em produção controlada, com critério de sucesso definido antes de construir.
+ * A asserção é sobre o HTML renderizado e não sobre o código-fonte, porque o que
+ * chega ao cliente é o HTML — um literal numa fixture e um literal num componente
+ * produzem a mesma linha na tela.
+ *
+ * O lint de linguagem completo, sobre todas as superfícies, é a Issue #91. Esta é a
+ * asserção pontual da fatia que apagou as ocorrências.
+ */
+test("a tela do cliente não chama o PROVE de piloto, POC ou MVP", async () => {
+  const markup = renderedMarkup(
+    await (await render("/", { headers: { cookie: await sessionCookie() } })).text(),
+  );
+
+  for (const banido of [/piloto/i, /\bPOC\b/, /\bMVP\b/]) {
+    assert.doesNotMatch(markup, banido, `${banido} descreve o PROVE, e o PROVE não é isso`);
+  }
+});
+
+/**
  * A linha ancorada, com a classe **e** o atributo no mesmo elemento (ADR 0056).
  *
  * Asserção de proximidade e não de presença, e a diferença é o que se prova:

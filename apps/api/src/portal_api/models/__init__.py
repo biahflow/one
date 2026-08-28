@@ -40,6 +40,7 @@ from portal_api.models.notification import Notification, NotificationKind
 from portal_api.models.onboarding import OnboardingStep, OnboardingStepName
 from portal_api.models.organization import Organization
 from portal_api.models.project import (
+    CanonicalStage,
     DeliverableAcceptance,
     DeliverableAcceptanceAction,
     DeliverableState,
@@ -47,6 +48,7 @@ from portal_api.models.project import (
     DeliveryStatus,
     DigitalEmployee,
     DigitalEmployeeStatus,
+    GateDecision,
     Milestone,
     MilestoneState,
     PendingItem,
@@ -76,6 +78,7 @@ __all__ = [
     "AiModelPrice",
     "AiUsageEvent",
     "AuditLog",
+    "CanonicalStage",
     "ChatRateWindow",
     "ContactEvent",
     "ContactKind",
@@ -100,6 +103,7 @@ __all__ = [
     "Engagement",
     "EngagementStatus",
     "ErasureState",
+    "GateDecision",
     "Meeting",
     "MemberRole",
     "Membership",

@@ -71,6 +71,15 @@ Este documento não o duplica; ele explica as regras que o esquema não consegue
   é o que o seletor de contexto usa para agrupar.
 - `GET /api/v1/me/dashboard` devolve `engagement` (id, nome e estado) do projeto servido.
 - `GET /api/v1/projects/{id}/dashboard` devolve o mesmo, sem `organization`/`project_id`.
+- Cada fase da jornada traz `canonical_stage`, `gate_decision` e `requires_gate`
+  (ADR 0081). Os dois primeiros são nulos por motivos **diferentes**, e é isso que faz o
+  terceiro existir: `canonical_stage` nulo quer dizer que a fase **não tem equivalente na
+  FDE** — uma fase operacional da Biahflow, e a origem manda `""` para dizer isso —,
+  enquanto `gate_decision` nulo quer dizer que **ninguém decidiu ainda**. `requires_gate`
+  é propriedade do *template* da fase na origem; sem ele, "fase sem gate" e "gate por
+  decidir" seriam indistinguíveis na tela. O degrau **nunca** é derivado do nome da fase:
+  só a origem o afirma, e um valor que este lado não conhece vira nulo em vez de virar
+  exceção — a fase aparece sem degrau, e o sync não morre por uma palavra nova.
 
 Duas regras de tipo, herdadas da ADR 0020: onde o produtor já entregou texto, o modelo
 declara texto; e `extra="forbid"`, para um campo novo estourar na resposta em vez de sumir

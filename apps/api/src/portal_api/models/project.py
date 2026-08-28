@@ -80,6 +80,41 @@ class PhaseState(str, enum.Enum):
     done = "done"
 
 
+class CanonicalStage(str, enum.Enum):
+    """O degrau da metodologia FDE a que uma fase corresponde (Language Map v1.1 §4).
+
+    Seis valores, e são **os do documento normativo** — nunca derivados do nome da
+    fase. Um projeto do Biahflow pode ter uma fase ``Activation``, operacional da casa
+    e sem equivalente na FDE; adivinhar o degrau pelo rótulo produziria exatamente a
+    falsa precisão que ``results.py`` recusa ao declarar a lacuna em vez de dividir por
+    zero. Quando a origem não afirma o degrau, a coluna fica ``NULL`` — e ``NULL`` aqui
+    quer dizer "esta fase não tem equivalente FDE", não "ainda não sabemos".
+    """
+
+    discover = "discover"
+    prioritize = "prioritize"
+    feasibility = "feasibility"
+    prove = "prove"
+    scale = "scale"
+    optimize = "optimize"
+
+
+class GateDecision(str, enum.Enum):
+    """A decisão que fecha uma fase com gate (Language Map v1.1 §4, decisão D7).
+
+    Chama-se ``GateDecision`` e **não** ``GateOutcome``: a D7 renomeou o termo porque
+    ``Outcome`` é resultado de negócio medido (``Measurement(kind=outcome)``), e os
+    dois disputando a mesma palavra fariam a tela chamar de "resultado" uma decisão de
+    metodologia. O modelo do Biahflow ainda se chama ``gate_outcome`` lá; o nome
+    canônico é este, e é o que atravessa a fronteira.
+    """
+
+    go = "go"
+    conditional_go = "conditional_go"
+    redesign = "redesign"
+    no_go = "no_go"
+
+
 class DeliverableState(str, enum.Enum):
     pending = "pending"
     delivered = "delivered"
@@ -332,6 +367,37 @@ class ProjectPhase(Base, _ProjectChildMixin, TimestampMixin):
         default=PhaseState.locked,
     )
     target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # O degrau da FDE a que esta fase corresponde (Language Map v1.1 §4, ADR 0081).
+    #
+    # **Nullable, e a nulidade é significativa**: a origem manda `""` quando a fase não
+    # tem equivalente FDE — uma `Activation`, operacional da Biahflow —, e isso é
+    # legítimo por desenho, não falta de dado. `NULL` é a tradução honesta daquele
+    # vazio, no precedente de `observed_at` (ADR 0076) e de `engagement_id` (ADR 0079):
+    # ausência é ausência de afirmação. Um valor de aterro exigiria escolher um degrau
+    # para uma fase que a metodologia não tem, que é fabricar dado.
+    canonical_stage: Mapped[CanonicalStage | None] = mapped_column(
+        Enum(CanonicalStage, name="canonical_stage"),
+        nullable=True,
+    )
+    # A decisão que fechou o gate desta fase, quando alguém a tomou (decisão D7).
+    #
+    # Nullable pelo motivo **oposto** ao de cima, e é por isso que são duas colunas e
+    # não uma: aqui `NULL` quer dizer "ninguém decidiu ainda". Quem separa os dois
+    # sentidos é `requires_gate` — sem ele, "fase sem gate" e "gate por decidir"
+    # ficariam indistinguíveis, e a tela teria de escolher entre calar sobre as duas ou
+    # afirmar espera sobre uma fase que nunca terá decisão.
+    gate_decision: Mapped[GateDecision | None] = mapped_column(
+        Enum(GateDecision, name="gate_decision"),
+        nullable=True,
+    )
+    # Se esta fase termina em gate. É propriedade do **template** da fase na origem:
+    # quem decide que Feasibility e PROVE terminam em decisão é a metodologia, não o
+    # projeto. `False` por default porque um Biahflow anterior a esta fatia não manda a
+    # chave, e "não afirmou que exige gate" é a leitura conservadora — ela faz a tela
+    # calar, nunca afirmar uma espera que ninguém declarou.
+    requires_gate: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class PhaseDeliverable(Base, _ProjectChildMixin, TimestampMixin):

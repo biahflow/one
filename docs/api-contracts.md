@@ -47,6 +47,19 @@ lista de qualquer forma; o seletor o agrupa sem cabeçalho em vez de escondê-lo
 um rótulo inventado. `GET /api/v1/me/dashboard` traz o mesmo programa por extenso, em
 `engagement` (`id`, `name` e `status` em `active` · `paused` · `closed`).
 
+Cada fase da jornada do dashboard traz três campos da metodologia (ADR 0081):
+`canonical_stage` — o degrau da FDE, em `discover` · `prioritize` · `feasibility` ·
+`prove` · `scale` · `optimize` —, `gate_decision` em `go` · `conditional_go` ·
+`redesign` · `no_go`, e `requires_gate`. **Os dois nulos dizem coisas diferentes, e é por
+isso que o terceiro campo existe:** `canonical_stage` nulo quer dizer que a fase não tem
+equivalente na FDE (uma fase operacional da Biahflow), enquanto `gate_decision` nulo quer
+dizer que ninguém decidiu ainda — e é `requires_gate` que separa esse segundo caso de
+"esta fase não termina em gate". O degrau **nunca** é derivado do nome da fase: só a
+origem o afirma, e um vocabulário que a API não conhece chega como `null` em vez de
+derrubar a sincronização. `gate_decision` é o nome canônico da decisão D7 do
+[Language Map](ontology/language-map.md) e **não** é um Outcome: `Outcome` é resultado de
+negócio medido, e foi para os dois não disputarem a palavra que o termo foi renomeado.
+
 `GET /api/v1/me/search?q=` é a busca dentro do projeto resolvido (ADR 0024), e obedece às mesmas
 duas regras: sem projeto, 404; nunca 403. Cada resultado traz `kind`
 (`document`/`meeting`/`pending`/`milestone`/`chunk`), `title`, `detail`, `location`, o **rótulo

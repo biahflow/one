@@ -55,14 +55,26 @@ export const DEMO_OVERVIEW: Overview = {
     { title: "Treinamento da operação", owner: "Biahflow", state: "Próxima entrega", date: "18 set" },
     { title: "Entrada em produção", owner: "Time Acme", state: "Planejado", date: "30 set" },
   ],
+  // A jornada da casca é a **escada canônica da FDE** (Language Map v1.1 §4, ADR 0081):
+  // os seis degraus, na ordem, cada um com o `canonicalStage` que lhe corresponde. Ela
+  // é a documentação viva do formato, então documenta **os dois ramos** do gate —
+  // Feasibility com decisão tomada, Prove exigindo gate e ainda sem decisão. Sem o
+  // segundo, o caso que só existe por causa de `requiresGate` não teria exemplo em
+  // lugar nenhum do repositório.
+  //
+  // `Welcome` **saiu**: aqui ela nunca foi degrau da metodologia — era o passo de
+  // acessos, que é onboarding. Isso vale só para esta casca, que é nossa; o One não
+  // reclassifica fase vinda do Biahflow (Language Map §3, regra 2), e lá `Welcome`
+  // continua sendo uma fase com `canonical_stage=discover`.
   journey: {
     currentPhase: "Prove",
     phases: [
-      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", targetDate: "", deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null, externalRef: null, decisions: [] }] },
-      { name: "Discover", description: "Mapeamento dos processos.", state: "done", targetDate: "", deliverables: [{ name: "Mapa dos processos", state: "delivered", link: null, externalRef: null, decisions: [] }, { name: "AI Score", state: "delivered", link: null, externalRef: null, decisions: [] }] },
-      { name: "Prove", description: "Piloto do funcionário digital.", state: "active", targetDate: "20 set", deliverables: [{ name: "Funcionário Digital", state: "pending", link: null, externalRef: null, decisions: [] }, { name: "Dashboard de KPIs", state: "pending", link: null, externalRef: null, decisions: [] }] },
-      { name: "Scale", description: "Expansão para mais áreas.", state: "locked", targetDate: "", deliverables: [] },
-      { name: "Optimize", description: "Evolução contínua.", state: "locked", targetDate: "", deliverables: [] },
+      { name: "Discover", description: "Mapeamento dos processos.", state: "done", targetDate: "", canonicalStage: "discover", gateDecision: null, requiresGate: false, deliverables: [{ name: "Mapa dos processos", state: "delivered", link: null, externalRef: null, decisions: [] }, { name: "Diagnóstico de maturidade de IA", state: "delivered", link: null, externalRef: null, decisions: [] }] },
+      { name: "Prioritize", description: "Priorização das oportunidades de melhoria.", state: "done", targetDate: "", canonicalStage: "prioritize", gateDecision: null, requiresGate: false, deliverables: [{ name: "Improvement Opportunity Backlog", state: "delivered", link: null, externalRef: null, decisions: [] }] },
+      { name: "Feasibility", description: "Viabilidade técnica da hipótese de solução.", state: "done", targetDate: "", canonicalStage: "feasibility", gateDecision: "conditional_go", requiresGate: true, deliverables: [{ name: "Technical Feasibility Brief", state: "delivered", link: null, externalRef: null, decisions: [] }] },
+      { name: "Prove", description: "A menor implementação real em produção controlada, com critério de sucesso definido antes de construir.", state: "active", targetDate: "20 set", canonicalStage: "prove", gateDecision: null, requiresGate: true, deliverables: [{ name: "Funcionário Digital", state: "pending", link: null, externalRef: null, decisions: [] }, { name: "Dashboard de KPIs", state: "pending", link: null, externalRef: null, decisions: [] }] },
+      { name: "Scale", description: "Expansão para mais áreas.", state: "locked", targetDate: "", canonicalStage: "scale", gateDecision: null, requiresGate: false, deliverables: [] },
+      { name: "Optimize", description: "Evolução contínua.", state: "locked", targetDate: "", canonicalStage: "optimize", gateDecision: null, requiresGate: false, deliverables: [] },
     ],
   },
   roi: { net: 214000, ratio: 1.42 },
@@ -84,11 +96,11 @@ export const DEMO_OVERVIEW: Overview = {
   ],
   decisions: [
     { title: "Adotar fila gerenciada em vez de instância própria", rationale: "O volume previsto não paga o custo fixo, e a fila gerenciada escala a zero fora do horário comercial.", decidedOn: "06 ago", ownerLabel: "Marina Farias", meetingTitle: "Revisão de integrações" },
-    { title: "Adiar o piloto de cobrança para setembro", rationale: "A integração fiscal depende de um cadastro que ainda está em revisão do lado do cliente.", decidedOn: "21 jul", ownerLabel: "Helena Dias", meetingTitle: null },
+    { title: "Adiar o PROVE de cobrança para setembro", rationale: "A integração fiscal depende de um cadastro que ainda está em revisão do lado do cliente.", decidedOn: "21 jul", ownerLabel: "Helena Dias", meetingTitle: null },
   ],
   pendings: [
     { id: "demo-pend-1", title: "Aprovar fluxo de exceções", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", priority: "high", priorityLabel: "Alta", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 2 dias" },
-    { id: "demo-pend-2", title: "Enviar lista de usuários piloto", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", priority: "medium", priorityLabel: "Média", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 4 dias" },
+    { id: "demo-pend-2", title: "Enviar lista de usuários do PROVE", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", priority: "medium", priorityLabel: "Média", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 4 dias" },
     { id: "demo-pend-3", title: "Validar cálculo de economia", description: null, owner: "Biahflow", state: "open", stateLabel: "Aberta", priority: "low", priorityLabel: "Baixa", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 5 dias" },
     { id: "demo-pend-4", title: "Definir alçada de aprovação", description: null, owner: "Biahflow", state: "resolved", stateLabel: "Resolvida", priority: "medium", priorityLabel: "Média", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 9 dias" },
   ],

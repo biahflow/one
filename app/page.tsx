@@ -42,6 +42,17 @@ const MEETING_STATUS_LABELS: Record<string, string> = {
   scheduled: "Agendada",
   held: "Realizada",
 };
+/**
+ * Os vocabulários canônicos do Language Map v1.1 §4 (ADR 0081), e a lista existe para
+ * o mapeamento **recusar o que não conhece** em vez de repassar.
+ *
+ * O caso não é hipotético: a origem pode acrescentar um sétimo degrau antes desta tela
+ * saber dele, e imprimir a palavra crua seria a tela afirmando um degrau que ela não
+ * tem rótulo para ler. Cair em `null` deixa a fase sem degrau, que é exatamente o que
+ * a API já diz quando a fase não tem equivalente FDE.
+ */
+const CANONICAL_STAGES: string[] = ["discover", "prioritize", "feasibility", "prove", "scale", "optimize"];
+const GATE_DECISIONS: string[] = ["go", "conditional_go", "redesign", "no_go"];
 /** A prioridade vem do Biahflow desde a Fase 1 e não chegava à tela (ADR 0029). */
 const PENDING_PRIORITY_LABELS: Record<string, string> = {
   high: "Alta",
@@ -213,7 +224,7 @@ type ApiAcceptance = {
   comment: string | null;
   created_at: string;
 };
-type ApiPhase = { name: string; description: string | null; state: string; target_date: string | null; deliverables: ApiDeliverable[] };
+type ApiPhase = { name: string; description: string | null; state: string; target_date: string | null; canonical_stage: string | null; gate_decision: string | null; requires_gate: boolean; deliverables: ApiDeliverable[] };
 type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null };
 type ApiMe = {
   email: string;
@@ -301,6 +312,18 @@ function toOverview(
         description: phase.description ?? "",
         state: (["locked", "active", "done"].includes(phase.state) ? phase.state : "locked") as JourneyPhase["state"],
         targetDate: shortDate(phase.target_date),
+        // O degrau da FDE e a decisão da fase (ADR 0081). Os três atravessam **como
+        // a API os entrega**: `null` é `null`, e nada aqui adivinha degrau pelo nome
+        // nem inventa decisão. Um valor que a tela não conhece vira `null` em vez de
+        // ser renderizado cru — a origem pode ganhar um sétimo degrau antes desta
+        // tela, e imprimir a palavra bruta seria a tela afirmando o que não sabe ler.
+        canonicalStage: CANONICAL_STAGES.includes(phase.canonical_stage as string)
+          ? (phase.canonical_stage as JourneyPhase["canonicalStage"])
+          : null,
+        gateDecision: GATE_DECISIONS.includes(phase.gate_decision as string)
+          ? (phase.gate_decision as JourneyPhase["gateDecision"])
+          : null,
+        requiresGate: phase.requires_gate === true,
         deliverables: (phase.deliverables ?? []).map((deliverable) => ({
           name: deliverable.name,
           state: deliverable.state === "delivered" ? "delivered" : "pending",

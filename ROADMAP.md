@@ -1763,6 +1763,34 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       estrito que a §3, por escolha registrada; e o lint de linguagem no front é a #91.
       Descoberto em `biahflow/one#87`.
 
+- [x] **A dívida de vocabulário era zero, e é isso que muda o argumento da guarda** *(ADR 0083)*:
+      a §6 do [Language Map](docs/ontology/language-map.md) manda os invariantes de linguagem
+      virarem "teste automatizado no Pulse e **revisão de PR** nos dois repos", e revisão de PR é
+      o mecanismo que a ADR 0034 mediu e reprovou — corrigir à mão sem portão e divergir de novo
+      em dois dias. A varredura desta fatia achou o que ninguém esperava: **dívida zero**. As
+      quatro citações de `GateOutcome` são notas históricas explicando o rename da D7, a única
+      `opportunity` nua está num comentário que explica a própria regra, e as **36** declarações
+      com o token `client` são 8 React Client Components mais 28 sobrevivências decididas (o
+      *lado* — as pessoas do cliente —, a RFC 6749, transporte HTTP e a família 4xx da RFC 9110).
+      Isso **muda o argumento**: a guarda é preventiva, não pagadora de dívida, e o peso inteiro
+      dela cai na medição. `apps/api/tests/test_vocabulary.py` roda no `api-quality` que já
+      existe, sobre os **dois** deployables, e não é regra de eslint porque `eslint.config.mjs`
+      ignora `apps/**` — "guarda que para na fronteira do pacote" é literalmente o defeito que a
+      ADR 0035 consertou. Os seis termos saem do documento (inclusive as três exceções nomeadas
+      da §5 e o **MVP**, que só a §2 tem), e a relação é **bidirecional**: linha da §5 sem regra
+      nem exclusão escrita reprova. *Medido por mutação, dezoito vezes*, e o par que carrega a
+      fatia é o **9a/9b**: `stuckOnClient` mora dentro de `FunnelClient.tsx`, então a isenção de
+      React Client Component escopada ao **arquivo** deixa `clientRows` passar **verde** — é o
+      `.priority` da ADR 0033 —, e a isenção escopada ao **identificador** reprova. A colisão com
+      a asserção de PROVE de `tests/rendered-html.test.mjs` foi medida e as duas ficam: os
+      corpora são distintos nos dois sentidos (literal que a fixture não renderiza × palavra que
+      chegou pela API). **Fica aberto:** local e parâmetro Python não são declaração (preço
+      medido: 20 ocorrências, 10 delas o `client` de transporte de `storage.py`); português sem
+      acento e fora da §5 não tem portão; a direção `one-visibility.json` → tabela mestra foi
+      **medida e recusada** (a coluna "Nunca chamar de" é escopada à sua linha, e um token nu
+      acende `MeetingOut`, `NextMeetingOut` e `RoiOut`, os três legítimos); e o rótulo de projeção
+      do ROI é a #89. Descoberto em `biahflow/one#91`.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

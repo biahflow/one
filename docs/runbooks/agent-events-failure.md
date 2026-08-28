@@ -51,11 +51,11 @@ sem tocar nas outras — é para isso que a chave é por projeto e por agente.
 ## Sintoma: 404 ao publicar
 
 O `projectId` do corpo não é o projeto da chave. É a conferência funcionando: quem responde "qual
-projeto" é a credencial. Confirme qual projeto a chave atende em `/admin/resultados`.
+projeto" é a credencial. Confirme qual projeto a chave atende em `/admin/results`.
 
 ## Suspeita de chave vazada
 
-1. **Revogue** em `/admin/resultados` (ou `DELETE .../keys/{keyId}`) — vale na requisição
+1. **Revogue** em `/admin/results` (ou `DELETE .../keys/{keyId}`) — vale na requisição
    seguinte, sem restart.
 2. **Rotacione** para o produtor legítimo: a sucessora nasce ligada à antecessora
    (`rotatedFromId`), então a troca fica reconstituível.
@@ -78,4 +78,4 @@ precisa mudar, isso é uma correção deliberada de premissa — não uma ediç�
 ## Sintoma: ROI aparece como travessão
 
 Investimento zero ou ausente. O cálculo devolve nulo em vez de dividir por zero, com a lacuna
-`no_investment`. Configure o investimento mensal em `/admin/resultados`.
+`no_investment`. Configure o investimento mensal em `/admin/results`.

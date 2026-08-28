@@ -76,7 +76,7 @@ test("a busca acha o termo dentro do documento e oferece a página", async ({
   // Mesma razão de `documents.spec.ts`: o documento e a busca têm de acontecer
   // no mesmo tenant, e sem `?project=` a tela de administração escolhe "o
   // projeto mais recente", que não é necessariamente o do cliente que busca.
-  await page.goto(`/admin/conhecimento?project=${await projetoDoSeed(page)}`);
+  await page.goto(`/admin/knowledge?project=${await projetoDoSeed(page)}`);
   await page.locator('input[name="file"]').setInputFiles({
     name: "aditivo.txt",
     mimeType: "text/plain",

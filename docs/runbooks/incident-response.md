@@ -26,7 +26,7 @@ pedido e não cumprido é obrigação contratual. O que fazer:
 
 3. **O pedido não é retentado sozinho** — de propósito (ADR 0028): numa falha
    permanente o laço gravaria o mesmo erro a cada tick e dispararia este alerta junto.
-   Corrigida a causa, quem pede de novo é uma pessoa em **`/admin/organizacao`**; um
+   Corrigida a causa, quem pede de novo é uma pessoa em **`/admin/organization`**; um
    `failed` já libera pedido novo, e o registro do que falhou fica.
 
 4. **Se o estado é `running` e não muda**, o worker morreu no meio. Nenhum `except`

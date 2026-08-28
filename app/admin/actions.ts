@@ -35,9 +35,9 @@ async function request<T>(
     });
     if (response.ok) {
       revalidatePath("/admin");
-      revalidatePath("/admin/resultados");
-      revalidatePath("/admin/conhecimento");
-      revalidatePath("/admin/organizacao");
+      revalidatePath("/admin/results");
+      revalidatePath("/admin/knowledge");
+      revalidatePath("/admin/organization");
       const data = response.status === 204 ? null : ((await response.json()) as T);
       return { ok: true, data };
     }
@@ -176,7 +176,7 @@ export async function uploadDocument(
       cache: "no-store",
     });
     if (response.ok) {
-      revalidatePath("/admin/conhecimento");
+      revalidatePath("/admin/knowledge");
       return { ok: true };
     }
     return { ok: false, error: MAX_UPLOAD_MESSAGES[response.status] ?? GENERIC_ERROR };

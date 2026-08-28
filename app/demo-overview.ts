@@ -22,7 +22,17 @@ export const DEMO_USER: PortalUser = {
 };
 
 export const DEMO_PROJECTS: ProjectSummary[] = [
-  { id: "demo-1", name: "Automação Financeira", status: "Em implementação", current: true },
+  // Sem Engagement, e é a resposta certa (ADR 0079): a casca não espelha Biahflow
+  // nenhum, então não há programa que alguém tenha afirmado. O projeto cai no grupo
+  // sem cabeçalho do seletor, que é exatamente o caminho que a ausência tem de ter.
+  {
+    id: "demo-1",
+    name: "Automação Financeira",
+    status: "Em implementação",
+    current: true,
+    engagementId: null,
+    engagementName: null,
+  },
 ];
 
 export const DEMO_OVERVIEW: Overview = {
@@ -31,6 +41,8 @@ export const DEMO_OVERVIEW: Overview = {
   status: "Em implementação",
   completion: 68,
   source: "demo",
+  // Pelo mesmo motivo do `DEMO_PROJECTS` acima e do `freshness` abaixo.
+  engagement: null,
   archivedAt: null,
   sourceDeletedAt: null,
   // A casca de demonstração **não** carimba frescor, e é o caso mais literal da regra

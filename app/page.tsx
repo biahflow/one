@@ -9,6 +9,7 @@ import DashboardClient, {
   type DeliverableDecision,
   type JourneyPhase,
   type DecisionView,
+  type EngagementView,
   type FreshnessView,
   type MeetingView,
   type NotificationCenter,
@@ -222,7 +223,14 @@ type ApiMe = {
   notify_by_whatsapp: boolean;
   phone_hint: string;
   organization: string | null;
-  projects: { id: string; name: string; slug: string; status: string }[];
+  projects: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    engagement_id: string | null;
+    engagement_name: string | null;
+  }[];
   roles: string[];
 };
 type ApiNotification = {
@@ -262,6 +270,9 @@ function toOverview(
   return {
     project: (data.project as string) ?? "",
     organization: (data.organization as string) ?? organization,
+    // O programa deste projeto (ADR 0079). `null` é resposta legítima: o Biahflow
+    // ainda pode não mandar a chave, e a tela cala em vez de inventar um rótulo.
+    engagement: (data.engagement as EngagementView | null) ?? null,
     status: STATUS_LABELS[data.status as string] ?? (data.status as string) ?? "",
     completion: (data.completion as number) ?? 0,
     source: "live",
@@ -616,6 +627,10 @@ export default async function Page({
     name: project.name,
     status: STATUS_LABELS[project.status] ?? project.status,
     current: projectId ? project.id === projectId : false,
+    // O programa a que ele pertence (ADR 0079). Sem tradução de rótulo: o nome do
+    // Engagement é dado do Biahflow, não um enum com dicionário deste lado.
+    engagementId: project.engagement_id,
+    engagementName: project.engagement_name,
   }));
 
   // 404 é a resposta de negação do portal (nunca 403): sem projeto visível, a

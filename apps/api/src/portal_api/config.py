@@ -196,7 +196,7 @@ class Settings(BaseSettings):
     #: e só redireciona para `/login` fora dele, e o callback é uma navegação de
     #: navegador — uma sessão expirada durante o consentimento entregaria JSON no
     #: lugar da tela de login.
-    google_drive_redirect_uri: str = "http://localhost:3000/admin/conhecimento/drive-callback"
+    google_drive_redirect_uri: str = "http://localhost:3000/admin/knowledge/drive-callback"
     #: Escopo único, e somente leitura. O threat model cobra isto explicitamente
     #: ("OAuth Drive excessivo | escopo readonly e folder allowlist").
     google_drive_scope: str = "https://www.googleapis.com/auth/drive.readonly"

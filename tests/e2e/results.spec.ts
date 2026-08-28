@@ -88,7 +88,7 @@ test("a premissa e a chave criadas na tela sustentam o número do cliente", asyn
   context,
 }) => {
   await signIn(page, ADMIN);
-  await page.goto("/admin/resultados");
+  await page.goto("/admin/results");
   await expect(page.getByRole("heading", { name: /Como .* apura valor/ })).toBeVisible();
 
   // Com um projeto só não há seletor nem `?project=` na URL; a tela marca qual
@@ -152,7 +152,7 @@ test("a premissa e a chave criadas na tela sustentam o número do cliente", asyn
 test("o cliente não alcança a administração de resultados", async ({ page }) => {
   await signIn(page, CLIENT);
 
-  await page.goto("/admin/resultados");
+  await page.goto("/admin/results");
 
   // A API nega com 404 (nunca 403) e a tela não existe para ela. A asserção é
   // sobre o que a pessoa vê: o status HTTP fica 200 porque o Next já começou a

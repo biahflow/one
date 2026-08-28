@@ -1,6 +1,6 @@
 # Runbook — ingestão de documentos
 
-O documento entra por `POST /api/v1/admin/projects/{id}/documents` (tela `/admin/conhecimento`),
+O documento entra por `POST /api/v1/admin/projects/{id}/documents` (tela `/admin/knowledge`),
 vira objeto no storage e é indexado pela task `portal_api.ingest_document` no worker (ADR 0014).
 Parada, o assistente não responde errado — ele volta a declarar lacuna sobre o que aquele
 documento diria, e abre pendência para o time.

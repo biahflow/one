@@ -112,7 +112,7 @@ _MAX_DEDUPE_KEY = 255
 #: não conhece o projeto, que é metade da URL; e um mapa por espécie responde "que
 #: tela este aviso abre?" numa tabela legível, em vez de espalhar a resposta por dez
 #: construções onde ela divergiria uma a uma. Quem passa ``link`` explícito — o
-#: alerta do funil, que aponta para ``/admin/funil`` — continua vencendo.
+#: alerta do funil, que aponta para ``/admin/funnel`` — continua vencendo.
 LINK_TAB: dict[NotificationKind, str] = {
     NotificationKind.project_status_changed: tabs.TAB_OVERVIEW,
     # A jornada com o "Você está aqui" e os entregáveis desbloqueados moram na
@@ -191,7 +191,7 @@ ANCHORLESS: dict[NotificationKind, str] = {
         "`detail` do próprio aviso e não tem linha correspondente na tela"
     ),
     NotificationKind.onboarding_stuck: (
-        "interno, traz `link` explícito para `/admin/funil` e nunca passa por "
+        "interno, traz `link` explícito para `/admin/funnel` e nunca passa por "
         "`deep_link` — o explícito vence, em `fan_out`"
     ),
     NotificationKind.deliverable_reviewed: (
@@ -592,7 +592,7 @@ def fan_out(
             "kind": change.kind,
             "title": change.title,
             "detail": change.detail,
-            # O explícito vence: o alerta do funil aponta para `/admin/funil`, que
+            # O explícito vence: o alerta do funil aponta para `/admin/funnel`, que
             # não é aba de cliente e não sairia de `deep_link`.
             "link": change.link or deep_link(project.id, change.kind, change.item),
             "occurred_at": when,

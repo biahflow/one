@@ -64,7 +64,7 @@ def test_every_client_notice_knows_which_screen_it_opens() -> None:
     com um `whatsapp.skipped_without_link` que ninguém procura.
 
     A audiência é o critério, não a espécie: quem é ``_INTERNAL_ONLY`` não abre aba
-    de cliente. O ``onboarding_stuck`` traz `/admin/funil` por conta própria, e o
+    de cliente. O ``onboarding_stuck`` traz `/admin/funnel` por conta própria, e o
     ``whatsapp_reply`` aponta para as pendências, onde o time responde.
     """
     client_kinds = {

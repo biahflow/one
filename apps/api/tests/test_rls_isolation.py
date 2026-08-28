@@ -1422,3 +1422,184 @@ def test_the_app_role_records_a_decision_but_cannot_rewrite_it(
             delete(DeliverableAcceptance).where(DeliverableAcceptance.id == primeira)
         )
     assert "permission denied" in str(no_delete.value).lower()
+
+
+# 11 — o programa entre a conta e o projeto (ADR 0079) ---------------------------
+#
+# A policy do ``portal_app`` aqui **não** é a de tenant, e a diferença é o que este
+# bloco prova. ``access.visible_projects`` documenta que não fixa tenant — a listagem de
+# ``GET /me`` atravessa projetos enquanto as GUCs de segundo estágio guardam um só —,
+# então ``organization_id = portal.current_org()`` devolveria zero linhas justamente na
+# rota que lê este dado. O predicado é o de ``organization_member_read``: existe vínculo
+# desta pessoa com a organização do programa.
+
+
+@pytest.fixture
+def engagements(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    """Um programa por tenant, **ligado ao projeto daquele tenant**.
+
+    A ligação não é enfeite de fixture: o vínculo das duas pessoas é escopado a um
+    projeto (ver :func:`tenants`), e a policy da 0037 alcança o programa *por* projeto
+    visível. Um engagement solto, sem projeto, seria invisível — que é precisamente o
+    que :func:`test_the_app_role_does_not_read_the_other_programme_of_its_own_account`
+    exercita logo abaixo.
+    """
+    from portal_api.models import Engagement
+
+    tenant_a, tenant_b = tenants
+    ids: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in (tenant_a, tenant_b):
+            record = Engagement(
+                organization_id=tenant.organization_id,
+                name=f"Programa {tenant.organization_id}",
+                slug=f"biahflow-engagement-{uuid.uuid4().hex[:8]}",
+            )
+            session.add(record)
+            session.flush()
+            session.execute(
+                update(Project)
+                .where(Project.id == tenant.project_id)
+                .values(engagement_id=record.id)
+            )
+            ids[tenant.organization_id] = record.id
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        session.execute(delete(Engagement).where(Engagement.id.in_(ids.values())))
+        session.commit()
+
+
+@pytest.fixture
+def sibling_engagement(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[uuid.UUID]:
+    """O **segundo** programa da mesma conta, com um projeto que a pessoa não alcança.
+
+    É o caso que separa a policy da 0037 de uma versão uma linha mais curta. Se o
+    predicado parasse em "há vínculo com esta organização", esta linha seria legível —
+    e o nome de um programa para o qual ninguém convidou a pessoa vazaria para dentro
+    da conta, apagando a distinção entre projetos que a 0007 se deu ao trabalho de
+    fazer.
+    """
+    from portal_api.models import Engagement
+
+    tenant_a, _ = tenants
+    tag = uuid.uuid4().hex[:8]
+    with Session(migrated_engine) as session:
+        record = Engagement(
+            organization_id=tenant_a.organization_id,
+            name="Programa vizinho",
+            slug=f"biahflow-engagement-{tag}",
+        )
+        session.add(record)
+        session.flush()
+        session.add(
+            Project(
+                organization_id=tenant_a.organization_id,
+                engagement_id=record.id,
+                name="Projeto vizinho",
+                slug=f"vizinho-{tag}",
+                status=ProjectStatus.in_implementation,
+            )
+        )
+        engagement_id = record.id
+        session.commit()
+    yield engagement_id
+    with Session(migrated_engine) as session:
+        session.execute(delete(Project).where(Project.engagement_id == engagement_id))
+        session.execute(delete(Engagement).where(Engagement.id == engagement_id))
+        session.commit()
+
+
+def test_the_app_role_reads_only_its_own_engagement(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    engagements: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Regra 1 do `AGENTS.md` na tabela nova: o programa do outro tenant não existe."""
+    from portal_api.models import Engagement
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = set(rls_session.execute(select(Engagement.id)).scalars())
+
+    assert engagements[tenant_a.organization_id] in visible
+    assert engagements[tenant_b.organization_id] not in visible
+
+
+def test_the_engagement_is_readable_without_the_tenant_gucs(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    engagements: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Só a identidade fixada, que é o estado em que ``GET /me`` roda.
+
+    Sem esta asserção a policy poderia ser a de tenant e o defeito passaria despercebido:
+    a listagem devolveria ``engagement_name: null`` em todo projeto, silenciosamente, e o
+    seletor agruparia tudo no bloco sem cabeçalho.
+    """
+    from portal_api.models import Engagement
+
+    tenant_a, tenant_b = tenants
+    bind_context(subject=tenant_a.subject, email=tenant_a.email, user_id=tenant_a.user_id)
+
+    visible = set(rls_session.execute(select(Engagement.id)).scalars())
+
+    assert engagements[tenant_a.organization_id] in visible
+    assert engagements[tenant_b.organization_id] not in visible
+
+
+def test_the_app_role_does_not_read_the_other_programme_of_its_own_account(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    engagements: dict[uuid.UUID, uuid.UUID],
+    sibling_engagement: uuid.UUID,
+) -> None:
+    """A distinção entre projetos da 0007, transposta para o programa.
+
+    A regra 1 do `AGENTS.md` é sobre organização **e** projeto, e o caso difícil não é o
+    outro tenant — é o vizinho de dentro. Quem tem vínculo escopado a um projeto alcança
+    o programa **daquele** projeto e nenhum outro, ainda que o outro seja da mesma conta.
+    """
+    from portal_api.models import Engagement
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = set(rls_session.execute(select(Engagement.id)).scalars())
+
+    assert engagements[tenant_a.organization_id] in visible
+    assert sibling_engagement not in visible
+
+
+def test_the_app_role_cannot_originate_an_engagement(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Sem GRANT de escrita: o programa nasce do snapshot, sob ``portal_system``.
+
+    É o desenho da ADR 0006/0008 — o portal não origina status — aplicado ao agregado
+    novo, e a ausência de ``INSERT`` na migração 0037 é o controle inteiro.
+    """
+    from portal_api.models import Engagement
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError) as denied:
+        rls_session.execute(
+            insert(Engagement).values(
+                id=uuid.uuid4(),
+                organization_id=tenant_a.organization_id,
+                name="Programa inventado",
+                slug=f"biahflow-engagement-{uuid.uuid4().hex[:8]}",
+                status="active",
+            )
+        )
+    assert "permission denied" in str(denied.value).lower()

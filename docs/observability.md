@@ -16,7 +16,7 @@ campo que não sai. A lista de eventos, com limiar e destino, está em `runbooks
 
 Indicadores: latência e erro de API, fila, sincronização Drive, indexação, falha de conectores, custo/latência de IA, cobertura de citações, taxa de lacuna, pendências abertas/resolvidas, anomalias de autorização e clientes travados no funil de onboarding.
 
-*O último entrou com emissor no mesmo commit (ADR 0040), que é a lição da linha abaixo: `onboarding.client_stuck` sai uma vez por organização e por degrau, e a leitura por trás dele mora em `/admin/funil`. Ele é o único indicador desta lista que **não** descreve a saúde do sistema — descreve a relação do cliente com o produto, e por isso a ação dele é um telefonema, não um deploy.*
+*O último entrou com emissor no mesmo commit (ADR 0040), que é a lição da linha abaixo: `onboarding.client_stuck` sai uma vez por organização e por degrau, e a leitura por trás dele mora em `/admin/funnel`. Ele é o único indicador desta lista que **não** descreve a saúde do sistema — descreve a relação do cliente com o produto, e por isso a ação dele é um telefonema, não um deploy.*
 
 **"Anomalias de autorização" saiu por último, e até a ADR 0034 não existia.** Esta
 página listava o indicador desde a Fase 1 enquanto `access.py` — o arquivo onde a

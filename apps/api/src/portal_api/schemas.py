@@ -84,11 +84,34 @@ class ReadyOut(Out):
 # --- identidade -------------------------------------------------------------
 
 
+class EngagementOut(Out):
+    """O programa a que um projeto pertence (Language Map v1.1 §2, ADR 0079).
+
+    Três campos e nada além: o cliente vê o **nome** do programa e o estado dele.
+    Nenhum dado comercial atravessa — o Engagement é o agrupamento, não o contrato.
+
+    ``id`` é ``str`` e não ``UUID`` pela regra deste módulo: o produtor já entregou
+    texto (``str(engagement.id)``).
+    """
+
+    id: str
+    name: str
+    status: str
+
+
 class MeProjectOut(Out):
     id: str
     name: str
     slug: str
     status: str
+    #: O programa a que este projeto pertence, ou ``None`` enquanto o Biahflow não
+    #: mandar a chave (ADR 0079). **Dois campos rasos em vez de um ``EngagementOut``
+    #: aninhado**, e a razão é o que esta rota é: uma lista para o seletor agrupar,
+    #: não a projeção do programa. O ``status`` do engagement não entra aqui porque
+    #: nenhum grupo do seletor o mostra — publicá-lo seria o campo sem leitor que a
+    #: ADR 0033 existe para pegar. Quem quer a projeção inteira chama o dashboard.
+    engagement_id: str | None
+    engagement_name: str | None
 
 
 class MeOut(Out):
@@ -344,6 +367,10 @@ class DashboardOut(Out):
     project: str
     status: str
     completion: int
+    #: O programa a que este projeto pertence (ADR 0079). ``None`` enquanto o Biahflow não
+    #: mandar a chave — e é ausência de afirmação, não "sem programa": a ontologia diz que
+    #: todo projeto pertence a um, e quem projeta não inventa o que a origem não disse.
+    engagement: EngagementOut | None
     #: Quando o Biahflow arquivou o projeto, ou ``None`` se ele segue ativo (ADR 0036). É `str`
     #: e não `datetime` pela regra deste módulo: o produtor já entregou texto (`.isoformat()`),
     #: e tipar como `datetime` faria o Pydantic reserializar o byte que a fatia prometeu não

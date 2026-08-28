@@ -199,7 +199,7 @@ O `F5` é o teste que vale: a conversa volta com as mesmas citações, porque o 
 
 ### 3.7 Um documento enviado vira citação com link
 
-Entre como `helena.dias` e vá a **`/admin/conhecimento`** ("O que o assistente pode citar
+Entre como `helena.dias` e vá a **`/admin/knowledge`** ("O que o assistente pode citar
 sobre …"). Envie um `.txt` com um termo que não exista em lugar nenhum, dê um título e clique
 **Enviar e indexar**.
 
@@ -213,7 +213,7 @@ citação é **um link** que abre o arquivo por URL assinada de vida curta.
 
 ### 3.8 O arquivo com assinatura de malware é barrado
 
-Ainda em `/admin/conhecimento`, envie um `.txt` com a cadeia EICAR — o teste padrão da
+Ainda em `/admin/knowledge`, envie um `.txt` com a cadeia EICAR — o teste padrão da
 indústria, inofensivo por construção. Monte-a em pedaços para o antivírus da sua própria
 máquina não acusar o arquivo:
 
@@ -233,7 +233,7 @@ trecho, e o assistente nunca o cita.
 ### 3.9 Uma pasta do Drive entra pelo consentimento
 
 No mesmo painel, bloco **GOOGLE DRIVE** → **Conectar Google Drive**. Contra o `drive-stub` o
-consentimento é instantâneo: você volta para `/admin/conhecimento?...&drive=connected` sem tela
+consentimento é instantâneo: você volta para `/admin/knowledge?...&drive=connected` sem tela
 do Google.
 
 O painel passa a listar as pastas — **Contratos do Projeto** e **Pessoal** —, cada uma com um
@@ -247,7 +247,7 @@ conteúdo atravessou.
 
 ### 3.10 O número do cliente nasce de uma premissa e de eventos reais
 
-Como `helena.dias`, vá a **`/admin/resultados`** ("Como … apura valor").
+Como `helena.dias`, vá a **`/admin/results`** ("Como … apura valor").
 
 1. **Premissa**: preencha vigência, valor-hora e investimento e clique **Abrir vigência**.
    Premissa não se edita no lugar — fecha uma, abre outra.

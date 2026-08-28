@@ -1538,7 +1538,7 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       **não** atravessam id de Issue/PR, interno de CI, campo de ClickUp, estado bruto de LangGraph,
       prompt ou trace de LangSmith, e custo ou margem. O formato mínimo dessa projeção e o
       vocabulário de homologação (`ready_for_acceptance`, `client_review`, `accepted`,
-      `changes_requested`) estão em `docs/contracts/client-projection-contract.md`.
+      `changes_requested`) estão em `docs/contracts/one-projection-contract.md`.
 - [x] **OpenTelemetry como padrão transversal de correlação.** *(ADR 0068, 24/08.)* O
       `trace_id` próprio da ADR 0018 continua servindo como identificador amigável durante a
       migração, mas o padrão passa a ser W3C Trace Context — `traceparent`, `tracestate` e
@@ -1666,6 +1666,40 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       `v0.1.0` (a seção está em `main` sem tag nova; até lá, o `AGENTS.md` sustenta a regra), o
       isolamento de objeto do mesmo tenant, e o banco `portal` local possivelmente à frente do
       `main` (resolve por `alembic downgrade` deliberado). Descoberto em `biahflow/one#79`.
+
+- [x] **Engagement como raiz da navegação, e a conta que se chamava cliente** *(ADR 0079)*: o
+      [Language Map v1.1](docs/ontology/language-map.md) entra versionado no repositório — até
+      aqui ele vivia no Notion e num arquivo não rastreado, e as issues o citavam como se fosse
+      alcançável. Três coisas dele não valiam aqui: `Engagement` **não existia** em lugar nenhum
+      (nem aqui, nem no Pulse), `Client` ainda era nome de domínio no front (`ClientRow`, do
+      funil), e cinco rotas de administração estavam em português. Agora o programa é agregado
+      próprio entre a Account e o Project, com `project.engagement_id` **nullable** — a ontologia
+      diz obrigatório, mas este lado *projeta* e um `NOT NULL` exigiria valor de aterro, que é a
+      falsa precisão que `results.py` recusa. A decisão que a medição impôs: a policy do
+      `portal_app` é a de **vínculo** e não a de tenant, porque `access.visible_projects` não fixa
+      tenant e a forma óbvia devolveria zero linhas **em silêncio** justamente em `GET /me`, que é
+      quem alimenta o seletor — *medido por mutação:* com o predicado de tenant reprovam duas
+      asserções, uma delas com `assert None == 'Transformação Financeira'`. `account` vence
+      `client` na leitura e o slug `biahflow-client-{id}` **não muda**, porque é chave de
+      persistência e trocá-lo órfãoaria toda organização já sincronizada. Rotas renomeadas
+      **sem redirect** (o portal está fora do ar desde 13/08, ADR 0053), e o que fica em português
+      é texto visível — inclusive o rótulo de aba que a URL carrega. **Fica aberto:** o guard de
+      visibilidade por campo (#87), fases canônicas e `GateDecision` (#88), KPI/Value Ledger (#89),
+      Finding/PainPoint (#90) e o lint de linguagem (#91); e o `GOOGLE_DRIVE_REDIRECT_URI` mudou,
+      o que exige acertar o valor registrado no console do Google.
+
+- [x] **O link do aviso que a rota renomeada deixa para trás** *(ADR 0080)*: `notification.link`
+      é **dado gravado** e não rota resolvida na leitura — `fan_out` congela a URL na linha desde
+      a ADR 0043 —, então o rename sem redirect deixaria todo aviso de `onboarding_stuck` já
+      gravado apontando para `/admin/funil`, que passa a responder 404. A audiência daquele aviso
+      é `_INTERNAL_ONLY` e o portal está fora do ar, então o custo é interno e conhecido; o que o
+      torna caro mesmo assim é o modo de falha, porque um `href` para rota inexistente **renderiza
+      igual** a um que funciona. A resposta é uma migração que reescreve as linhas por igualdade
+      com o literal exato (`UPDATE`, nada apagado, `downgrade` reverte), e não um redirect — que
+      seria rota permanente sustentando dado antigo. O par código↔migração ganhou guarda: o
+      literal que `onboarding.py` grava e o `NEW_LINK` da migração não podem divergir. **Fica
+      aberto:** não há varredura que descubra sozinha uma rota renomeada com link gravado
+      apontando para ela; esta guarda é sobre um par conhecido.
 
 ## Ordem recomendada
 

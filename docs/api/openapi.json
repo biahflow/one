@@ -925,6 +925,16 @@
             "title": "Documents",
             "type": "array"
           },
+          "engagement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngagementOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "health": {
             "anyOf": [
               {
@@ -1035,6 +1045,7 @@
           "project",
           "status",
           "completion",
+          "engagement",
           "archived_at",
           "source_deleted_at",
           "observed_at",
@@ -1728,6 +1739,31 @@
         "title": "DriveSyncState",
         "type": "string"
       },
+      "EngagementOut": {
+        "additionalProperties": false,
+        "description": "O programa a que um projeto pertence (Language Map v1.1 §2, ADR 0079).\n\nTrês campos e nada além: o cliente vê o **nome** do programa e o estado dele.\nNenhum dado comercial atravessa — o Engagement é o agrupamento, não o contrato.\n\n``id`` é ``str`` e não ``UUID`` pela regra deste módulo: o produtor já entregou\ntexto (``str(engagement.id)``).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
+        "title": "EngagementOut",
+        "type": "object"
+      },
       "ErasureRequestIn": {
         "properties": {
           "confirm_slug": {
@@ -2059,6 +2095,28 @@
       "MeProjectOut": {
         "additionalProperties": false,
         "properties": {
+          "engagement_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Id"
+          },
+          "engagement_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Name"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2080,7 +2138,9 @@
           "id",
           "name",
           "slug",
-          "status"
+          "status",
+          "engagement_id",
+          "engagement_name"
         ],
         "title": "MeProjectOut",
         "type": "object"
@@ -2354,6 +2414,16 @@
             "title": "Documents",
             "type": "array"
           },
+          "engagement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngagementOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "health": {
             "anyOf": [
               {
@@ -2479,6 +2549,7 @@
           "project",
           "status",
           "completion",
+          "engagement",
           "archived_at",
           "source_deleted_at",
           "observed_at",

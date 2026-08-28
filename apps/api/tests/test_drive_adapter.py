@@ -25,7 +25,7 @@ def _settings(**overrides: object) -> Settings:
         "google_drive_client_secret": "client-secret",
         "google_drive_api_base_url": "http://drive/drive/v3",
         "google_oauth_token_url": "http://drive/token",
-        "google_drive_redirect_uri": "http://localhost:3000/admin/conhecimento/drive-callback",
+        "google_drive_redirect_uri": "http://localhost:3000/admin/knowledge/drive-callback",
     }
     base.update(overrides)
     return Settings(**base)  # type: ignore[arg-type]

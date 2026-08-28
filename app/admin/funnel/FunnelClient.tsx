@@ -3,7 +3,7 @@
 import { ArrowLeft, HelpCircle, PhoneCall, Wrench } from "lucide-react";
 import Link from "next/link";
 
-export type ClientRow = {
+export type AccountRow = {
   organizationId: string;
   organizationName: string;
   currentStep: string | null;
@@ -39,7 +39,7 @@ const STEP_LABELS: Record<string, string> = {
  */
 const GAP_LABELS: Record<string, string> = {
   artifact_not_reported:
-    "o Biahflow não reporta aprovação deste cliente, mas há projeto vivo — o negócio fechou, e o que falta é o registro",
+    "o Biahflow não reporta aprovação desta conta, mas há projeto vivo — o negócio fechou, e o que falta é o registro",
   before_instrumentation:
     "anterior à instrumentação (07/08/2026): este degrau pode ter sido cumprido antes de existir medição",
   login_before_instrumentation:
@@ -59,7 +59,7 @@ function day(value: string): string {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
-function Row({ row }: { row: ClientRow }) {
+function Row({ row }: { row: AccountRow }) {
   return (
     <div className="field-row">
       <span className="field-label">
@@ -86,7 +86,7 @@ function Row({ row }: { row: ClientRow }) {
 }
 
 /**
- * Clientes travados no funil de onboarding (RFC 001 passo 3, ADR 0040).
+ * Contas travadas no funil de onboarding (RFC 001 passo 3, ADR 0040).
  *
  * **Dois painéis separados, e nenhum total.** A FDD 020 exige que "travou no cliente" e
  * "travou em nós" nunca sejam somados na mesma contagem, e aqui isso é estrutura do
@@ -102,7 +102,7 @@ function Row({ row }: { row: ClientRow }) {
  *
  * Nenhum controle de escrita: esta tela só lê. A ação mora no telefone.
  */
-export default function FunnelClient({ rows }: { rows: ClientRow[] }) {
+export default function FunnelClient({ rows }: { rows: AccountRow[] }) {
   // A partição é por **certeza** e depois por lado. Uma linha incerta não é uma linha menos
   // grave: é uma linha sobre a qual não se pode ligar para ninguém, e por isso ela não entra
   // em nenhuma das duas contagens.
@@ -121,9 +121,9 @@ export default function FunnelClient({ rows }: { rows: ClientRow[] }) {
           <ArrowLeft size={16} /> Voltar à administração
         </Link>
         <p className="eyebrow">FUNIL DE ONBOARDING</p>
-        <h1>Clientes travados</h1>
+        <h1>Contas travadas</h1>
         <p className="admin-lead">
-          Onde cada cliente parou de receber valor, e há quantos dias. O caso que esta tela
+          Onde cada conta parou de receber valor, e há quantos dias. O caso que esta tela
           existe para tornar visível é uma linha só — <em>ganho há nove dias, convite
           enviado, nunca logou</em> —, e aos nove dias ele ainda se resolve com um
           telefonema. <strong>As duas colunas nunca se somam</strong>: quando o degrau não
@@ -156,7 +156,7 @@ export default function FunnelClient({ rows }: { rows: ClientRow[] }) {
         </div>
         {stuckOnClient.length === 0 ? (
           <p className="empty-state">
-            Nenhum cliente parado além do limiar. Nada a fazer aqui hoje.
+            Nenhuma conta parada além do limiar. Nada a fazer aqui hoje.
           </p>
         ) : (
           <div className="field-list">
@@ -178,7 +178,7 @@ export default function FunnelClient({ rows }: { rows: ClientRow[] }) {
         </div>
         {stuckOnUs.length === 0 ? (
           <p className="empty-state">
-            Nenhum cliente esperando por nós. Este é o painel que deve ficar vazio.
+            Nenhuma conta esperando por nós. Este é o painel que deve ficar vazio.
           </p>
         ) : (
           <div className="field-list">

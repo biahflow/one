@@ -31,7 +31,7 @@ import { authorizationHeader } from "@/app/lib/session";
  * transformaria o callback em open redirect.
  */
 export async function GET(request: NextRequest) {
-  const home = new URL("/admin/conhecimento", request.nextUrl.origin);
+  const home = new URL("/admin/knowledge", request.nextUrl.origin);
   const params = request.nextUrl.searchParams;
 
   // A pessoa recusou na tela do Google, ou o Google recusou o pedido.

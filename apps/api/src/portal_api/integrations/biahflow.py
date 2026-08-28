@@ -30,6 +30,8 @@ from portal_api.models import (
     Document,
     DocumentOrigin,
     DocumentSource,
+    Engagement,
+    EngagementStatus,
     Meeting,
     MemberRole,
     Membership,
@@ -77,6 +79,15 @@ DIGITAL_EMPLOYEE_STATUS_MAP: dict[str, DigitalEmployeeStatus] = {
     "building": DigitalEmployeeStatus.building,
     "active": DigitalEmployeeStatus.active,
     "paused": DigitalEmployeeStatus.paused,
+}
+#: O enum canônico do Language Map v1.1 §4, confirmado pela sessão do Pulse em
+#: 28/08/2026: o snapshot manda exatamente estes três valores. Um vocabulário novo do
+#: outro lado cai em ``active``, no padrão do ``PROJECT_STATUS_MAP`` — a alternativa
+#: seria o sync inteiro morrer por causa de uma palavra que ninguém combinou.
+ENGAGEMENT_STATUS_MAP: dict[str, EngagementStatus] = {
+    "active": EngagementStatus.active,
+    "paused": EngagementStatus.paused,
+    "closed": EngagementStatus.closed,
 }
 PENDING_STATE_MAP: dict[str, PendingState] = {
     "open": PendingState.open,
@@ -126,12 +137,31 @@ def fetch_snapshot(
     return dict(response.json())
 
 
-def org_slug(biahflow_client_id: int) -> str:
-    return f"biahflow-client-{biahflow_client_id}"
+def org_slug(biahflow_account_id: int) -> str:
+    """A identidade da organização espelhada, e o nome dela é **histórico**.
+
+    O termo canônico é Account desde o Language Map v1.1, e este literal continua
+    ``biahflow-client-`` de propósito: o slug é **chave de persistência**, não
+    vocabulário. Toda organização já sincronizada está gravada com este prefixo, e
+    trocá-lo faria o ``select`` por slug não achar nenhuma delas — o sync criaria
+    uma organização nova ao lado, órfã de membership, de projeto e de índice. O
+    vocabulário muda na leitura (``account or client``, em :func:`sync_snapshot`);
+    a chave, não.
+    """
+    return f"biahflow-client-{biahflow_account_id}"
 
 
 def project_slug(biahflow_project_id: int) -> str:
     return f"biahflow-{biahflow_project_id}"
+
+
+def engagement_slug(biahflow_engagement_id: int) -> str:
+    """A identidade do programa espelhado, na forma de :func:`project_slug`.
+
+    Nasce já com o termo canônico porque não há linha gravada para órfãoar: o
+    Engagement chega com esta fatia.
+    """
+    return f"biahflow-engagement-{biahflow_engagement_id}"
 
 
 def _party_label(party: str | None, organization_name: str) -> str | None:
@@ -254,6 +284,33 @@ def _regression(
     return None
 
 
+def _upsert_engagement(
+    session: Session, organization: Organization, data: dict[str, Any]
+) -> Engagement:
+    """O programa do snapshot, espelhado. Idempotente, chaveado por ``(org, slug)``.
+
+    Numa função própria pela razão de ``_party_label`` estar numa: ``sync_snapshot``
+    já é o arquivo inteiro do espelho, e um upsert a mais no meio dele deixa de ser
+    legível. **Nunca cria organização** — recebe a que ``sync_snapshot`` já resolveu,
+    porque um engagement sem conta é um tenant sem dono.
+    """
+    slug = engagement_slug(data["id"])
+    engagement = session.execute(
+        select(Engagement).where(
+            Engagement.organization_id == organization.id, Engagement.slug == slug
+        )
+    ).scalar_one_or_none()
+    if engagement is None:
+        engagement = Engagement(organization_id=organization.id, slug=slug)
+        session.add(engagement)
+    engagement.name = data["name"]
+    engagement.status = ENGAGEMENT_STATUS_MAP.get(
+        data.get("status") or "", EngagementStatus.active
+    )
+    session.flush()  # precisamos do `engagement.id` para apontar o projeto
+    return engagement
+
+
 def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     """Upsert a Biahflow snapshot into the portal read model. Idempotent.
 
@@ -268,13 +325,19 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     Ver :func:`_regression` para os critérios e para o que **não** entra neles.
     """
     project_data = snapshot["project"]
-    client_data = project_data["client"]
+    # **``account`` primeiro, ``client`` depois** (Language Map v1.1 §5, ADR 0079). O
+    # Biahflow passa a mandar a chave canônica e mantém a antiga em paralelo até a
+    # `/api/v2/` dele, então ler nesta ordem cobre os dois lados sem sincronizar
+    # deploys. O `[...]` no fallback é deliberado: um snapshot sem nenhuma das duas
+    # chaves não tem organização, e falhar alto é a resposta certa — inventar tenant
+    # é o que a regra 1 do `AGENTS.md` proíbe.
+    account_data = project_data.get("account") or project_data["client"]
 
     organization = session.execute(
-        select(Organization).where(Organization.slug == org_slug(client_data["id"]))
+        select(Organization).where(Organization.slug == org_slug(account_data["id"]))
     ).scalar_one_or_none()
     if organization is None:
-        organization = Organization(name=client_data["name"], slug=org_slug(client_data["id"]))
+        organization = Organization(name=account_data["name"], slug=org_slug(account_data["id"]))
         session.add(organization)
         session.flush()
 
@@ -310,16 +373,39 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
             )
             return project
 
-    organization.name = client_data["name"]
+    organization.name = account_data["name"]
     # Antes de qualquer escrita: é este retrato que vira notificação lá embaixo.
     # `None` para um projeto que ainda não existe, e é o que faz o primeiro sync
     # chegar em silêncio em vez de com uma caixa de entrada cheia.
     before = notifications.snapshot_state(session, project)
 
+    # O programa a que este projeto pertence (Language Map v1.1 §2, ADR 0079).
+    #
+    # **Depois do retrato**, e não antes: `_upsert_engagement` grava, e a linha acima
+    # afirma que nada foi gravado até ali. O engagement não entra no `diff` hoje — mas
+    # a frase é o invariante que faz o `diff` significar alguma coisa, e um dia em que
+    # `snapshot_state` passe a ler o programa, a ordem errada faria a mudança dele
+    # nascer invisível para o aviso.
+    #
+    # **Ausente não é negação**, o mesmo argumento já escrito para
+    # `artifact_accepted_at` mais abaixo: um Biahflow anterior a esta fatia manda o
+    # corpo sem a chave, e zerar `engagement_id` ali apagaria um vínculo verdadeiro.
+    # Presente, o upsert é por `(organization_id, slug)` como o do projeto.
+    engagement_data = project_data.get("engagement")
+    if engagement_data is not None:
+        engagement = _upsert_engagement(session, organization, engagement_data)
+    else:
+        engagement = None
+
     if project is None:
         project = Project(organization_id=organization.id, slug=slug)
         session.add(project)
     project.name = project_data["name"]
+    # Só aponta quando o snapshot afirmou. Ver o `_upsert_engagement` acima: a
+    # atribuição condicional é o oposto da do `archived_at`, e de propósito — lá
+    # `None` é um valor que a origem sabe desfazer, aqui `None` é silêncio.
+    if engagement is not None:
+        project.engagement_id = engagement.id
     project.status = PROJECT_STATUS_MAP.get(project_data["status"], ProjectStatus.discovery)
     project.completion_percent = int(snapshot.get("completion", 0))
 
@@ -810,10 +896,25 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         .where(Decision.project_id == project.id)
         .order_by(Decision.decided_on.desc().nullslast(), Decision.title)
     ).all()
+    # O programa a que este projeto pertence (ADR 0079). `None` é resposta legítima e
+    # frequente: só chega preenchido depois de o Biahflow mandar a chave, e a tela sabe
+    # dizer "sem programa" em vez de inventar um rótulo.
+    engagement = (
+        session.get(Engagement, project.engagement_id) if project.engagement_id else None
+    )
     return {
         "project": project.name,
         "status": project.status.value,
         "completion": project.completion_percent,
+        "engagement": (
+            {
+                "id": str(engagement.id),
+                "name": engagement.name,
+                "status": engagement.status.value,
+            }
+            if engagement is not None
+            else None
+        ),
         # Ao lado de `status`, não dentro dele (ADR 0036): o andamento continua sendo o que era
         # quando o projeto foi encerrado, e é a tela que decide o que fazer com os dois juntos.
         "archived_at": project.archived_at.isoformat() if project.archived_at else None,

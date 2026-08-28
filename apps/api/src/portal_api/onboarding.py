@@ -279,7 +279,7 @@ NEXT_ACTION: dict[tuple[OnboardingStepName, Blame], str] = {
     ),
     (OnboardingStepName.first_document_opened, Blame.us): (
         "Não há documento que o cliente possa abrir. Publique o contrato ou o "
-        "diagnóstico em /admin/conhecimento."
+        "diagnóstico em /admin/knowledge."
     ),
     (OnboardingStepName.first_document_opened, Blame.client): (
         "Há documento disponível e ele não foi aberto. Aponte-o no próximo contato."
@@ -294,7 +294,7 @@ NEXT_ACTION: dict[tuple[OnboardingStepName, Blame], str] = {
     ),
     (OnboardingStepName.first_chat_turn, Blame.us): (
         "O teto de gasto de IA desta organização está em zero e o assistente recusa "
-        "responder. Reveja em /admin/organizacao."
+        "responder. Reveja em /admin/organization."
     ),
     (OnboardingStepName.first_chat_turn, Blame.client): (
         "O cliente nunca perguntou nada ao assistente. Mostre-o na próxima reunião."
@@ -710,7 +710,7 @@ def raise_alert(
     step, blame = reading.current_step, reading.blame or Blame.us
     change = notifications.Change(
         kind=NotificationKind.onboarding_stuck,
-        title=f"Cliente travado no onboarding: {_STEP_LABEL[step]}",
+        title=f"Conta travada no onboarding: {_STEP_LABEL[step]}",
         detail=reading.next_action,
         # Sem data na chave, ao contrário do `project_status_changed`: lá um projeto
         # **volta** a um status anterior e a segunda transição seria engolida em silêncio.
@@ -726,7 +726,7 @@ def raise_alert(
         # carrega título digitado. Esta tem tamanho fixo — dois literais, um UUID e um
         # rótulo de enum.
         dedupe_key=f"onboarding:stuck:{organization_id}:{step.value}",
-        link="/admin/funil",
+        link="/admin/funnel",
     )
     created = notifications.fan_out(session, project, [change])
 

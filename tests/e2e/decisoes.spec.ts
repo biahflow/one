@@ -37,7 +37,7 @@ test("o filtro separa a decisão que veio de uma reunião da que não veio", asy
   await page.getByRole("button", { name: "Decisões" }).click();
 
   const painel = page.getByRole("article").filter({ hasText: "Decisões registradas" });
-  await expect(painel).toContainText("Adiar o piloto de cobrança");
+  await expect(painel).toContainText("Adiar o PROVE de cobrança");
 
   await painel.getByRole("button", { name: /De uma reunião/ }).click();
   await expect(painel).toContainText("Adotar fila gerenciada em vez de instância própria");

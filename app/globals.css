@@ -728,6 +728,13 @@
   .journey-detail-head { @apply mb-3.5 flex items-start justify-between gap-3.5; }
   .journey-detail-head h3 { @apply mt-2 mb-1 text-[17px] font-semibold tracking-[-0.02em]; }
   .journey-detail-head p { @apply m-0 max-w-110 text-xs text-muted; }
+  /* O degrau da FDE e a decisão da fase (ADR 0081). O degrau é rótulo discreto ao
+     lado do selo de estado — ele qualifica o nome da fase, não compete com ele; a
+     decisão é linha própria abaixo da descrição, porque ela **fecha** a fase e
+     precisa ser lida como afirmação, não como etiqueta. */
+  .journey-stage { @apply ml-2 align-middle text-[10px] font-extrabold tracking-[0.11em] text-muted; }
+  .journey-gate { @apply mt-2.5 flex items-center gap-2 text-[11px] text-muted; }
+  .journey-gate-label { @apply font-semibold; }
   .journey-target { @apply text-right whitespace-nowrap; }
   .journey-target span { @apply block text-[10px] text-muted; }
   .journey-target strong { @apply text-[13px] text-muted; }

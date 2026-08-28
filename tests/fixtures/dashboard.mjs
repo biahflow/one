@@ -80,9 +80,16 @@ export const DASHBOARD = {
     phases: [
       // `external_ref` é a identidade do entregável no Biahflow (ADR 0077) e o caminho
       // da rota de aceite. Os mesmos ids do snapshot semeado.
-      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", target_date: null, deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null, external_ref: "91" }] },
-      { name: "Prove", description: "Piloto do funcionário digital.", state: "active", target_date: "2026-09-20", deliverables: [{ name: "Funcionário Digital", state: "pending", link: null, external_ref: "92" }] },
-      { name: "Scale", description: "Expansão para mais áreas.", state: "locked", target_date: null, deliverables: [] },
+      //
+      // O degrau da FDE e o gate (ADR 0081) chegam como a API os entrega. `Welcome` é
+      // fase do Biahflow com `canonical_stage=discover` — o One **não** reclassifica o
+      // que a origem afirma (Language Map §3, regra 2), e é por isso que ela continua
+      // aqui embora tenha saído da casca de demonstração, que é nossa. `Prove` é o
+      // ramo "exige gate e ninguém decidiu"; o ramo decidido é injetado por override
+      // no teste de SSR, pela mesma razão dos outros: uma fixture só desenha um caso.
+      { name: "Welcome", description: "Boas-vindas e acessos.", state: "done", target_date: null, canonical_stage: "discover", gate_decision: null, requires_gate: false, deliverables: [{ name: "Acesso ao portal", state: "delivered", link: null, external_ref: "91" }] },
+      { name: "Prove", description: "A menor implementação real, em produção controlada.", state: "active", target_date: "2026-09-20", canonical_stage: "prove", gate_decision: null, requires_gate: true, deliverables: [{ name: "Funcionário Digital", state: "pending", link: null, external_ref: "92" }] },
+      { name: "Scale", description: "Expansão para mais áreas.", state: "locked", target_date: null, canonical_stage: "scale", gate_decision: null, requires_gate: false, deliverables: [] },
     ],
   },
   roi: { net: 214000, ratio: 1.42 },
@@ -110,7 +117,7 @@ export const DASHBOARD = {
   // `meeting_title` nulo é o caso real de uma reunião arquivada no Biahflow.
   decisions: [
     { title: "Adotar fila gerenciada", rationale: "O volume previsto não paga o Memorystore.", decided_on: "2026-08-06", owner_label: "Marina Farias", meeting_title: "Comitê de projeto" },
-    { title: "Adiar o piloto de cobrança", rationale: null, decided_on: null, owner_label: null, meeting_title: null },
+    { title: "Adiar o PROVE de cobrança", rationale: null, decided_on: null, owner_label: null, meeting_title: null },
   ],
   // Três abertas com prioridades diferentes, e a alta é a **mais antiga** de
   // propósito: é o que torna a ordenação da ADR 0029 observável no HTML do SSR.
@@ -120,7 +127,7 @@ export const DASHBOARD = {
   // não tem. Passava porque o contrato declarava `str`; hoje declara os três.
   pendings: [
     { id: "eeeeeeee-1111-4222-8333-000000000001", title: "Renovar o certificado do integrador", description: null, owner_label: "Acme Brasil", state: "open", priority: "low", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, comment_count: 0, created_at: "2026-08-04T10:00:00+00:00", resolved_at: null },
-    { id: "eeeeeeee-1111-4222-8333-000000000002", title: "Enviar lista de usuários piloto", description: null, owner_label: "Acme Brasil", state: "open", priority: "medium", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, comment_count: 0, created_at: "2026-08-03T10:00:00+00:00", resolved_at: null },
+    { id: "eeeeeeee-1111-4222-8333-000000000002", title: "Enviar lista de usuários do PROVE", description: null, owner_label: "Acme Brasil", state: "open", priority: "medium", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, comment_count: 0, created_at: "2026-08-03T10:00:00+00:00", resolved_at: null },
     { id: "eeeeeeee-1111-4222-8333-000000000003", title: "Aprovar fluxo de exceções", description: null, owner_label: "Acme Brasil", state: "open", priority: "high", origin: "biahflow", opened_by_message_id: null, opened_by_conversation_id: null, comment_count: 0, created_at: "2026-08-02T10:00:00+00:00", resolved_at: null },
   ],
   results: { milestones_total: 3, milestones_done: 0, overdue: 0, on_time_percent: 100 },

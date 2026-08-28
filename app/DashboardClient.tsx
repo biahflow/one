@@ -582,6 +582,17 @@ export type JourneyPhase = {
   description: string;
   state: "locked" | "active" | "done";
   targetDate: string;
+  /** O degrau da FDE a que a fase corresponde (Language Map §4, ADR 0081).
+   *  `null` é resposta legítima da origem — a fase não tem equivalente na
+   *  metodologia —, e **não** um degrau que se possa adivinhar pelo nome. */
+  canonicalStage: "discover" | "prioritize" | "feasibility" | "prove" | "scale" | "optimize" | null;
+  /** A decisão que fechou o gate (decisão D7 do Language Map). `null` é "ninguém
+   *  decidiu ainda", e só vira frase na tela quando `requiresGate` diz que há
+   *  decisão a esperar. */
+  gateDecision: "go" | "conditional_go" | "redesign" | "no_go" | null;
+  /** Se a fase termina em gate. Vem do template da fase na origem, e é o que
+   *  separa "aguardando decisão" de "não há decisão a esperar". */
+  requiresGate: boolean;
   deliverables: JourneyDeliverable[];
 };
 /**
@@ -1697,6 +1708,86 @@ const PHASE_STATE_LABEL: Record<JourneyPhase["state"], string> = {
   locked: "A desbloquear",
 };
 
+/**
+ * O degrau da FDE, no vocabulário canônico (Language Map §2/§4, ADR 0081).
+ *
+ * Existe porque o **rótulo** da fase é da origem e o **degrau** é da metodologia: um
+ * projeto pode chamar sua fase de "Prova de conceito" ou de "Activation", e é o degrau
+ * que diz onde aquilo cai na FDE. Fase sem degrau — a `Activation` do exemplo — não
+ * ganha selo nenhum: `null` ali quer dizer "não tem equivalente", e inventar um seria
+ * derivar do nome, que é exatamente o que a ingestão se recusa a fazer.
+ */
+const CANONICAL_STAGE_LABEL: Record<NonNullable<JourneyPhase["canonicalStage"]>, string> = {
+  discover: "DISCOVER",
+  prioritize: "PRIORITIZE",
+  feasibility: "FEASIBILITY",
+  prove: "PROVE",
+  scale: "SCALE",
+  optimize: "OPTIMIZE",
+};
+
+/**
+ * Os quatro rótulos da decisão de gate, **em maiúsculas e em inglês** (Language Map
+ * §2, decisão D7).
+ *
+ * A regra de idioma do mapa é que o termo canônico não se traduz — traduz-se o texto
+ * em volta dele. Daí "Decisão da fase: GO", e não "Decisão da fase: Aprovado": o
+ * cliente lê a mesma palavra que o time escreve no Pulse e no readout, que é o ponto
+ * inteiro de um mapa de linguagem.
+ *
+ * **Nada aqui é Outcome.** `Outcome` é resultado de negócio medido — um
+ * `Measurement(kind=outcome)` com Baseline comparável —, e foi para os dois não
+ * disputarem a palavra que a D7 renomeou `GateOutcome` para `GateDecision`. Este selo
+ * mora na jornada, ao lado da fase que ele fecha, e nunca na aba Resultados.
+ */
+const GATE_DECISION_LABEL: Record<NonNullable<JourneyPhase["gateDecision"]>, string> = {
+  go: "GO",
+  conditional_go: "CONDITIONAL GO",
+  redesign: "REDESIGN",
+  no_go: "NO-GO",
+};
+
+/** A variante da primitiva por decisão; a espera é `info`, porque ainda não é notícia. */
+const GATE_DECISION_VARIANT: Record<NonNullable<JourneyPhase["gateDecision"]>, StatePillVariant> = {
+  go: "success",
+  conditional_go: "warning",
+  redesign: "warning",
+  no_go: "danger",
+};
+
+/**
+ * A decisão que fecha a fase, quando a fase termina em gate (ADR 0081).
+ *
+ * As três respostas possíveis, e a terceira é a que só existe porque `requiresGate`
+ * atravessa o contrato:
+ *
+ * 1. **fase sem gate** → não renderiza nada. Uma caixa vazia dizendo "sem decisão"
+ *    afirmaria que há uma decisão faltando numa fase que nunca terá uma;
+ * 2. **decidiu** → o rótulo canônico;
+ * 3. **exige gate e ninguém decidiu** → "aguardando". Sem `requiresGate` este caso
+ *    seria indistinguível do primeiro, e a tela teria de calar sobre os dois.
+ *
+ * Nunca chame isto de Outcome, resultado ou entrega: é decisão de metodologia sobre
+ * uma fase, e o lugar dela é a jornada.
+ */
+function GateDecisionBadge({ phase }: { phase: JourneyPhase }) {
+  if (!phase.requiresGate) return null;
+  return (
+    // `div` e não `p`: `.journey-detail-head p` já carrega margem e cor próprias, e
+    // um seletor de elemento vence a classe — a linha nasceria colada na descrição.
+    <div className="journey-gate">
+      <span className="journey-gate-label">Decisão da fase</span>
+      {phase.gateDecision ? (
+        <StatePill variant={GATE_DECISION_VARIANT[phase.gateDecision]}>
+          {GATE_DECISION_LABEL[phase.gateDecision]}
+        </StatePill>
+      ) : (
+        <StatePill variant="info">aguardando</StatePill>
+      )}
+    </div>
+  );
+}
+
 // "Você está aqui": a jornada de transformação pela perspectiva do cliente — sem nada
 // técnico. Cada fase concluída/ativa revela seus entregáveis; as bloqueadas ficam veladas.
 /**
@@ -1806,8 +1897,18 @@ function JourneyPanel({
         <div className="journey-detail-head">
           <div>
             <StateBadge tone={phase.state === "done" ? "1" : phase.state === "active" ? "2" : "3"}>{PHASE_STATE_LABEL[phase.state]}</StateBadge>
+            {/* O degrau da metodologia, quando a origem o afirma. O `h3` abaixo é o
+                rótulo que o projeto deu à fase; este é o degrau da FDE a que ela
+                corresponde, e os dois podem divergir sem que nenhum esteja errado. */}
+            {phase.canonicalStage && (
+              <span className="journey-stage">{CANONICAL_STAGE_LABEL[phase.canonicalStage]}</span>
+            )}
             <h3>{phase.name}</h3>
             {phase.description && <p>{phase.description}</p>}
+            {/* A decisão da fase fica **aqui**, junto da fase que ela fecha, e nunca
+                na aba Resultados: Outcome é resultado medido, e a D7 do Language Map
+                renomeou `GateOutcome` justamente para os dois não se confundirem. */}
+            <GateDecisionBadge phase={phase} />
           </div>
           {phase.targetDate && <div className="journey-target"><span>Previsão</span><strong>{phase.targetDate}</strong></div>}
         </div>

@@ -242,6 +242,20 @@ class PhaseOut(Out):
     description: str | None
     state: str
     target_date: str | None
+    #: O degrau da FDE — `discover` · `prioritize` · `feasibility` · `prove` · `scale`
+    #: · `optimize` (Language Map v1.1 §4, ADR 0081). `null` quer dizer que a fase
+    #: **não tem equivalente FDE**, o que é resposta legítima da origem e não falta de
+    #: dado: uma fase operacional da Biahflow não é um degrau da metodologia.
+    canonical_stage: str | None
+    #: A decisão que fechou o gate — `go` · `conditional_go` · `redesign` · `no_go`
+    #: (decisão D7). `null` é "ninguém decidiu ainda", que é outra coisa que "esta
+    #: fase não tem gate": quem diz a segunda é `requires_gate`.
+    gate_decision: str | None
+    #: Se a fase termina em gate. É propriedade do template da fase na origem — quem
+    #: decide que Feasibility e PROVE terminam em decisão é a metodologia, não o
+    #: projeto —, e é o campo sem o qual a tela não distinguiria "aguardando decisão"
+    #: de "não há decisão a esperar".
+    requires_gate: bool
     deliverables: list[DeliverableOut]
 
 

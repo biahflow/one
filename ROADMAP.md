@@ -1701,6 +1701,36 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       aberto:** não há varredura que descubra sozinha uma rota renomeada com link gravado
       apontando para ela; esta guarda é sobre um par conhecido.
 
+- [x] **O degrau que a jornada não atravessava, e o piloto que o PROVE não é** *(ADR 0081)*:
+      a §4 do [Language Map](docs/ontology/language-map.md) lista
+      `journey_phase.canonical_stage` com a observação "já existe no Pulse", e a D7 renomeou
+      `GateOutcome` para `GateDecision` porque colidia com o `Outcome` de negócio — **nenhuma
+      das duas coisas atravessava a fronteira**. A jornada real já vem do Biahflow, mas só com
+      nome, descrição, posição, estado e data: o cliente lia o *rótulo* da fase sem nada que
+      dissesse a qual degrau da FDE ela pertence, e a decisão que fecha um gate não existia
+      deste lado. As cinco fases hard-coded eram as da **casca de demonstração**, e não eram a
+      escada da metodologia (faltavam `Prioritize` e `Feasibility`) — além de chamarem o PROVE
+      de "piloto", termo que a §5 bane, e de chamarem de "AI Score" o que na origem é
+      maturidade de IA da conta. Agora `project_phase` tem os três campos, com **duas nulidades
+      que querem dizer coisas diferentes**: `canonical_stage` nulo é "esta fase não tem
+      equivalente FDE" (afirmação, e o exemplo da origem é uma `Activation` operacional),
+      `gate_decision` nulo é "ninguém decidiu" — e é `requires_gate` quem separa esse segundo
+      nulo de "não há decisão a esperar", que é o critério de aceite que só existe porque ele
+      atravessa. **Não há fallback que derive o degrau do nome da fase**, e a ausência é a
+      decisão: um casador por rótulo carimbaria `prove` numa "Prova de conceito" que a
+      metodologia não reconhece, com o palpite saindo com a autoridade de um enum. **Desvio
+      consciente do issue:** `Welcome` sai da jornada só na casca, que é nossa — na origem ela
+      *é* fase com `canonical_stage=discover`, e o One não reclassifica dado do Biahflow (§3,
+      regra 2) —, e **não** se construiu painel de onboarding para o cliente, porque o funil é
+      superfície interna e um painel sobre campo sem escritor é o defeito da ADR 0033. A guarda
+      deriva o corpus da própria tabela §4, é fail-closed e foi *medida por mutação*: apagar
+      uma linha de `GATE_DECISION_MAP` reprova sozinha, que é o caso que mais importa — mapa
+      incompleto faz o valor combinado virar `None` em silêncio. **Fica aberto:** emitir os
+      três campos **no Pulse** (não há issue lá) e decidir se `Welcome` continua `discover`; o
+      guard de visibilidade (#87), KPI/Value Ledger (#89), Finding/PainPoint (#90) e o lint de
+      linguagem (#91), que é quem varre o repositório inteiro — a asserção desta fatia é
+      pontual, sobre a superfície que ela tocou. Descoberto em `biahflow/one#88`.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

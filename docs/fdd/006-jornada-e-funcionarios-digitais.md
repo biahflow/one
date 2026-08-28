@@ -1,9 +1,17 @@
 # FDD 006 — Jornada da transformação e Funcionários Digitais
 
-O cliente abre o portal e entende, sem intermediação, **onde está** na jornada (Welcome →
-Discover → Prove → Scale → Optimize), **o que já foi desbloqueado**, **quem trabalha por ele**
-(os Funcionários Digitais) e **quanto isso rendeu**. Tudo em perspectiva de negócio: nenhuma
-task técnica, nenhum score interno.
+O cliente abre o portal e entende, sem intermediação, **onde está** na jornada, **o que já
+foi desbloqueado**, **quem trabalha por ele** (os Funcionários Digitais) e **quanto isso
+rendeu**. Tudo em perspectiva de negócio: nenhuma task técnica, nenhum score interno.
+
+*Retificação (ADR 0081, 28/08/2026): esta linha dizia "na jornada (Welcome → Discover →
+Prove → Scale → Optimize)", e a sequência estava errada de duas maneiras. As fases exibidas
+**vêm do Biahflow** — o portal não tem jornada própria, e aquela lista era a da casca de
+demonstração —, e a escada da FDE tem seis degraus:* `discover` · `prioritize` ·
+`feasibility` · `prove` · `scale` · `optimize` *(Language Map §4). Desde a ADR 0081 cada
+fase carrega o degrau a que corresponde, quando a origem o afirma, e a fase sem equivalente
+na metodologia continua aparecendo — sem degrau, e nunca com um adivinhado pelo nome. A
+frase foi corrigida em vez de apagada, e o erro fica registrado.*
 
 Escrita retroativamente: a Fase 6 do `ROADMAP.md` foi entregue sem FDD, contrariando a
 convenção do `CLAUDE.md` ("every feature ships with an FDD").

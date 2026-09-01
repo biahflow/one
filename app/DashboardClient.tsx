@@ -2018,7 +2018,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
         </article>
         <article className="metric-card">
           <div className="metric-icon metric-icon--green"><TrendingUp size={19} /></div>
-          <p>ROI do projeto</p>
+          <p>ROI projetado</p>
           <h3>{roi.value}</h3>
           <span className={roi.positive ? "positive" : undefined}>{roi.note}</span>
         </article>
@@ -2706,7 +2706,7 @@ function DigitalEmployees({ employees }: { employees: DigitalEmployeeView[] }) {
               <div className="employee-metrics">
                 {employee.kpiLabel && <div><span>{employee.kpiLabel}</span><strong>{employee.kpiValue}</strong></div>}
                 {employee.hoursSavedMonth ? <div><span>Horas/mês</span><strong>{employee.hoursSavedMonth}h</strong></div> : null}
-                {employee.roiMonth ? <div><span>ROI/mês</span><strong>{BRL.format(employee.roiMonth)}</strong></div> : null}
+                {employee.roiMonth ? <div><span>ROI projetado/mês</span><strong>{BRL.format(employee.roiMonth)}</strong></div> : null}
               </div>
             </article>
           );
@@ -2806,7 +2806,7 @@ function ResultsView({ onAsk, overview }: { onAsk: () => void; overview: Overvie
 const GAP_LABELS: Record<string, string> = {
   no_assumption: "Ainda não há valor-hora nem investimento configurados, então as horas dos agentes não viram dinheiro.",
   events_outside_assumption: "Alguns eventos do período aconteceram antes da premissa vigente e entram no volume, mas não no valor.",
-  no_investment: "O investimento configurado é zero, e sem ele não há ROI a calcular.",
+  no_investment: "O investimento configurado é zero, e sem ele não há ROI apurado a calcular.",
   no_events: "Nenhum agente publicou evento neste período.",
 };
 
@@ -2878,7 +2878,7 @@ function MeasurementBasis({ measured }: { measured: MeasuredResults | null }) {
             </>
           )}
           <div className="field-row">
-            <span className="field-label">Fórmula do ROI</span>
+            <span className="field-label">Fórmula do ROI apurado</span>
             {/* Vem da API. Até a ADR 0033 esta linha era um literal que nem
                 casava com a fórmula que o servidor devolve — a explicação do
                 número estava fabricada na única tela feita para conferi-lo. */}

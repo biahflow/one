@@ -443,7 +443,7 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.match(html, /Bom dia, Marina\./);
   assert.match(html, /Acme Brasil/);
   assert.match(html, /Automação Financeira/);
-  assert.match(html, /ROI do projeto/);
+  assert.match(html, /ROI projetado/);
   assert.match(html, /Você está aqui/);
   assert.match(html, /SUA JORNADA/);
   assert.match(html, /No prazo/);

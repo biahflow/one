@@ -18,7 +18,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "One",
     description: "Acompanhe projetos, resultados e decisões em um só lugar.",
-    icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+    // O tile do favicon serve as três superfícies fora da tela do produto que o DAP r3
+    // reservou para ele (§01, decisão 2): aba, atalho de tela e cartão de compartilhamento.
+    // `apple` é PNG porque o Safari ignora SVG em `apple-touch-icon` — é a única razão de
+    // haver um raster do que já existe em vetor.
+    icons: {
+      icon: "/favicon.svg",
+      shortcut: "/favicon.svg",
+      apple: "/apple-touch-icon.png",
+    },
+    manifest: "/manifest.webmanifest",
     openGraph: {
       title: "One",
       description: "Projetos, resultados e decisões com IA.",

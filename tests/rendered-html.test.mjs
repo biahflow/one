@@ -418,6 +418,33 @@ test("closes the portal to anonymous visitors", async () => {
   assert.match(response.headers.get("location") ?? "", /\/login$/);
 });
 
+/**
+ * O atalho de tela, que a ADR 0069 deixou aberto e esta fatia fecha.
+ *
+ * A guarda é de **alcance**, não de aparência: o `apple-touch-icon` e o manifesto
+ * são buscados pelo navegador a partir de `/login`, quando ainda não há sessão, e o
+ * `proxy.ts` responde a tudo que não está na exceção com um redirect para `/login`.
+ * Um manifesto que volta como HTML não dá erro visível — o navegador simplesmente
+ * não oferece a instalação —, que é a forma de falha que esta asserção existe para
+ * impedir. E cada `src` declarado no manifesto é buscado de verdade: ícone anunciado
+ * e ausente é o mesmo silêncio por outro caminho.
+ */
+test("o manifesto e os ícones da marca resolvem sem sessão", async () => {
+  const manifest = await render("/manifest.webmanifest", { redirect: "manual" });
+  assert.equal(manifest.status, 200);
+  const declared = JSON.parse(await manifest.text());
+  assert.equal(declared.name, "One — by Biahflow");
+  assert.equal(declared.theme_color, "#6e56cf");
+
+  const sources = [...new Set(declared.icons.map((icon) => icon.src))];
+  sources.push("/apple-touch-icon.png");
+  for (const src of sources) {
+    const asset = await render(src, { redirect: "manual" });
+    assert.equal(asset.status, 200, `${src} não é alcançável sem sessão`);
+    assert.match(asset.headers.get("content-type") ?? "", /image\/png/, `${src} não voltou PNG`);
+  }
+});
+
 test("server-renders the login page", async () => {
   const response = await render("/login");
   assert.equal(response.status, 200);
@@ -425,6 +452,10 @@ test("server-renders the login page", async () => {
 
   assert.match(html, /<title>One<\/title>/i);
   assert.match(html, /Acompanhe seus projetos de IA em um só lugar\./);
+  // As duas tags que fazem o atalho de tela existir. Elas saem de `generateMetadata`,
+  // e afirmá-las no HTML — e não no fonte — é o que prova que o Next as emitiu.
+  assert.match(html, /rel="manifest"[^>]*href="\/manifest\.webmanifest"|href="\/manifest\.webmanifest"[^>]*rel="manifest"/);
+  assert.match(html, /rel="apple-touch-icon"[^>]*href="\/apple-touch-icon\.png"|href="\/apple-touch-icon\.png"[^>]*rel="apple-touch-icon"/);
   assert.match(html, /Entrar com SSO da empresa/);
   // Sem campo de senha: a credencial nunca chega a este domínio (ADR 0010).
   assert.doesNotMatch(html, /type="password"/);

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="One">
+  <!-- O tile do One, idêntico ao de public/favicon.svg: mesma geometria, mesma
+       procedência (DAP r3, §01). Ele existe aqui para quem monta peça fora do
+       repositório não redesenhar a inicial. Fundo brand-500, contra-forma
+       desenhada — nunca <text>, porque a fonte do produto não está carregada
+       onde um favicon é renderizado. -->
+  <rect width="64" height="64" rx="18" fill="#6e56cf"/>
+  <path fill="#ffffff" fill-rule="evenodd"
+        d="M18.2 32a13.8 14.6 0 1 1 27.6 0 13.8 14.6 0 1 1-27.6 0zm6.8 0a7 9 0 1 0 14 0 7 9 0 1 0-14 0z"/>
+</svg>

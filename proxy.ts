@@ -49,6 +49,13 @@ export const config = {
   matcher: [
     // Everything except the Auth.js routes (which must stay reachable to sign
     // in) and static assets.
-    "/((?!api/auth|_next/static|_next/image|favicon.ico|og.png|.*\\.svg).*)",
+    //
+    // Os rasters da marca e o manifesto entram nesta lista pelo mesmo motivo que o
+    // `og.png` já estava: quem os busca é o navegador, a partir da tela de login, e
+    // um asset atrás do portão volta como o HTML de `/login` — de modo que o
+    // manifesto não parseia e o ícone de atalho não resolve, sem erro nenhum a
+    // olhar. Nenhum deles diz nada sobre projeto ou pessoa; a exceção é de asset,
+    // não de dado, e a guarda que a cobra está em `tests/rendered-html.test.mjs`.
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|og.png|manifest.webmanifest|apple-touch-icon.png|icon-192.png|icon-512.png|.*\\.svg).*)",
   ],
 };

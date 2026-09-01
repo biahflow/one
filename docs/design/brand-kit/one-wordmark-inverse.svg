@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 44" width="132" height="44" role="img" aria-label="One, by Biahflow">
+  <!-- O wordmark, com as mesmas medidas de components/one/Brand.tsx: 19px/700
+       com tracking -0.03em, e o descender em 10px/600 com +0.04em. O texto NÃO
+       está convertido em curva: quem exporta para impressão precisa da Inter
+       instalada, ou converte antes. É decisão consciente — vetorizar aqui
+       criaria uma segunda fonte de verdade para o nome, que é exatamente o que a
+       F-025 T02 fechou ao deixar o wordmark num componente só. -->
+  <text x="0" y="20" font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+        font-size="19" font-weight="700" letter-spacing="-0.57" fill="#ffffff">One<tspan fill="#cfc4f6">.</tspan></text>
+  <text x="0" y="35" font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+        font-size="10" font-weight="600" letter-spacing="0.4" fill="#ffffff">by Biahflow</text>
+</svg>

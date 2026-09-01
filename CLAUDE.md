@@ -225,7 +225,7 @@ CI (`.github/workflows/ci.yml`) runs seven gates you should reproduce locally be
 - **E agora o Language Map tem portão** (ADR 0083). `apps/api/tests/test_vocabulary.py` roda no
   `api-quality` e varre os **dois** deployables — não é regra de eslint porque
   `eslint.config.mjs` ignora `apps/**`, e "guarda que para na fronteira do pacote" é o defeito
-  que a ADR 0035 consertou. Seis regras, todas com o termo **derivado** das tabelas do
+  que a ADR 0035 consertou. Sete regras, todas com o termo **derivado** das tabelas do
   documento (inclusive as três exceções nomeadas da §5 — Opportunity Score, Opportunity Map,
   Improvement Opportunity Backlog — e o **MVP**, que só a §2 tem), e a relação é bidirecional:
   linha da §5 sem regra nem exclusão escrita reprova. O casamento é sobre **batismo** e nunca
@@ -236,6 +236,19 @@ CI (`.github/workflows/ci.yml`) runs seven gates you should reproduce locally be
   **identificador** (o `export default function` que coincide com o basename, num módulo com
   `"use client"`), reprova. `docs/ontology/legacy-allowlist.txt` nasce com as 27 sobrevivências
   decididas, cada uma com razão, sem prazo e **só encolhe**.
+- **Todo texto visível ao cliente que diga "ROI" diz qual ROI é** (ADR 0084). A sétima regra,
+  e a única que **nasceu vermelha**: este repositório projeta dois ROIs com produtores
+  diferentes — o `RoiOut` que a origem afirma e o `ResultsOut` apurado na leitura pela
+  premissa vigente no dia do evento (ADR 0013) —, e quatro literais não diziam qual, sendo o
+  pior a **manchete** da visão geral. A ADR 0083 adiara a regra dizendo que "varredura de
+  fonte não decide se o rótulo está lá"; metade disso é verdade (adjacência, não) e metade
+  não (o **literal**, sim), na forma da ADR 0066 sobre a 0035. `apurado` é o único termo
+  local da guarda, com a razão escrita e a condição em que morre — no mapa o lado medido é
+  `Outcome`, que não tem produtor aqui. A armadilha é o radical: `projet` casa com
+  **"projeto"** e faria `ROI do projeto` nascer verde, então o corte é só a desinência.
+  `app/admin/` e o `onboarding.py` do funil ficam fora por serem superfície interna, com
+  razão escrita e asserção de obsolescência — e o par que separa isso de uma allowlist é o
+  **mesmo literal** reprovando na tela do cliente e passando na do time.
 - **Nome de domínio novo sai do Language Map, e rota de domínio nasce em inglês** (ADR 0079).
   `docs/ontology/language-map.md` é o documento normativo do vocabulário nas quatro
   superfícies (Pulse, One, Notion, mercado): a organização é **Account**, o programa é

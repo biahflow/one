@@ -1791,6 +1791,47 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       acende `MeetingOut`, `NextMeetingOut` e `RoiOut`, os três legítimos); e o rótulo de projeção
       do ROI é a #89. Descoberto em `biahflow/one#91`.
 
+- [x] **O ROI que a manchete não dizia ser projeção, e o radical que o deixaria passar**
+      *(ADR 0084)*: a ADR 0083 implementou seis das sete linhas da §5 do
+      [Language Map](docs/ontology/language-map.md) e deixou a sétima — `"ROI" como
+      resultado` — no `UNLINTABLE`, com o argumento de que "uma varredura de fonte não
+      consegue decidir se o rótulo está lá". **Metade daquele argumento estava errada**, e
+      é a forma da ADR 0066 sobre a 0035: varredura nenhuma decide *adjacência* (o número
+      chega em tempo de execução, o rótulo mora noutro nó da árvore), mas decide sobre **o
+      próprio literal** — e o defeito não tem como existir sem um literal que diga "ROI"
+      sem qualificar, porque é o literal que nomeia o card. Este repositório projeta
+      **dois** ROIs com produtores diferentes — o `RoiOut` que a origem afirma e o
+      `ResultsOut` apurado na leitura pela premissa vigente no dia do evento (ADR 0013) —,
+      e só a aba Resultados os rotulava. Quatro literais não: o pior é a **manchete** da
+      visão geral, primeiro número que o cliente lê, imprimindo `+142%` sob "ROI do
+      projeto" sem nada que o distinga de resultado medido. De quebra, **a guarda prendia o
+      defeito**: `tests/rendered-html.test.mjs` afirmava `/ROI do projeto/`, de modo que
+      corrigir a manchete deixaria a suíte vermelha — o `.priority` da ADR 0033 numa
+      terceira direção, porque lá o painel e na ADR 0043 o controle estavam sobre campo sem
+      escritor, e aqui a **asserção** estava sobre o texto errado. O termo e o qualificador
+      saem do documento (a célula "Por quê" da §5 diz "ROI **projetado** não é resultado
+      medido"); `apurado` é local, com a razão escrita e com a **condição em que morre** —
+      no mapa o lado medido chama-se `Outcome`, que não tem produtor aqui. **A armadilha
+      que carrega a fatia** é o radical: cortar o sufixo inteiro do particípio dá `projet`,
+      que casa com **"projeto"** — e `ROI do projeto`, o caso central, nasceria **verde**
+      dizendo-se qualificado; medido, e o corte passou a ser só a desinência. A superfície
+      interna fica fora por decisão escrita (`app/admin/`, no mesmo recorte do
+      `one-visibility.json`, e o `onboarding.py` do funil `_INTERNAL_ONLY`) e com
+      vencimento, e o **par que separa a regra de uma allowlist** é o mesmo literal
+      reprovando na tela do cliente e passando na do time. **Fica aberto, e nomeado:** a
+      metade grande da #89 e a **#90 inteira** estão bloqueadas no produtor — `KPI`,
+      `Measurement`, `ValueLedgerEntry`, `Process`, `Finding`, `PainPoint` e
+      `ImprovementOpportunity` **existem todos no Pulse e nenhum é emitido** (zero chaves no
+      `build_snapshot`, zero receivers), o que está registrado lá como decisão consciente
+      que devolve a escolha para cá; construir tela sobre eles seria o painel sem escritor
+      da ADR 0033, então saiu contrato em vez de código, nas issues `biahflow/pulse#105` e
+      `biahflow/pulse#106`. Mais: `hoursSavedMonth` também é projetado da origem e continua
+      sem rótulo (sai junto do `kpi_ids` da #105); a regra é sobre o literal e não alcança
+      um número de ROI sob rótulo que não diga "ROI"; e a **§3 do Language Map promete um
+      campo que não existe** — "Evidence marcada como revisada e publicável" —, o que
+      bloqueia a #90 por documento e não por código, porque `Finding.reviewed_by` só é
+      obrigatório para `fact` e um `hypothesis` nasce sem revisor. Fecha `biahflow/one#91`.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

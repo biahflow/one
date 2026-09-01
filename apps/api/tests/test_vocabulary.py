@@ -518,6 +518,7 @@ R3 = "outcome-como-decisao-de-gate"
 R4 = "modelo-em-portugues"
 R5 = "nome-do-produto"
 R6 = "prove-nao-e-piloto"
+R7 = "roi-sem-rotulo-de-projecao"
 
 
 @cache
@@ -716,9 +717,156 @@ def find_phrases(path: str, line: int, snippet: str) -> list[Finding]:
     ]
 
 
+# --- o ROI que não diz qual ROI é -------------------------------------------
+#
+# A §5 bane `"ROI" como resultado` com a razão escrita ao lado: *"ROI projetado não é
+# resultado medido"*. Este repositório projeta **dois** ROIs — o do snapshot do
+# Biahflow (`RoiOut`, que a origem afirma) e o apurado na leitura pela premissa
+# vigente no dia do evento (`ResultsOut`, ADR 0013) —, e o identificador está certo
+# dos dois lados. O que falta é o **rótulo**: um número sem ele deixa o cliente ler
+# uma promessa como se fosse medição.
+#
+# Daí a regra ser sobre texto visível e **não** caber em `find_phrases`: lá a
+# presença da frase reprova, e aqui reprova a presença **sem** o qualificador.
+
+#: O segundo qualificador não sai do mapa, e a razão de ele ser decisão deste
+#: repositório fica escrita aqui, no padrão de `UNLINTABLE` e do `NOT_AN_ALERT` da
+#: ADR 0034. Chave → por que ela não é derivável, em prosa contestável.
+LOCAL_QUALIFIERS: dict[str, str] = {
+    "apurado": (
+        "O mapa só nomeia o lado projetado porque, nos termos dele, o lado medido é "
+        "`Outcome` — e `Outcome` não tem produtor neste repositório: o Pulse tem o "
+        "modelo `Measurement` e não o emite no snapshot. `apurado` é o nome "
+        "pré-`Outcome` que a ADR 0013 deu ao lado medido, e ele deixa de ser "
+        "necessário no dia em que o `Outcome` atravessar."
+    ),
+}
+
+#: Prefixo de caminho → por que o que se lê ali **não** é a tela do cliente. A regra
+#: é sobre o que o cliente lê: uma tela do time que diz "ROI" sem qualificar está
+#: falando com quem sabe qual dos dois é. Exclusão sem razão escrita é allowlist
+#: disfarçada (ADR 0082), e a asserção de obsolescência é o vencimento desta.
+INTERNAL_SURFACES: dict[str, str] = {
+    "app/admin/": (
+        "Superfície interna, e é o mesmo recorte que o `one-visibility.json` já usa e "
+        "registra (\"`/api/v1/admin/*` é superfície interna\"): quem abre `/admin` é "
+        "membro do time, não o cliente."
+    ),
+    "apps/api/src/portal_api/onboarding.py": (
+        "O funil, cujo aviso é `_INTERNAL_ONLY` desde a ADR 0040 — o primeiro do "
+        "produto a nunca chegar ao cliente. O leitor das frases com \"ROI\" ali é "
+        "quem vai ligar para o cliente travado, e o que ele precisa saber é que o "
+        "número não foi visto."
+    ),
+}
+
+
+def internal_surface(path: str) -> str | None:
+    """O prefixo de `INTERNAL_SURFACES` que cobre este caminho, se houver."""
+    for prefix in INTERNAL_SURFACES:
+        if path.startswith(prefix):
+            return prefix
+    return None
+
+
+_INFLECTION = re.compile(r"[oa]s?$")
+
+
+def _stem(word: str) -> str:
+    """O radical de um particípio português, para a regra alcançar as flexões.
+
+    `projetado` → `projetad`, `apurado` → `apurad`. É o que faz "ROI projetada" e
+    "ROI apurados" passarem sem que a guarda precise de uma lista de flexões digitada
+    — lista digitada é o defeito das ADRs 0033 e 0035.
+
+    **Só a desinência sai, e o corte foi medido.** Cortar o sufixo inteiro do
+    particípio (`-ado`) daria o radical `projet`, que casa com **"projeto"** — e
+    "ROI do projeto", a manchete que esta fatia existe para rotular, passaria verde
+    dizendo-se qualificada pela palavra "projeto". Um radical curto demais não é
+    tolerância, é o `.priority` da ADR 0033: a guarda nasceria verde em cima do
+    defeito exato que ela existe para pegar.
+    """
+    return _INFLECTION.sub("", word.lower())
+
+
+@cache
+def roi_term() -> str:
+    """O termo que a §5 bane. Sai do documento, entre aspas, como os do `R5`/`R6`."""
+    row = _banned_row('"ROI" como resultado')
+    quoted = _quoted(row[0])
+    assert len(quoted) == 1, (
+        "a linha do ROI na §5 devia nomear exatamente um termo entre aspas, e nomeia "
+        f"{quoted}. O documento mudou de forma — decida o que a regra passa a fazer."
+    )
+    return quoted[0]
+
+
+@cache
+def roi_qualifiers() -> tuple[str, ...]:
+    """O que precisa estar ao lado do termo para o texto dizer **qual** ROI é.
+
+    O primeiro sai da própria célula "Por quê" da §5 — *"ROI projetado não é
+    resultado medido"*, e a palavra imediatamente depois do termo é o qualificador.
+    O segundo é `LOCAL_QUALIFIERS`, com a razão escrita lá.
+    """
+    row = _banned_row('"ROI" como resultado')
+    match = re.search(rf"\b{re.escape(roi_term())}\s+(\w+)", row[1])
+    assert match is not None, (
+        f"a célula \"Por quê\" da linha do ROI não diz {roi_term()!r} seguido do "
+        f"qualificador, e é de lá que ele sai: {row[1]!r}"
+    )
+    return (match.group(1), *LOCAL_QUALIFIERS)
+
+
+@cache
+def _roi_patterns() -> tuple[re.Pattern[str], tuple[re.Pattern[str], ...]]:
+    return (
+        # Sensível a caixa, e a estreiteza é deliberada: é sigla, o mesmo recorte que
+        # `Phrase.pattern` já usa ("Sigla (tudo em maiúscula no mapa) casa com
+        # distinção de caixa"). `roi` minúsculo é o campo `roiMonth` e o `roi_ratio`
+        # do read model — identificador, que esta regra não julga —, e `ROIs` não
+        # casa por `\b`.
+        re.compile(rf"\b{re.escape(roi_term())}\b"),
+        tuple(
+            re.compile(rf"\b{_stem(qualifier)}\w*", re.IGNORECASE)
+            for qualifier in roi_qualifiers()
+        ),
+    )
+
+
+def mentions_roi(snippet: str) -> bool:
+    term, _ = _roi_patterns()
+    return term.search(snippet) is not None
+
+
+def _roi_is_bare(snippet: str) -> bool:
+    """O termo está no texto e nenhum qualificador diz qual dos dois ROIs ele é."""
+    _, qualifiers = _roi_patterns()
+    if not mentions_roi(snippet):
+        return False
+    return not any(qualifier.search(snippet) for qualifier in qualifiers)
+
+
+def find_bare_roi(path: str, line: int, snippet: str) -> Finding | None:
+    if internal_surface(path) is not None:
+        return None
+    if not _roi_is_bare(snippet):
+        return None
+    return Finding(
+        path,
+        line,
+        R7,
+        roi_term(),
+        f"texto visível ao cliente diz {roi_term()!r} sem dizer **qual** dos dois é "
+        "(falta o rótulo `" + "`/`".join(roi_qualifiers()) + "`): o projetado é a "
+        "promessa da origem e não resultado medido (§5), e o apurado nasce dos "
+        "eventos pela premissa vigente no dia do evento (ADR 0013)",
+    )
+
+
 @cache
 def findings() -> list[Finding]:
-    """Tudo que as seis regras acham, nos dois deployables."""
+    """Tudo que as sete regras acham, nos dois deployables."""
     found: list[Finding] = []
     for source, declared in declarations():
         exempt = (
@@ -735,6 +883,9 @@ def findings() -> list[Finding]:
     for source, snippets in visible_text():
         for line, snippet in snippets:
             result.extend(find_phrases(source.path, line, snippet))
+            bare = find_bare_roi(source.path, line, snippet)
+            if bare is not None:
+                result.append(bare)
     return result
 
 
@@ -832,15 +983,6 @@ UNLINTABLE: dict[str, str] = {
         "O que **é** deste repositório na mesma palavra é a regra "
         f"`{R1}`, e ela está implementada."
     ),
-    '"ROI" como resultado': (
-        "É afirmação sobre **renderização**, não sobre léxico: o defeito real é um "
-        "número de ROI aparecer na tela sem o rótulo de projeção ao lado, e uma "
-        "varredura de fonte não consegue decidir se o rótulo está lá. O ROI deste "
-        "repositório é calculado na leitura pela premissa vigente no dia do evento "
-        "(ADR 0013) e declara lacuna quando falta base, então o identificador está "
-        "certo e o que falta é o rótulo. Fica com a Issue #89, que é onde mora "
-        "`DigitalEmployee.roi_month`."
-    ),
 }
 
 #: Regra → as linhas da §5 que ela cobre.
@@ -851,6 +993,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
     R4: ("`Evidencia`, `Processo`, `ProcessoEtapa`",),
     R5: ('"Cockpit", "portal do cliente"', '"portal Biahflow", "o CRM"'),
     R6: ('"POC", "piloto" para o PROVE',),
+    R7: ('"ROI" como resultado',),
 }
 
 
@@ -867,6 +1010,7 @@ def rule_terms() -> dict[str, tuple[str, ...]]:
         ),
         R5: tuple(phrase.text for phrase in product_name_phrases()),
         R6: tuple(phrase.text for phrase in prove_phrases()),
+        R7: (roi_term(),),
     }
 
 
@@ -900,6 +1044,54 @@ def test_the_corpus_covers_both_deployables_and_no_glob_comes_back_empty() -> No
     assert any(
         declared for _, declared in declarations()
     ), "nenhuma declaração foi extraída: o extrator parou de enxergar o repositório"
+
+
+def test_the_client_surface_still_mentions_roi_at_all() -> None:
+    """Fail-closed do `R7`: zero menção significa que o casador parou de olhar.
+
+    A regra é a única que nasce **verde por correção do texto** em vez de por ausência
+    do termo: as menções continuam lá, agora qualificadas. Se elas sumirem da
+    varredura — porque o extrator de JSX mudou, porque a tela virou outra coisa —, a
+    regra passa a não afirmar nada e a suíte fica verde por não ter olhado, que é o
+    `dependency-review` da ADR 0023.
+    """
+    mentioned = [
+        f"{source.path}:{line}"
+        for source, snippets in visible_text()
+        if internal_surface(source.path) is None
+        for line, snippet in snippets
+        if mentions_roi(snippet)
+    ]
+    assert mentioned, (
+        f"nenhum texto visível da superfície do cliente menciona {roi_term()!r}. A "
+        "regra continua carregada e não olha para nada: ou o produto deixou de "
+        "mostrar o número, ou a varredura parou de alcançá-lo. Decida qual."
+    )
+
+
+def test_every_internal_surface_exclusion_still_exempts_an_occurrence() -> None:
+    """A exclusão por superfície tem o mesmo vencimento que a allowlist: virar inútil.
+
+    Precedente de `test_the_allowlist_does_not_keep_a_line_that_stopped_being_needed`.
+    Um prefixo que não isenta mais nada é allowlist disfarçada esperando a próxima
+    ocorrência passar de carona.
+    """
+    counted = {prefix: 0 for prefix in INTERNAL_SURFACES}
+    for source, snippets in visible_text():
+        prefix = internal_surface(source.path)
+        if prefix is None:
+            continue
+        for _, snippet in snippets:
+            if _roi_is_bare(snippet):
+                counted[prefix] += 1
+
+    idle = sorted(prefix for prefix, hits in counted.items() if hits == 0)
+    assert idle == [], (
+        "estes prefixos de `INTERNAL_SURFACES` não isentam mais nenhuma ocorrência:\n  "
+        + "\n  ".join(idle)
+        + "\nApague-os. A exclusão não tem prazo de propósito, e esta asserção é o "
+        "único vencimento que ela tem."
+    )
 
 
 def test_no_banned_term_enters_either_deployable() -> None:
@@ -990,7 +1182,7 @@ def test_every_rule_bans_in_the_name_of_a_term_the_map_knows() -> None:
 
     Duas metades, e a primeira é a que importa: **nenhuma regra pode ficar sem
     termo**. Se alguém reformatar as tabelas do `language-map.md` e o casador parar
-    de casar, as seis regras passariam a não banir nada e a suíte ficaria verde — o
+    de casar, as sete regras passariam a não banir nada e a suíte ficaria verde — o
     `dependency-review` da ADR 0023 outra vez. A segunda metade pega a direção
     inversa: um termo digitado à mão dentro da guarda, que o mapa não conhece.
     """
@@ -1047,10 +1239,11 @@ def test_every_banned_row_of_the_map_is_claimed_or_excluded_with_a_reason() -> N
 # --- as amostras que fazem cada ramo ser percorrido -------------------------
 #
 # A lição do `_TEMPLATE_SAMPLE` (ADR 0038): **a cobertura de um portão é a dos ramos
-# que a amostra percorre**. Cinco das seis regras nascem verdes sobre o repositório,
-# então sem amostra elas seriam código que nada executa. Cada caso traz o par
-# completo — o que reprova e o quase-acerto que passa —, porque só o par prova que a
-# regra é estreita.
+# que a amostra percorre**. Seis das sete regras nascem verdes sobre o repositório,
+# então sem amostra elas seriam código que nada executa. A sétima nasceu **vermelha**
+# nas quatro linhas da tela e ficou verde quando elas ganharam o rótulo — o que a
+# devolve à mesma condição das outras. Cada caso traz o par completo — o que reprova
+# e o quase-acerto que passa —, porque só o par prova que a regra é estreita.
 
 _TS_COMPONENT = '"use client";\n\nexport default function FunnelClient() {\n  %s\n  return null;\n}\n'
 
@@ -1070,6 +1263,9 @@ def _web_findings(name: str, text: str) -> list[Finding]:
                 found.append(finding)
     for line, snippet in list(stripped.literals) + list(stripped.jsx):
         found.extend(find_phrases(name, line, snippet))
+        bare = find_bare_roi(name, line, snippet)
+        if bare is not None:
+            found.append(bare)
     return found
 
 
@@ -1087,6 +1283,9 @@ def _python_findings(name: str, text: str) -> list[Finding]:
                 found.append(finding)
     for line, snippet in python_visible_text(source):
         found.extend(find_phrases(name, line, snippet))
+        bare = find_bare_roi(name, line, snippet)
+        if bare is not None:
+            found.append(bare)
     return found
 
 
@@ -1187,3 +1386,57 @@ def test_the_prove_rule_covers_the_three_terms_and_skips_the_docstring() -> None
     core = "apps/api/src/portal_api/models/meeting.py"
     assert _python_findings(core, '"""transcription is out of the MVP."""\n') == []
     assert [f.rule for f in _python_findings(core, 'TITLE = "MVP"\n')] == [R6]
+
+
+def test_the_roi_rule_demands_the_qualifier_and_names_which_roi_it_is() -> None:
+    """O par completo, e o segundo par é o que carrega a fatia: a isenção é por
+    **superfície**, não pelo literal.
+
+    O termo e o primeiro qualificador saem da §5 (célula do termo e célula "Por quê");
+    o segundo é decisão local com a razão em `LOCAL_QUALIFIERS`.
+    """
+    assert roi_term() == "ROI"
+    assert roi_qualifiers()[0] == "projetado", "o qualificador sai da §5, não daqui"
+    assert all(len(reason) >= 40 for reason in LOCAL_QUALIFIERS.values()), (
+        "um qualificador que não sai do mapa precisa da razão escrita ao lado"
+    )
+    assert all(len(reason) >= 40 for reason in INTERNAL_SURFACES.values()), (
+        "uma superfície excluída precisa da razão escrita ao lado"
+    )
+
+    path = "app/DashboardClient.tsx"
+    # A primeira é a manchete, e ela é também a medição do radical: com o corte no
+    # sufixo inteiro do particípio (`projet`), a palavra "projeto" a qualificaria e
+    # esta linha nasceria verde. Ver `_stem`.
+    for red in ("<p>ROI do projeto</p>", '"ROI/mês"', '"Fórmula do ROI"'):
+        assert [f.rule for f in _web_findings(path, f"const t = {red};")] == [R7], red
+
+    for green in (
+        '"ROI projetado"',
+        '"ROI apurado"',
+        '"Fórmula do ROI apurado"',
+        '"ROI projetado/mês"',
+        # A flexão, que é a razão de o casamento ser por radical.
+        '"as duas linhas de ROI apuradas"',
+        # Sem o token não há o que rotular: a frase já é sobre a ausência do número.
+        '"Sem projeção no Biahflow"',
+    ):
+        assert _web_findings(path, f"const t = {green};") == [], green
+
+    # A estreiteza é deliberada, e é a mesma do `R6`: sigla casa com distinção de
+    # caixa, e `\b` a impede de casar dentro de palavra.
+    assert _web_findings(path, 'const t = "o roi do mês";') == []
+    assert _web_findings(path, 'const t = "dois ROIs";') == []
+
+    # O par que carrega a fatia: o **mesmo literal** reprova na tela do cliente e
+    # passa na tela do time. A isenção por superfície não é sobre o texto.
+    literal = 'const t = "premissas de ROI";'
+    assert _web_findings("app/admin/MembersClient.tsx", literal) == []
+    assert [f.rule for f in _web_findings(path, literal)] == [R7]
+
+    # E o mesmo par do lado Python, onde a exclusão é um arquivo e não um diretório.
+    frase = 'AVISO = "Há ROI no dashboard e o cliente não voltou para vê-lo."\n'
+    assert _python_findings("apps/api/src/portal_api/onboarding.py", frase) == []
+    assert [
+        f.rule for f in _python_findings("apps/api/src/portal_api/results.py", frase)
+    ] == [R7]

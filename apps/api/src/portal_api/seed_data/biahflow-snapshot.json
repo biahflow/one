@@ -44,6 +44,7 @@
     "current_phase": "Prove",
     "phases": [
       {
+        "id": 201,
         "name": "Welcome",
         "description": "Boas-vindas e acessos.",
         "position": 0,
@@ -54,6 +55,7 @@
         ]
       },
       {
+        "id": 202,
         "name": "Discover",
         "description": "Mapeamento dos processos.",
         "position": 1,
@@ -65,6 +67,7 @@
         ]
       },
       {
+        "id": 203,
         "name": "Prove",
         "description": "A menor implementação real, em produção controlada.",
         "position": 2,
@@ -76,6 +79,7 @@
         ]
       },
       {
+        "id": 204,
         "name": "Scale",
         "description": "Expansão para mais áreas.",
         "position": 3,
@@ -84,6 +88,7 @@
         "deliverables": []
       },
       {
+        "id": 205,
         "name": "Optimize",
         "description": "Evolução contínua.",
         "position": 4,
@@ -362,7 +367,8 @@
       "rationale": "O volume previsto não paga o custo fixo de uma instância, e a fila gerenciada escala a zero fora do horário comercial. Manter a instância foi considerado pela latência, e os 5 s de intervalo cabem no trabalho mais rápido da fila.",
       "decided_on": "2026-08-21",
       "decided_by": "Marina Farias",
-      "meeting_id": 4
+      "meeting_id": 4,
+      "phase_ref": 203
     },
     {
       "id": 92,
@@ -370,7 +376,8 @@
       "rationale": "A integração fiscal depende de um cadastro que ainda está em revisão do lado do cliente.",
       "decided_on": "2026-08-07",
       "decided_by": "Helena Dias",
-      "meeting_id": 3
+      "meeting_id": 3,
+      "phase_ref": null
     }
   ],
   "pendencias": [

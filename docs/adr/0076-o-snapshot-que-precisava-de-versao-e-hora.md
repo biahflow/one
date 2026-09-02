@@ -117,9 +117,15 @@ pergunta, dita honestamente, em vez de uma inventada.
 
 ## Aberto
 
-- **Ancoragem decisão→fase na timeline** (o "gates/decisões que desbloquearam a fase" da Issue #62):
-  por marcação explícita do Pulse (preferido) ou heurística por `decided_on` × janela da fase? Se
-  ambíguo, o que fica de fora precisa ser declarado. Fica para o gate/plano.
+- ~~**Ancoragem decisão→fase na timeline** (o "gates/decisões que desbloquearam a fase" da Issue
+  #62): por marcação explícita do Pulse (preferido) ou heurística por `decided_on` × janela da
+  fase? Se ambíguo, o que fica de fora precisa ser declarado. Fica para o gate/plano.~~
+  **Respondida em 02/09/2026 pela [ADR 0088](0088-a-decisao-que-nao-sabia-que-fase-destravou.md):**
+  marcação explícita do Pulse — a opção que esta linha já preferia. O gate de 27/08 recusou a
+  heurística e a superfície ficou `DEPENDENCY_BLOCKED`; o Pulse carimbou `phase_ref` em 31/08
+  (`biahflow/pulse#46`, ADR 0057 de lá), e a ancoragem passou a ser resolvida **na ingestão**,
+  contra os ids das fases do mesmo envelope. E o que fica de fora está declarado: a decisão que a
+  origem não ancora continua na aba Decisões, **sem nó na timeline e sem rótulo de "sem fase"**.
 - **O limiar do stale** — operação.
 - **Formato exato do `projection_version`** (inteiro por projeto vs vetor/relógio lógico) — a decidir
   com o lado do Biahflow, que é quem o incrementa; o inteiro monotônico é o mínimo que resolve o caso

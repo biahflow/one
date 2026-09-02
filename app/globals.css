@@ -735,6 +735,20 @@
   .journey-stage { @apply ml-2 align-middle text-[10px] font-extrabold tracking-[0.11em] text-muted; }
   .journey-gate { @apply mt-2.5 flex items-center gap-2 text-[11px] text-muted; }
   .journey-gate-label { @apply font-semibold; }
+  /* O nó de decisão da timeline (ADR 0088), na forma do `.gate` do DAP r1 da F-028:
+     ícone em quadrado claro à esquerda, título, racional e a linha de data. Nenhum
+     token novo — `brand-50` de fundo é o mesmo do passo selecionado logo acima, e as
+     três medidas de texto são as que o próprio `.journey-detail` já usa. O nome não é
+     `.journey-gate` porque aquele já é o selo `GateDecision` da fase (ADR 0081), e são
+     duas coisas: lá é o desfecho do gate, aqui é a decisão que destravou a fase. */
+  .journey-decisions { @apply mb-3.5 grid gap-2; }
+  .journey-decision { @apply flex gap-2.5 rounded-control bg-brand-50 px-3.5 py-3; }
+  .journey-decision-icon {
+    @apply grid h-6.5 w-6.5 shrink-0 place-items-center rounded-lg bg-surface text-brand-600;
+  }
+  .journey-decision-title { @apply text-[13px] font-bold text-ink; }
+  .journey-decision-why { @apply mt-0.5 text-xs text-muted; }
+  .journey-decision-when { @apply mt-1 text-[11px] text-muted; }
   .journey-target { @apply text-right whitespace-nowrap; }
   .journey-target span { @apply block text-[10px] text-muted; }
   .journey-target strong { @apply text-[13px] text-muted; }

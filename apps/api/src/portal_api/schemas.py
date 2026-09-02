@@ -589,6 +589,15 @@ class DecisionOut(Out):
     decided_on: str | None
     owner_label: str | None
     meeting_title: str | None
+    #: A fase que esta decisão destravou (ADR 0088), e é ela que põe a decisão **dentro
+    #: da timeline** em vez de só numa lista solta. Rótulo e não id pelo motivo escrito
+    #: acima para `meeting_title` — o uuid da fase muda a cada sync do mesmo jeito —, e
+    #: é o nome que a jornada já usa como âncora de fase (`phase:<nome>`).
+    #:
+    #: `null` quer dizer que a **origem não ancorou** aquela decisão, o que é resposta
+    #: legítima e comum no legado: ela continua na aba Decisões, e nada é adivinhado por
+    #: data. Não há rótulo de "sem fase" — ausência é ausência de afirmação.
+    journey_phase_name: str | None
 
 
 class PendingOut(Out):

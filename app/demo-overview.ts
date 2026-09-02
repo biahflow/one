@@ -194,8 +194,10 @@ export const DEMO_OVERVIEW: Overview = {
     { title: "Kickoff do projeto", date: "07 ago", status: "Realizada", hasTranscript: true, recordingUrl: null },
   ],
   decisions: [
-    { title: "Adotar fila gerenciada em vez de instância própria", rationale: "O volume previsto não paga o custo fixo, e a fila gerenciada escala a zero fora do horário comercial.", decidedOn: "06 ago", ownerLabel: "Marina Farias", meetingTitle: "Revisão de integrações" },
-    { title: "Adiar o PROVE de cobrança para setembro", rationale: "A integração fiscal depende de um cadastro que ainda está em revisão do lado do cliente.", decidedOn: "21 jul", ownerLabel: "Helena Dias", meetingTitle: null },
+    // A primeira é ancorada à fase que ela destravou e aparece na timeline; a segunda não
+    // é, e fica só nesta aba (ADR 0088). Os dois ramos existem aqui de propósito.
+    { title: "Adotar fila gerenciada em vez de instância própria", rationale: "O volume previsto não paga o custo fixo, e a fila gerenciada escala a zero fora do horário comercial.", decidedOn: "06 ago", ownerLabel: "Marina Farias", meetingTitle: "Revisão de integrações", journeyPhaseName: "Feasibility" },
+    { title: "Adiar o PROVE de cobrança para setembro", rationale: "A integração fiscal depende de um cadastro que ainda está em revisão do lado do cliente.", decidedOn: "21 jul", ownerLabel: "Helena Dias", meetingTitle: null, journeyPhaseName: null },
   ],
   pendings: [
     { id: "demo-pend-1", title: "Aprovar fluxo de exceções", description: null, owner: "Acme Brasil", state: "open", stateLabel: "Aberta", priority: "high", priorityLabel: "Alta", origin: "biahflow", openedByMessageId: null, openedByConversationId: null, commentCount: 0, age: "há 2 dias" },

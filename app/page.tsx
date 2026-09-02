@@ -190,7 +190,7 @@ function initialsOf(fullName: string): string {
 
 type ApiMilestone = { title: string; state: string; due_date: string | null; owner_label: string | null };
 type ApiDocument = { title: string; type: string | null; author: string | null; link: string | null; updated_at: string | null };
-type ApiDecision = { title: string; rationale: string | null; decided_on: string | null; owner_label: string | null; meeting_title: string | null };
+type ApiDecision = { title: string; rationale: string | null; decided_on: string | null; owner_label: string | null; meeting_title: string | null; journey_phase_name: string | null };
 type ApiMeeting = { title: string; date: string | null; recording_url: string | null; has_transcript: boolean; status: string | null };
 type ApiPending = { id: string; title: string; description: string | null; owner_label: string | null; state: string; priority: string; origin: string; opened_by_message_id: string | null; opened_by_conversation_id: string | null; comment_count: number; created_at: string; resolved_at: string | null };
 type ApiResults = { milestones_total: number; milestones_done: number; overdue: number; on_time_percent: number };
@@ -534,6 +534,10 @@ function toOverview(
       decidedOn: shortDate(decision.decided_on),
       ownerLabel: decision.owner_label,
       meetingTitle: decision.meeting_title,
+      // A fase que a decisão destravou (ADR 0088). Passa **crua**: o casamento com a
+      // fase é por nome e acontece na timeline, e normalizar aqui (aparar, minusculizar)
+      // faria a tela casar por um valor que o servidor não publicou.
+      journeyPhaseName: decision.journey_phase_name,
     })),
     pendings: ((data.pendings as ApiPending[]) ?? []).map<PendingItemView>((pending) => ({
       id: pending.id,

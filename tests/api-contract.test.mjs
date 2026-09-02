@@ -346,6 +346,16 @@ const NOT_CONSUMED = {
   // sumir do read model — e quem projeta esse registro é o Biahflow, não a tela. O
   // card de revisão nasce da jornada, que é a verdade de hoje, e repetir na linha
   // do histórico o rótulo que está no cabeçalho do card seria ruído.
+  //
+  // **E é esta linha que decidiu o nome do campo novo da ADR 0088.** A asserção de
+  // obsolescência pergunta se o corpus daquele esquema contém `.phase_name`, e o
+  // corpus é por *arquivo*: `app/page.tsx` mapeia o dashboard inteiro, então está no
+  // corpus de `DeliverableAcceptanceOut` **e** no de `DecisionOut`. Um
+  // `DecisionOut.phase_name` faria esta linha ser cobrada como obsoleta — sobre um
+  // campo que a tela continua sem ler — e apagá-la deixaria a metade de cobertura
+  // verde por coincidência com outro identificador, que é o `.priority` da ADR 0033
+  // outra vez. Medido: com `phase_name`, vermelho aqui; com `journey_phase_name`, os
+  // dois campos ficam verificáveis um a um (e a mutação confirma o elo do novo).
   "DeliverableAcceptanceOut.phase_name": {
     reason:
       "denormalizado na escrita para o registro sobreviver ao read model (ADR 0077); " +

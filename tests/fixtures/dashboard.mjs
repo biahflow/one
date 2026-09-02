@@ -217,9 +217,14 @@ export const DASHBOARD = {
   ],
   // Uma com proveniência e outra sem: é o corte que o filtro da aba oferece, e o
   // `meeting_title` nulo é o caso real de uma reunião arquivada no Biahflow.
+  //
+  // E os dois ramos da ancoragem (ADR 0088): a primeira é ancorada a `Prove` — a fase
+  // ativa, que é a que o painel seleciona sozinho, e por isso o nó dela sai no HTML do
+  // SSR sem interação nenhuma —, e a segunda tem `journey_phase_name` nulo, que é o legado do
+  // Pulse e o caso em que a decisão fica só na aba.
   decisions: [
-    { title: "Adotar fila gerenciada", rationale: "O volume previsto não paga o Memorystore.", decided_on: "2026-08-06", owner_label: "Marina Farias", meeting_title: "Comitê de projeto" },
-    { title: "Adiar o PROVE de cobrança", rationale: null, decided_on: null, owner_label: null, meeting_title: null },
+    { title: "Adotar fila gerenciada", rationale: "O volume previsto não paga o Memorystore.", decided_on: "2026-08-06", owner_label: "Marina Farias", meeting_title: "Comitê de projeto", journey_phase_name: "Prove" },
+    { title: "Adiar o PROVE de cobrança", rationale: null, decided_on: null, owner_label: null, meeting_title: null, journey_phase_name: null },
   ],
   // Três abertas com prioridades diferentes, e a alta é a **mais antiga** de
   // propósito: é o que torna a ordenação da ADR 0029 observável no HTML do SSR.

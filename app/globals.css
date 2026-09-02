@@ -775,6 +775,39 @@
   .employee-metrics span { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
   .employee-metrics strong { @apply text-[13px] text-ink; }
 
+  /* ---------- KPI: Baseline e Outcome lado a lado (ADR 0085) ---------- */
+  .kpi-grid { @apply grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3.5; }
+  .kpi-card { @apply rounded-xl border border-line p-4; }
+  .kpi-head { @apply flex items-start justify-between gap-2.5; }
+  .kpi-head strong { @apply text-[13px]; }
+  .kpi-definition { @apply mt-1 mb-0 text-[11px] leading-relaxed text-muted; }
+  .kpi-direction { @apply rounded-full bg-surface-sunken px-2 py-1 text-[10px] font-bold whitespace-nowrap text-muted; }
+  .kpi-pair { @apply mt-3 grid grid-cols-3 gap-2.5; }
+  .kpi-measure { @apply grid gap-0.5; }
+  .kpi-measure > span { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
+  .kpi-measure > strong { @apply text-[15px] text-ink; }
+  .kpi-measure > small { @apply text-[10px] text-muted; }
+  /* A lacuna de medição é uma frase, e ela **não** se veste de número: mesmo peso
+     visual de um valor faria "Ainda não medido" ser lido de relance como leitura
+     válida, que é o vizinho do zero que a issue #89 proíbe. */
+  .kpi-gap { @apply text-[11px] font-normal text-muted; }
+  .kpi-meta { @apply mt-3 mb-0 grid gap-1.5; }
+  .kpi-meta dt { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
+  .kpi-meta dd { @apply m-0 text-[11px] leading-relaxed text-slate-600; }
+
+  /* ---------- Value Ledger (ADR 0085) ---------- */
+  .ledger-list { @apply grid gap-2.5; }
+  .ledger-entry { @apply flex items-start gap-4 rounded-xl border border-line p-4; }
+  .ledger-amount { @apply grid min-w-32 gap-0.5; }
+  .ledger-amount strong { @apply text-lg font-semibold tracking-[-0.02em]; }
+  .ledger-amount span { @apply text-[10px] font-bold tracking-[0.06em] uppercase text-brand-600; }
+  .ledger-body { @apply grid min-w-0 flex-1 gap-1; }
+  .ledger-period { @apply m-0 text-[11px] font-bold text-muted; }
+  .ledger-method { @apply m-0 text-[12px] leading-relaxed text-ink; }
+  .ledger-source { @apply m-0 text-[11px] text-slate-600; }
+  .ledger-source--absent { @apply text-muted italic; }
+  .ledger-measured { @apply m-0 text-[10px] text-muted; }
+
   /* ---------- Estados de página (carregando, erro, sem projeto) ---------- */
   .state-shell { @apply grid min-h-screen place-items-center bg-canvas p-10; }
   .state-card { @apply max-w-125 text-center; }

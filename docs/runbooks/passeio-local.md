@@ -79,11 +79,18 @@ Você deve ver **"Bom dia, Marina."** e quatro cartões com dado real do snapsho
 
 - Status do projeto — "Em implementação", selo "No prazo", 68% concluído
 - Próxima entrega — "Treinamento da operação · 18 set"
-- ROI do projeto — "+142% · R$ 214.000 de retorno"
+- Valor gerado — o total do **Value Ledger** do mandato (ADR 0085)
 - Próxima reunião — "Comitê de projeto · 28 ago"
 
 Nenhum desses números é fixo no código. Se a API cair, a tela mostra um painel de erro — nunca
 um dashboard inventado.
+
+Abaixo dos cartões, a seção **KPIs** mostra dois indicadores do snapshot semeado, com Baseline e
+Outcome lado a lado na mesma unidade: "Horas de conciliação por mês" com 72h → 21,5h, e
+"Divergências reabertas" com a Baseline medida e o **Outcome em branco**. O segundo é o caso que
+importa olhar: ele diz *"Ainda não medido"* e *"Sem meta definida"*, e **não "0"** — é a lacuna
+de medição aparecendo como lacuna, que é o critério que a ADR 0085 existe para não perder.
+
 
 ### 3.3 A busca (Fase 6)
 
@@ -326,6 +333,12 @@ Nada disto é defeito; é o ambiente local dizendo a verdade sobre si mesmo.
 - **Sem `CLAMAV_HOST`**, todo arquivo bom fica `skipped`, e a tela diz isso (ver 3.8).
 - **Decisões não aparecem na busca**: o modelo existe desde a Fase 1 e não há aba que as mostre,
   então um resultado levaria a lugar nenhum (ADR 0024).
+- **O Value Ledger fica vazio no passeio local**, e a manchete diz "Nenhum valor registrado
+  ainda" — que é a resposta certa, não um defeito. O razão é escopado por **Engagement**
+  (ADR 0085) e o `seed_data/biahflow-snapshot.json` não carrega a chave `engagement`: ela chegou
+  com a ADR 0079 e o snapshot semeado nunca a ganhou. Para ver o razão de pé, mande um snapshot
+  com `project.engagement` e `value_ledger` pela porta do webhook (a mesma de 3.10). Os **KPIs**
+  aparecem normalmente, porque são escopo de projeto.
 - **O banco local acumula.** Uploads, convites e conexões de Drive de execuções anteriores —
   suas e do `npx playwright test` — ficam. Buscar "contrato" pode devolver meia dúzia de
   arquivos de teste, e é isso que produz a armadilha de 3.6.

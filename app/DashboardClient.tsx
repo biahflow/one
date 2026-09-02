@@ -576,7 +576,60 @@ export type JourneyDeliverable = {
    *  que **não** é a mesma coisa que a lista vazia de "ninguém decidiu ainda". */
   decisions: DeliverableDecision[] | null;
 };
-export type DigitalEmployeeView = { name: string; area: string | null; description: string | null; status: string; kpiLabel: string | null; kpiValue: string | null; hoursSavedMonth: number | null; roiMonth: number | null };
+export type DigitalEmployeeView = { name: string; area: string | null; description: string | null; status: string; kpiLabel: string | null; kpiValue: string | null; hoursSavedMonth: number | null; roiMonth: number | null; /** Os `KPI.id` da origem que ele move (ADR 0085); vazio é "não referencia nenhum". */ kpiIds: number[] };
+/**
+ * Uma leitura de KPI — Baseline, Outcome ou um ponto do acompanhamento (Language Map §4).
+ *
+ * `value` nulo **dentro de um objeto que existe** é "a janela existe e ninguém mediu
+ * ainda", e é outra coisa que o objeto inteiro ausente ("não há Baseline definida").
+ * Nenhuma das duas é zero, e é a tela que tem de escrever as duas frases diferentes.
+ */
+export type KpiMeasurementView = {
+  value: number | null;
+  periodStart: string;
+  periodEnd: string | null;
+  measuredAt: string | null;
+  confidence: number | null;
+};
+/** Um indicador do projeto, com Baseline e Outcome comparáveis (ADR 0085). */
+export type KpiView = {
+  /** O id da **origem**, e não um uuid: é por ele que o Value Ledger e os
+   *  Funcionários Digitais apontam para este KPI. */
+  id: number;
+  name: string;
+  definition: string | null;
+  formula: string | null;
+  unit: string | null;
+  /** `up` ou `down` — para que lado o indicador melhora. Sem ele a tela não
+   *  afirma ganho nem perda, só mostra os dois números. */
+  direction: string | null;
+  dataSource: string | null;
+  cadence: string | null;
+  target: number | null;
+  baseline: KpiMeasurementView | null;
+  /** Nunca vem preenchido com `baseline` nulo — invariante 11 do Language Map. */
+  outcome: KpiMeasurementView | null;
+  monitoring: KpiMeasurementView[];
+};
+/**
+ * Uma entrada do Value Ledger do mandato (Language Map §2, ADR 0085).
+ *
+ * É o **valor gerado**, e a §2 diz o que ele nunca é: "ROI projetado" nem "Case".
+ */
+export type ValueLedgerEntryView = {
+  id: number;
+  valueType: string;
+  amount: number;
+  quantity: number | null;
+  periodStart: string;
+  periodEnd: string;
+  /** Como o número foi atribuído — invariante 12. Sem ele a entrada não sai da API. */
+  attributionMethod: string;
+  /** O KPI de origem. **Pode não casar com nenhum item de `kpis`**: a entrada é do
+   *  mandato e o KPI pode viver num projeto irmão que este cliente não alcança. */
+  kpiId: number | null;
+  outcomeMeasuredAt: string | null;
+};
 export type JourneyPhase = {
   name: string;
   description: string;
@@ -715,6 +768,13 @@ export type Overview = {
   nextMeeting: { title: string; detail: string } | null;
   health: { label: string; level: string } | null;
   digitalEmployees: DigitalEmployeeView[];
+  /** Os KPIs deste projeto (ADR 0085). Lista vazia é "nenhum definido ainda" — a
+   *  API nunca manda `null`, para a tela não ter um terceiro caso a desenhar. */
+  kpis: KpiView[];
+  /** O Value Ledger do **mandato**, não do projeto: a mesma entrada aparece no
+   *  dashboard de todos os projetos do Engagement, porque é o programa que gera o
+   *  valor. Vazia quando o projeto ainda não tem programa. */
+  valueLedger: ValueLedgerEntryView[];
   documents: ProjectDocument[];
   meetings: MeetingView[];
   decisions: DecisionView[];
@@ -1978,7 +2038,12 @@ function compact(value: number): string {
 function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user, focusedItem }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string, item?: string) => void; onOpenTurn: (messageId: string, conversationId: string | null) => void; overview: Overview; user: PortalUser; focusedItem?: string | null }) {
   const timeline = overview.milestones;
   const open = openPendings(overview);
-  const roi = roiValue(overview.roi);
+  // A manchete deixou de ser a projeção da origem e passou a ser o **valor
+  // gerado** (issue #89, ADR 0085). O ROI projetado não sumiu do produto: ele
+  // continua na aba Resultados, ao lado do apurado e rotulado como tal desde a
+  // ADR 0084 — o que muda é o primeiro número que o cliente lê ao abrir o portal,
+  // que passa a ter período e método de atribuição por trás.
+  const generated = valueLedgerTotal(overview.valueLedger);
   const readOnly = readOnlyReason(overview);
   // Conhecimento do projeto: documentos e reuniões mais recentes, na mesma lista.
   const updates = [
@@ -1992,6 +2057,10 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
       <JourneyPanel journey={overview.journey} freshness={overview.freshness} focusedItem={focusedItem} onNavigate={onNavigate} />
 
       <DigitalEmployees employees={overview.digitalEmployees} />
+
+      <KpiPanel kpis={overview.kpis} employees={overview.digitalEmployees} />
+
+      <ValueLedgerPanel entries={overview.valueLedger} kpis={overview.kpis} />
 
       <section className="status-card">
         <div className="status-main">
@@ -2018,9 +2087,9 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
         </article>
         <article className="metric-card">
           <div className="metric-icon metric-icon--green"><TrendingUp size={19} /></div>
-          <p>ROI projetado</p>
-          <h3>{roi.value}</h3>
-          <span className={roi.positive ? "positive" : undefined}>{roi.note}</span>
+          <p>Valor gerado</p>
+          <h3>{generated.value}</h3>
+          <span className={generated.positive ? "positive" : undefined}>{generated.note}</span>
         </article>
         <article className="metric-card">
           <div className="metric-icon metric-icon--purple"><UsersRound size={19} /></div>
@@ -2714,6 +2783,229 @@ function DigitalEmployees({ employees }: { employees: DigitalEmployeeView[] }) {
       </div>
     </section>
   );
+}
+
+/**
+ * Rótulos de espécie de valor. Um valor que a origem inventar sai **cru**, no
+ * padrão de `STATUS_LABELS` e `MEETING_STATUS_LABELS` em `page.tsx`: aqui o campo
+ * é obrigatório e cair para `null` deixaria a entrada sem nome nenhum.
+ */
+const VALUE_TYPE_LABELS: Record<string, string> = {
+  cost_saving: "Economia de custo",
+  revenue: "Receita adicional",
+  risk_reduction: "Redução de risco",
+  productivity: "Ganho de produtividade",
+  quality: "Ganho de qualidade",
+};
+
+/** Sufixos de unidade de KPI. Unidade desconhecida vira sufixo vazio — o número
+ *  sai sozinho, que é honesto, em vez de ganhar uma unidade adivinhada. */
+const UNIT_SUFFIX: Record<string, string> = { hours: "h", percent: "%", days: "d" };
+
+/**
+ * O número de uma medição, ou **a frase da lacuna** (issue #89, ADR 0085).
+ *
+ * As duas nulidades chegam distintas até aqui e saem como frases distintas:
+ * `null` no lugar do objeto é "Sem baseline definida"/"Ainda não medido", e
+ * `value: null` dentro de um objeto que existe é "Ainda não medido" com a janela
+ * ao lado. **Nenhuma das duas vira "0"** — foi para isso que a API se deu ao
+ * trabalho de manter as duas, e um `?? 0` aqui apagaria o trabalho inteiro.
+ */
+function measurementValue(reading: KpiMeasurementView | null, unit: string | null): string {
+  if (!reading || reading.value === null) return "Ainda não medido";
+  return formatMeasure(reading.value, unit);
+}
+
+function formatMeasure(value: number, unit: string | null): string {
+  if (unit === "brl") return BRL.format(value);
+  const suffix = unit ? UNIT_SUFFIX[unit] ?? "" : "";
+  return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}${suffix}`;
+}
+
+/** "jul/2026", ou "jul/2026 → em aberto" quando a origem ainda não fechou a janela. */
+function measurementPeriod(reading: KpiMeasurementView | null): string {
+  if (!reading) return "";
+  const from = monthLabel(reading.periodStart);
+  const to = reading.periodEnd ? monthLabel(reading.periodEnd) : null;
+  if (to === null) return `${from} → janela em aberto`;
+  return from === to ? from : `${from} → ${to}`;
+}
+
+function monthLabel(iso: string): string {
+  const parsed = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
+}
+
+/**
+ * Um KPI com **Baseline e Outcome lado a lado**, na mesma unidade.
+ *
+ * É o critério (3) da issue #89, e a razão de os dois nunca aparecerem separados:
+ * um Outcome sozinho é um número sem régua — "21,5h" não diz nada até estar ao
+ * lado das 72h de onde se partiu. A API garante o par (invariante 11 do Language
+ * Map) e esta tela desenha o par; quando a Baseline falta, o que aparece é a
+ * frase da lacuna no lugar dela, nunca a comparação com zero.
+ */
+function KpiCard({ kpi, movedBy }: { kpi: KpiView; movedBy: string[] }) {
+  const baselineMissing = kpi.baseline === null;
+  return (
+    <article className="kpi-card">
+      <div className="kpi-head">
+        <div>
+          <strong>{kpi.name}</strong>
+          {kpi.definition && <p className="kpi-definition">{kpi.definition}</p>}
+        </div>
+        {kpi.direction === "up" || kpi.direction === "down" ? (
+          <span className="kpi-direction" title={kpi.direction === "down" ? "Quanto menor, melhor" : "Quanto maior, melhor"}>
+            {kpi.direction === "down" ? "menor é melhor" : "maior é melhor"}
+          </span>
+        ) : null}
+      </div>
+      <div className="kpi-pair">
+        <div className="kpi-measure">
+          <span>Baseline</span>
+          <strong className={baselineMissing ? "kpi-gap" : undefined}>
+            {baselineMissing ? "Sem baseline definida" : measurementValue(kpi.baseline, kpi.unit)}
+          </strong>
+          <small>{measurementPeriod(kpi.baseline)}</small>
+        </div>
+        <div className="kpi-measure">
+          <span>Outcome</span>
+          <strong className={kpi.outcome === null || kpi.outcome.value === null ? "kpi-gap" : undefined}>
+            {measurementValue(kpi.outcome, kpi.unit)}
+          </strong>
+          <small>{measurementPeriod(kpi.outcome)}</small>
+        </div>
+        <div className="kpi-measure">
+          <span>Meta</span>
+          {/* `null` é "ninguém definiu meta" e sai como travessão — não como zero,
+              que faria a tela afirmar uma meta que ninguém combinou. */}
+          <strong className={kpi.target === null ? "kpi-gap" : undefined}>
+            {kpi.target === null ? "Sem meta definida" : formatMeasure(kpi.target, kpi.unit)}
+          </strong>
+          <small>{kpi.cadence ? `Medido ${CADENCE_LABELS[kpi.cadence] ?? kpi.cadence}` : ""}</small>
+        </div>
+      </div>
+      <dl className="kpi-meta">
+        {kpi.formula && <div><dt>Como é calculado</dt><dd>{kpi.formula}</dd></div>}
+        {kpi.dataSource && <div><dt>Fonte do dado</dt><dd>{kpi.dataSource}</dd></div>}
+        {kpi.monitoring.length > 0 && (
+          <div>
+            <dt>Acompanhamento</dt>
+            <dd>
+              {kpi.monitoring.length === 1 ? "1 leitura" : `${kpi.monitoring.length} leituras`}
+              {" · última em "}
+              {measurementPeriod(kpi.monitoring[kpi.monitoring.length - 1])}
+            </dd>
+          </div>
+        )}
+        {movedBy.length > 0 && <div><dt>Movido por</dt><dd>{movedBy.join(", ")}</dd></div>}
+      </dl>
+    </article>
+  );
+}
+
+const CADENCE_LABELS: Record<string, string> = {
+  monthly: "mensalmente",
+  weekly: "semanalmente",
+  quarterly: "trimestralmente",
+  daily: "diariamente",
+};
+
+function KpiPanel({ kpis, employees }: { kpis: KpiView[]; employees: DigitalEmployeeView[] }) {
+  if (kpis.length === 0) return null;
+  return (
+    <section className="panel" aria-label="Indicadores do projeto">
+      <div className="panel-heading">
+        <div><p className="eyebrow">O QUE ESTAMOS MEDINDO</p><h2>KPIs <span>{kpis.length}</span></h2></div>
+      </div>
+      <div className="kpi-grid">
+        {kpis.map((kpi) => (
+          <KpiCard
+            key={kpi.id}
+            kpi={kpi}
+            // O casamento é pelo id **da origem**, o mesmo que os dois lados
+            // publicam: é o que dispensa uma tabela de tradução no navegador.
+            movedBy={employees.filter((employee) => employee.kpiIds.includes(kpi.id)).map((employee) => employee.name)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * O **Value Ledger** do mandato (Language Map §2, ADR 0085) — o que substituiu a
+ * manchete de projeção na visão geral.
+ *
+ * A manchete antiga imprimia um percentual projetado pela origem como primeiro
+ * número que o cliente lia, sem nada por trás dele que ele pudesse conferir. Aqui
+ * cada linha carrega período, espécie, quantia e **método de atribuição**, que é
+ * o invariante 12 — e, quando o KPI de origem está nesta resposta, o par
+ * Baseline→Outcome que sustenta a conta.
+ *
+ * **Não casar o KPI é caso normal, e não erro**: a entrada é do Engagement e o
+ * indicador pode viver num projeto irmão que este cliente não alcança. A linha
+ * aparece igual, sem o vínculo.
+ */
+function ValueLedgerPanel({ entries, kpis }: { entries: ValueLedgerEntryView[]; kpis: KpiView[] }) {
+  if (entries.length === 0) return null;
+  const byId = new Map(kpis.map((kpi) => [kpi.id, kpi]));
+  return (
+    <section className="panel" aria-label="Value Ledger">
+      <div className="panel-heading">
+        <div><p className="eyebrow">VALOR GERADO</p><h2>Value Ledger <span>{entries.length}</span></h2></div>
+      </div>
+      <div className="ledger-list">
+        {entries.map((entry) => {
+          const source = entry.kpiId === null ? undefined : byId.get(entry.kpiId);
+          return (
+            <article className="ledger-entry" key={entry.id}>
+              <div className="ledger-amount">
+                <strong>{BRL.format(entry.amount)}</strong>
+                <span>{VALUE_TYPE_LABELS[entry.valueType] ?? entry.valueType}</span>
+              </div>
+              <div className="ledger-body">
+                <p className="ledger-period">
+                  {measurementPeriod({ value: null, periodStart: entry.periodStart, periodEnd: entry.periodEnd, measuredAt: null, confidence: null })}
+                  {entry.quantity !== null && <span> · {entry.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {source?.unit ? UNIT_SUFFIX[source.unit] ?? source.unit : "un."}</span>}
+                </p>
+                <p className="ledger-method">{entry.attributionMethod}</p>
+                {source ? (
+                  <p className="ledger-source">
+                    {source.name}: {measurementValue(source.baseline, source.unit)} → {measurementValue(source.outcome, source.unit)}
+                  </p>
+                ) : (
+                  // Sem inventar rótulo para o indicador que não está aqui: dizer
+                  // "sem KPI" seria falso, e nomear um id cru não explicaria nada.
+                  <p className="ledger-source ledger-source--absent">Indicador de origem em outro projeto deste Engagement</p>
+                )}
+                {entry.outcomeMeasuredAt && (
+                  <p className="ledger-measured">Outcome medido em {new Date(entry.outcomeMeasuredAt).toLocaleDateString("pt-BR", { dateStyle: "long" })}</p>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** O total do razão para a manchete, e a frase quando não há razão nenhum. */
+function valueLedgerTotal(entries: ValueLedgerEntryView[]): { value: string; note: string; positive: boolean } {
+  if (entries.length === 0) {
+    // Zero entradas **não é R$ 0**: é "ainda não há valor apurado no mandato". A
+    // manchete diz isso, e não um número que ninguém sustentaria.
+    return { value: "—", note: "Nenhum valor registrado ainda", positive: false };
+  }
+  const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+  const latest = entries.reduce((newest, entry) => (entry.periodEnd > newest ? entry.periodEnd : newest), entries[0].periodEnd);
+  return {
+    value: BRL.format(total),
+    note: `${entries.length} ${entries.length === 1 ? "entrada" : "entradas"} · até ${monthLabel(latest)}`,
+    positive: total >= 0,
+  };
 }
 
 function ResultsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {

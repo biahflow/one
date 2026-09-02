@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import Engine, select
@@ -763,6 +763,61 @@ def test_the_erasure_removes_the_contact_history_too(
             ).scalars().all()
             == []
         )
+
+
+@pytest.mark.integration
+def test_the_erasure_removes_the_value_ledger_of_the_engagement(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """A **quarta** exclusão escrita à mão (ADR 0085), e a armadilha é do Engagement.
+
+    O razão é escopado por mandato e não por projeto, e a linha ``engagement`` fica de
+    pé depois do apagamento — como a ``organization``. Então nem o CASCADE do projeto
+    nem o da organização o alcançam, e o que sobreviveria é quantia, período e o
+    **método de atribuição em prosa da origem**: dado do cliente por definição.
+
+    A asserção cobra também a **fronteira**: o razão do outro tenant continua lá. Sem
+    ela, um ``delete`` sem ``where`` passaria por apagamento bem-feito.
+    """
+    from portal_api.models import Engagement, ValueLedgerEntry
+
+    programas: dict[str, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for label in ("acme", "globex"):
+            programa = Engagement(
+                organization_id=tenants[f"{label}_org"],
+                name=f"Programa {label}",
+                slug=f"biahflow-engagement-{uuid.uuid4().hex[:8]}",
+            )
+            session.add(programa)
+            session.flush()
+            programas[label] = programa.id
+            session.add(
+                ValueLedgerEntry(
+                    organization_id=tenants[f"{label}_org"],
+                    engagement_id=programa.id,
+                    external_id=3,
+                    value_type="cost_saving",
+                    amount=48000,
+                    period_start=date(2026, 7, 1),
+                    period_end=date(2026, 7, 31),
+                    attribution_method="Diferença Baseline→Outcome do KPI 12",
+                )
+            )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.run_erasure(session, tenants["acme_org"])
+        session.commit()
+
+    assert outcome.removed["value_ledger_entry"] == 1
+    with Session(migrated_engine) as session:
+        sobrou = session.execute(
+            select(ValueLedgerEntry.organization_id).where(
+                ValueLedgerEntry.engagement_id.in_(programas.values())
+            )
+        ).scalars().all()
+    assert sobrou == [tenants["globex_org"]]
 
 
 @pytest.mark.integration

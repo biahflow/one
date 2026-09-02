@@ -273,6 +273,97 @@ class DigitalEmployeeOut(Out):
     kpi_value: str | None
     hours_saved_month: float | None
     roi_month: float | None
+    #: Os ``KPI.id`` do Pulse que este Digital Employee move (ADR 0085). **Aditivo**:
+    #: os quatro campos acima continuam vindo e continuam sendo exibidos, e nenhum
+    #: deles tem data de morte marcada. Lista vazia é "não referencia nenhum" —
+    #: nunca ``null``, para a tela não ter um terceiro caso a desenhar.
+    #:
+    #: São os ids **da origem**, os mesmos que ``KpiOut.id`` publica, para o
+    #: casamento entre as duas listas ser direto.
+    kpi_ids: list[int]
+
+
+class KpiMeasurementOut(Out):
+    """Uma leitura de KPI — Baseline, Outcome ou um ponto do acompanhamento.
+
+    Um modelo só para as três porque são a mesma coisa no Language Map §4: espécies
+    de ``Measurement``, distinguidas por ``kind``. Aqui o ``kind`` é a **posição** —
+    o campo em que a leitura aparece —, então repeti-lo dentro do objeto seria o
+    mesmo dado em dois lugares podendo divergir.
+
+    **``value`` nulo dentro de um objeto que existe é "a janela existe e ninguém
+    mediu ainda"**, e é outra coisa que o campo inteiro ausente ("não há Baseline
+    definida"). Nenhuma das duas é zero: a AC da issue #89 exige que lacuna de
+    medição apareça como lacuna.
+
+    As datas são ``str`` pela regra 1 do módulo — o produtor já entregou texto.
+    """
+
+    value: float | None
+    period_start: str
+    #: ``None`` é a janela ainda aberta; quem a fecha é a origem.
+    period_end: str | None
+    measured_at: str | None
+    #: A confiança da medição, como a origem a declara. ``None`` é "não declarada",
+    #: nunca zero — zero seria a origem dizendo que não confia no próprio número.
+    confidence: int | None
+
+
+class KpiOut(Out):
+    """Um indicador do projeto, com Baseline e Outcome comparáveis (ADR 0085).
+
+    O ``id`` é o **``external_id`` do Pulse**, e não o uuid local: é ele que
+    ``ValueLedgerEntryOut.kpi_id`` e ``DigitalEmployeeOut.kpi_ids`` carregam, e o
+    uuid é recriado a cada webhook — publicá-lo obrigaria a tela a traduzir três
+    listas que já falam a mesma língua.
+    """
+
+    id: int
+    name: str
+    definition: str | None
+    formula: str | None
+    #: A unidade. É o que torna Baseline e Outcome comparáveis lado a lado, que é o
+    #: invariante 11 do Language Map.
+    unit: str | None
+    #: ``up`` ou ``down`` — para que lado o indicador melhora. Sem ele a tela não sabe
+    #: se cair de 72 para 21 é ganho.
+    direction: str | None
+    data_source: str | None
+    cadence: str | None
+    target: float | None
+    #: ``None`` é "não há Baseline definida". Ver ``KpiMeasurementOut``.
+    baseline: KpiMeasurementOut | None
+    #: ``None`` é "ainda não medido". **Nunca vem preenchido com ``baseline`` nulo**:
+    #: é o invariante 11, garantido pelo produtor e conferido na ingestão.
+    outcome: KpiMeasurementOut | None
+    #: Sempre lista, nunca ``null`` — vazia é o estado comum.
+    monitoring: list[KpiMeasurementOut]
+
+
+class ValueLedgerEntryOut(Out):
+    """Uma entrada do Value Ledger do mandato (Language Map §2, ADR 0085).
+
+    É o **valor gerado**, e a §2 diz o que ele nunca é: "ROI projetado" nem "Case".
+    O que o separa de um número solto na tela é o par período + método de
+    atribuição — o invariante 12.
+
+    Sem moeda: tudo é BRL e o produtor não emite a coluna. Um ``currency`` aqui
+    seria campo que ninguém escreve e que a tela leria como se significasse algo.
+    """
+
+    id: int
+    value_type: str
+    amount: float
+    quantity: float | None
+    period_start: str
+    period_end: str
+    attribution_method: str
+    #: O KPI de origem, pelo id do Pulse. **Pode não casar com nenhum item de
+    #: ``kpis``**: a entrada é do mandato e o KPI pode viver num projeto irmão que
+    #: este cliente não alcança. Não casar é caso normal, e a tela mostra a entrada
+    #: sem o vínculo em vez de escondê-la.
+    kpi_id: int | None
+    outcome_measured_at: str | None
 
 
 class RoiOut(Out):
@@ -416,6 +507,14 @@ class DashboardOut(Out):
     health: ProjectHealthOut | None
     journey: JourneyOut
     digital_employees: list[DigitalEmployeeOut]
+    #: Os KPIs deste projeto (ADR 0085). **Sempre presente, vazia quando não há** —
+    #: "nada definido ainda" e "não sei" dizem coisas diferentes, e só a primeira a
+    #: tela sabe desenhar.
+    kpis: list[KpiOut]
+    #: O Value Ledger do **mandato**, não do projeto (ADR 0085). A mesma entrada
+    #: aparece no dashboard de todos os projetos do Engagement, porque é o programa
+    #: que gera o valor. Vazia quando o projeto ainda não tem programa.
+    value_ledger: list[ValueLedgerEntryOut]
     roi: RoiOut
     next_meeting: NextMeetingOut | None
     milestones: list[MilestoneOut]

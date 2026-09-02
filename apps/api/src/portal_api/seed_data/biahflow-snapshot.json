@@ -96,6 +96,68 @@
   "roi": { "revenue": 726000.0, "cost": 512000.0, "net": 214000.0, "roi": 1.42 },
   "next_meeting": { "id": 5, "title": "Comitê de projeto", "date": "2026-08-28" },
   "health": { "label": "No prazo", "level": "green" },
+  "kpis": [
+    {
+      "id": 12,
+      "name": "Horas de conciliação por mês",
+      "definition": "Horas do time contábil gastas conciliando contas a pagar.",
+      "formula": "Soma das horas apontadas no fechamento mensal.",
+      "unit": "hours",
+      "direction": "down",
+      "data_source": "Apontamento de horas do time contábil",
+      "cadence": "monthly",
+      "target": 20.0,
+      "baseline": {
+        "value": 72.0,
+        "period_start": "2026-03-01",
+        "period_end": "2026-03-31",
+        "measured_at": "2026-04-02T14:00:00-03:00",
+        "confidence": 80
+      },
+      "outcome": {
+        "value": 21.5,
+        "period_start": "2026-07-01",
+        "period_end": "2026-07-31",
+        "measured_at": "2026-08-02T11:00:00-03:00",
+        "confidence": 90
+      },
+      "monitoring": [
+        {
+          "value": 38.0,
+          "period_start": "2026-05-01",
+          "period_end": "2026-05-31",
+          "measured_at": "2026-06-02T10:00:00-03:00",
+          "confidence": 70
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Divergências reabertas",
+      "definition": "Conciliações que voltaram para revisão manual depois de fechadas.",
+      "formula": "",
+      "unit": "count",
+      "direction": "down",
+      "data_source": "Fila de exceções do ERP",
+      "cadence": "monthly",
+      "target": null,
+      "baseline": {
+        "value": 34.0,
+        "period_start": "2026-03-01",
+        "period_end": "2026-03-31",
+        "measured_at": "2026-04-02T14:00:00-03:00",
+        "confidence": 70
+      },
+      "outcome": {
+        "value": null,
+        "period_start": "2026-07-01",
+        "period_end": null,
+        "measured_at": null,
+        "confidence": null
+      },
+      "monitoring": []
+    }
+  ],
   "digital_employees": [
     {
       "id": 1,
@@ -106,7 +168,8 @@
       "kpi_label": "Conciliação",
       "kpi_value": "80%",
       "hours_saved_month": 120.0,
-      "roi_month": 14000.0
+      "roi_month": 14000.0,
+      "kpi_ids": [12, 15]
     },
     {
       "id": 2,
@@ -117,7 +180,8 @@
       "kpi_label": "Cobertura",
       "kpi_value": "",
       "hours_saved_month": null,
-      "roi_month": null
+      "roi_month": null,
+      "kpi_ids": []
     }
   ],
   "documents": [

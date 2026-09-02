@@ -105,7 +105,57 @@ export const DASHBOARD = {
       kpi_value: "80%",
       hours_saved_month: 120,
       roi_month: 14000,
+      // Aditivo (ADR 0085): os quatro campos legados acima continuam vindo, e a
+      // lista nova diz quais KPIs este funcionário move. Os dois ids estão em
+      // `kpis` abaixo — o caso "id que não casa com nenhum KPI local" é do Value
+      // Ledger, e é exercitado lá, porque só ele é escopado por mandato.
+      kpi_ids: [12, 15],
     },
+  ],
+  // Os KPIs do projeto, e os dois casos de nulidade que a issue #89 separa
+  // (ADR 0085): o `12` está medido dos dois lados; o `15` tem **janela sem
+  // número** no Outcome — "a janela existe e ninguém mediu ainda" —, que é
+  // exatamente o que não pode virar zero na tela.
+  kpis: [
+    {
+      id: 12,
+      name: "Horas de conciliação por mês",
+      definition: "Horas do time contábil gastas conciliando contas a pagar.",
+      formula: "Soma das horas apontadas no fechamento mensal.",
+      unit: "hours",
+      direction: "down",
+      data_source: "Apontamento de horas do time contábil",
+      cadence: "monthly",
+      target: 20.0,
+      baseline: { value: 72.0, period_start: "2026-03-01", period_end: "2026-03-31", measured_at: "2026-04-02T14:00:00-03:00", confidence: 80 },
+      outcome: { value: 21.5, period_start: "2026-07-01", period_end: "2026-07-31", measured_at: "2026-08-02T11:00:00-03:00", confidence: 90 },
+      monitoring: [
+        { value: 38.0, period_start: "2026-05-01", period_end: "2026-05-31", measured_at: "2026-06-02T10:00:00-03:00", confidence: 70 },
+      ],
+    },
+    {
+      id: 15,
+      name: "Divergências reabertas",
+      definition: "Conciliações que voltaram para revisão manual depois de fechadas.",
+      formula: null,
+      unit: "count",
+      direction: "down",
+      data_source: "Fila de exceções do ERP",
+      cadence: "monthly",
+      // Sem meta é `null`, nunca zero — zero seria a tela afirmando uma meta que
+      // ninguém combinou.
+      target: null,
+      baseline: { value: 34.0, period_start: "2026-03-01", period_end: "2026-03-31", measured_at: "2026-04-02T14:00:00-03:00", confidence: 70 },
+      outcome: { value: null, period_start: "2026-07-01", period_end: null, measured_at: null, confidence: null },
+      monitoring: [],
+    },
+  ],
+  // O razão do **mandato**, não do projeto (ADR 0085). A segunda entrada aponta
+  // para um KPI que não está em `kpis` acima: ele vive num projeto irmão do mesmo
+  // Engagement, e não casar é caso normal — a tela mostra a entrada sem o vínculo.
+  value_ledger: [
+    { id: 3, value_type: "cost_saving", amount: 48000.0, quantity: 606.0, period_start: "2026-07-01", period_end: "2026-07-31", attribution_method: "Diferença Baseline→Outcome do KPI 12 × custo-hora do time contábil", kpi_id: 12, outcome_measured_at: "2026-08-02T11:00:00-03:00" },
+    { id: 4, value_type: "revenue", amount: 12500.0, quantity: null, period_start: "2026-06-01", period_end: "2026-06-30", attribution_method: "Receita adicional atribuída ao atendimento fora do horário comercial", kpi_id: 41, outcome_measured_at: null },
   ],
   documents: [
     { title: "Plano de implantação v3.pdf", type: "PDF", author: "Biahflow", link: null, updated_at: "2026-08-03T12:00:00+00:00" },

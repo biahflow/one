@@ -91,10 +91,53 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
         "next_meeting": {"id": 5, "title": "Revisão de fase", "date": "2026-08-20"},
         "health": {"label": "No prazo", "level": "green"},
         "digital_employees": [
+            # `kpi_ids` é **aditivo** (ADR 0085): os quatro campos legados
+            # continuam vindo ao lado dele, e nenhum sai.
             {"id": 1, "name": "Agente Financeiro", "area": "Financeiro",
              "description": "Concilia contas.", "status": "active",
              "kpi_label": "Conciliação", "kpi_value": "80%",
-             "hours_saved_month": 120.0, "roi_month": 14000.0},
+             "hours_saved_month": 120.0, "roi_month": 14000.0,
+             "kpi_ids": [12, 15]},
+        ],
+        # Dois KPIs, e a diferença entre eles é a das **duas nulidades** (ADR 0085):
+        # o 12 está medido dos dois lados; o 15 tem janela de Outcome **sem número**,
+        # que é "existe e ninguém mediu ainda" e nunca zero.
+        "kpis": [
+            {"id": 12, "name": "Horas de conciliação", "definition": "Horas do time contábil.",
+             "formula": "Soma das horas apontadas", "unit": "hours", "direction": "down",
+             "data_source": "Apontamento de horas", "cadence": "monthly", "target": 20.0,
+             "baseline": {"value": 72.0, "period_start": "2026-03-01",
+                          "period_end": "2026-03-31",
+                          "measured_at": "2026-04-02T14:00:00-03:00", "confidence": 80},
+             "outcome": {"value": 21.5, "period_start": "2026-07-01",
+                         "period_end": "2026-07-31",
+                         "measured_at": "2026-08-02T11:00:00-03:00", "confidence": 90},
+             "monitoring": [
+                 {"value": 38.0, "period_start": "2026-05-01", "period_end": "2026-05-31",
+                  "measured_at": "2026-06-02T10:00:00-03:00", "confidence": 70},
+             ]},
+            {"id": 15, "name": "Divergências reabertas", "definition": "",
+             "formula": "", "unit": "count", "direction": "down",
+             "data_source": "Fila de exceções", "cadence": "monthly", "target": None,
+             "baseline": {"value": 34.0, "period_start": "2026-03-01",
+                          "period_end": "2026-03-31",
+                          "measured_at": "2026-04-02T14:00:00-03:00", "confidence": 70},
+             "outcome": {"value": None, "period_start": "2026-07-01", "period_end": None,
+                         "measured_at": None, "confidence": None},
+             "monitoring": []},
+        ],
+        # O razão é lido por **Engagement** e sai em fan-out no snapshot de todo
+        # projeto do mandato; a segunda entrada aponta para um KPI que pode não
+        # existir neste projeto, que é o caso normal descrito na ADR 0085.
+        "value_ledger": [
+            {"id": 3, "value_type": "cost_saving", "amount": 48000.0, "quantity": 606.0,
+             "period_start": "2026-07-01", "period_end": "2026-07-31",
+             "attribution_method": "Diferença Baseline→Outcome do KPI 12 × custo-hora",
+             "kpi_id": 12, "outcome_measured_at": "2026-08-02T11:00:00-03:00"},
+            {"id": 4, "value_type": "revenue", "amount": 12500.0, "quantity": None,
+             "period_start": "2026-06-01", "period_end": "2026-06-30",
+             "attribution_method": "Receita adicional do atendimento fora do horário",
+             "kpi_id": 41, "outcome_measured_at": None},
         ],
         "documents": [
             {"id": 41, "name": "Plano de implantação.pdf", "type": "PDF",

@@ -11,6 +11,8 @@ import DashboardClient, {
   type DecisionView,
   type EngagementView,
   type FreshnessView,
+  type KpiMeasurementView,
+  type KpiView,
   type MeetingView,
   type NotificationCenter,
   type Overview,
@@ -18,6 +20,7 @@ import DashboardClient, {
   type PortalUser,
   type ProjectDocument,
   type ProjectSummary,
+  type ValueLedgerEntryView,
 } from "./DashboardClient";
 
 // Portal status/milestone enums → rótulos PT usados na UI.
@@ -225,7 +228,10 @@ type ApiAcceptance = {
   created_at: string;
 };
 type ApiPhase = { name: string; description: string | null; state: string; target_date: string | null; canonical_stage: string | null; gate_decision: string | null; requires_gate: boolean; deliverables: ApiDeliverable[] };
-type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null };
+type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null; kpi_ids: number[] };
+type ApiKpiMeasurement = { value: number | null; period_start: string; period_end: string | null; measured_at: string | null; confidence: number | null };
+type ApiKpi = { id: number; name: string; definition: string | null; formula: string | null; unit: string | null; direction: string | null; data_source: string | null; cadence: string | null; target: number | null; baseline: ApiKpiMeasurement | null; outcome: ApiKpiMeasurement | null; monitoring: ApiKpiMeasurement[] };
+type ApiValueLedgerEntry = { id: number; value_type: string; amount: number; quantity: number | null; period_start: string; period_end: string; attribution_method: string; kpi_id: number | null; outcome_measured_at: string | null };
 type ApiMe = {
   email: string;
   full_name: string;
@@ -254,6 +260,24 @@ type ApiNotification = {
   read: boolean;
 };
 type ApiNotifications = { unread_count: number; items: ApiNotification[] };
+
+/**
+ * Uma leitura de KPI da API, ou `null` quando a API não mandou objeto nenhum.
+ *
+ * As duas nulidades da medição atravessam intactas (ADR 0085): o objeto ausente é
+ * "não definida", e `value: null` **dentro** de um objeto é "a janela existe e
+ * ninguém mediu ainda". Quem escreve as duas frases é a tela; aqui nada vira zero.
+ */
+function toMeasurement(reading: ApiKpiMeasurement | null | undefined): KpiMeasurementView | null {
+  if (!reading || typeof reading.period_start !== "string") return null;
+  return {
+    value: reading.value ?? null,
+    periodStart: reading.period_start,
+    periodEnd: reading.period_end ?? null,
+    measuredAt: reading.measured_at ?? null,
+    confidence: reading.confidence ?? null,
+  };
+}
 
 function toOverview(
   data: Record<string, unknown>,
@@ -357,6 +381,43 @@ function toOverview(
       kpiValue: employee.kpi_value,
       hoursSavedMonth: employee.hours_saved_month,
       roiMonth: employee.roi_month,
+      // Ids da origem, crus. `?? []` porque um Biahflow anterior à fatia não manda
+      // a chave, e ausência aqui é "não referencia nenhum".
+      kpiIds: employee.kpi_ids ?? [],
+    })),
+    // Os KPIs do projeto (ADR 0085). Tudo atravessa **como a API entrega**: nada
+    // aqui converte lacuna em zero, e é o requisito escrito da issue #89 — um
+    // `?? 0` em `value` ou em `target` faria a tela dizer "zero horas" sobre um
+    // indicador que ninguém mediu.
+    kpis: ((data.kpis as ApiKpi[]) ?? []).map<KpiView>((kpi) => ({
+      id: kpi.id,
+      name: kpi.name,
+      definition: kpi.definition,
+      formula: kpi.formula,
+      unit: kpi.unit,
+      direction: kpi.direction,
+      dataSource: kpi.data_source,
+      cadence: kpi.cadence,
+      target: kpi.target,
+      // `?? null` e nunca um objeto vazio: o campo ausente é "não há Baseline
+      // definida", e fabricar um objeto aqui apagaria a distinção que a API
+      // se deu ao trabalho de manter.
+      baseline: toMeasurement(kpi.baseline),
+      outcome: toMeasurement(kpi.outcome),
+      monitoring: (kpi.monitoring ?? [])
+        .map(toMeasurement)
+        .filter((reading): reading is KpiMeasurementView => reading !== null),
+    })),
+    valueLedger: ((data.value_ledger as ApiValueLedgerEntry[]) ?? []).map<ValueLedgerEntryView>((entry) => ({
+      id: entry.id,
+      valueType: entry.value_type,
+      amount: entry.amount,
+      quantity: entry.quantity,
+      periodStart: entry.period_start,
+      periodEnd: entry.period_end,
+      attributionMethod: entry.attribution_method,
+      kpiId: entry.kpi_id,
+      outcomeMeasuredAt: entry.outcome_measured_at,
     })),
     documents: ((data.documents as ApiDocument[]) ?? []).map<ProjectDocument>((document) => ({
       title: document.title,

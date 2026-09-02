@@ -948,6 +948,13 @@
           "journey": {
             "$ref": "#/components/schemas/JourneyOut"
           },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/KpiOut"
+            },
+            "title": "Kpis",
+            "type": "array"
+          },
           "measured": {
             "$ref": "#/components/schemas/ResultsOut"
           },
@@ -1039,6 +1046,13 @@
               }
             ],
             "title": "Synced At"
+          },
+          "value_ledger": {
+            "items": {
+              "$ref": "#/components/schemas/ValueLedgerEntryOut"
+            },
+            "title": "Value Ledger",
+            "type": "array"
           }
         },
         "required": [
@@ -1054,6 +1068,8 @@
           "health",
           "journey",
           "digital_employees",
+          "kpis",
+          "value_ledger",
           "roi",
           "next_meeting",
           "milestones",
@@ -1328,6 +1344,13 @@
             ],
             "title": "Hours Saved Month"
           },
+          "kpi_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Kpi Ids",
+            "type": "array"
+          },
           "kpi_label": {
             "anyOf": [
               {
@@ -1378,7 +1401,8 @@
           "kpi_label",
           "kpi_value",
           "hours_saved_month",
-          "roi_month"
+          "roi_month",
+          "kpi_ids"
         ],
         "title": "DigitalEmployeeOut",
         "type": "object"
@@ -2024,6 +2048,203 @@
         "title": "JourneyOut",
         "type": "object"
       },
+      "KpiMeasurementOut": {
+        "additionalProperties": false,
+        "description": "Uma leitura de KPI — Baseline, Outcome ou um ponto do acompanhamento.\n\nUm modelo só para as três porque são a mesma coisa no Language Map §4: espécies\nde ``Measurement``, distinguidas por ``kind``. Aqui o ``kind`` é a **posição** —\no campo em que a leitura aparece —, então repeti-lo dentro do objeto seria o\nmesmo dado em dois lugares podendo divergir.\n\n**``value`` nulo dentro de um objeto que existe é \"a janela existe e ninguém\nmediu ainda\"**, e é outra coisa que o campo inteiro ausente (\"não há Baseline\ndefinida\"). Nenhuma das duas é zero: a AC da issue #89 exige que lacuna de\nmedição apareça como lacuna.\n\nAs datas são ``str`` pela regra 1 do módulo — o produtor já entregou texto.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "measured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured At"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "period_start",
+          "period_end",
+          "measured_at",
+          "confidence"
+        ],
+        "title": "KpiMeasurementOut",
+        "type": "object"
+      },
+      "KpiOut": {
+        "additionalProperties": false,
+        "description": "Um indicador do projeto, com Baseline e Outcome comparáveis (ADR 0085).\n\nO ``id`` é o **``external_id`` do Pulse**, e não o uuid local: é ele que\n``ValueLedgerEntryOut.kpi_id`` e ``DigitalEmployeeOut.kpi_ids`` carregam, e o\nuuid é recriado a cada webhook — publicá-lo obrigaria a tela a traduzir três\nlistas que já falam a mesma língua.",
+        "properties": {
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiMeasurementOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cadence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cadence"
+          },
+          "data_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Source"
+          },
+          "definition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "monitoring": {
+            "items": {
+              "$ref": "#/components/schemas/KpiMeasurementOut"
+            },
+            "title": "Monitoring",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiMeasurementOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "definition",
+          "formula",
+          "unit",
+          "direction",
+          "data_source",
+          "cadence",
+          "target",
+          "baseline",
+          "outcome",
+          "monitoring"
+        ],
+        "title": "KpiOut",
+        "type": "object"
+      },
       "MeOut": {
         "additionalProperties": false,
         "description": "Quem é o chamador e o que ele alcança.\n\n``projects`` vazio com 200 é resposta válida: autenticar não é autorizar, e\no portal precisa poder dizer \"você ainda não tem projeto\" sem fingir que\nnão conhece a pessoa.",
@@ -2437,6 +2658,13 @@
           "journey": {
             "$ref": "#/components/schemas/JourneyOut"
           },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/KpiOut"
+            },
+            "title": "Kpis",
+            "type": "array"
+          },
           "measured": {
             "$ref": "#/components/schemas/ResultsOut"
           },
@@ -2543,6 +2771,13 @@
               }
             ],
             "title": "Synced At"
+          },
+          "value_ledger": {
+            "items": {
+              "$ref": "#/components/schemas/ValueLedgerEntryOut"
+            },
+            "title": "Value Ledger",
+            "type": "array"
           }
         },
         "required": [
@@ -2558,6 +2793,8 @@
           "health",
           "journey",
           "digital_employees",
+          "kpis",
+          "value_ledger",
           "roi",
           "next_meeting",
           "milestones",
@@ -3694,6 +3931,82 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValueLedgerEntryOut": {
+        "additionalProperties": false,
+        "description": "Uma entrada do Value Ledger do mandato (Language Map §2, ADR 0085).\n\nÉ o **valor gerado**, e a §2 diz o que ele nunca é: \"ROI projetado\" nem \"Case\".\nO que o separa de um número solto na tela é o par período + método de\natribuição — o invariante 12.\n\nSem moeda: tudo é BRL e o produtor não emite a coluna. Um ``currency`` aqui\nseria campo que ninguém escreve e que a tela leria como se significasse algo.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "attribution_method": {
+            "title": "Attribution Method",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kpi_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kpi Id"
+          },
+          "outcome_measured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Measured At"
+          },
+          "period_end": {
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "value_type": {
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "value_type",
+          "amount",
+          "quantity",
+          "period_start",
+          "period_end",
+          "attribution_method",
+          "kpi_id",
+          "outcome_measured_at"
+        ],
+        "title": "ValueLedgerEntryOut",
         "type": "object"
       },
       "WebhookReceivedOut": {

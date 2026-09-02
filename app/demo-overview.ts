@@ -81,8 +81,49 @@ export const DEMO_OVERVIEW: Overview = {
   nextMeeting: { title: "Comitê de projeto", detail: "28 ago" },
   health: { label: "No prazo", level: "green" },
   digitalEmployees: [
-    { name: "Agente Financeiro", area: "Financeiro", description: "Concilia contas a pagar e sinaliza divergências.", status: "active", kpiLabel: "Conciliação", kpiValue: "80%", hoursSavedMonth: 120, roiMonth: 14000 },
-    { name: "Agente de Atendimento", area: "Atendimento", description: "Responde dúvidas frequentes no WhatsApp.", status: "building", kpiLabel: "Cobertura", kpiValue: "—", hoursSavedMonth: null, roiMonth: null },
+    { name: "Agente Financeiro", area: "Financeiro", description: "Concilia contas a pagar e sinaliza divergências.", status: "active", kpiLabel: "Conciliação", kpiValue: "80%", hoursSavedMonth: 120, roiMonth: 14000, kpiIds: [12] },
+    { name: "Agente de Atendimento", area: "Atendimento", description: "Responde dúvidas frequentes no WhatsApp.", status: "building", kpiLabel: "Cobertura", kpiValue: "—", hoursSavedMonth: null, roiMonth: null, kpiIds: [] },
+  ],
+  // Dois KPIs, e o segundo é o caso que a issue #89 nomeia: **janela sem número**.
+  // O `value: null` dentro de um objeto que existe é "ninguém mediu ainda", e a
+  // casca de demonstração desenha a lacuna em vez de um zero — pela mesma razão de
+  // `measured: null` mais abaixo, e da data que a ADR 0026 removeu daqui.
+  kpis: [
+    {
+      id: 12,
+      name: "Horas de conciliação por mês",
+      definition: "Horas do time contábil gastas conciliando contas a pagar.",
+      formula: "Soma das horas apontadas no fechamento mensal.",
+      unit: "hours",
+      direction: "down",
+      dataSource: "Apontamento de horas do time contábil",
+      cadence: "monthly",
+      target: 20,
+      baseline: { value: 72, periodStart: "2026-03-01", periodEnd: "2026-03-31", measuredAt: "2026-04-02T14:00:00-03:00", confidence: 80 },
+      outcome: { value: 21.5, periodStart: "2026-07-01", periodEnd: "2026-07-31", measuredAt: "2026-08-02T11:00:00-03:00", confidence: 90 },
+      monitoring: [],
+    },
+    {
+      id: 15,
+      name: "Divergências reabertas",
+      definition: "Conciliações que voltaram para revisão manual depois de fechadas.",
+      formula: null,
+      unit: "count",
+      direction: "down",
+      dataSource: "Fila de exceções do ERP",
+      cadence: "monthly",
+      target: null,
+      baseline: { value: 34, periodStart: "2026-03-01", periodEnd: "2026-03-31", measuredAt: "2026-04-02T14:00:00-03:00", confidence: 70 },
+      outcome: { value: null, periodStart: "2026-07-01", periodEnd: null, measuredAt: null, confidence: null },
+      monitoring: [],
+    },
+  ],
+  valueLedger: [
+    { id: 3, valueType: "cost_saving", amount: 48000, quantity: 606, periodStart: "2026-07-01", periodEnd: "2026-07-31", attributionMethod: "Diferença Baseline→Outcome do KPI 12 × custo-hora do time contábil", kpiId: 12, outcomeMeasuredAt: "2026-08-02T11:00:00-03:00" },
+    // A entrada cujo KPI de origem **não está nesta lista**: ela vem do mandato e o
+    // indicador vive num projeto irmão. É caso normal, e a tela a mostra sem o
+    // vínculo em vez de escondê-la (ADR 0085).
+    { id: 4, valueType: "revenue", amount: 12500, quantity: null, periodStart: "2026-06-01", periodEnd: "2026-06-30", attributionMethod: "Receita adicional atribuída ao atendimento fora do horário comercial", kpiId: 41, outcomeMeasuredAt: null },
   ],
   documents: [
     { title: "Plano de implantação v3.pdf", type: "PDF", author: "Biahflow", link: null, updated: "há 1 dia" },

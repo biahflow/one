@@ -118,6 +118,7 @@
       "engagement": "O programa a que o projeto pertence: nome e estado, nada comercial (ADR 0079). O Engagement é o agrupamento, não o contrato.",
       "health": "A saúde do projeto em rótulo e nível — e nunca o Health Score nem os sinais internos que o produziram.",
       "journey": "A jornada de fases do projeto, projetada do Biahflow.",
+      "kpis": "Os KPIs do projeto do próprio cliente, com Baseline e Outcome comparáveis (Language Map §2, ADR 0085). Medição do projeto dele — nunca de outra Account, e nunca a série de outro mandato.",
       "measured": "O apurado dos eventos de agente do próprio projeto (ResultsOut), embutido para o SSR não fazer segunda ida à rede.",
       "meetings": "As reuniões do projeto, com o cliente presente. Nenhuma delas é de outra Account.",
       "milestones": "Os marcos do projeto e seus prazos.",
@@ -130,7 +131,8 @@
       "roi": "O ROI projetado que vem do Biahflow — do próprio projeto —, rotulado na tela como diferente do apurado.",
       "source_deleted_at": "Quando o projeto foi excluído na origem (ADR 0037). Porta diferente do arquivamento, coluna diferente.",
       "status": "Estado do projeto, projetado da origem.",
-      "synced_at": "Quando este lado gravou a projeção. Frescor do nosso lado, par do observed_at."
+      "synced_at": "Quando este lado gravou a projeção. Frescor do nosso lado, par do observed_at.",
+      "value_ledger": "O Value Ledger do mandato deste projeto (ADR 0085): valor gerado com período, espécie e método de atribuição. É valor entregue ao cliente, nunca preço, margem ou valor de pipeline."
     },
     "DecisionOut": {
       "decided_on": "A data da decisão publicada, como a origem a registrou.",
@@ -164,6 +166,7 @@
       "area": "Área do projeto em que o Digital Employee atua.",
       "description": "O que ele faz, em prosa da origem.",
       "hours_saved_month": "Horas poupadas por mês, do projeto do próprio cliente.",
+      "kpi_ids": "Os KPI.id da origem que este Digital Employee move (ADR 0085). São ids do projeto do próprio cliente, e servem só para casar com a lista `kpis` da mesma resposta.",
       "kpi_label": "Rótulo do indicador que ele move.",
       "kpi_value": "Valor do indicador dele. É medição do projeto do cliente — não é valor comercial nem de pipeline.",
       "name": "Nome do Digital Employee.",
@@ -192,6 +195,27 @@
     "JourneyOut": {
       "current_phase": "A fase corrente do projeto, projetada da origem.",
       "phases": "As fases da jornada do projeto, na ordem da origem."
+    },
+    "KpiMeasurementOut": {
+      "confidence": "A confiança que a origem declara na medição. `null` é 'não declarada' — nunca zero, que seria a origem desconfiando do próprio número.",
+      "measured_at": "Quando a origem mediu. É a idade do número, e o que impede a tela de mostrar uma leitura velha como se fosse de hoje.",
+      "period_end": "Fim da janela; `null` é a janela ainda aberta, e quem a fecha é a origem.",
+      "period_start": "Início da janela a que a medição se refere. É a janela que faz a medição existir, e é o que torna Baseline e Outcome comparáveis.",
+      "value": "O número medido do KPI do próprio projeto. `null` dentro de um objeto que existe é 'a janela existe e ninguém mediu ainda' — lacuna de medição, nunca zero."
+    },
+    "KpiOut": {
+      "baseline": "A medição de partida do indicador. `null` é 'não há Baseline definida', que é outra coisa que uma janela sem número.",
+      "cadence": "Com que frequência o indicador é medido, como a origem a declara.",
+      "data_source": "De onde o número sai, em prosa da origem. É a fonte do indicador do projeto do cliente, nunca credencial nem endereço de sistema.",
+      "definition": "O que o indicador significa, em prosa da origem. É a definição do KPI, não avaliação interna.",
+      "direction": "Para que lado o indicador melhora (`up`/`down`). Sem ele a tela não sabe se cair de 72 para 21 é ganho.",
+      "formula": "Como o indicador é calculado, em prosa da origem — o cliente conferindo a conta, no precedente do bloco 'Como calculamos' da ADR 0033.",
+      "id": "O KPI.id da origem, publicado no lugar do uuid local: é ele que value_ledger[].kpi_id e digital_employees[].kpi_ids carregam, e o uuid é recriado a cada webhook.",
+      "monitoring": "A série de acompanhamento do indicador, sempre lista. Vazia é o estado comum.",
+      "name": "O nome do indicador do projeto do próprio cliente.",
+      "outcome": "O resultado medido do indicador (Language Map §4). Nunca vem sem `baseline` do mesmo KPI — é o invariante 11, e é o que impede um número sem régua na tela do cliente.",
+      "target": "A meta do indicador, quando há uma. `null` é 'ninguém definiu meta', nunca zero.",
+      "unit": "A unidade do indicador. É o que torna Baseline e Outcome comparáveis lado a lado (invariante 11 do Language Map)."
     },
     "MeOut": {
       "email": "O e-mail do próprio chamador.",
@@ -249,6 +273,7 @@
       "engagement": "O mesmo campo de DashboardOut.engagement, na rota que o BFF chama de fato.",
       "health": "O mesmo campo de DashboardOut.health, na rota que o BFF chama de fato.",
       "journey": "O mesmo campo de DashboardOut.journey, na rota que o BFF chama de fato.",
+      "kpis": "O mesmo campo de DashboardOut.kpis, na rota que o BFF chama de fato.",
       "measured": "O mesmo campo de DashboardOut.measured, na rota que o BFF chama de fato.",
       "meetings": "O mesmo campo de DashboardOut.meetings, na rota que o BFF chama de fato.",
       "milestones": "O mesmo campo de DashboardOut.milestones, na rota que o BFF chama de fato.",
@@ -263,7 +288,8 @@
       "roi": "O mesmo campo de DashboardOut.roi, na rota que o BFF chama de fato.",
       "source_deleted_at": "O mesmo campo de DashboardOut.source_deleted_at, na rota que o BFF chama de fato.",
       "status": "O mesmo campo de DashboardOut.status, na rota que o BFF chama de fato.",
-      "synced_at": "O mesmo campo de DashboardOut.synced_at, na rota que o BFF chama de fato."
+      "synced_at": "O mesmo campo de DashboardOut.synced_at, na rota que o BFF chama de fato.",
+      "value_ledger": "O mesmo campo de DashboardOut.value_ledger, na rota que o BFF chama de fato."
     },
     "NextMeetingOut": {
       "date": "Quando é a próxima reunião do projeto.",
@@ -373,6 +399,17 @@
       "loc": "Onde no corpo enviado está o erro. Aponta o caminho, nunca o valor.",
       "msg": "O que está errado, em texto genérico do validador.",
       "type": "A espécie do erro de validação."
+    },
+    "ValueLedgerEntryOut": {
+      "amount": "A quantia gerada, em BRL. É o valor que o mandato do próprio cliente afirma ter produzido — não é preço de tabela, margem nem Service.price.",
+      "attribution_method": "Como aquele número foi atribuído a este mandato, em prosa da origem. É o invariante 12 do Language Map, e é o que separa um Value Ledger de um número solto na tela.",
+      "id": "O ValueLedgerEntry.id da origem — a identidade que sobrevive à substituição do sync, na forma do KpiOut.id.",
+      "kpi_id": "O KPI.id de origem que sustenta a entrada. Pode não casar com nenhum item de `kpis` desta resposta — a entrada é do mandato e o KPI pode viver num projeto irmão —, e não casar é caso normal.",
+      "outcome_measured_at": "Quando o Outcome que sustenta a entrada foi medido. `null` é ausência de afirmação da origem, nunca 'hoje'.",
+      "period_end": "Fim do período a que a entrada se refere.",
+      "period_start": "Início do período a que a entrada se refere. Sem período, valor gerado é afirmação sem janela.",
+      "quantity": "A quantidade física por trás da quantia (horas, chamados…), quando houver. `null` é 'a origem não a declarou'.",
+      "value_type": "A espécie de valor gerado (`cost_saving`, `revenue`…), como a origem a nomeia. É o valor entregue a esta Account, nunca receita de venda nem valor de proposta."
     }
   },
 

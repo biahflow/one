@@ -160,6 +160,8 @@ Seis fatias, na ordem do gap doc: Qualification antes de CommercialOpportunity �
 ### One (repo `one`)
 Renomear a superfície para o vocabulário canônico antes de crescer: `Client`→`Account`, introduzir Engagement como raiz de navegação, expor Finding/PainPoint/ImprovementOpportunity com o rótulo certo, e implementar o guard de visibilidade da seção 3.
 
+**Feito até 02/09/2026:** `Client`→`Account` e o Engagement como nível entre conta e projeto (ADR 0079); o guard de visibilidade da §3 (ADR 0082); o portão de vocabulário sobre os dois deployables (ADR 0083) e o rótulo de projeção do ROI (ADR 0084); e **KPI · Measurement · Baseline · Outcome · Value Ledger**, que passaram a atravessar o snapshot e a ser exibidos ao cliente (ADR 0085) — com os invariantes 11 e 12 da §6 verificados por teste pela primeira vez. Falta expor Finding/PainPoint/ImprovementOpportunity com o rótulo certo.
+
 ### Notion
 **Feito em 28/08/2026.** Ontology v1 corrigida (§3, §4, §9, §10, §13 — bump para v1.1); Sistema Operacional — PULSE com pipeline de dois trilhos, seis degraus vendáveis e "Opportunity" sempre qualificado; Metodologia FDE com o enum de Qualification, `finding.epistemic_status` e `gate_decision`; Material Comercial com os três resultados de Qualification. O que sobra daqui em diante é manutenção: termo novo entra primeiro nesta página.
 

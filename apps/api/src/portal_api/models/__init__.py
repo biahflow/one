@@ -35,6 +35,7 @@ from portal_api.models.drive import (
 from portal_api.models.engagement import Engagement, EngagementStatus
 from portal_api.models.financial import ProjectFinancialAssumption
 from portal_api.models.identity import MemberRole, Membership, User
+from portal_api.models.kpi import Kpi
 from portal_api.models.meeting import Meeting
 from portal_api.models.notification import Notification, NotificationKind
 from portal_api.models.onboarding import OnboardingStep, OnboardingStepName
@@ -67,6 +68,7 @@ from portal_api.models.retention import (
     ErasureState,
     OrganizationRetentionPolicy,
 )
+from portal_api.models.value_ledger import ValueLedgerEntry
 
 __all__ = [
     "DRIVE_READONLY_SCOPE",
@@ -104,6 +106,7 @@ __all__ = [
     "EngagementStatus",
     "ErasureState",
     "GateDecision",
+    "Kpi",
     "Meeting",
     "MemberRole",
     "Membership",
@@ -132,4 +135,5 @@ __all__ = [
     "ProjectPhase",
     "ProjectStatus",
     "User",
+    "ValueLedgerEntry",
 ]

@@ -42,6 +42,7 @@ from portal_api.models import (
     Organization,
     OrganizationRetentionPolicy,
     Project,
+    ValueLedgerEntry,
 )
 
 logger = logging.getLogger(__name__)
@@ -243,9 +244,18 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
       ele nasceu depois de a regra existir e foi escrito já contando com ela. É o dado
       da mesma classe que o funil — quantas vezes falamos com esta pessoa, e quando.
 
-      São as **três** exclusões escritas à mão, e a regra que as une é essa: o que é
-      escopado por organização não vem no CASCADE do projeto. Toda tabela nova com
+    - **Sai** o ``value_ledger_entry`` (ADR 0085), pela mesma regra e com a mesma
+      armadilha do funil: ele é escopado por **Engagement**, e a linha ``engagement``
+      fica de pé — o CASCADE do projeto não chega nele por caminho nenhum. O que
+      sobreviveria é quantia, período e o **método de atribuição em prosa da origem**,
+      que é dado do cliente por definição.
+
+      São as **quatro** exclusões escritas à mão, e a regra que as une é essa: o que
+      é escopado por organização não vem no CASCADE do projeto. Toda tabela nova com
       ``organization_id`` e sem ``project_id`` precisa de uma linha aqui.
+
+      O ``kpi`` **não** entra: ele é escopado por projeto e sai no CASCADE, como
+      ``milestone`` e ``digital_employee``.
     - **Fica** a linha ``organization``, porque ela é a âncora do tenant e o
       próximo snapshot do Biahflow a recriaria de qualquer forma — apagá-la só
       levaria junto o registro do próprio expurgo, que é o que torna o
@@ -289,4 +299,14 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
         delete(ContactEvent).where(ContactEvent.organization_id == organization_id)
     )
     outcome.removed["contact_event"] = int(contacts.rowcount or 0)
+
+    # O razão do mandato (ADR 0085): escopado por Engagement, e o `engagement` fica —
+    # então nem o CASCADE do projeto nem o da organização o alcançam. Ver o docstring.
+    ledger = session.execute(
+        delete(ValueLedgerEntry).where(
+            ValueLedgerEntry.organization_id == organization_id
+        )
+    )
+    outcome.removed["value_ledger_entry"] = int(ledger.rowcount or 0)
+
     return outcome

@@ -1833,6 +1833,48 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       bloqueia a #90 por documento e não por código, porque `Finding.reviewed_by` só é
       obrigatório para `fact` e um `hypothesis` nasce sem revisor. Fecha `biahflow/one#91`.
 
+- [x] **O Value Ledger que a manchete não era, e o KPI cuja lacuna não é zero**
+      *(ADR 0085)*: a ADR 0084 fechou a metade pequena da #89 e registrou esta como
+      **bloqueada no produtor** — `KPI`, `Measurement` e `ValueLedgerEntry` existiam no
+      Pulse e nenhum era emitido. O bloqueio caiu (`biahflow/pulse#105`, PR `pulse#107`
+      mergeado), e esta fatia constrói o que o contrato destravou. **A manchete da visão
+      geral deixou de ser a projeção da origem**: o card que imprimia o `roi` do snapshot
+      — número que o Biahflow afirma, sem período, sem método e sem nada que o cliente
+      possa conferir — virou **Valor gerado**, e abaixo dele entraram duas seções, KPIs com
+      Baseline e Outcome lado a lado e o Value Ledger entrada por entrada. O "ROI
+      projetado" da aba Resultados **fica**: ele já estava correto desde a ADR 0084, e a AC
+      pede que a manchete troque, não que o ROI suma do produto. **A decisão que carrega a
+      fatia é o escopo, e ele é do produtor:** `kpis[]` é lido por projeto e
+      `value_ledger[]` por **Engagement**, em fan-out — a mesma entrada sai no snapshot de
+      todo projeto do mandato. Guardar o razão por projeto duplicaria cada real uma vez por
+      irmão. Daí `value_ledger_entry` sem `project_id`, e uma policy que **nenhum dos dois
+      predicados existentes servia**: tenant puro vazaria o valor do programa vizinho da
+      mesma conta (o argumento da 0037), e o vínculo por `membership` da 0037 é largo pelo
+      outro lado, porque quem lê aqui é o dashboard de um projeto com tenant fixado. O
+      predicado é `EXISTS` do projeto corrente sobre o mandato da entrada, e a diferença foi
+      **medida**: com tenant puro no lugar, a asserção do programa vizinho reprova e as
+      outras duas passam. **O critério que mais poderia passar em silêncio é o (4)**, e ele
+      é uma frase: lacuna de medição aparece como lacuna, **nunca como zero**. O produtor
+      manda duas ausências distintas — `"baseline": null` (não definida) e
+      `{"value": null, …}` (a janela existe, ninguém mediu) —, e um `?? 0` no BFF, um
+      `NOT NULL DEFAULT 0` na coluna ou um `float(value or 0)` na projeção faria a tela
+      afirmar "0 horas" sobre indicador que ninguém mediu, que é o `answerFor()` da ADR 0021
+      por outro caminho. A regra que preserva as duas sem coluna extra: **o objeto existe
+      sse há janela**. Os invariantes 11 e 12 do Language Map ganharam teste pela primeira
+      vez, e a recusa deles é **assimétrica** — Outcome sem Baseline derruba só o Outcome
+      (o KPI continua na tela), entrada sem método de atribuição derruba a linha inteira,
+      porque quantia sem a conta que a atribui é o número solto que a §5 bane. *De quebra,
+      a guarda de SSR mudou de recorte:* `doesNotMatch(html, /Outcome/)` provava que a
+      decisão de gate não se chama Outcome, e funcionava porque **`Outcome` não tinha
+      produtor neste repositório** — agora tem, legitimamente, na mesma página; a asserção
+      passou a recortar o bloco `journey-gate`, com uma segunda provando que o recorte não é
+      vazio. **Fica aberto:** a #90 inteira segue bloqueada em `biahflow/pulse#106` com a
+      ressalva de documento da ADR 0084; `KPI.owner` e `Measurement.source_evidence` não
+      atravessam por decisão do contrato; não há `currency` porque tudo é BRL e o produtor
+      não emite a coluna; e `hours_saved_month`/`roi_month` continuam sendo projeção da
+      origem ao lado de KPI medido no mesmo card — rotulados, mas sem separação visual, o
+      que é decisão de desenho e não de dado. Fecha a metade grande de `biahflow/one#89`.
+
 - [x] **O atalho de tela que o tile ainda não vestia** *(29/08/2026, mergeada em
       01/09)*: a ADR 0069 aprovou o tile para as três superfícies fora da tela do
       produto — aba, atalho de tela e cartão de compartilhamento — e entregou duas:

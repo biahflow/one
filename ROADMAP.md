@@ -1649,8 +1649,13 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       imperativo. O `destroy` do job antigo dependia de `module "trabalhos"` passar a
       repassar `protegido` por entrada do mapa (antes sempre `true`), ajuste de módulo que
       saiu em fatia própria e **foi mergeado no PR #78 (27/08/2026)** — a ADR 0075 registra
-      a emenda. **Fica aberto:** apenas os três `apply`s (criar o novo, importar e destruir
-      o antigo) contra `biahflow-hml`, gate humano de operação, não executados aqui.
+      a emenda. *Retificado em 02/09/2026: dos três `apply`s que ficavam abertos, **dois
+      perderam o objeto**. Em 31/08 o job antigo foi apagado por caminho imperativo, junto do
+      ambiente HML do Pulse inteiro, num desligamento temporário — então não há o que importar
+      nem o que destruir, e não voltará a haver, porque o job nunca esteve na configuração e
+      nenhum `apply` o recria. Sobra o Passo 0, que não é tarefa: `pulse-createsuperuser` já
+      está declarado e nasce no `apply` que recriar o ambiente. A ADR traz a medição e o que
+      ela deixou aberto sobre o state.*
 
 - [x] **O worktree isola o git, não o estado externo** *(ADR 0078)*: quatro tarefas em paralelo
       (`#71`–`#74`) isolaram git perfeitamente e colidiram no **Postgres local compartilhado** —

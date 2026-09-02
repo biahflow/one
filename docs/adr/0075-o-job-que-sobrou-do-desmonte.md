@@ -94,6 +94,36 @@ ADR 0070 não é revertido por este job.
 
 ## O caminho declarado (procedimento, não aplicado)
 
+> **Retificação (02/09/2026): os Passos 1 e 2 abaixo perderam o objeto, e ficam como
+> registro em vez de instrução.** Em **31/08/2026 18:06**, `daniel@biahflow.ai` apagou
+> `cockpit-createsuperuser` por caminho imperativo, junto do ambiente HML do Pulse inteiro —
+> `pulse-api`, `pulse-web`, `pulse-check`, `pulse-migrate` e `pulse-scheduler` saíram no
+> mesmo minuto, num desligamento temporário. Conferido em 02/09 por descrição direta (os
+> cinco respondem `Cannot find`) e no log de auditoria, que separa os dois eventos com
+> clareza: o desmonte dos cinco `cockpit-*` em 25/08 16:01 traz
+> `hml-infra@biahflow-hml.iam.gserviceaccount.com`, o CI aplicando Terraform, e o de 31/08
+> traz uma pessoa.
+>
+> **O efeito sobre esta ADR é assimétrico, e é o que importa registrar.** O Passo 0 segue
+> válido: `pulse-createsuperuser` está declarado em `local.trabalhos` e nasce no `apply` que
+> recriar o ambiente, como qualquer outro recurso da configuração. Os Passos 1 e 2 **não
+> têm mais como ser executados**: não há o que importar nem o que destruir. E não voltarão a
+> ter — o job antigo nunca esteve na configuração, que é a premissa desta ADR inteira, então
+> nenhum `apply` futuro o recria. O critério de aceite (4) da Issue `biahflow/one#58`
+> (*"`gcloud run jobs list` não devolve mais nada com prefixo `cockpit-`"*) está satisfeito
+> em definitivo, **pelo caminho que aquela Issue pôs fora de escopo**.
+>
+> Fica dito, porque um documento que manda importar um recurso inexistente é a classe de
+> defeito que este repositório persegue desde a ADR 0028: instrução que aponta para algo que
+> não existe. O procedimento abaixo continua valendo como **forma** — é como se adota e
+> destrói um recurso derivado, e o próximo que sobrar de um desmonte será tratado assim.
+>
+> **O que a medição deixou aberto, e não é desta ADR:** o state
+> (`ambientes/hml-biahflow/default.tfstate`, serial 24, escrito em 25/08 16:01) continua
+> declarando os sete recursos como existentes. O primeiro `plan` depois da volta do ambiente
+> vai propor recriá-los, e isso é o comportamento correto — o registro existe para que o
+> tamanho daquele plano não seja lido como acidente.
+
 `cockpit-createsuperuser` está fora do state; `module "trabalhos"` (`main.tf`) é `for_each`
 sobre `local.trabalhos`, e `modulos/job` nasce com `deletion_protection = true`. Logo, tirar
 o job antigo do ambiente por caminho declarado exige **adotar e então destruir**, em

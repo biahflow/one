@@ -45,7 +45,7 @@ dizendo ao cliente que descobrimos algo que ainda estamos supondo.
 
 ### A divergência que este repositório tinha escrita, e que o contrato refutou
 
-A [ADR 0082](0082-o-que-o-one-nunca-expoe-vira-regra-e-a-regra-nega-por-omissao.md) criou
+A [ADR 0082](0082-o-que-o-one-nunca-expoe-e-a-negacao-por-omissao.md) criou
 dois blocos em `docs/contracts/one-visibility.json` **antecipando** esta issue:
 
 ```json

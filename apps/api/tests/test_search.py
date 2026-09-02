@@ -29,14 +29,21 @@ from portal_api.models import (
     DocumentChunk,
     DocumentIngestState,
     DocumentSource,
+    EpistemicStatus,
+    Finding,
+    ImprovementOpportunity,
     MemberRole,
     Meeting,
     Membership,
     Milestone,
     Organization,
+    PainPoint,
     PendingItem,
+    Process,
+    ProcessStep,
     Project,
     ProjectStatus,
+    SolutionHypothesis,
     User,
 )
 from portal_api.principal import Principal
@@ -51,6 +58,24 @@ client = TestClient(app)
 #: para não casar com nada do read model semeado — se ele aparecer para o
 #: cliente errado, é vazamento e não coincidência.
 FOREIGN_TERM = "zanzibar"
+
+#: O irmão do anterior para o **Discovery**, e ele é uma constante própria em vez
+#: de um segundo uso do de cima: o Discovery é escopado pela **conta** e não pelo
+#: projeto (ADR 0086), então o que ele prova é outra coisa — e as asserções que já
+#: afirmam ``[hit["kind"] …] == ["chunk"]`` para o ``FOREIGN_TERM`` continuariam
+#: certas por acidente se as duas espécies casassem com o mesmo termo.
+FOREIGN_DISCOVERY_TERM = "tombuctu"
+
+#: Os ids **da origem** que a fixture semeia no Discovery. São eles que a tela
+#: publica como identidade e que a âncora carrega (ADR 0087) — daí estarem
+#: nomeados aqui em vez de espalhados pelas asserções.
+PROCESS_ID = 301
+STEP_ID = 3101
+FINDING_ID = 401
+OPEN_FINDING_ID = 402
+PAIN_POINT_ID = 501
+IMPROVEMENT_OPPORTUNITY_ID = 601
+SOLUTION_HYPOTHESIS_ID = 701
 
 
 @dataclass(frozen=True)
@@ -136,6 +161,8 @@ def _populate(session: Session, tag: str, *, name: str, foreign: bool) -> Side:
         )
     )
 
+    _populate_discovery(session, organization.id, foreign=foreign)
+
     if not foreign:
         session.add(
             Meeting(
@@ -169,6 +196,105 @@ def _populate(session: Session, tag: str, *, name: str, foreign: bool) -> Side:
         document_id=document.id,
         actor=Actor(person.external_subject or "", person.email, person.full_name),
     )
+
+
+def _populate_discovery(
+    session: Session, organization_id: uuid.UUID, *, foreign: bool
+) -> None:
+    """As quatro listas do Discovery da **conta**, na mesma fixture (ADR 0087).
+
+    Aqui e não num mundo paralelo: o que a busca do Discovery precisa provar é
+    isolamento, e isolamento se prova com **dois** tenants semeados pelo mesmo
+    caminho. Um segundo fixture teria de recriar organização, projeto, pessoa e
+    membership para chegar ao mesmo lugar — e a divergência entre os dois mundos
+    seria a primeira coisa a passar despercebida.
+
+    O lado alheio recebe um achado com o ``FOREIGN_DISCOVERY_TERM`` e nada mais: é
+    o bastante para o par "o vizinho não acha / o dono acha", e o Discovery é da
+    conta, então o vazamento que interessa é o de organização.
+    """
+    if foreign:
+        session.add(
+            Finding(
+                organization_id=organization_id,
+                external_id=FINDING_ID,
+                statement=f"O fechamento de {FOREIGN_DISCOVERY_TERM} trava na alfândega.",
+                epistemic_status=EpistemicStatus.fact,
+            )
+        )
+        session.flush()
+        return
+
+    process = Process(
+        organization_id=organization_id,
+        external_id=PROCESS_ID,
+        name="Fechamento contábil",
+        position=0,
+    )
+    session.add(process)
+    session.flush()
+    session.add(
+        ProcessStep(
+            organization_id=organization_id,
+            process_id=process.id,
+            external_id=STEP_ID,
+            position=0,
+            name="Conferir os lançamentos",
+            pessoas="Time do financeiro",
+            sistema="ERP",
+            # Casa com o **nome do processo** de propósito: é o par que prova o
+            # dedupe — pai e filho casando produzem uma linha, não duas.
+            dados="Razão contábil",
+            # A coluna pela qual o teste procura o processo a partir do filho: é
+            # onde mora a frase que alguém realmente digita.
+            erro="Duplicidade de nota",
+        )
+    )
+    session.add(
+        Finding(
+            organization_id=organization_id,
+            external_id=FINDING_ID,
+            statement="A conferência é feita duas vezes pelo mesmo analista.",
+            epistemic_status=EpistemicStatus.hypothesis,
+        )
+    )
+    session.add(
+        Finding(
+            organization_id=organization_id,
+            external_id=OPEN_FINDING_ID,
+            statement="Não se sabe quantos analistas revisam o mesmo lote.",
+            epistemic_status=EpistemicStatus.unknown,
+        )
+    )
+    session.add(
+        PainPoint(
+            organization_id=organization_id,
+            external_id=PAIN_POINT_ID,
+            title="Retrabalho na conferência",
+            description="Gargalo no encerramento do mês.",
+            status="confirmed",
+        )
+    )
+    opportunity = ImprovementOpportunity(
+        organization_id=organization_id,
+        external_id=IMPROVEMENT_OPPORTUNITY_ID,
+        title="Automatizar a conciliação",
+        desired_change="Conferir por regra, com exceção para uma pessoa.",
+        status="backlog",
+    )
+    session.add(opportunity)
+    session.flush()
+    session.add(
+        SolutionHypothesis(
+            organization_id=organization_id,
+            improvement_opportunity_id=opportunity.id,
+            external_id=SOLUTION_HYPOTHESIS_ID,
+            statement="Um Funcionário Digital concilia por regra.",
+            intervention="Fila de excedente no ERP",
+            status="proposed",
+        )
+    )
+    session.flush()
 
 
 @pytest.fixture
@@ -256,6 +382,23 @@ def test_the_hit_carries_the_tab_it_belongs_to(world: World, authenticated) -> N
     assert _search("kickoff")[0]["tab"] == "Reuniões"
 
 
+def test_the_meeting_hit_says_realizada_and_not_held(
+    world: World, authenticated
+) -> None:
+    """O defeito anterior que a ADR 0087 achou: o mesmo valor com dois nomes.
+
+    A busca mandava o ``status`` cru da origem — ``held`` — e a aba Reuniões desenha
+    "Realizada", traduzida pelo BFF. O cliente lia um código em inglês ou uma palavra
+    em português conforme a **porta** por onde chegasse na mesma reunião, e nada
+    ficava vermelho: o campo tem escritor dos dois lados, e os dois discordavam.
+    """
+    authenticated(world.mine.actor)
+
+    reunião = _search("kickoff")[0]
+    assert reunião["kind"] == "meeting"
+    assert reunião["detail"] == "Realizada"
+
+
 def test_the_search_folds_accents_and_case(world: World, authenticated) -> None:
     """"reuniao" acha "Reunião", e "MIGRAÇÃO" acha "Migração".
 
@@ -297,6 +440,173 @@ def test_the_document_text_is_found_without_its_accents_too(
     authenticated(world.mine.actor)
 
     assert [hit["kind"] for hit in _search("rescisao")] == ["chunk"]
+
+
+# --- o Discovery, que a aba mostra e a busca não alcançava (ADR 0087) --------
+
+
+def test_each_discovery_list_is_reachable_by_a_term_only_it_uses(
+    world: World, authenticated
+) -> None:
+    """As quatro listas da aba, uma a uma.
+
+    A regra da ADR 0024 §5 é que entra na busca o que alguma aba mostra, e a ADR
+    0086 acrescentou quatro listas à tela sem que a busca as alcançasse. Cada termo
+    aqui existe numa lista só, então o hit não pode vir por acaso de outra.
+    """
+    authenticated(world.mine.actor)
+
+    assert _kinds(_search("contábil")) == {"process"}
+    assert _kinds(_search("gargalo")) == {"pain_point"}
+    assert _kinds(_search("conciliação")) == {"improvement_opportunity"}
+
+    achados = _search("analista")
+    assert _kinds(achados) == {"finding"}
+    assert len(achados) == 2, "a hipótese e a pergunta em aberto, as duas"
+
+
+def test_the_process_is_found_by_a_column_of_its_step_and_the_hit_is_the_process(
+    world: World, authenticated
+) -> None:
+    """Casa no filho, o hit é do pai — *"a âncora é do objeto, não do fato"*.
+
+    "Duplicidade de nota" está numa coluna de ``ProcessStep`` e em lugar nenhum
+    além dela. O hit é do **processo**, porque é a linha que a aba desenha; a etapa
+    é uma linha da tabela dentro dele, e o ``detail`` diz qual foi — sem isso o
+    cliente veria um processo na lista sem ter como saber por que ele apareceu.
+    """
+    authenticated(world.mine.actor)
+
+    hits = _search("duplicidade")
+    assert [hit["kind"] for hit in hits] == ["process"]
+    assert hits[0]["title"] == "Fechamento contábil"
+    assert hits[0]["detail"] == "Conferir os lançamentos"
+    assert hits[0]["tab"] == "Discovery"
+
+
+def test_a_process_whose_name_and_step_both_match_is_a_single_row(
+    world: World, authenticated
+) -> None:
+    """Um casamento no pai **e** no filho não vira duas linhas iguais.
+
+    "contábil" está no nome do processo e na coluna ``dados`` da etapa. Sem o
+    dedupe, a lista mostraria o mesmo processo duas vezes com âncoras idênticas — e
+    o teto por espécie passaria a ser gasto por duplicata.
+
+    O nome ganha, e o ``detail`` fica vazio: quando o casamento é do próprio
+    processo não há etapa a nomear.
+    """
+    authenticated(world.mine.actor)
+
+    hits = _search("contábil")
+    assert len(hits) == 1
+    assert hits[0]["detail"] == ""
+
+
+def test_the_improvement_opportunity_is_found_by_its_solution_hypothesis(
+    world: World, authenticated
+) -> None:
+    """O irmão do processo, um nível abaixo: a hipótese vem aninhada no pai.
+
+    "excedente" só existe na ``intervention`` de uma ``SolutionHypothesis``, que a
+    aba desenha debaixo da oportunidade — e é a oportunidade que tem linha.
+    """
+    authenticated(world.mine.actor)
+
+    hits = _search("excedente")
+    assert [hit["kind"] for hit in hits] == ["improvement_opportunity"]
+    assert hits[0]["title"] == "Automatizar a conciliação"
+
+
+def test_no_finding_reaches_the_client_without_its_epistemic_label(
+    world: World, authenticated
+) -> None:
+    """A regra 1 da §3 do Language Map, na porta que a ADR 0086 não olhou.
+
+    Um ``hypothesis`` aparece **rotulado** como hipótese ou não aparece, nunca como
+    fato — e um resultado de busca com o ``statement`` cru é uma afirmação sem
+    rótulo, que é a leitura de fato por omissão. O rótulo viaja no ``detail``, que é
+    o que a tela renderiza abaixo do título.
+
+    A lacuna entra junto e rotulada: um levantamento que só mostrasse o que ficou
+    sabido esconderia do cliente o que ainda não se sabe.
+    """
+    authenticated(world.mine.actor)
+
+    rotulos = {hit["title"]: hit["detail"] for hit in _search("analista")}
+    assert rotulos == {
+        "A conferência é feita duas vezes pelo mesmo analista.": "Hipótese",
+        "Não se sabe quantos analistas revisam o mesmo lote.": "Pergunta em aberto",
+    }
+
+
+def test_the_search_never_shows_more_of_a_row_than_the_tab_does(
+    world: World, authenticated
+) -> None:
+    """A dor e a oportunidade saem **sem** ``detail``, e isso é decisão medida.
+
+    O candidato óbvio era o ``status``, e ele não serve por duas razões que se
+    somam: ele guarda o código cru da origem (``confirmed``, ``backlog``), e **nenhum
+    bloco da aba o desenha** — a dor mostra título, impacto, descrição e achados; a
+    oportunidade mostra título e Opportunity Score. Publicá-lo aqui faria a busca
+    mostrar *mais* do que a aba, que é a ADR 0024 §5 ao contrário, e mostrá-lo em
+    inglês numa tela cujo texto visível é PT-BR.
+
+    O par que dá sentido a esta asserção é o ``detail`` do processo logo acima: lá
+    ele existe porque a etapa que casou tem **nome** e a aba a desenha. A regra não é
+    "não mande detalhe", é "não mande o que a aba não mostra".
+    """
+    authenticated(world.mine.actor)
+
+    assert _search("gargalo")[0]["detail"] == ""
+    assert _search("conciliação")[0]["detail"] == ""
+    assert "confirmed" not in str(_search("gargalo"))
+    assert "backlog" not in str(_search("conciliação"))
+
+
+def test_the_discovery_hit_anchors_by_the_source_id_and_not_by_the_label(
+    world: World, authenticated
+) -> None:
+    """A bifurcação da âncora, afirmada inteira (ADR 0087).
+
+    As outras cinco espécies ancoram por ``<namespace>:<título>`` e continuam
+    assim; as quatro do Discovery ancoram pelo **id da origem**, que é o que a tela
+    publica como identidade e usa como chave de lista. Ancorar o ``Finding`` por
+    texto seria ancorar por um parágrafo — ele não tem título.
+    """
+    authenticated(world.mine.actor)
+
+    assert _search("contábil")[0]["item_anchor"] == f"process:{PROCESS_ID}"
+    assert _search("gargalo")[0]["item_anchor"] == f"pain_point:{PAIN_POINT_ID}"
+    assert (
+        _search("conciliação")[0]["item_anchor"]
+        == f"improvement_opportunity:{IMPROVEMENT_OPPORTUNITY_ID}"
+    )
+
+    achados = {hit["title"]: hit["item_anchor"] for hit in _search("analista")}
+    assert achados["A conferência é feita duas vezes pelo mesmo analista."] == (
+        f"finding:{FINDING_ID}"
+    )
+
+    # E o rótulo continua sendo a metade da direita nas espécies de sempre.
+    assert _search("kickoff")[0]["item_anchor"] == "meeting:Reunião de Kickoff"
+
+
+def test_a_discovery_term_only_the_other_account_uses_finds_nothing(
+    world: World, authenticated
+) -> None:
+    """O critério de aceite da Fase 1 aplicado ao escopo de **conta**.
+
+    O Discovery não é escopado por projeto: a lista inteira da conta chega em
+    fan-out no snapshot de todo projeto dela (ADR 0086). O que impede o hit é o par
+    de barreiras — filtro do repositório e RLS —, e o mesmo termo achado pelo dono é
+    o que torna o vazio significativo em vez de acidental.
+    """
+    authenticated(world.mine.actor)
+    assert _search(FOREIGN_DISCOVERY_TERM) == []
+
+    authenticated(world.theirs.actor)
+    assert [hit["kind"] for hit in _search(FOREIGN_DISCOVERY_TERM)] == ["finding"]
 
 
 # --- o projeto que a tela está mostrando (ADR 0059) ----------------------
@@ -425,6 +735,32 @@ def test_the_database_refuses_even_when_the_app_filter_points_elsewhere(
     )
 
     assert search.search_project(rls_session, forged, FOREIGN_TERM) == []
+
+
+def test_the_database_refuses_the_discovery_of_another_account(
+    world: World, rls_session: Session, bind_context
+) -> None:
+    """A segunda barreira, sozinha, sobre as tabelas que a fatia acrescentou.
+
+    Vale por si e não é cópia da de cima: lá o que a RLS protege é escopado por
+    **projeto**, e aqui por **conta** — as seis tabelas do Discovery não têm
+    ``project_id``, e as duas de ligação não têm chave de tenant nenhuma (a policy
+    as alcança pelo pai). Com o contexto fixado numa conta e um ``TenantContext``
+    forjado apontando para a outra, o filtro da aplicação está do lado errado de
+    propósito e as policies devolvem zero linhas assim mesmo.
+    """
+    bind_context(
+        subject=world.mine.actor.subject,
+        email=world.mine.actor.email,
+        organization_id=world.mine.organization_id,
+        project_id=world.mine.project_id,
+    )
+    forged = TenantContext(
+        organization_id=world.theirs.organization_id,
+        project_id=world.theirs.project_id,
+    )
+
+    assert search.search_project(rls_session, forged, FOREIGN_DISCOVERY_TERM) == []
 
 
 def test_a_term_too_short_finds_nothing_and_is_not_an_error(
@@ -618,6 +954,70 @@ def test_the_result_is_capped_per_kind(
     documents = [hit for hit in results if hit["kind"] == "document"]
     assert len(documents) == search.PER_KIND_LIMIT
     assert len(results) <= search.TOTAL_LIMIT
+
+
+def test_the_document_excerpt_survives_a_screenful_of_read_model_rows(
+    world: World, authenticated, migrated_engine: Engine
+) -> None:
+    """O defeito que a fatia agravaria, virado asserção (ADR 0087).
+
+    Vinte linhas de read model casando **já** enchiam as vinte vagas antes desta
+    fatia, e os trechos entram por último: o corte por ordem de inserção os
+    derrubava inteiros. Com nove espécies o silêncio deles seria o caso comum — e os
+    trechos são o que a ADR 0024 §4 diz fazer a promessa valer, porque a pergunta
+    que alguém faz de verdade é onde está a cláusula de rescisão.
+
+    O termo casa nas quatro espécies de linha **e** dentro do documento, que é a
+    única forma de a disputa acontecer numa busca só.
+    """
+    authenticated(world.mine.actor)
+    with Session(migrated_engine) as session:
+        for index in range(search.PER_KIND_LIMIT):
+            session.add(
+                Document(
+                    organization_id=world.mine.organization_id,
+                    project_id=world.mine.project_id,
+                    title=f"Rescisão anexo {index}",
+                    source=DocumentSource.upload,
+                    scan_state=ScanState.clean,
+                )
+            )
+            session.add(
+                Meeting(
+                    organization_id=world.mine.organization_id,
+                    project_id=world.mine.project_id,
+                    title=f"Rescisão em pauta {index}",
+                    status="held",
+                )
+            )
+            session.add(
+                PendingItem(
+                    organization_id=world.mine.organization_id,
+                    project_id=world.mine.project_id,
+                    title=f"Revisar a rescisão {index}",
+                )
+            )
+            session.add(
+                Milestone(
+                    organization_id=world.mine.organization_id,
+                    project_id=world.mine.project_id,
+                    title=f"Rescisão assinada {index}",
+                    position=index,
+                )
+            )
+        session.commit()
+
+    results = _search("rescisão")
+    assert len(results) <= search.TOTAL_LIMIT
+    kinds = [hit["kind"] for hit in results]
+
+    assert "chunk" in kinds, (
+        "vinte linhas de read model derrubaram os trechos: o corte voltou a ser por"
+        " ordem de inserção, e a busca virou uma lista de títulos"
+    )
+    # E nenhuma das outras foi zerada para isso acontecer: o rodízio reparte, não
+    # troca uma espécie por outra.
+    assert {"document", "meeting", "pending", "milestone"} <= set(kinds)
 
 
 def test_the_excerpt_shows_the_neighbourhood_with_its_accents(world: World) -> None:

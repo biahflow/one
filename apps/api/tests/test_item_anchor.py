@@ -33,7 +33,13 @@ _SOURCE_ROOT = _REPO_ROOT / "apps" / "api" / "src" / "portal_api"
 _DASHBOARD = _REPO_ROOT / "app" / "DashboardClient.tsx"
 
 #: `data-item={`milestone:${item.title}`}` — o que interessa é o prefixo.
-_DATA_ITEM = re.compile(r"data-item=\{`([a-z]+):")
+#:
+#: ``[a-z_]+`` e não ``[a-z]+`` desde a ADR 0087: os espaços de nomes são
+#: identificadores de código e dois deles são ``snake_case`` (``pain_point``,
+#: ``improvement_opportunity``). Com o casador antigo o ``_`` fazia a expressão
+#: **não casar de todo** — o namespace sumia do conjunto do TSX e a guarda de
+#: igualdade acusaria "só no Python" um atributo que está escrito ali.
+_DATA_ITEM = re.compile(r"data-item=\{`([a-z_]+):")
 #: Início de uma função de topo do componente, que é a unidade de recorte do TSX.
 _FUNCTION = re.compile(r"^(?:export default )?function (\w+)\s*\(", re.MULTILINE)
 #: `case "Cronograma":` … `return <ScheduleView`, dentro do `switch (activeNav)`.

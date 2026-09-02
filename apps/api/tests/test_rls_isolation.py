@@ -1841,3 +1841,203 @@ def test_the_app_role_cannot_originate_a_kpi_or_a_value_ledger_entry(
             )
         )
     assert "permission denied" in str(refused.value).lower()
+
+
+# 13 — a superfície de Discovery da conta (ADR 0086) -----------------------------
+#
+# **O predicado aqui é o mais curto do repositório**, e é isso que este bloco prova:
+# `organization_id = portal.current_org()`, sem o par com `project_id` da 0007. O
+# Discovery é lido por Account no Pulse e sai em fan-out no snapshot de todo projeto
+# dela — não há coluna de projeto com que comparar, e o limite (duas pessoas de
+# projetos diferentes da mesma conta veem o mesmo Discovery) está declarado na
+# migração.
+#
+# As duas tabelas de **ligação** não têm chave de tenant nenhuma, e a policy alcança
+# a linha pelo pai. É o caso que um predicado copiado do vizinho não cobriria: sem o
+# `EXISTS`, ou a ligação seria ilegível (e a dor apareceria sem os achados que a
+# sustentam) ou seria legível por todo mundo.
+
+
+@pytest.fixture
+def discovery(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, dict[str, uuid.UUID]]]:
+    from portal_api.models import (
+        Finding,
+        ImprovementOpportunity,
+        PainPoint,
+        Process,
+        pain_point_finding,
+    )
+
+    tenant_a, tenant_b = tenants
+    ids: dict[uuid.UUID, dict[str, uuid.UUID]] = {}
+    with Session(migrated_engine) as session:
+        for tenant in (tenant_a, tenant_b):
+            processo = Process(
+                organization_id=tenant.organization_id,
+                external_id=301,
+                name=f"Processo {tenant.organization_id}",
+                position=0,
+            )
+            achado = Finding(
+                organization_id=tenant.organization_id,
+                external_id=401,
+                statement="A conferência é feita duas vezes.",
+            )
+            dor = PainPoint(
+                organization_id=tenant.organization_id,
+                external_id=501,
+                title="Retrabalho",
+                status="confirmed",
+            )
+            oportunidade = ImprovementOpportunity(
+                organization_id=tenant.organization_id,
+                external_id=601,
+                title="Automatizar a conferência",
+                status="backlog",
+            )
+            session.add_all([processo, achado, dor, oportunidade])
+            session.flush()
+            session.execute(
+                pain_point_finding.insert(),
+                [{"pain_point_id": dor.id, "finding_id": achado.id}],
+            )
+            ids[tenant.organization_id] = {
+                "process": processo.id,
+                "finding": achado.id,
+                "pain_point": dor.id,
+                "improvement_opportunity": oportunidade.id,
+            }
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        for model, key in (
+            (ImprovementOpportunity, "improvement_opportunity"),
+            (PainPoint, "pain_point"),
+            (Finding, "finding"),
+            (Process, "process"),
+        ):
+            session.execute(
+                delete(model).where(model.id.in_([row[key] for row in ids.values()]))
+            )
+        session.commit()
+
+
+def test_the_app_role_reads_only_the_discovery_of_its_own_account(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    discovery: dict[uuid.UUID, dict[str, uuid.UUID]],
+) -> None:
+    """Regra 1 do `AGENTS.md` nas quatro tabelas novas de uma vez.
+
+    O Discovery descreve como a empresa do cliente trabalha por dentro — processos,
+    gargalos, quem faz o quê. É o dado mais sensível que esta fatia traz, e o que o
+    outro tenant vê dele é nada.
+    """
+    from portal_api.models import Finding, ImprovementOpportunity, PainPoint, Process
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    for model, key in (
+        (Process, "process"),
+        (Finding, "finding"),
+        (PainPoint, "pain_point"),
+        (ImprovementOpportunity, "improvement_opportunity"),
+    ):
+        visible = set(rls_session.execute(select(model.id)).scalars())
+        assert discovery[tenant_a.organization_id][key] in visible, key
+        assert discovery[tenant_b.organization_id][key] not in visible, key
+
+
+def test_the_discovery_is_invisible_without_the_tenant_gucs(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    discovery: dict[uuid.UUID, dict[str, uuid.UUID]],
+) -> None:
+    """Contexto ausente devolve zero linhas, nunca leitura sem escopo (0007).
+
+    Vale para as tabelas de ligação também, e ali por outro caminho: o `EXISTS` só
+    acha o pai se o pai for legível, e sem GUC nenhum pai é.
+    """
+    from portal_api.models import Finding, Process, pain_point_finding
+
+    tenant_a, _ = tenants
+    bind_context(subject=tenant_a.subject, email=tenant_a.email, user_id=tenant_a.user_id)
+
+    assert set(rls_session.execute(select(Process.id)).scalars()) == set()
+    assert set(rls_session.execute(select(Finding.id)).scalars()) == set()
+    assert (
+        set(rls_session.execute(select(pain_point_finding.c.finding_id)).scalars()) == set()
+    )
+
+
+def test_the_link_between_a_pain_and_its_findings_is_scoped_by_the_pain(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    discovery: dict[uuid.UUID, dict[str, uuid.UUID]],
+) -> None:
+    """A tabela de ligação não tem chave de tenant, e mesmo assim não vaza.
+
+    É a asserção que separa o `EXISTS` de duas alternativas erradas. **Sem policy
+    nenhuma** a linha seria ilegível e a dor apareceria sem os achados que a
+    sustentam — a tela mentiria por omissão. **Com `USING (true)`** — que é o que
+    "não tem tenant, então não tem o que filtrar" produziria — um par de outro
+    cliente sairia daqui: dois uuids, sim, mas que respondem "esta dor tem N achados"
+    sobre uma conta que não é a de quem perguntou.
+    """
+    from portal_api.models import pain_point_finding
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = set(rls_session.execute(select(pain_point_finding.c.pain_point_id)).scalars())
+
+    assert discovery[tenant_a.organization_id]["pain_point"] in visible
+    assert discovery[tenant_b.organization_id]["pain_point"] not in visible
+
+
+def test_the_app_role_cannot_originate_a_finding(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Sem GRANT de escrita: o Discovery nasce do snapshot, e só dele.
+
+    Aqui a ausência guarda uma coisa específica e nomeada na §3 do Language Map
+    ("nada aparece no One antes de ser revisado por humano"): um caminho de
+    requisição capaz de escrever um `Finding` é um caminho capaz de promover a
+    própria hipótese a fato.
+    """
+    from portal_api.models import Finding, ImprovementOpportunity
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError) as denied:
+        rls_session.execute(
+            insert(Finding).values(
+                id=uuid.uuid4(),
+                organization_id=tenant_a.organization_id,
+                external_id=999,
+                statement="Isto é um fato porque eu digo que é.",
+                epistemic_status="fact",
+                evidences=[],
+            )
+        )
+    assert "permission denied" in str(denied.value).lower()
+    rls_session.rollback()
+
+    with pytest.raises(ProgrammingError) as refused:
+        rls_session.execute(
+            insert(ImprovementOpportunity).values(
+                id=uuid.uuid4(),
+                organization_id=tenant_a.organization_id,
+                external_id=999,
+                title="Oportunidade inventada",
+                status="backlog",
+            )
+        )
+    assert "permission denied" in str(refused.value).lower()

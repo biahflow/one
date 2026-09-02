@@ -808,6 +808,54 @@
   .ledger-source--absent { @apply text-muted italic; }
   .ledger-measured { @apply m-0 text-[10px] text-muted; }
 
+  /* ---------- Discovery: AS-IS, achados, dores e backlog (ADR 0086) ---------- */
+  .discovery-list { @apply grid gap-2.5; }
+  .discovery-process { @apply mt-3.5 first:mt-0; }
+  .discovery-process-head { @apply flex flex-wrap items-baseline justify-between gap-2 pb-2; }
+  .discovery-process-head strong { @apply text-[13px]; }
+  .discovery-process-head span { @apply text-[10px] text-muted; }
+  /* Sete colunas não cabem no celular, e o corpo da página **não** rola de lado:
+     quem rola é a tabela, dentro da própria caixa. */
+  .discovery-table { @apply max-w-full overflow-x-auto rounded-xl border border-line; }
+  .discovery-table table { @apply w-full border-collapse text-left text-[11px]; }
+  .discovery-table th { @apply px-3 py-2 align-top text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
+  .discovery-table tbody th { @apply text-[11px] normal-case tracking-normal text-ink; }
+  .discovery-table td { @apply px-3 py-2 align-top leading-relaxed text-slate-600; }
+  .discovery-table tbody tr { @apply border-t border-line; }
+
+  .discovery-finding,
+  .discovery-pain,
+  .discovery-opportunity { @apply grid gap-2 rounded-xl border border-line p-4; }
+  .discovery-finding-head { @apply flex flex-wrap items-center gap-2.5; }
+  .discovery-origin { @apply text-[10px] font-bold tracking-[0.06em] uppercase text-muted; }
+  .discovery-statement { @apply m-0 text-[12px] leading-relaxed text-ink; }
+  .discovery-evidences { @apply m-0 grid list-none gap-1 p-0; }
+  .discovery-evidences li { @apply flex flex-wrap items-baseline gap-1.5 text-[11px] leading-relaxed text-slate-600; }
+  .discovery-evidences span { @apply rounded-full bg-surface-sunken px-2 py-0.5 text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
+  /* A lacuna é uma frase, e não se veste de dado — a mesma decisão do `.kpi-gap`:
+     mesmo peso visual faria "Ainda não priorizada" ser lido de relance como nota. */
+  .discovery-gap { @apply m-0 text-[11px] font-normal text-muted italic; }
+  .discovery-confidence { @apply m-0 text-[10px] text-muted; }
+
+  .discovery-pain-head { @apply flex flex-wrap items-baseline justify-between gap-2; }
+  .discovery-pain-head strong { @apply text-[13px]; }
+  .discovery-impact { @apply text-[12px] font-semibold whitespace-nowrap text-ink; }
+
+  .discovery-opportunity-head { @apply flex flex-wrap items-start justify-between gap-2.5; }
+  .discovery-opportunity-head > strong { @apply text-[13px]; }
+  .discovery-score { @apply grid justify-items-end gap-0.5; }
+  .discovery-score strong { @apply text-lg font-semibold tracking-[-0.02em] text-brand-600; }
+  .discovery-score > span { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
+  .discovery-hypothesis { @apply m-0 text-[11px] leading-relaxed text-slate-600; }
+  .discovery-hypothesis span { @apply mr-1.5 text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
+  .discovery-dimensions { @apply m-0 flex flex-wrap gap-x-4 gap-y-1.5; }
+  .discovery-dimensions dt { @apply text-[9px] font-bold tracking-[0.06em] uppercase text-muted; }
+  .discovery-dimensions dd { @apply m-0 text-[13px] text-ink; }
+  .discovery-solutions { @apply grid gap-1.5 rounded-xl bg-surface-sunken p-3; }
+  .discovery-solution { @apply grid gap-0.5; }
+  .discovery-solution strong { @apply text-[12px]; }
+  .discovery-solution span { @apply text-[11px] leading-relaxed text-slate-600; }
+
   /* ---------- Estados de página (carregando, erro, sem projeto) ---------- */
   .state-shell { @apply grid min-h-screen place-items-center bg-canvas p-10; }
   .state-card { @apply max-w-125 text-center; }

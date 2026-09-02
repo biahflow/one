@@ -157,6 +157,58 @@ export const DASHBOARD = {
     { id: 3, value_type: "cost_saving", amount: 48000.0, quantity: 606.0, period_start: "2026-07-01", period_end: "2026-07-31", attribution_method: "Diferença Baseline→Outcome do KPI 12 × custo-hora do time contábil", kpi_id: 12, outcome_measured_at: "2026-08-02T11:00:00-03:00" },
     { id: 4, value_type: "revenue", amount: 12500.0, quantity: null, period_start: "2026-06-01", period_end: "2026-06-30", attribution_method: "Receita adicional atribuída ao atendimento fora do horário comercial", kpi_id: 41, outcome_measured_at: null },
   ],
+  // O Discovery da **conta** (ADR 0086), com os três casos que a aba tem de saber
+  // desenhar: um achado com evidência, uma **pergunta em aberto** (rotulada como
+  // lacuna, e que não some), e uma oportunidade **sem Opportunity Score**, que vai
+  // para o fim da lista com a frase e nunca com um zero. O caso de tudo vazio — que
+  // é o estado real enquanto o Pulse não tiver tela de publicar — é exercitado por
+  // override em `rendered-html.test.mjs`, sobre esta mesma base.
+  processes: [
+    {
+      id: 301,
+      name: "Conciliação de contas a pagar",
+      position: 0,
+      updated_at: "2026-08-10T09:00:00-03:00",
+      steps: [
+        { id: 3101, position: 0, name: "Receber a nota", pessoas: "2 analistas", sistema: "ERP", dados: "XML da NF-e", tempo: "4h/dia", erro: "Nota em duplicidade", retrabalho: "Refazer o lançamento" },
+        { id: 3102, position: 1, name: "Conferir o pedido", pessoas: "1 analista", sistema: "Planilha", dados: "Pedido de compra", tempo: "2h/dia", erro: null, retrabalho: null },
+      ],
+    },
+  ],
+  findings: [
+    {
+      id: 401,
+      statement: "A conferência do pedido é feita duas vezes pela mesma pessoa.",
+      epistemic_status: "fact",
+      confidence: 90,
+      process_id: 301,
+      step_id: 3102,
+      evidences: [
+        { id: 5001, kind: "observation", reference: "Sessão de Discovery de 12/08", captured_at: "2026-08-12T15:00:00-03:00" },
+      ],
+    },
+    { id: 402, statement: "Não se sabe quantas notas chegam fora do padrão do fornecedor.", epistemic_status: "unknown", confidence: null, process_id: 301, step_id: null, evidences: [] },
+  ],
+  pain_points: [
+    { id: 501, title: "Retrabalho na conferência", description: "A mesma nota é conferida duas vezes antes de virar lançamento.", impact_type: "time", impact_estimate: 120.0, finding_ids: [401, 402], status: "confirmed" },
+    // Impacto **não quantificado**: `null`, e a tela escreve a frase — nunca "0".
+    { id: 502, title: "Fila de exceções sem dono", description: null, impact_type: null, impact_estimate: null, finding_ids: [], status: "confirmed" },
+  ],
+  improvement_opportunities: [
+    {
+      id: 601,
+      title: "Automatizar a conferência de notas",
+      desired_change: "Conferir por regra, com exceção encaminhada para uma pessoa.",
+      impact_hypothesis: "Devolve cerca de 4h/dia ao time contábil.",
+      pain_point_ids: [501],
+      status: "backlog",
+      priority_assessment: { version: 2, score: 82, dimensions: { impact: 5, evidence_strength: 4, feasibility: 3, time_to_value: 4, economics: 5 } },
+      solution_hypotheses: [
+        { id: 701, statement: "Um Funcionário Digital concilia por regra.", intervention: "Regras no ERP mais fila de exceção", expected_effect: "70% das notas sem toque humano", status: "proposed" },
+      ],
+    },
+    { id: 602, title: "Dar dono à fila de exceções", desired_change: null, impact_hypothesis: null, pain_point_ids: [502], status: "backlog", priority_assessment: null, solution_hypotheses: [] },
+  ],
   documents: [
     { title: "Plano de implantação v3.pdf", type: "PDF", author: "Biahflow", link: null, updated_at: "2026-08-03T12:00:00+00:00" },
   ],

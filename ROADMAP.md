@@ -1875,6 +1875,49 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       origem ao lado de KPI medido no mesmo card — rotulados, mas sem separação visual, o
       que é decisão de desenho e não de dado. Fecha a metade grande de `biahflow/one#89`.
 
+- [x] **A superfície de Discovery que o cliente lê, e a marca de publicação que nunca
+      atravessa** *(ADR 0086)*: a última das duas issues que a ADR 0084 registrou como
+      bloqueadas no produtor, e o bloqueio caiu junto do da #89 (`biahflow/pulse#106`, PR
+      `pulse#107` mergeado). A §3 do Language Map tinha **cinco linhas na coluna "No One"
+      sem código deste lado** — Process/ProcessStep, Finding, Evidence, ImprovementOpportunity
+      com Opportunity Score, SolutionHypothesis —, e não era lacuna de vocabulário: era a
+      metade do produto que responde *"o que vocês descobriram sobre a nossa operação?"*. O
+      cliente via o resultado do trabalho e não via o levantamento de onde ele saiu. Oito
+      tabelas novas, **escopo de conta** como o razão da ADR 0085 é de mandato, RLS com o
+      predicado mais curto do repositório e **nenhuma escrita para `portal_app`** — aqui a
+      ausência guarda uma coisa nomeada na §3: um caminho de requisição capaz de escrever um
+      `Finding` é um caminho capaz de promover a própria hipótese a fato. **A decisão que
+      carrega a fatia é a divergência que este repositório já tinha escrita:** a ADR 0082
+      criou `reviewed_resources` com `field: "reviewed_at"` antecipando um campo de revisão
+      em `Evidence`, e o contrato fechou pelo outro lado — a marca (`published_at`/
+      `published_by`) existe **só no modelo do Pulse** e o filtro é aplicado antes de emitir,
+      de modo que *a presença no array é a prova*. Declarar o campo aqui seria o One
+      **afirmando** a revisão (a regra 3 da §3 ao contrário, e a ADR 0033 na direção de
+      entrada); deixar `members` vazia seria a allowlist que segue verde porque nada a
+      consulta. A saída é a terceira: registrar a divergência e **dar-lhe portão** —
+      `publication_marks` com os quatro nomes que a marca teria e um `excluded` cuja guarda
+      reprova se `EvidenceOut` passar a declarar qualquer um deles, o que faz a mudança de
+      decisão do outro lado chegar vermelha em vez de em silêncio. **O que o guard da ADR
+      0082 não alcançava** são os dois JSONB (`evidences`, `priority_dimensions`): ele
+      classifica campo de esquema e não enxerga dentro de objeto sem propriedades, então
+      `raw_excerpt`, `content_hash` e o `rationale` da priorização entrariam por ali — a
+      proteção equivalente é **lista branca na ingestão**, com a asserção injetando os três.
+      O **invariante 9** ganhou teste (fato sem evidência é rebaixado a hipótese, e cai o
+      rótulo e não o achado, no desenho do `outcome_without_baseline` da 0085), e o mapa de
+      vocabulário tem o padrão **invertido** em relação ao `PROJECT_STATUS_MAP`: estado
+      epistêmico desconhecido cai em `unknown`, nunca em `fact` — o degrau seguro é a
+      lacuna. *De quebra, três coisas medidas:* a policy das duas tabelas de ligação, que o
+      meta-teste de RLS **não** cobra por não terem `organization_id`, ficou vermelha em duas
+      asserções sob `USING (true)`; **ausência das quatro chaves é silêncio e lista vazia é
+      afirmação**, sem o que despublicar no Pulse nunca chegaria aqui; e o `NULLS LAST` do
+      backlog não é detalhe, porque sem ele o Postgres põe o **não avaliado em primeiro** num
+      `ORDER BY … DESC`. **Fica aberto:** a busca não alcança o Discovery (a regra da ADR
+      0024 é que entra o que alguma aba mostra, e ligá-lo pede `Hit`, âncora e `data-item` nos
+      quatro blocos — fatia própria); não há tela de publicar, que é trabalho do lado do
+      Pulse, então na prática os quatro blocos chegam **vazios** e a aba diz isso; e
+      `Discovery`/`DiscoverySession`/`ProcessObservation` continuam sem atravessar por decisão
+      do contrato. Fecha `biahflow/one#90`.
+
 - [x] **O atalho de tela que o tile ainda não vestia** *(29/08/2026, mergeada em
       01/09)*: a ADR 0069 aprovou o tile para as três superfícies fora da tela do
       produto — aba, atalho de tela e cartão de compartilhamento — e entregou duas:

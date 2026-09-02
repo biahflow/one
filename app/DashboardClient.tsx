@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock3,
+  Compass,
   Download,
   FileText,
   FolderOpen,
@@ -111,6 +112,10 @@ const navItems = [
   { label: "Pendências", icon: Inbox },
   { label: "Decisões", icon: Scale },
   { label: "Resultados", icon: TrendingUp },
+  // O rótulo em inglês é decisão, e a razão está em `portal_api/tabs.py`: a §1 do
+  // Language Map manda não traduzir o termo canônico, e a §2 escreve "Discovery" na
+  // coluna do que o cliente vê. Trocar por "Descoberta" aqui reprova em `test_tabs.py`.
+  { label: "Discovery", icon: Compass },
 ];
 
 /** Alta antes de média antes de baixa. Desconhecida vai para o fim, não para o topo. */
@@ -630,6 +635,96 @@ export type ValueLedgerEntryView = {
   kpiId: number | null;
   outcomeMeasuredAt: string | null;
 };
+/**
+ * O Discovery da **conta** (Language Map v1.1 §2, ADR 0086).
+ *
+ * Cinco agregados que o Pulse publica por Account: o AS-IS validado
+ * (`ProcessView`/`ProcessStepView`), os achados (`FindingView`), as dores
+ * (`PainPointView`) e o backlog de melhoria (`ImprovementOpportunityView`) com o
+ * Opportunity Score e as hipóteses de solução aninhadas.
+ *
+ * **Os ids são os da origem**, como em `KpiView`: é por eles que `processId`,
+ * `findingIds` e `painPointIds` ligam as quatro listas, sem tabela de tradução aqui.
+ */
+export type ProcessStepView = {
+  id: number;
+  position: number;
+  name: string;
+  /** As seis chaves do formulário P-S-D-T-E-R, nos nomes que o contrato do produtor
+   *  fixou em português — elas não são termos da ontologia, são as perguntas da
+   *  sessão de Discovery (ADR 0086). */
+  pessoas: string | null;
+  sistema: string | null;
+  dados: string | null;
+  tempo: string | null;
+  erro: string | null;
+  retrabalho: string | null;
+};
+export type ProcessView = {
+  id: number;
+  name: string;
+  position: number;
+  /** Quando a **origem** atualizou o processo, ou `null` quando ela não carimba. */
+  updatedAt: string | null;
+  steps: ProcessStepView[];
+};
+export type EvidenceView = {
+  id: number;
+  kind: string;
+  /** O ponteiro para a fonte, como a origem o escreve — nunca o conteúdo dela. */
+  reference: string | null;
+  capturedAt: string | null;
+};
+export type FindingView = {
+  id: number;
+  statement: string;
+  /** `fact` · `hypothesis` · `unknown`. É o campo que impede a tela de desenhar
+   *  hipótese com cara de fato (§3, regra 1), e por isso ele nunca é opcional. */
+  epistemicStatus: string;
+  confidence: number | null;
+  /** `null` é caso normal: o achado pode apontar para um processo que ninguém
+   *  publicou ainda, e a tela o mostra sem a origem em vez de escondê-lo. */
+  processId: number | null;
+  stepId: number | null;
+  evidences: EvidenceView[];
+};
+export type PainPointView = {
+  id: number;
+  title: string;
+  description: string | null;
+  impactType: string | null;
+  /** `null` é **não quantificado**, nunca zero: a tela escreve a frase da lacuna. */
+  impactEstimate: number | null;
+  findingIds: number[];
+  status: string;
+};
+export type PriorityAssessmentView = {
+  version: number | null;
+  /** O Opportunity Score (Language Map D5) — o rótulo vale só para melhoria
+   *  operacional, nunca para uma venda. */
+  score: number;
+  dimensions: Record<string, number>;
+};
+export type SolutionHypothesisView = {
+  id: number;
+  statement: string;
+  intervention: string | null;
+  /** O efeito **esperado**, não o medido: quem mede é o KPI (ADR 0085). */
+  expectedEffect: string | null;
+  status: string;
+};
+export type ImprovementOpportunityView = {
+  id: number;
+  title: string;
+  desiredChange: string | null;
+  impactHypothesis: string | null;
+  painPointIds: number[];
+  status: string;
+  /** `null` é "ninguém avaliou ainda", e não a pior nota. A lista já chega ordenada
+   *  por score decrescente com estes no fim — quem ordena é a API. */
+  priorityAssessment: PriorityAssessmentView | null;
+  solutionHypotheses: SolutionHypothesisView[];
+};
 export type JourneyPhase = {
   name: string;
   description: string;
@@ -775,6 +870,13 @@ export type Overview = {
    *  dashboard de todos os projetos do Engagement, porque é o programa que gera o
    *  valor. Vazia quando o projeto ainda não tem programa. */
   valueLedger: ValueLedgerEntryView[];
+  /** O Discovery da **conta** (ADR 0086). As quatro listas vêm sempre, e vazias é o
+   *  estado normal enquanto o Pulse não tiver tela de publicar — nada atravessa sem
+   *  publicação humana. A aba escreve "nada publicado ainda", nunca um erro. */
+  processes: ProcessView[];
+  findings: FindingView[];
+  painPoints: PainPointView[];
+  improvementOpportunities: ImprovementOpportunityView[];
   documents: ProjectDocument[];
   meetings: MeetingView[];
   decisions: DecisionView[];
@@ -1316,6 +1418,8 @@ export default function DashboardClient({
         return <DecisionsView onAsk={askAi} overview={view} />;
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
+      case "Discovery":
+        return <DiscoveryView onAsk={askAi} overview={view} />;
       case "Notificações":
         return (
           <NotificationsView
@@ -3186,6 +3290,337 @@ function MeasurementBasis({ measured }: { measured: MeasuredResults | null }) {
         )}
       </article>
     </section>
+  );
+}
+
+/**
+ * Os três estados epistêmicos da §4 do Language Map (D6), como o cliente os lê.
+ *
+ * `unknown` **não** é "sem informação": é a pergunta que o Discovery abriu e ainda
+ * não fechou, e ela aparece na tela de propósito. Um levantamento que só mostrasse
+ * o que ficou sabido esconderia do cliente o que ainda não se sabe sobre o próprio
+ * processo — que é a regra 3 do `AGENTS.md` na voz do levantamento.
+ */
+const EPISTEMIC_LABEL: Record<string, string> = {
+  fact: "Fato",
+  hypothesis: "Hipótese",
+  unknown: "Pergunta em aberto",
+};
+
+/**
+ * E as três **com ícone**, nunca só com cor.
+ *
+ * É o critério que o `StatePill` já carrega desde a Issue #46, e aqui ele guarda
+ * uma coisa específica: a regra 1 da §3 diz que uma hipótese aparece rotulada como
+ * hipótese ou não aparece — nunca como fato. Distinguir as duas só pelo tom faria a
+ * regra depender de quem enxerga a diferença entre dois cinzas.
+ */
+const EPISTEMIC_TONE: Record<string, StatePillVariant> = {
+  fact: "success",
+  hypothesis: "warning",
+  unknown: "info",
+};
+
+/** As cinco dimensões do Opportunity Score (Language Map D5). Uma chave que a API
+ *  não conheça sai crua — a lista branca da ingestão já a teria barrado. */
+const DIMENSION_LABELS: Record<string, string> = {
+  impact: "Impacto",
+  evidence_strength: "Força da evidência",
+  feasibility: "Viabilidade",
+  time_to_value: "Tempo até o valor",
+  economics: "Economia",
+};
+
+const IMPACT_TYPE_LABELS: Record<string, string> = {
+  cost: "Custo",
+  time: "Tempo",
+  quality: "Qualidade",
+  risk: "Risco",
+  volume: "Volume",
+};
+
+/** "12 de agosto de 2026", ou vazio quando não há data para escrever. */
+function longDate(iso: string | null): string {
+  if (!iso) return "";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR", { dateStyle: "long" });
+}
+
+/**
+ * O tamanho da dor, **sem símbolo de moeda** (ADR 0086).
+ *
+ * `impact_estimate` vem sem unidade declarada e `impact_type` diz coisas que não são
+ * dinheiro — `time`, `quality`, `volume`. Formatar tudo como BRL repetiria o defeito
+ * que a ADR 0033 achou no `money()` do outro lado: um número que não é em reais
+ * aparecendo com "R$" na frente não fica incompleto, fica **errado**.
+ *
+ * `null` é "não quantificado" e vira frase, nunca zero — a mesma regra da lacuna de
+ * medição do KPI (ADR 0085).
+ */
+function impactLabel(pain: PainPointView): string {
+  if (pain.impactEstimate === null) return "Impacto não quantificado";
+  const size = pain.impactEstimate.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const kind = pain.impactType ? IMPACT_TYPE_LABELS[pain.impactType] ?? pain.impactType : null;
+  return kind ? `${kind}: ${size}` : size;
+}
+
+/**
+ * A aba **Discovery** — o AS-IS, os achados, as dores e o backlog de melhoria
+ * (Language Map v1.1 §2, ADR 0086).
+ *
+ * **As quatro seções aparecem sempre, inclusive vazias, e isso é desenho.** Vazio é
+ * o estado normal enquanto o Pulse não tiver tela de publicar: nada atravessa sem
+ * publicação humana, e hoje a publicação é chamada de API. Uma aba que se escondesse
+ * quando não há dado faria o cliente concluir que o produto não tem a superfície; as
+ * quatro frases de ausência dizem o que **vai** aparecer ali, e nenhuma delas se
+ * parece com erro de carregamento — porque não é um.
+ *
+ * A ordem do backlog não é decidida aqui: a API já entrega por Opportunity Score
+ * decrescente com os não avaliados no fim. Repetir o critério deste lado seria a
+ * mesma regra em dois lugares podendo divergir — o argumento do `tabs.py`.
+ */
+function DiscoveryView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+  const { processes, findings, painPoints, improvementOpportunities } = overview;
+  const nothingPublished =
+    processes.length === 0 &&
+    findings.length === 0 &&
+    painPoints.length === 0 &&
+    improvementOpportunities.length === 0;
+
+  // O casamento entre as quatro listas é pelo id **da origem**, o mesmo que a API
+  // publica nas duas pontas — é o que dispensa uma tabela de tradução aqui.
+  const processById = new Map(processes.map((item) => [item.id, item]));
+  const stepById = new Map(
+    processes.flatMap((item) => item.steps.map((step) => [step.id, step] as const)),
+  );
+  const findingById = new Map(findings.map((finding) => [finding.id, finding]));
+  const painById = new Map(painPoints.map((pain) => [pain.id, pain]));
+
+  return (
+    <>
+      <ViewHero
+        eyebrow="DISCOVERY"
+        title="O que descobrimos sobre o seu trabalho"
+        subtitle={
+          nothingPublished
+            ? "O time publica cada processo, achado e oportunidade depois de revisar. Enquanto isso não acontece, esta aba fica vazia — e isso é esperado."
+            : "O mapa do processo como ele é hoje, os achados que sustentam cada dor e o backlog de melhoria priorizado."
+        }
+        onAsk={onAsk}
+      />
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">COMO O TRABALHO ACONTECE HOJE</p>
+            <h2>Process <span>{processes.length}</span></h2>
+          </div>
+        </div>
+        {processes.length === 0 && <p className="empty-state">Nenhum processo mapeado ainda.</p>}
+        {processes.map((item) => (
+          <section className="discovery-process" key={item.id}>
+            <div className="discovery-process-head">
+              <strong>{item.name}</strong>
+              {item.updatedAt && <span>Atualizado na origem em {longDate(item.updatedAt)}</span>}
+            </div>
+            {item.steps.length === 0 ? (
+              <p className="empty-state">Nenhuma etapa detalhada neste processo.</p>
+            ) : (
+              <div className="discovery-table">
+                <table>
+                  <thead>
+                    {/* As seis colunas são o formulário P-S-D-T-E-R da sessão de
+                        Discovery, e os nomes vêm de lá — ver `ProcessStepView`. */}
+                    <tr>
+                      <th>Etapa</th>
+                      <th>Pessoas</th>
+                      <th>Sistema</th>
+                      <th>Dados</th>
+                      <th>Tempo</th>
+                      <th>Erro</th>
+                      <th>Retrabalho</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {item.steps.map((step) => (
+                      <tr key={step.id}>
+                        <th scope="row">{step.name}</th>
+                        {/* Célula vazia é travessão: a origem não respondeu aquela
+                            pergunta do formulário, e inventar texto seria pior. */}
+                        <td>{step.pessoas ?? "—"}</td>
+                        <td>{step.sistema ?? "—"}</td>
+                        <td>{step.dados ?? "—"}</td>
+                        <td>{step.tempo ?? "—"}</td>
+                        <td>{step.erro ?? "—"}</td>
+                        <td>{step.retrabalho ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ))}
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">O QUE ENCONTRAMOS</p>
+            <h2>Findings <span>{findings.length}</span></h2>
+          </div>
+        </div>
+        {findings.length === 0 && <p className="empty-state">Nenhum achado publicado ainda.</p>}
+        <div className="discovery-list">
+          {findings.map((finding) => {
+            const origin = [
+              finding.processId === null ? null : processById.get(finding.processId)?.name,
+              finding.stepId === null ? null : stepById.get(finding.stepId)?.name,
+            ].filter(Boolean);
+            return (
+              <article className="discovery-finding" key={finding.id}>
+                <div className="discovery-finding-head">
+                  <StatePill variant={EPISTEMIC_TONE[finding.epistemicStatus] ?? "info"}>
+                    {EPISTEMIC_LABEL[finding.epistemicStatus] ?? finding.epistemicStatus}
+                  </StatePill>
+                  {origin.length > 0 && <span className="discovery-origin">{origin.join(" • ")}</span>}
+                </div>
+                <p className="discovery-statement">{finding.statement}</p>
+                {finding.evidences.length > 0 ? (
+                  <ul className="discovery-evidences">
+                    {finding.evidences.map((evidence) => (
+                      <li key={evidence.id}>
+                        <span>{evidence.kind}</span>
+                        {evidence.reference ?? "Sem referência registrada"}
+                        {evidence.capturedAt && ` • ${longDate(evidence.capturedAt)}`}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  // Sem evidência a frase diz **o que isso significa**, e não some:
+                  // é a lacuna declarada, que é o que a §3 pede que apareça.
+                  <p className="discovery-gap">
+                    {finding.epistemicStatus === "unknown"
+                      ? "Pergunta em aberto: ainda não há evidência que a responda."
+                      : "Sem evidência publicada — por isso não está registrado como fato."}
+                  </p>
+                )}
+                {finding.confidence !== null && (
+                  <p className="discovery-confidence">Confiança declarada na origem: {finding.confidence}</p>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">O QUE TRAVA O TRABALHO</p>
+            <h2>Pain Points <span>{painPoints.length}</span></h2>
+          </div>
+        </div>
+        {painPoints.length === 0 && <p className="empty-state">Nenhuma dor confirmada ainda.</p>}
+        <div className="discovery-list">
+          {painPoints.map((pain) => (
+            <article className="discovery-pain" key={pain.id}>
+              <div className="discovery-pain-head">
+                <strong>{pain.title}</strong>
+                <span className={pain.impactEstimate === null ? "discovery-gap" : "discovery-impact"}>
+                  {impactLabel(pain)}
+                </span>
+              </div>
+              {pain.description && <p className="discovery-statement">{pain.description}</p>}
+              {pain.findingIds.length > 0 && (
+                <ul className="discovery-evidences">
+                  {pain.findingIds.map((id) => (
+                    <li key={id}>
+                      <span>Achado</span>
+                      {findingById.get(id)?.statement ?? "Achado não publicado nesta lista"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">O QUE PODEMOS MELHORAR</p>
+            <h2>Improvement Opportunity Backlog <span>{improvementOpportunities.length}</span></h2>
+          </div>
+        </div>
+        {improvementOpportunities.length === 0 && (
+          <p className="empty-state">Nenhuma oportunidade de melhoria publicada ainda.</p>
+        )}
+        <div className="discovery-list">
+          {improvementOpportunities.map((opportunity) => (
+            <article className="discovery-opportunity" key={opportunity.id}>
+              <div className="discovery-opportunity-head">
+                <strong>{opportunity.title}</strong>
+                {opportunity.priorityAssessment ? (
+                  <span className="discovery-score">
+                    <strong>{opportunity.priorityAssessment.score}</strong>
+                    <span>Opportunity Score</span>
+                  </span>
+                ) : (
+                  // Sem nota **não é nota zero**: quem ainda não foi avaliado vai
+                  // para o fim da lista com a frase, e não com um número.
+                  <span className="discovery-gap">Ainda não priorizada</span>
+                )}
+              </div>
+              {opportunity.desiredChange && <p className="discovery-statement">{opportunity.desiredChange}</p>}
+              {opportunity.impactHypothesis && (
+                <p className="discovery-hypothesis">
+                  <span>Impacto esperado</span> {opportunity.impactHypothesis}
+                </p>
+              )}
+              {opportunity.priorityAssessment &&
+                Object.keys(opportunity.priorityAssessment.dimensions).length > 0 && (
+                  <dl className="discovery-dimensions">
+                    {Object.entries(opportunity.priorityAssessment.dimensions).map(([key, value]) => (
+                      <div key={key}>
+                        <dt>{DIMENSION_LABELS[key] ?? key}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              {opportunity.painPointIds.length > 0 && (
+                <ul className="discovery-evidences">
+                  {opportunity.painPointIds.map((id) => (
+                    <li key={id}>
+                      <span>Dor</span>
+                      {painById.get(id)?.title ?? "Dor não publicada nesta lista"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {opportunity.solutionHypotheses.length > 0 && (
+                <div className="discovery-solutions">
+                  {/* "Hipótese" é a palavra do contrato (§2), e o subtítulo diz por
+                      quê: o que confirma é o PROVE, não esta tela. */}
+                  <p className="eyebrow">HIPÓTESES DE SOLUÇÃO</p>
+                  <p className="discovery-gap">Ainda são hipóteses: quem confirma é o PROVE.</p>
+                  {opportunity.solutionHypotheses.map((hypothesis) => (
+                    <div className="discovery-solution" key={hypothesis.id}>
+                      <strong>{hypothesis.statement}</strong>
+                      {hypothesis.intervention && <span>{hypothesis.intervention}</span>}
+                      {hypothesis.expectedEffect && <span>Efeito esperado: {hypothesis.expectedEffect}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      </article>
+    </>
   );
 }
 

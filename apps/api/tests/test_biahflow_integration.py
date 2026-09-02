@@ -139,6 +139,67 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
              "attribution_method": "Receita adicional do atendimento fora do horário",
              "kpi_id": 41, "outcome_measured_at": None},
         ],
+        # O Discovery da **conta** (ADR 0086), com os casos que a fatia precisa
+        # exercitar em toda passagem: um achado `fact` com evidência e um `unknown`
+        # (a lacuna declarada, que atravessa e não é omitida); uma dor com impacto
+        # quantificado e outra **sem**, que é `None` e nunca zero; e duas
+        # oportunidades, uma avaliada e outra não — a segunda é a que prova que o
+        # backlog não quebra nem se reordena por falta de nota.
+        "processes": [
+            {"id": 301, "name": "Conciliação de contas a pagar", "position": 0,
+             "updated_at": "2026-08-10T09:00:00+00:00",
+             "steps": [
+                 {"id": 3101, "position": 0, "name": "Receber a nota",
+                  "pessoas": "2 analistas", "sistema": "ERP", "dados": "XML da NF-e",
+                  "tempo": "4h/dia", "erro": "Nota em duplicidade",
+                  "retrabalho": "Refazer o lançamento"},
+                 {"id": 3102, "position": 1, "name": "Conferir o pedido",
+                  "pessoas": "1 analista", "sistema": "Planilha", "dados": "Pedido de compra",
+                  "tempo": "2h/dia", "erro": "", "retrabalho": ""},
+             ]},
+        ],
+        "findings": [
+            {"id": 401, "statement": "A conferência é feita duas vezes pela mesma pessoa.",
+             "epistemic_status": "fact", "confidence": 90,
+             "process_id": 301, "step_id": 3102,
+             "evidences": [
+                 {"id": 5001, "kind": "observation",
+                  "reference": "Sessão de Discovery de 12/08",
+                  "captured_at": "2026-08-12T15:00:00+00:00"},
+             ]},
+            {"id": 402, "statement": "Não se sabe quantas notas chegam fora do padrão.",
+             "epistemic_status": "unknown", "confidence": None,
+             "process_id": 301, "step_id": None, "evidences": []},
+        ],
+        "pain_points": [
+            {"id": 501, "title": "Retrabalho na conferência",
+             "description": "A mesma nota é conferida duas vezes.",
+             "impact_type": "time", "impact_estimate": 32000.0,
+             "finding_ids": [401, 402], "status": "confirmed"},
+            {"id": 502, "title": "Fila de exceções sem dono",
+             "description": "", "impact_type": None, "impact_estimate": None,
+             "finding_ids": [], "status": "confirmed"},
+        ],
+        "improvement_opportunities": [
+            {"id": 601, "title": "Automatizar a conferência de notas",
+             "desired_change": "Conferir por regra, com exceção para pessoa.",
+             "impact_hypothesis": "Devolve 4h/dia ao time contábil.",
+             "pain_point_ids": [501], "status": "backlog",
+             "priority_assessment": {
+                 "version": 2, "score": 82,
+                 "dimensions": {"impact": 5, "evidence_strength": 4, "feasibility": 3,
+                                "time_to_value": 4, "economics": 5}},
+             "solution_hypotheses": [
+                 {"id": 701, "statement": "Um agente concilia por regra.",
+                  "intervention": "Regras no ERP + fila de exceção",
+                  "expected_effect": "70% das notas sem toque humano",
+                  "status": "proposed"},
+             ]},
+            {"id": 602, "title": "Dar dono à fila de exceções",
+             "desired_change": "", "impact_hypothesis": "",
+             "pain_point_ids": [502], "status": "backlog",
+             "priority_assessment": None, "solution_hypotheses": []},
+        ],
         "documents": [
             {"id": 41, "name": "Plano de implantação.pdf", "type": "PDF",
              "author": "Ana Souza", "link": "https://drive.example/doc-41",

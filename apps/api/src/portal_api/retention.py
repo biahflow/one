@@ -36,11 +36,15 @@ from portal_api.models import (
     ContactEvent,
     Conversation,
     Document,
+    Finding,
+    ImprovementOpportunity,
     Membership,
     Notification,
     OnboardingStep,
     Organization,
     OrganizationRetentionPolicy,
+    PainPoint,
+    Process,
     Project,
     ValueLedgerEntry,
 )
@@ -250,8 +254,17 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
       sobreviveria é quantia, período e o **método de atribuição em prosa da origem**,
       que é dado do cliente por definição.
 
-      São as **quatro** exclusões escritas à mão, e a regra que as une é essa: o que
-      é escopado por organização não vem no CASCADE do projeto. Toda tabela nova com
+    - **Sai** o Discovery da conta (ADR 0086): ``improvement_opportunity``,
+      ``pain_point``, ``finding`` e ``process``, nesta ordem — as duas tabelas de
+      ligação, as etapas e as hipóteses de solução saem por CASCADE dos pais, e por
+      isso não têm linha própria aqui. É a mesma armadilha das três acima e a mais
+      cara delas: o Discovery é escopado por **organização** e descreve como a
+      empresa do cliente trabalha por dentro — processos, gargalos, quem faz o quê e
+      quanto tempo leva. Nada disso vem no CASCADE do projeto.
+
+      São as **cinco** exclusões escritas à mão (quatro tabelas na última, uma só
+      chamada de decisão), e a regra que as une é essa: o que é escopado por
+      organização não vem no CASCADE do projeto. Toda tabela nova com
       ``organization_id`` e sem ``project_id`` precisa de uma linha aqui.
 
       O ``kpi`` **não** entra: ele é escopado por projeto e sai no CASCADE, como
@@ -309,4 +322,12 @@ def run_erasure(session: Session, organization_id: uuid.UUID) -> ErasureOutcome:
     )
     outcome.removed["value_ledger_entry"] = int(ledger.rowcount or 0)
 
+    # O Discovery da conta (ADR 0086), em ordem de chave estrangeira. As ligações, as
+    # etapas e as hipóteses saem por CASCADE dos pais — apagá-las à mão seria a
+    # segunda descrição da árvore que o `DELETE` do projeto acima recusa fazer.
+    for model in (ImprovementOpportunity, PainPoint, Finding, Process):
+        removed = session.execute(
+            delete(model).where(model.organization_id == organization_id)
+        )
+        outcome.removed[model.__tablename__] = int(removed.rowcount or 0)
     return outcome

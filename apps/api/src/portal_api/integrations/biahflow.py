@@ -34,7 +34,10 @@ from portal_api.models import (
     DocumentSource,
     Engagement,
     EngagementStatus,
+    EpistemicStatus,
+    Finding,
     GateDecision,
+    ImprovementOpportunity,
     Kpi,
     Meeting,
     MemberRole,
@@ -43,17 +46,23 @@ from portal_api.models import (
     OnboardingStepName,
     MilestoneState,
     Organization,
+    PainPoint,
     PendingItem,
     PendingOrigin,
     PendingPriority,
     PendingState,
     PhaseDeliverable,
     PhaseState,
+    Process,
+    ProcessStep,
     Project,
     ProjectPhase,
     ProjectStatus,
+    SolutionHypothesis,
     User,
     ValueLedgerEntry,
+    improvement_opportunity_pain_point,
+    pain_point_finding,
 )
 from portal_api.repositories import TenantContext
 
@@ -437,6 +446,377 @@ def _upsert_engagement(
     )
     session.flush()  # precisamos do `engagement.id` para apontar o projeto
     return engagement
+
+
+#: As quatro listas do Discovery no snapshot (Language Map §2, ADR 0086).
+#:
+#: **A ausência das quatro é silêncio, não negação** — o argumento já escrito para
+#: `engagement` e `artifact_accepted_at`: um Biahflow anterior a esta fatia manda um
+#: corpo sem elas, e apagar o Discovery da conta por causa disso seria o portal
+#: concluindo, de um snapshot calado, que o cliente parou de ter processos.
+#:
+#: Já uma lista **presente e vazia** afirma: é o produtor dizendo que nada está
+#: publicado ali, e o que estava publicado antes sai. Sem essa distinção, despublicar
+#: no Pulse não teria como chegar até aqui.
+DISCOVERY_KEYS = ("processes", "findings", "pain_points", "improvement_opportunities")
+
+#: O enum da §4, e o padrão é a **lacuna** e não o fato: um vocabulário novo do outro
+#: lado não derruba o sync (a regra do `PROJECT_STATUS_MAP`) e também não vira
+#: afirmação. Cair em `fact` faria o portal promover a fato o que ninguém revisou,
+#: que é a regra 1 da §3 ao contrário.
+EPISTEMIC_STATUS_MAP = {status.value: status for status in EpistemicStatus}
+
+#: As quatro chaves que uma evidência pode trazer, e nada além delas. Lista branca
+#: porque JSONB é o ponto cego do guard de visibilidade (ADR 0082): ele classifica
+#: campo de esquema e não enxerga dentro de um objeto sem propriedades declaradas.
+#: Um `raw_excerpt` ou um `content_hash` que a origem passe a mandar não atravessa
+#: por omissão — que é a mesma negação por omissão daquele guard, no lugar em que o
+#: esquema não alcança.
+_EVIDENCE_KEYS = ("id", "kind", "reference", "captured_at")
+
+#: As cinco dimensões do Opportunity Score (Language Map D5), pela mesma razão. O
+#: `rationale` do `PriorityAssessment` é par proibido da §3, e a lista branca é o que
+#: o mantém fora mesmo que ele chegue **dentro** de `dimensions`.
+_PRIORITY_DIMENSIONS = (
+    "impact",
+    "evidence_strength",
+    "feasibility",
+    "time_to_value",
+    "economics",
+)
+
+
+def _text(value: Any) -> str | None:
+    """Prosa da origem, ou ``None`` — nunca ``""``.
+
+    O padrão de ``description`` e ``rationale`` nesta função: string vazia e ausência
+    dizem a mesma coisa, e mantê-las diferentes faria a tela ter dois casos para
+    desenhar o mesmo nada.
+    """
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
+
+
+def _position(value: Any, fallback: int) -> int:
+    """A ordem que a origem declara, ou a do laço quando ela se cala.
+
+    ``or fallback`` seria errado, e o caso é real: a origem pode dizer **0**, que é
+    posição legítima e cairia no índice do laço. Quem decide é a ausência, não a
+    falsidade — a mesma distinção que separa ``None`` de zero no resto desta fatia.
+    """
+    declared = _int(value)
+    return fallback if declared is None else declared
+
+
+def _evidences(items: Any) -> list[dict[str, Any]]:
+    """As evidências de um achado, com a lista branca aplicada.
+
+    Sem ``id`` ou sem ``kind`` a evidência não é citável — não há o que endereçar
+    nem o que rotular —, e ela cai sem derrubar o achado: um ``fact`` que perca
+    todas as evidências é rebaixado logo adiante, que é o invariante 9 do Language
+    Map, e não silenciosamente exibido como fato.
+    """
+    found: list[dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        identifier = _int(item.get("id"))
+        kind = _text(item.get("kind"))
+        if identifier is None or kind is None:
+            continue
+        captured = _tolerant_datetime(item.get("captured_at"))
+        found.append(
+            {
+                "id": identifier,
+                "kind": kind,
+                "reference": _text(item.get("reference")),
+                "captured_at": captured.isoformat() if captured else None,
+            }
+        )
+    return found
+
+
+def _priority(data: Any) -> tuple[int | None, int | None, dict[str, int] | None]:
+    """A avaliação vigente da prioridade: ``(version, score, dimensions)``.
+
+    **Sem ``score`` não há avaliação**, e as três colunas saem nulas juntas: a
+    versão de uma nota que não existe não diz nada, e as dimensões sem o número que
+    elas compõem seriam cinco pedaços de uma conta sem resultado. É a regra do
+    ``_measurement_payload`` da ADR 0085 — a existência do objeto tem **uma**
+    condição, e não uma por campo.
+
+    Só as cinco dimensões da D5 sobrevivem, e o valor tem de ser inteiro: ver
+    ``_PRIORITY_DIMENSIONS``.
+    """
+    if not isinstance(data, dict):
+        return None, None, None
+    score = _int(data.get("score"))
+    if score is None:
+        return None, None, None
+    raw = data.get("dimensions")
+    dimensions: dict[str, int] = {}
+    if isinstance(raw, dict):
+        for key in _PRIORITY_DIMENSIONS:
+            value = _int(raw.get(key))
+            if value is not None:
+                dimensions[key] = value
+    return _int(data.get("version")), score, dimensions or None
+
+
+def _replace_discovery(
+    session: Session, organization: Organization, project: Project, snapshot: dict[str, Any]
+) -> None:
+    """O Discovery da **conta**, substituído por inteiro (Language Map §2, ADR 0086).
+
+    Em função própria pela razão de ``_upsert_engagement`` estar numa: são cinco
+    agregados e quatro laços encadeados, e no meio de ``sync_snapshot`` isso deixaria
+    de ser legível.
+
+    **Substituição integral escopada por ``organization_id``**, e não por projeto: o
+    produtor lê o Discovery por Account e manda a lista completa e atual no snapshot
+    de **todo** projeto da conta (fan-out). É a forma de ``Milestone`` e
+    ``DigitalEmployee``, com o escopo trocado — e o mesmo desenho que ``value_ledger``
+    já usa para o mandato.
+
+    **O limite está declarado, não fingido** (como na ADR 0085): dois projetos da
+    mesma conta sincronizando ao mesmo tempo apagam e reinserem as mesmas linhas. O
+    ``DELETE`` do segundo espera pelos locks do primeiro e não enxerga o que ele
+    inseriu depois, então o ``INSERT`` seguinte pode bater na unicidade
+    ``(organization_id, external_id)`` e devolver 500 ao webhook. Não há perda: a
+    fonte reentrega, e o Discovery que fica é o do snapshot que venceu.
+
+    **A ordem dos quatro passos é dependência de chave estrangeira**, e cada passo
+    devolve o mapa `id da origem → uuid local` que o passo seguinte usa para montar o
+    vínculo. Um id que não resolve é **descartado**, não inventado: o produtor
+    publica os agregados separadamente, então um achado pode apontar para um processo
+    que ninguém publicou. Perder a proveniência é melhor que perder o achado — o
+    argumento do ``SET NULL`` de ``Decision.meeting_id``.
+    """
+    declared = [key for key in DISCOVERY_KEYS if key in snapshot]
+    if not declared:
+        return
+
+    def rejected(scope: str, reason: str) -> None:
+        logger.warning(
+            "projection.discovery_rejected",
+            extra={
+                "project_id": str(project.id),
+                "biahflow_project_id": snapshot["project"]["id"],
+                "organization_id": str(organization.id),
+                "scope": scope,
+                "reason": reason,
+            },
+        )
+
+    # Os quatro `DELETE`, em ordem de chave estrangeira. As duas tabelas de ligação e
+    # as hipóteses de solução saem por CASCADE dos pais, e as etapas por CASCADE do
+    # processo — apagá-las à mão seria repetir o que a 0041 já declara.
+    session.execute(
+        delete(ImprovementOpportunity).where(
+            ImprovementOpportunity.organization_id == organization.id
+        )
+    )
+    session.execute(delete(PainPoint).where(PainPoint.organization_id == organization.id))
+    session.execute(delete(Finding).where(Finding.organization_id == organization.id))
+    session.execute(delete(Process).where(Process.organization_id == organization.id))
+    session.flush()
+
+    # 1. processos e etapas
+    process_by_external: dict[int, uuid.UUID] = {}
+    step_by_external: dict[int, uuid.UUID] = {}
+    for position, item in enumerate(snapshot.get("processes") or []):
+        if not isinstance(item, dict):
+            rejected("process", "malformed")
+            continue
+        external_id = _int(item.get("id"))
+        name = _text(item.get("name"))
+        if external_id is None or name is None:
+            rejected("process", "malformed")
+            continue
+        row = Process(
+            organization_id=organization.id,
+            external_id=external_id,
+            name=name,
+            position=_position(item.get("position"), position),
+            source_updated_at=_tolerant_datetime(item.get("updated_at")),
+        )
+        session.add(row)
+        session.flush()  # precisamos do `row.id` para as etapas
+        process_by_external[external_id] = row.id
+        for step_position, step in enumerate(item.get("steps") or []):
+            if not isinstance(step, dict):
+                rejected("process_step", "malformed")
+                continue
+            step_external_id = _int(step.get("id"))
+            step_name = _text(step.get("name"))
+            if step_external_id is None or step_name is None:
+                rejected("process_step", "malformed")
+                continue
+            step_row = ProcessStep(
+                organization_id=organization.id,
+                process_id=row.id,
+                external_id=step_external_id,
+                position=_position(step.get("position"), step_position),
+                name=step_name,
+                # As seis chaves do formulário P-S-D-T-E-R, nos nomes em que o
+                # contrato as fixou — ver o docstring de `ProcessStep`.
+                pessoas=_text(step.get("pessoas")),
+                sistema=_text(step.get("sistema")),
+                dados=_text(step.get("dados")),
+                tempo=_text(step.get("tempo")),
+                erro=_text(step.get("erro")),
+                retrabalho=_text(step.get("retrabalho")),
+            )
+            session.add(step_row)
+            session.flush()
+            step_by_external[step_external_id] = step_row.id
+
+    # 2. achados
+    finding_by_external: dict[int, uuid.UUID] = {}
+    for item in snapshot.get("findings") or []:
+        if not isinstance(item, dict):
+            rejected("finding", "malformed")
+            continue
+        external_id = _int(item.get("id"))
+        statement = _text(item.get("statement"))
+        if external_id is None or statement is None:
+            rejected("finding", "malformed")
+            continue
+        status = EPISTEMIC_STATUS_MAP.get(
+            item.get("epistemic_status") or "", EpistemicStatus.unknown
+        )
+        evidences = _evidences(item.get("evidences"))
+        if status is EpistemicStatus.fact and not evidences:
+            # **Invariante 9 do Language Map**, conferido deste lado ainda que o
+            # produtor o garanta: "`Finding` com `epistemic_status=fact` tem ao menos
+            # uma `Evidence` viva e revisor humano". Um fato sem evidência é a
+            # afirmação sem lastro que a regra 3 do `AGENTS.md` proíbe ao assistente,
+            # aqui na voz do levantamento.
+            #
+            # Cai o **rótulo**, não o achado — o desenho do `outcome_without_baseline`
+            # da ADR 0085: o cliente vê a afirmação como hipótese, que é o que ela
+            # comprovadamente é, em vez de não vê-la.
+            rejected("finding", "fact_without_evidence")
+            status = EpistemicStatus.hypothesis
+        row = Finding(
+            organization_id=organization.id,
+            external_id=external_id,
+            statement=statement,
+            epistemic_status=status,
+            confidence=_int(item.get("confidence")),
+            # Não resolver é caso normal: o produtor publica processo e achado
+            # separadamente. Grava `None` e o achado continua de pé.
+            process_id=process_by_external.get(_int(item.get("process_id"))),
+            step_id=step_by_external.get(_int(item.get("step_id"))),
+            evidences=evidences,
+        )
+        session.add(row)
+        session.flush()
+        finding_by_external[external_id] = row.id
+
+    # 3. dores, e a ligação com os achados que as sustentam
+    pain_by_external: dict[int, uuid.UUID] = {}
+    pain_links: list[dict[str, uuid.UUID]] = []
+    for item in snapshot.get("pain_points") or []:
+        if not isinstance(item, dict):
+            rejected("pain_point", "malformed")
+            continue
+        external_id = _int(item.get("id"))
+        title = _text(item.get("title"))
+        status_label = _text(item.get("status"))
+        if external_id is None or title is None or status_label is None:
+            # As três colunas sem as quais a linha não é uma dor: identidade, rótulo e
+            # estado. É a conferência que `value_ledger` faz sobre as suas `NOT NULL`.
+            rejected("pain_point", "malformed")
+            continue
+        row = PainPoint(
+            organization_id=organization.id,
+            external_id=external_id,
+            title=title,
+            description=_text(item.get("description")),
+            impact_type=_text(item.get("impact_type")),
+            # `None` é **não quantificado**, e nunca zero.
+            impact_estimate=_decimal(item.get("impact_estimate")),
+            status=status_label,
+        )
+        session.add(row)
+        session.flush()
+        pain_by_external[external_id] = row.id
+        # `dict.fromkeys` e não `set`: preserva a ordem da origem e desduplica. Sem a
+        # desduplicação, um id repetido no payload bateria na chave primária do par.
+        for finding_external in dict.fromkeys(
+            identifier
+            for identifier in (_int(value) for value in (item.get("finding_ids") or []))
+            if identifier is not None
+        ):
+            target = finding_by_external.get(finding_external)
+            if target is not None:
+                pain_links.append({"pain_point_id": row.id, "finding_id": target})
+    if pain_links:
+        session.execute(pain_point_finding.insert(), pain_links)
+
+    # 4. oportunidades de melhoria, as dores que elas endereçam e as hipóteses de
+    #    solução — estas aninhadas no payload, e por isso sem mapa de resolução.
+    opportunity_links: list[dict[str, uuid.UUID]] = []
+    for item in snapshot.get("improvement_opportunities") or []:
+        if not isinstance(item, dict):
+            rejected("improvement_opportunity", "malformed")
+            continue
+        external_id = _int(item.get("id"))
+        title = _text(item.get("title"))
+        status_label = _text(item.get("status"))
+        if external_id is None or title is None or status_label is None:
+            rejected("improvement_opportunity", "malformed")
+            continue
+        version, score, dimensions = _priority(item.get("priority_assessment"))
+        row = ImprovementOpportunity(
+            organization_id=organization.id,
+            external_id=external_id,
+            title=title,
+            desired_change=_text(item.get("desired_change")),
+            impact_hypothesis=_text(item.get("impact_hypothesis")),
+            status=status_label,
+            priority_version=version,
+            priority_score=score,
+            priority_dimensions=dimensions,
+        )
+        session.add(row)
+        session.flush()
+        for pain_external in dict.fromkeys(
+            identifier
+            for identifier in (_int(value) for value in (item.get("pain_point_ids") or []))
+            if identifier is not None
+        ):
+            target = pain_by_external.get(pain_external)
+            if target is not None:
+                opportunity_links.append(
+                    {"improvement_opportunity_id": row.id, "pain_point_id": target}
+                )
+        for hypothesis in item.get("solution_hypotheses") or []:
+            if not isinstance(hypothesis, dict):
+                rejected("solution_hypothesis", "malformed")
+                continue
+            hypothesis_id = _int(hypothesis.get("id"))
+            statement = _text(hypothesis.get("statement"))
+            hypothesis_status = _text(hypothesis.get("status"))
+            if hypothesis_id is None or statement is None or hypothesis_status is None:
+                rejected("solution_hypothesis", "malformed")
+                continue
+            session.add(
+                SolutionHypothesis(
+                    organization_id=organization.id,
+                    improvement_opportunity_id=row.id,
+                    external_id=hypothesis_id,
+                    statement=statement,
+                    intervention=_text(hypothesis.get("intervention")),
+                    expected_effect=_text(hypothesis.get("expected_effect")),
+                    status=hypothesis_status,
+                )
+            )
+    if opportunity_links:
+        session.execute(improvement_opportunity_pain_point.insert(), opportunity_links)
+    session.flush()
 
 
 def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
@@ -883,6 +1263,12 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
                 )
             )
 
+    # O Discovery da **conta** (Language Map §2, ADR 0086): processos, achados, dores
+    # e o backlog de melhoria. Segunda substituição desta função que não é escopada
+    # por projeto, ao lado do razão logo acima — e a única que não depende do
+    # Engagement, porque o Discovery pertence à conta inteira.
+    _replace_discovery(session, organization, project, snapshot)
+
     # Documentos: metadados apenas — o arquivo do Biahflow continua no Drive. Só
     # os espelhados de lá são substituídos; os de origem `portal` (enviados na
     # tela de administração e indexados, ADR 0014) sobrevivem ao sync, pelo mesmo
@@ -1253,6 +1639,217 @@ def _monitoring_payload(reading: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _discovery_projection(
+    session: Session, project: Project
+) -> dict[str, list[dict[str, Any]]]:
+    """O Discovery da conta, como a aba o recebe (Language Map §2, ADR 0086).
+
+    Escopado por **organização** e não por projeto, que é como ele foi gravado. As
+    cinco consultas são por tenant e não uma por linha: as ligações vêm em duas
+    consultas de par, e não num ``relationship`` preguiçoso, pelo argumento do
+    ``outerjoin`` das decisões — uma consulta por item seria N+1 dentro de um laço
+    que já é do dashboard.
+
+    **O que sai é o id da origem, nunca o uuid local**, como ``KpiOut.id`` (ADR
+    0085): é ele que ``findings[].process_id``, ``pain_points[].finding_ids`` e
+    ``improvement_opportunities[].pain_point_ids`` carregam, e o uuid é recriado a
+    cada webhook. A tela casa as quatro listas sem uma camada de tradução.
+
+    **A ordem do backlog nasce aqui, e não na tela**: Opportunity Score decrescente,
+    e quem ainda não foi avaliado vai para o fim — ``NULLS LAST`` e não zero, porque
+    a ausência de nota não é a pior nota. Ordenar do outro lado seria a mesma regra
+    em dois lugares, podendo divergir (o argumento do ``textfold.py``).
+    """
+    organization_id = project.organization_id
+
+    processes = list(
+        session.execute(
+            select(Process)
+            .where(Process.organization_id == organization_id)
+            .order_by(Process.position, Process.external_id)
+        ).scalars()
+    )
+    steps = list(
+        session.execute(
+            select(ProcessStep)
+            .where(ProcessStep.organization_id == organization_id)
+            .order_by(ProcessStep.position, ProcessStep.external_id)
+        ).scalars()
+    )
+    steps_by_process: dict[uuid.UUID, list[ProcessStep]] = {}
+    for step in steps:
+        steps_by_process.setdefault(step.process_id, []).append(step)
+    process_external = {row.id: row.external_id for row in processes}
+    step_external = {row.id: row.external_id for row in steps}
+
+    findings = list(
+        session.execute(
+            select(Finding)
+            .where(Finding.organization_id == organization_id)
+            .order_by(Finding.external_id)
+        ).scalars()
+    )
+    finding_external = {row.id: row.external_id for row in findings}
+
+    pain_points = list(
+        session.execute(
+            select(PainPoint)
+            .where(PainPoint.organization_id == organization_id)
+            .order_by(PainPoint.external_id)
+        ).scalars()
+    )
+    # O `in_` sobre os uuids desta conta é o que escopa a consulta: as tabelas de
+    # ligação não têm `organization_id`, e sob `portal_system` — que é BYPASSRLS — um
+    # `SELECT` solto alcançaria o par de outro tenant. A policy da 0041 protege o
+    # caminho de requisição; este filtro protege o **produtor**, que roda sem ela.
+    findings_by_pain: dict[uuid.UUID, list[int]] = {}
+    if pain_points:
+        for pain_id, finding_id in session.execute(
+            select(pain_point_finding.c.pain_point_id, pain_point_finding.c.finding_id).where(
+                pain_point_finding.c.pain_point_id.in_([row.id for row in pain_points])
+            )
+        ):
+            external = finding_external.get(finding_id)
+            if external is not None:
+                findings_by_pain.setdefault(pain_id, []).append(external)
+
+    opportunities = list(
+        session.execute(
+            select(ImprovementOpportunity)
+            .where(ImprovementOpportunity.organization_id == organization_id)
+            .order_by(
+                ImprovementOpportunity.priority_score.desc().nullslast(),
+                ImprovementOpportunity.external_id,
+            )
+        ).scalars()
+    )
+    pain_external = {row.id: row.external_id for row in pain_points}
+    pains_by_opportunity: dict[uuid.UUID, list[int]] = {}
+    if opportunities:
+        links = improvement_opportunity_pain_point
+        for opportunity_id, pain_id in session.execute(
+            select(links.c.improvement_opportunity_id, links.c.pain_point_id).where(
+                links.c.improvement_opportunity_id.in_([row.id for row in opportunities])
+            )
+        ):
+            external = pain_external.get(pain_id)
+            if external is not None:
+                pains_by_opportunity.setdefault(opportunity_id, []).append(external)
+
+    hypotheses_by_opportunity: dict[uuid.UUID, list[SolutionHypothesis]] = {}
+    for hypothesis in session.execute(
+        select(SolutionHypothesis)
+        .where(SolutionHypothesis.organization_id == organization_id)
+        .order_by(SolutionHypothesis.external_id)
+    ).scalars():
+        hypotheses_by_opportunity.setdefault(
+            hypothesis.improvement_opportunity_id, []
+        ).append(hypothesis)
+
+    return {
+        "processes": [
+            {
+                "id": row.external_id,
+                "name": row.name,
+                "position": row.position,
+                "updated_at": (
+                    row.source_updated_at.isoformat() if row.source_updated_at else None
+                ),
+                "steps": [
+                    {
+                        "id": step.external_id,
+                        "position": step.position,
+                        "name": step.name,
+                        # As seis chaves do formulário P-S-D-T-E-R, nos nomes que o
+                        # contrato fixou em português (ver `ProcessStep`).
+                        "pessoas": step.pessoas,
+                        "sistema": step.sistema,
+                        "dados": step.dados,
+                        "tempo": step.tempo,
+                        "erro": step.erro,
+                        "retrabalho": step.retrabalho,
+                    }
+                    for step in steps_by_process.get(row.id, [])
+                ],
+            }
+            for row in processes
+        ],
+        "findings": [
+            {
+                "id": row.external_id,
+                "statement": row.statement,
+                # O rótulo epistêmico viaja **sempre**, e é ele que impede a tela de
+                # desenhar hipótese com cara de fato (§3, regra 1).
+                "epistemic_status": row.epistemic_status.value,
+                "confidence": row.confidence,
+                # `None` quando o achado não aponta para processo publicado — caso
+                # normal, e a tela mostra o achado sem a origem em vez de escondê-lo.
+                "process_id": process_external.get(row.process_id),
+                "step_id": step_external.get(row.step_id),
+                "evidences": [
+                    {
+                        "id": evidence.get("id"),
+                        "kind": evidence.get("kind"),
+                        "reference": evidence.get("reference"),
+                        "captured_at": evidence.get("captured_at"),
+                    }
+                    for evidence in (row.evidences or [])
+                ],
+            }
+            for row in findings
+        ],
+        "pain_points": [
+            {
+                "id": row.external_id,
+                "title": row.title,
+                "description": row.description,
+                "impact_type": row.impact_type,
+                # `None` é **não quantificado**, nunca zero: a tela escreve a frase da
+                # lacuna, e "R$ 0" seria a afirmação que ninguém fez (ADR 0085).
+                "impact_estimate": (
+                    float(row.impact_estimate) if row.impact_estimate is not None else None
+                ),
+                "finding_ids": sorted(findings_by_pain.get(row.id, [])),
+                "status": row.status,
+            }
+            for row in pain_points
+        ],
+        "improvement_opportunities": [
+            {
+                "id": row.external_id,
+                "title": row.title,
+                "desired_change": row.desired_change,
+                "impact_hypothesis": row.impact_hypothesis,
+                "pain_point_ids": sorted(pains_by_opportunity.get(row.id, [])),
+                "status": row.status,
+                # O Opportunity Score (D5), ou `None` para quem ninguém avaliou. O
+                # `rationale` do `PriorityAssessment` **não** está aqui e não pode
+                # passar a estar: é o par proibido da §3.
+                "priority_assessment": (
+                    {
+                        "version": row.priority_version,
+                        "score": row.priority_score,
+                        "dimensions": row.priority_dimensions or {},
+                    }
+                    if row.priority_score is not None
+                    else None
+                ),
+                "solution_hypotheses": [
+                    {
+                        "id": hypothesis.external_id,
+                        "statement": hypothesis.statement,
+                        "intervention": hypothesis.intervention,
+                        "expected_effect": hypothesis.expected_effect,
+                        "status": hypothesis.status,
+                    }
+                    for hypothesis in hypotheses_by_opportunity.get(row.id, [])
+                ],
+            }
+            for row in opportunities
+        ],
+    }
+
+
 def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
     """Dashboard projection from the portal read model (fed by Biahflow)."""
     milestones = list(
@@ -1320,6 +1917,7 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
         if engagement is not None
         else []
     )
+    discovery = _discovery_projection(session, project)
     return {
         "project": project.name,
         "status": project.status.value,
@@ -1461,6 +2059,23 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
             }
             for entry in ledger
         ],
+        # O Discovery da conta (Language Map §2, ADR 0086): o AS-IS, os achados, as
+        # dores e o backlog de melhoria. As quatro listas **sempre presentes e
+        # vazias por padrão**, pela razão de `kpis` e `value_ledger`: "nada publicado
+        # ainda" e "não sei" dizem coisas diferentes, e só a primeira a tela sabe
+        # desenhar. Vazias é o estado normal enquanto o Pulse não tiver tela de
+        # publicar — e é por isso que a aba nasce sabendo desenhar o vazio.
+        #
+        # As quatro escritas uma a uma, e **não** por `**discovery`: o
+        # `test_projection_client_safe.py` lê as chaves literais deste `return` para
+        # saber o que a projeção emite, e um espalhamento tiraria as quatro do alcance
+        # dele sem nada ficar vermelho — que é o defeito que aquela guarda existe para
+        # pegar. `_discovery_projection` entra no `PROJECTION_PRODUCERS` de lá pelo
+        # mesmo motivo, para os campos de dentro também serem varridos.
+        "processes": discovery["processes"],
+        "findings": discovery["findings"],
+        "pain_points": discovery["pain_points"],
+        "improvement_opportunities": discovery["improvement_opportunities"],
         "roi": {
             "net": float(project.roi_net) if project.roi_net is not None else None,
             "ratio": project.roi_ratio,

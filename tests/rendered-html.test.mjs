@@ -584,6 +584,81 @@ test("sem KPI e sem razão, a manchete declara a ausência em vez de imprimir R$
   }
 });
 
+test("a aba Discovery desenha o AS-IS, o achado e o backlog priorizado", async () => {
+  // A issue #90 (ADR 0086) no HTML do servidor. A fixture traz os três casos que a
+  // aba existe para saber desenhar, e cada asserção abaixo é um deles.
+  const response = await render("/?tab=Discovery", {
+    headers: { cookie: await sessionCookie() },
+  });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  // 1. o AS-IS, com as seis colunas do formulário P-S-D-T-E-R — os seis nomes ficam
+  //    em português por decisão do contrato do produtor, e a tela os usa como
+  //    cabeçalho porque são as perguntas da sessão.
+  assert.match(html, /Conciliação de contas a pagar/);
+  for (const column of ["Pessoas", "Sistema", "Dados", "Tempo", "Erro", "Retrabalho"]) {
+    assert.match(html, new RegExp(`<th>${column}</th>`), column);
+  }
+  assert.match(html, /XML da NF-e/);
+
+  // 2. o achado **rotulado**: fato com a evidência que o sustenta, e a pergunta em
+  //    aberto aparecendo como lacuna em vez de sumir (§3, regra 1).
+  assert.match(html, /A conferência do pedido é feita duas vezes/);
+  assert.match(html, /Fato/);
+  assert.match(html, /Sessão de Discovery de 12\/08/);
+  assert.match(html, /Pergunta em aberto/);
+  assert.match(html, /ainda não há evidência que a responda/);
+
+  // 3. a dor sem impacto medido: frase, nunca zero — e a que tem, com o tipo ao
+  //    lado do número, sem símbolo de moeda que a origem não declarou.
+  assert.match(html, /Impacto não quantificado/);
+  assert.match(html, /Tempo: 120/);
+  assert.doesNotMatch(html, /R\$&nbsp;0/);
+
+  // 4. o backlog: a nota com o rótulo canônico, e quem não tem nota com a frase.
+  assert.match(html, /Improvement Opportunity Backlog/);
+  assert.match(html, /Opportunity Score/);
+  assert.match(html, />82</);
+  assert.match(html, /Ainda não priorizada/);
+  assert.match(html, /Força da evidência/);
+  // A hipótese de solução é dita hipótese, e a tela diz quem confirma.
+  assert.match(html, /HIPÓTESES DE SOLUÇÃO/);
+  assert.match(html, /quem confirma é o PROVE/);
+});
+
+test("sem nada publicado, a aba Discovery diz que é esperado e não parece erro", async () => {
+  // O estado **normal** de hoje: o Pulse ainda não tem tela de publicar, e nada
+  // atravessa sem publicação humana. As quatro seções continuam de pé com as quatro
+  // frases de ausência — uma aba que se escondesse faria o cliente concluir que o
+  // produto não tem a superfície.
+  dashboardOverride = {
+    ...DASHBOARD,
+    processes: [],
+    findings: [],
+    pain_points: [],
+    improvement_opportunities: [],
+  };
+  try {
+    const response = await render("/?tab=Discovery", {
+      headers: { cookie: await sessionCookie() },
+    });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+
+    assert.match(html, /Nenhum processo mapeado ainda/);
+    assert.match(html, /Nenhum achado publicado ainda/);
+    assert.match(html, /Nenhuma dor confirmada ainda/);
+    assert.match(html, /Nenhuma oportunidade de melhoria publicada ainda/);
+    // E o texto diz que é esperado, em vez de falar de carregamento ou de falha.
+    assert.match(html, /isso é esperado/);
+    assert.doesNotMatch(html, /Erro ao carregar/);
+    assert.doesNotMatch(html, /não consegui/i);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
 test("o projeto encerrado é marcado na tela e fecha a pergunta", async () => {
   // Arquivar no Biahflow chega até aqui desde a ADR 0036. Antes, o portal
   // mostrava como ativo um projeto que a fonte da verdade havia encerrado.

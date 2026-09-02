@@ -366,6 +366,173 @@ class ValueLedgerEntryOut(Out):
     outcome_measured_at: str | None
 
 
+# --- Discovery (Language Map v1.1 §2, ADR 0086) -----------------------------
+#
+# Cinco agregados de escopo de **conta**: o AS-IS validado, os achados, as dores e
+# o backlog de melhoria. Como em ``KpiOut``, o ``id`` publicado é o **da origem** e
+# nunca o uuid local — é ele que ``finding_ids``, ``pain_point_ids``,
+# ``process_id`` e ``step_id`` carregam, e o uuid é recriado a cada webhook.
+
+
+class ProcessStepOut(Out):
+    """Uma etapa do processo, com as seis chaves do formulário P-S-D-T-E-R.
+
+    **Os seis nomes ficam em português por decisão do contrato** (fechamento de
+    `biahflow/pulse#106`), e não por descuido: eles não são termos da ontologia —
+    são as perguntas que o time faz na sessão de Discovery. A §5 do Language Map
+    bane nome de **modelo** em português, e o modelo aqui é ``ProcessStep``.
+    """
+
+    id: int
+    position: int
+    name: str
+    pessoas: str | None
+    sistema: str | None
+    dados: str | None
+    tempo: str | None
+    erro: str | None
+    retrabalho: str | None
+
+
+class ProcessOut(Out):
+    """Um processo mapeado da conta — o AS-IS que o Discovery validou."""
+
+    id: int
+    name: str
+    position: int
+    #: Quando a **origem** atualizou o processo, ou ``None`` quando ela não carimba.
+    #: ``str`` e não ``datetime`` pela regra 1 deste módulo.
+    updated_at: str | None
+    steps: list[ProcessStepOut]
+
+
+class EvidenceOut(Out):
+    """Uma evidência que sustenta um achado.
+
+    **Não tem marca de revisão, e a ausência é a decisão** (ADR 0086). A §3 do
+    Language Map diz que só a Evidence revisada atravessa, e é assim: o produtor
+    filtra por ``published_at`` **antes** de emitir, de modo que a presença aqui já
+    é a prova. Não há campo a declarar porque não há campo do outro lado a copiar —
+    e inventá-lo seria o One afirmando por conta própria que algo foi revisado, que
+    é a regra 3 da §3 ("o One nunca é fonte primária") ao contrário.
+
+    Quatro campos e nada além: nem o trecho bruto, nem o hash do conteúdo, nem a
+    transcrição de onde ela saiu. ``reference`` é o **ponteiro** para a fonte, como
+    a origem o escreve — nunca o conteúdo dela.
+    """
+
+    id: int
+    kind: str
+    reference: str | None
+    captured_at: str | None
+
+
+class FindingOut(Out):
+    """Um achado do Discovery, sempre com o estado epistêmico ao lado.
+
+    ``epistemic_status`` é o campo que faz a regra 1 da §3 ser desenhável: um
+    ``hypothesis`` aparece **rotulado** como hipótese ou não aparece, nunca como
+    fato. Ele é exigido deste esquema pelo ``epistemic_resources`` do
+    ``docs/contracts/one-visibility.json``, e tirá-lo daqui reprova.
+
+    ``unknown`` também atravessa, e não é omissão: um levantamento que só mostrasse
+    o que ficou sabido esconderia do cliente o que ainda não se sabe.
+    """
+
+    id: int
+    statement: str
+    #: ``fact`` · ``hypothesis`` · ``unknown`` (Language Map §4, D6).
+    epistemic_status: str
+    #: A confiança que a origem declara. ``None`` é "não declarada", nunca zero.
+    confidence: int | None
+    #: O processo e a etapa de onde o achado saiu, pelos ids da origem. ``None`` é
+    #: caso normal: o produtor publica processo e achado separadamente, e o achado
+    #: pode apontar para um processo que ninguém publicou.
+    process_id: int | None
+    step_id: int | None
+    evidences: list[EvidenceOut]
+
+
+class PainPointOut(Out):
+    """Uma dor confirmada da conta, com os achados que a sustentam."""
+
+    id: int
+    title: str
+    description: str | None
+    #: Que espécie de impacto ela causa, como a origem a nomeia.
+    impact_type: str | None
+    #: ``None`` é **não quantificado**, nunca zero — a mesma regra do ``target`` do
+    #: KPI, e a razão de a tela dizer "Impacto não quantificado" em vez de "R$ 0".
+    impact_estimate: float | None
+    #: Os achados de origem, pelos ids da origem. Já vêm filtrados aos publicados e
+    #: vivos; um id que não resolveu na ingestão não chega aqui.
+    finding_ids: list[int]
+    status: str
+
+
+class PriorityAssessmentOut(Out):
+    """O **Opportunity Score** de uma oportunidade de melhoria (Language Map D5).
+
+    O rótulo que o cliente lê é "Opportunity Score", e ele se aplica **só** a
+    ``ImprovementOpportunity`` — nunca a uma venda (§5).
+
+    **O ``rationale`` não está aqui, e não pode passar a estar**: é o par proibido
+    da §3 (`PriorityAssessment.rationale`), o racional interno que o time escreve
+    para si. `tests/api-contract.test.mjs` reprova se alguém o declarar.
+    """
+
+    #: A versão da avaliação vigente — o que faz cliente e time falarem da mesma
+    #: nota. ``None`` quando a origem não a manda: a nota aparece sem a versão, em
+    #: vez de a nota desaparecer por falta do rótulo.
+    version: int | None
+    score: int
+    #: As cinco dimensões da D5, e nada além delas: a ingestão aplica lista branca,
+    #: porque este objeto é JSONB e o guard de visibilidade não enxerga dentro dele.
+    #: Dicionário vazio é "a origem mandou a nota sem abrir a conta".
+    dimensions: dict[str, int]
+
+
+class SolutionHypothesisOut(Out):
+    """Uma hipótese de solução para uma oportunidade de melhoria.
+
+    **Hipótese, e a palavra é o contrato** (§2): o que se acha que resolveria,
+    antes de a Feasibility dizer se dá e de o PROVE dizer se funciona. A tela a
+    rotula como hipótese pela mesma razão que rotula um ``Finding`` não provado.
+    """
+
+    id: int
+    statement: str
+    intervention: str | None
+    #: O efeito **esperado**, não o medido: quem mede é o KPI (ADR 0085).
+    expected_effect: str | None
+    status: str
+
+
+class ImprovementOpportunityOut(Out):
+    """Um item do backlog de melhoria da conta.
+
+    ``Improvement`` não é enfeite no nome (§5, invariante 1): ``Opportunity``
+    sozinho colide entre venda e melhoria operacional, e a venda —
+    ``CommercialOpportunity`` — é proibida no One por escrito.
+
+    A lista chega **ordenada por score decrescente, com quem não tem avaliação no
+    fim**; quem ordena é a API (ver ``_discovery_projection``), e a tela não repete
+    o critério.
+    """
+
+    id: int
+    title: str
+    desired_change: str | None
+    #: O impacto que se **espera** — hipótese, e a tela a rotula como tal.
+    impact_hypothesis: str | None
+    #: As dores que ela endereça, pelos ids da origem.
+    pain_point_ids: list[int]
+    status: str
+    #: ``None`` é "ninguém avaliou ainda", e não a pior nota.
+    priority_assessment: PriorityAssessmentOut | None
+    solution_hypotheses: list[SolutionHypothesisOut]
+
+
 class RoiOut(Out):
     """O ROI projetado que vem do Biahflow — outra coisa que o apurado dos
     eventos, que vive em ``ResultsOut``. Os dois convivem rotulados na tela."""
@@ -515,6 +682,19 @@ class DashboardOut(Out):
     #: aparece no dashboard de todos os projetos do Engagement, porque é o programa
     #: que gera o valor. Vazia quando o projeto ainda não tem programa.
     value_ledger: list[ValueLedgerEntryOut]
+    #: O Discovery da **conta** (Language Map §2, ADR 0086), nas quatro listas que a
+    #: aba desenha. Escopo de conta e não de projeto: as quatro aparecem iguais no
+    #: dashboard de todos os projetos dela, porque o AS-IS, os achados e o backlog de
+    #: melhoria são da conta.
+    #:
+    #: **Sempre presentes, vazias por padrão** — e vazias é o estado normal hoje, não
+    #: falha: o Pulse ainda não tem tela de publicar, e nada atravessa sem publicação
+    #: humana. A tela diz "nada publicado ainda"; nenhuma delas é ``null``, para não
+    #: haver um terceiro caso a desenhar.
+    processes: list[ProcessOut]
+    findings: list[FindingOut]
+    pain_points: list[PainPointOut]
+    improvement_opportunities: list[ImprovementOpportunityOut]
     roi: RoiOut
     next_meeting: NextMeetingOut | None
     milestones: list[MilestoneOut]

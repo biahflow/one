@@ -1003,11 +1003,14 @@ test("o par proibido não alcança um campo de mesmo nome em outro recurso", () 
 });
 
 test("esquema com marca epistêmica declarada tem de declarar o campo", () => {
-  // Proibição 9. A lista de membros está **vazia** hoje (Finding é a issue #90),
-  // então a asserção sobre o contrato não percorre ramo nenhum — a lição do
-  // `_TEMPLATE_SAMPLE` (ADR 0038): a cobertura de um portão é a dos ramos que a
-  // amostra percorre. Daí a amostra sintética abaixo, que a faz morder.
+  // Proibição 9. A lista de membros deixou de ser vazia na ADR 0086: `FindingOut`
+  // existe, atravessa e declara `epistemic_status` — então esta asserção percorre
+  // um ramo real. A amostra sintética **fica**, e não era um remendo para lista
+  // vazia: é o par que prova que a regra é estreita (o esquema sem o campo reprova,
+  // o mesmo esquema com o campo passa). Sem ela, um casador quebrado passaria verde
+  // por cima do membro de verdade.
   const block = VISIBILITY.epistemic_resources;
+  assert.ok(block.members.length > 0, "a lista de membros voltou a ficar vazia");
   assert.deepEqual(missingMarker(document.components.schemas, block), []);
 
   const synthetic = { FindingOut: { properties: { id: {}, text: {} } } };
@@ -1029,6 +1032,56 @@ test("esquema de evidência declarado tem de declarar a marca de revisão", () =
   assert.deepEqual(missingMarker(synthetic, armed), ["EvidenceOut"]);
   synthetic.EvidenceOut.properties[block.field] = {};
   assert.deepEqual(missingMarker(synthetic, armed), []);
+});
+
+/**
+ * Os esquemas que a exclusão de `reviewed_resources` protege, e o que ela promete:
+ * que eles **não** declaram marca de publicação nenhuma.
+ *
+ * É a metade que faz a divergência ser verificável em vez de escrita. `members` está
+ * vazia porque o produtor não emite a marca — ele filtra por `published_at` antes de
+ * montar o payload, e a presença no array é a prova (pulse#106, ADR 0086). Uma lista
+ * vazia sem esta asserção seria exatamente o que a ADR 0033 nomeou: uma regra que
+ * segue verde porque nada a consulta.
+ */
+function declaredMarks(definitions, block) {
+  const marks = new Set(block.publication_marks);
+  const offenders = [];
+  for (const entry of block.excluded ?? []) {
+    for (const field of propertiesOf(definitions, entry.schema)) {
+      if (marks.has(field)) offenders.push(`${entry.schema}.${field}`);
+    }
+  }
+  return offenders.sort();
+}
+
+test("o esquema excluído da marca de revisão não declara marca nenhuma", () => {
+  const block = VISIBILITY.reviewed_resources;
+
+  // Fail-closed nos dois sentidos, na forma do `test_the_exclusions_are_still_real`:
+  // uma exclusão que aponta para esquema que não sai mais é linha órfã, e o esquema
+  // excluído tem de existir para a asserção estar olhando alguma coisa.
+  const orphans = (block.excluded ?? [])
+    .map((entry) => entry.schema)
+    .filter((name) => !CLIENT_SCHEMAS.includes(name));
+  assert.deepEqual(
+    orphans,
+    [],
+    `estas exclusões apontam para esquema que não sai para o cliente: ${orphans}. Apague a linha.`,
+  );
+
+  assert.deepEqual(
+    declaredMarks(document.components.schemas, block),
+    [],
+    "este esquema está excluído da exigência de marca de revisão porque o produtor não" +
+      " emite marca nenhuma — e passou a declarar uma. A decisão do outro lado mudou:" +
+      " tire a linha de `excluded`, ponha o esquema em `members` e ajuste `field` para o" +
+      " nome que a origem usa (ADR 0086).",
+  );
+
+  // E o par que prova a estreiteza: o mesmo esquema, com a marca, reprova.
+  const synthetic = { EvidenceOut: { properties: { id: {}, published_at: {} } } };
+  assert.deepEqual(declaredMarks(synthetic, block), ["EvidenceOut.published_at"]);
 });
 
 test("a lista de marcas não guarda esquema que saiu do contrato", () => {

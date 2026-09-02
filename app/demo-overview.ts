@@ -125,6 +125,64 @@ export const DEMO_OVERVIEW: Overview = {
     // vínculo em vez de escondê-la (ADR 0085).
     { id: 4, valueType: "revenue", amount: 12500, quantity: null, periodStart: "2026-06-01", periodEnd: "2026-06-30", attributionMethod: "Receita adicional atribuída ao atendimento fora do horário comercial", kpiId: 41, outcomeMeasuredAt: null },
   ],
+  // O Discovery da conta (ADR 0086). A casca de demonstração traz os três casos que
+  // a aba precisa saber desenhar e que um cliente de verdade encontra: um achado com
+  // evidência, uma **pergunta em aberto** (que aparece rotulada como lacuna, e não
+  // some), e uma oportunidade **sem Opportunity Score** — que vai para o fim da lista
+  // com a frase, nunca com um zero.
+  processes: [
+    {
+      id: 301,
+      name: "Conciliação de contas a pagar",
+      position: 0,
+      updatedAt: "2026-08-10T09:00:00-03:00",
+      steps: [
+        { id: 3101, position: 0, name: "Receber a nota", pessoas: "2 analistas", sistema: "ERP", dados: "XML da NF-e", tempo: "4h/dia", erro: "Nota em duplicidade", retrabalho: "Refazer o lançamento" },
+        { id: 3102, position: 1, name: "Conferir o pedido", pessoas: "1 analista", sistema: "Planilha", dados: "Pedido de compra", tempo: "2h/dia", erro: null, retrabalho: null },
+      ],
+    },
+  ],
+  findings: [
+    {
+      id: 401,
+      statement: "A conferência do pedido é feita duas vezes pela mesma pessoa.",
+      epistemicStatus: "fact",
+      confidence: 90,
+      processId: 301,
+      stepId: 3102,
+      evidences: [
+        { id: 5001, kind: "observation", reference: "Sessão de Discovery de 12/08", capturedAt: "2026-08-12T15:00:00-03:00" },
+      ],
+    },
+    {
+      id: 402,
+      statement: "Não se sabe quantas notas chegam fora do padrão do fornecedor.",
+      epistemicStatus: "unknown",
+      confidence: null,
+      processId: 301,
+      stepId: null,
+      evidences: [],
+    },
+  ],
+  painPoints: [
+    { id: 501, title: "Retrabalho na conferência", description: "A mesma nota é conferida duas vezes antes de virar lançamento.", impactType: "time", impactEstimate: 120, findingIds: [401, 402], status: "confirmed" },
+    { id: 502, title: "Fila de exceções sem dono", description: null, impactType: null, impactEstimate: null, findingIds: [], status: "confirmed" },
+  ],
+  improvementOpportunities: [
+    {
+      id: 601,
+      title: "Automatizar a conferência de notas",
+      desiredChange: "Conferir por regra, com exceção encaminhada para uma pessoa.",
+      impactHypothesis: "Devolve cerca de 4h/dia ao time contábil.",
+      painPointIds: [501],
+      status: "backlog",
+      priorityAssessment: { version: 2, score: 82, dimensions: { impact: 5, evidence_strength: 4, feasibility: 3, time_to_value: 4, economics: 5 } },
+      solutionHypotheses: [
+        { id: 701, statement: "Um Funcionário Digital concilia por regra.", intervention: "Regras no ERP mais fila de exceção", expectedEffect: "70% das notas sem toque humano", status: "proposed" },
+      ],
+    },
+    { id: 602, title: "Dar dono à fila de exceções", desiredChange: null, impactHypothesis: null, painPointIds: [502], status: "backlog", priorityAssessment: null, solutionHypotheses: [] },
+  ],
   documents: [
     { title: "Plano de implantação v3.pdf", type: "PDF", author: "Biahflow", link: null, updated: "há 1 dia" },
     { title: "Mapa de integrações", type: null, author: "Time Acme", link: null, updated: "há 3 dias" },

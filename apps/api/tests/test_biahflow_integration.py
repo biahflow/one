@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from collections.abc import Iterator
 from datetime import date, datetime, timezone
@@ -39,6 +40,7 @@ from portal_api.models import (
     PendingOrigin,
     PhaseDeliverable,
     Project,
+    ProjectPhase,
     ProjectStatus,
 )
 from portal_api.repositories import MilestoneRepository, TenantContext
@@ -72,19 +74,22 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
             {"id": 2, "title": "Treinamento", "status": "todo", "party": "client",
              "due_date": "2026-09-18", "completed_at": None, "is_overdue": False},
         ],
+        # O `id` da fase é a identidade **da origem**, e existe só para o `phase_ref` das
+        # decisões ser resolvível dentro desta transação (ADR 0088): nenhuma coluna o
+        # guarda, porque o vínculo é refeito por inteiro a cada sync.
         "journey": {
             "current_phase": "Prove",
             "phases": [
-                {"name": "Welcome", "description": "", "position": 0, "status": "done",
-                 "target_date": None, "deliverables": [
+                {"id": 201, "name": "Welcome", "description": "", "position": 0,
+                 "status": "done", "target_date": None, "deliverables": [
                      {"id": 91, "name": "Acesso ao portal", "status": "delivered",
                       "link": None}]},
-                {"name": "Prove", "description": "", "position": 1, "status": "active",
-                 "target_date": "2026-09-20", "deliverables": [
+                {"id": 202, "name": "Prove", "description": "", "position": 1,
+                 "status": "active", "target_date": "2026-09-20", "deliverables": [
                      {"id": 92, "name": "Funcionário Digital", "status": "pending",
                       "link": None}]},
-                {"name": "Scale", "description": "", "position": 2, "status": "locked",
-                 "target_date": None, "deliverables": []},
+                {"id": 203, "name": "Scale", "description": "", "position": 2,
+                 "status": "locked", "target_date": None, "deliverables": []},
             ],
         },
         "roi": {"revenue": 1000.0, "cost": 250.0, "net": 750.0, "roi": 3.0},
@@ -216,12 +221,21 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
         ],
         # A primeira aponta para a reunião 4; a segunda não aponta para nada, que é o
         # caso real de uma reunião arquivada do outro lado.
+        #
+        # E os dois ramos da ancoragem (ADR 0088): a primeira ancora na fase 202
+        # (`Prove`); a segunda vem com `phase_ref: None`, que é o legado do Pulse e o
+        # caso em que a decisão fica sem nó na timeline — **sem** que nada seja
+        # adivinhado pela data, que ela nem tem. O terceiro ramo, o `phase_ref` que não
+        # resolve, é injetado no teste que o exercita: aqui ele deixaria uma linha de
+        # log em toda passagem desta fixture.
         "decisions": [
             {"id": 91, "title": "Adotar fila gerenciada",
              "rationale": "O volume previsto não paga o Memorystore.",
-             "decided_on": "2026-08-07", "decided_by": "Marina Farias", "meeting_id": 4},
+             "decided_on": "2026-08-07", "decided_by": "Marina Farias", "meeting_id": 4,
+             "phase_ref": 202},
             {"id": 92, "title": "Adiar o piloto de cobrança", "rationale": "",
-             "decided_on": None, "decided_by": "", "meeting_id": None},
+             "decided_on": None, "decided_by": "", "meeting_id": None,
+             "phase_ref": None},
         ],
         # A primeira traz `priority`; a segunda **não**, de propósito: o campo é
         # opcional no snapshot e o teste abaixo cobra os dois caminhos.
@@ -1039,3 +1053,118 @@ def test_the_dashboard_projects_a_decision_with_its_meeting(db_session) -> None:
     )
     # Rótulo e não uuid: o id da reunião muda a cada sync e não serviria nem de link.
     assert decisions["Adiar o piloto de cobrança"]["meeting_title"] is None
+
+
+def test_a_decision_anchors_to_the_phase_it_unlocked(db_session) -> None:
+    """A ancoragem decisão→fase, e ela sobrevive ao segundo webhook (ADR 0088).
+
+    O segundo sync é o que reprova o desenho errado, pelo mesmo argumento do teste da
+    reunião logo acima: ``project_phase`` é apagada e recriada a cada passagem, então o
+    uuid da fase muda toda vez. Um vínculo montado só na primeira passagem apontaria,
+    na segunda, para uma fase que não existe mais — e como o FK é ``ON DELETE SET
+    NULL``, o sintoma seria a decisão perder a âncora **sem erro, sem log e sem
+    exceção**, que é o defeito silencioso desta família.
+    """
+    biahflow.sync_snapshot(db_session, _snapshot())
+    db_session.commit()
+    biahflow.sync_snapshot(db_session, _snapshot())
+    db_session.commit()
+
+    project = db_session.execute(
+        select(Project).where(Project.slug == biahflow.project_slug(7))
+    ).scalar_one()
+    decisions = db_session.execute(
+        select(Decision).where(Decision.project_id == project.id).order_by(Decision.title)
+    ).scalars().all()
+
+    adotar = decisions[1]
+    fase = db_session.get(ProjectPhase, adotar.project_phase_id)
+    assert fase is not None and fase.name == "Prove"
+    # E é a fase **desta** passagem: o uuid da anterior foi apagado junto com a linha.
+    assert fase.project_id == project.id
+
+    # A que a origem não ancorou fica sem fase, e isso não é erro nem lacuna nossa.
+    assert decisions[0].project_phase_id is None
+
+
+def test_the_dashboard_publishes_the_phase_label_and_never_the_id(db_session) -> None:
+    """O contrato publica o **rótulo** da fase, pelo motivo do ``meeting_title``.
+
+    O uuid da fase muda a cada sync e não serviria nem de rótulo nem de link — e o nome
+    é a identidade que a timeline já usa como âncora (``phase:<nome>``).
+    """
+    biahflow.sync_snapshot(db_session, _snapshot())
+    db_session.commit()
+    project = db_session.execute(
+        select(Project).where(Project.slug == biahflow.project_slug(7))
+    ).scalar_one()
+
+    decisions = {d["title"]: d for d in biahflow.build_dashboard(db_session, project)["decisions"]}
+
+    assert decisions["Adotar fila gerenciada"]["journey_phase_name"] == "Prove"
+    assert decisions["Adiar o piloto de cobrança"]["journey_phase_name"] is None
+    # E o id não sai junto de carona: quem confere isso caso a caso é a guarda de
+    # visibilidade, mas a asserção aqui é sobre esta resposta.
+    assert "phase_ref" not in decisions["Adotar fila gerenciada"]
+    assert "project_phase_id" not in decisions["Adotar fila gerenciada"]
+
+
+def test_an_unresolvable_phase_ref_stores_null_and_is_counted(
+    db_session, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``phase_ref`` preenchido que não casa com fase nenhuma **do mesmo envelope**.
+
+    Tratar isso como legado apagaria a diferença entre *a origem não carimbou* e *a
+    origem carimbou algo que não chegou* — e a segunda é inconsistência do produtor,
+    que alguém precisa poder ver. Nos dois casos grava ``NULL``: a decisão não some, ela
+    fica sem nó na timeline.
+    """
+    payload = _snapshot(biahflow_project_id=8801, client_id=8800)
+    payload["decisions"][0]["phase_ref"] = 999
+
+    with caplog.at_level(logging.WARNING, logger="portal_api.integrations.biahflow"):
+        project = biahflow.sync_snapshot(db_session, payload)
+    db_session.commit()
+
+    decisions = {d["title"]: d for d in biahflow.build_dashboard(db_session, project)["decisions"]}
+    assert decisions["Adotar fila gerenciada"]["journey_phase_name"] is None
+
+    # O evento sai uma vez, com o id não resolvido em `extra` — nunca interpolado na
+    # mensagem, que é o que faz o limiar do `alerts.md` valer.
+    registros = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "projection.phase_ref_unresolved"
+    ]
+    assert [record.phase_ref for record in registros] == ["999"]
+    assert [record.decision_external_id for record in registros] == ["91"]
+
+    # E o `phase_ref` nulo continua **silencioso**: só o carimbo que não resolve conta.
+    assert len(registros) == 1
+
+
+def test_the_phase_is_never_inferred_from_the_decision_date(db_session) -> None:
+    """Nenhuma camada adivinha a fase por ``decided_on`` × janela da fase (ADR 0088).
+
+    A inferência foi considerada e **recusada em dois gates humanos independentes** — o
+    nosso em 27/08/2026 e o do Pulse na ADR 0057 de lá. Este teste fixa a recusa no
+    lugar em que ela poderia voltar por conveniência: uma decisão sem ``phase_ref`` cuja
+    data cai **dentro** da janela de uma fase, que é exatamente o caso em que a
+    heurística pareceria certa.
+
+    Sem esta asserção, reintroduzir o casador por data deixaria toda a suíte verde: o
+    campo passaria a vir preenchido, e nenhum outro teste pergunta de onde ele veio.
+    """
+    payload = _snapshot(biahflow_project_id=8803, client_id=8802)
+    sem_ancora = payload["decisions"][1]
+    # `Prove` é a fase ativa, com `target_date` em 2026-09-20; esta data cai dentro
+    # dela por qualquer janela que alguém desenhasse.
+    sem_ancora["decided_on"] = "2026-09-15"
+    assert sem_ancora["phase_ref"] is None
+
+    project = biahflow.sync_snapshot(db_session, payload)
+    db_session.commit()
+
+    decisions = {d["title"]: d for d in biahflow.build_dashboard(db_session, project)["decisions"]}
+    assert decisions["Adiar o piloto de cobrança"]["decided_on"] == "2026-09-15"
+    assert decisions["Adiar o piloto de cobrança"]["journey_phase_name"] is None

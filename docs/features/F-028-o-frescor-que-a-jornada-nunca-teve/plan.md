@@ -13,6 +13,11 @@ Produzido pelo Planner a partir da [FDD 028](../../fdd/028-o-frescor-que-a-jorna
 > estado stale, decisões/gates na timeline) ficam listadas em `planning_findings` e **não** viram
 > Task Contract até o Design Approval. Nada aqui decide desenho.
 
+> **Leia antes das duas revisões (02/09/2026).** Tudo o que este arquivo diz sobre a ancoragem
+> decisão→fase estar `DEPENDENCY_BLOCKED` **deixou de ser verdade em 31/08/2026**. O plano não é
+> reescrito; a correção está em [`PLAN_DEVIATION 2`](#plan_deviation-2--o-dependency_blocked-caiu-02092026),
+> no fim do arquivo.
+
 ## FEATURE EXECUTION PLAN
 
 ```text
@@ -321,4 +326,20 @@ planning_findings:
 `PLAN_VALIDATION: PLAN_VALID` — pendente do gate humano de aprovação desta revisão 2.
 Auto-checagem: IDs únicos e não colidentes com a revisão 1 (T06–T08); `depends_on` nomeia tarefa
 existente; sem ciclos; `parallel_groups` vazio é honesto (superfície compartilhada).
+
+## PLAN_DEVIATION 2 — o `DEPENDENCY_BLOCKED` caiu (02/09/2026)
+
+| Campo | Valor |
+| --- | --- |
+| Tarefa | nenhuma das planejadas — a superfície estava **fora** das duas revisões |
+| Estado planejado | ancoragem decisão→fase `DEPENDENCY_BLOCKED`, sem Task Contract, à espera de `phase_ref` no Pulse |
+| Estado real | o Pulse carimba `phase_ref` desde **31/08/2026** (`biahflow/pulse#46`, ADR 0057 e FDD 032 de lá); o campo chegava no envelope e era **descartado na ingestão** |
+| Impacto | o único critério de aceite em aberto da Issue #62 passou a ser construível, e as duas revisões deste plano ficaram afirmando um bloqueio que não existia mais |
+| Resolução | construído fora deste plano, em fatia própria, sob a [ADR 0088](../../adr/0088-a-decisao-que-nao-sabia-que-fase-destravou.md), dentro do DAP r1 já aprovado (a superfície é a que ele desenha em §Surfaces) |
+
+**As duas revisões acima não são reescritas** — elas registram o que foi planejado e por quê, e a
+decisão que carregam continua valendo: a heurística por `decided_on` × janela da fase foi recusada
+em dois gates humanos independentes e **não** foi reintroduzida como fallback. O que mudou é a
+premissa de fato, não a decisão. Onde o texto delas diz `DEPENDENCY_BLOCKED` — linhas 40, 146,
+217, 228, 262, 313 e 317 —, leia-se *resolvido em 02/09/2026 por esta deviation*.
 

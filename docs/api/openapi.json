@@ -1130,6 +1130,17 @@
             ],
             "title": "Decided On"
           },
+          "journey_phase_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journey Phase Name"
+          },
           "meeting_title": {
             "anyOf": [
               {
@@ -1173,7 +1184,8 @@
           "rationale",
           "decided_on",
           "owner_label",
-          "meeting_title"
+          "meeting_title",
+          "journey_phase_name"
         ],
         "title": "DecisionOut",
         "type": "object"

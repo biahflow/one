@@ -531,7 +531,10 @@ export type ProjectSummary = {
 export type OverviewMilestone = { title: string; owner: string; state: string; date: string };
 export type ProjectDocument = { title: string; type: string | null; author: string | null; link: string | null; updated: string };
 export type MeetingView = { title: string; date: string; status: string; hasTranscript: boolean; recordingUrl: string | null };
-export type DecisionView = { title: string; rationale: string | null; decidedOn: string | null; ownerLabel: string | null; meetingTitle: string | null };
+/** `journeyPhaseName` é a fase da jornada que esta decisão destravou (ADR 0088), ou `null` quando a
+ *  origem não a ancorou — e aí ela fica só na aba Decisões, sem nó na timeline. Não há
+ *  rótulo de "sem fase": o desenho aprovado não desenha estado para a ausência. */
+export type DecisionView = { title: string; rationale: string | null; decidedOn: string | null; ownerLabel: string | null; meetingTitle: string | null; journeyPhaseName: string | null };
 export type PendingItemView = { id: string; title: string; description: string | null; owner: string | null; state: string; stateLabel: string; priority: string; priorityLabel: string; origin: string; openedByMessageId: string | null; openedByConversationId: string | null; commentCount: number; age: string };
 export type ProjectResults = { milestonesTotal: number; milestonesDone: number; overdue: number; onTimePercent: number };
 export type MeasuredAssumption = {
@@ -1970,6 +1973,19 @@ function GateDecisionBadge({ phase }: { phase: JourneyPhase }) {
   );
 }
 
+/**
+ * "Decidido em 12 set · reunião de alinhamento" — a linha de data do nó de decisão.
+ *
+ * Uma função e não um literal interpolado porque as duas metades são independentemente
+ * nulas: a origem publica decisão sem data e decisão sem reunião, e as três combinações
+ * têm de sair legíveis. Devolve `""` quando não há nenhuma das duas, e aí a linha não é
+ * renderizada — um "Decidido em" sem data seria pior que o silêncio.
+ */
+function decisionWhen(decision: DecisionView): string {
+  const when = decision.decidedOn ? `Decidido em ${decision.decidedOn}` : "";
+  return [when, decision.meetingTitle].filter(Boolean).join(" · ");
+}
+
 // "Você está aqui": a jornada de transformação pela perspectiva do cliente — sem nada
 // técnico. Cada fase concluída/ativa revela seus entregáveis; as bloqueadas ficam veladas.
 /**
@@ -2004,11 +2020,16 @@ function FreshnessStamp({ freshness }: { freshness: FreshnessView }) {
 
 function JourneyPanel({
   journey,
+  decisions,
   freshness,
   focusedItem,
   onNavigate,
 }: {
   journey: Overview["journey"];
+  /** As decisões do projeto, das quais a timeline mostra **só** as que a origem ancorou a
+   *  uma fase (ADR 0088). A lista inteira continua na aba Decisões: aqui ela é filtrada,
+   *  nunca consumida — a aba é o registro, a timeline é o vínculo. */
+  decisions: DecisionView[];
   /** O carimbo de frescor da projeção (ADR 0076); `null` quando nunca houve sync. */
   freshness: FreshnessView | null;
   focusedItem?: string | null;
@@ -2042,6 +2063,7 @@ function JourneyPanel({
   const [selected, setSelected] = useState(initial);
   if (phases.length === 0) return null;
   const phase = phases[Math.min(selected, phases.length - 1)];
+  const anchoredDecisions = decisions.filter((decision) => decision.journeyPhaseName === phase.name);
 
   return (
     <section className="journey-panel" aria-label="Jornada de transformação">
@@ -2094,6 +2116,36 @@ function JourneyPanel({
           </div>
           {phase.targetDate && <div className="journey-target"><span>Previsão</span><strong>{phase.targetDate}</strong></div>}
         </div>
+
+        {/* As decisões que destravaram **esta** fase (ADR 0088, DAP r1 §Surfaces).
+            O casamento é pelo nome porque é a identidade que o servidor publica e a
+            que a timeline já usa como âncora; a resolução pela identidade estável (o
+            id da fase na origem) aconteceu na ingestão. Homônimas caem na degradação
+            benigna que a ADR 0056 já aceitou.
+
+            Nada aqui desenha a decisão **sem** fase: ela não some — continua inteira
+            na aba Decisões —, só não ganha nó. Um rótulo de "sem fase" seria estado
+            que o gate de design não aprovou. */}
+        {anchoredDecisions.length > 0 && (
+          <div className="journey-decisions">
+            {anchoredDecisions.map((decision) => {
+              const when = decisionWhen(decision);
+              return (
+                <div className="journey-decision" key={decision.title}>
+                  <span className="journey-decision-icon"><Check size={14} /></span>
+                  <div>
+                    <div className="journey-decision-title">{decision.title}</div>
+                    {/* Só o que é client-safe: título, racional e data. O dono da decisão
+                        fica na aba, onde a pergunta é "quem decidiu"; aqui a pergunta é
+                        "o que destravou esta fase". */}
+                    {decision.rationale && <div className="journey-decision-why">{decision.rationale}</div>}
+                    {when && <div className="journey-decision-when">{when}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <p className="journey-deliverables-label">{phase.state === "locked" ? "Entregáveis a desbloquear" : "Entregáveis desta fase"}</p>
         {phase.deliverables.length === 0 ? (
@@ -2176,7 +2228,7 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
     <>
       <ViewHero eyebrow={overview.project.toLocaleUpperCase("pt-BR")} title={`Bom dia, ${firstName(user.name)}.`} subtitle="Veja o que está acontecendo no seu projeto." onAsk={onAsk} />
 
-      <JourneyPanel journey={overview.journey} freshness={overview.freshness} focusedItem={focusedItem} onNavigate={onNavigate} />
+      <JourneyPanel journey={overview.journey} decisions={overview.decisions} freshness={overview.freshness} focusedItem={focusedItem} onNavigate={onNavigate} />
 
       <DigitalEmployees employees={overview.digitalEmployees} />
 

@@ -4,19 +4,31 @@
 
 ## Status
 
-`BLOCKED` — o escopo **construível neste repositório está entregue e mergeado**, e a feature **não
-fecha por inteiro** por dependência cross-repo. Trilha percorrida: Design Approval (DAP r1
-`Approved`, 26/08), ADR 0076 aceita, plano `PLAN_VALID` (rev. 1 e rev. 2 aprovadas, 26–27/08),
-build em duas fatias — T01–T05 (projeção versionada, frescor, reconciliação anti-regressão,
-guarda client-safe) no **PR #73**, e T06–T08 (superfície de frescor/stale/indisponível +
-evidência de navegador) no **PR #75**.
+`READY_FOR_HUMAN_REVIEW` — o escopo está entregue **por inteiro**, incluindo a ancoragem
+decisão→fase. Trilha percorrida: Design Approval (DAP r1 `Approved`, 26/08), ADR 0076 aceita,
+plano `PLAN_VALID` (rev. 1 e rev. 2 aprovadas, 26–27/08), build em três fatias — T01–T05
+(projeção versionada, frescor, reconciliação anti-regressão, guarda client-safe) no **PR #73**,
+T06–T08 (superfície de frescor/stale/indisponível + evidência de navegador) no **PR #75**, e a
+ancoragem decisão→fase na **ADR 0088**.
 
-**O que bloqueia o fechamento pleno (`DEPENDENCY_BLOCKED`, decidido no gate de 27/08):** a
-ancoragem decisão→fase na timeline — o critério de aceite "decisões/gates entendíveis por fase" —
-depende de `phase_ref` carimbado pelo **lado Pulse/Biahflow**. A heurística por `decided_on` foi
-**recusada** no gate (é a falsa precisão que `results.py` nega, e contradiz "o One não origina nem
-bifurca estado do Pulse"). Enquanto o Pulse não expõe `phase_ref`, essa superfície fica fora, por
-decisão registrada, não por omissão. Ver `plan.md` (rev. 2, `planning_findings`) e `evidence.md`.
+**Recomendação: `DONE`.** Quem move o estado é decisão humana, não esta linha.
+
+> **Retificação de 02/09/2026.** Esta seção dizia `BLOCKED`, e o bloqueio **deixou de existir em
+> 31/08/2026**: o Pulse passou a carimbar `phase_ref` por decisão publicada (`biahflow/pulse#46`,
+> ADR 0057 e FDD 032 de lá). Por dois dias o campo chegou no envelope sem que nada deste lado o
+> lesse. A superfície foi construída na [ADR 0088](../adr/0088-a-decisao-que-nao-sabia-que-fase-destravou.md),
+> **sem heurística nenhuma**: o `phase_ref` é resolvido na ingestão contra os ids das fases do
+> mesmo envelope, e a decisão que a origem não ancora continua na aba Decisões sem nó na timeline.
+> O texto original fica registrado abaixo, porque a decisão que ele documenta — recusar a
+> inferência por data — continua valendo e foi reafirmada com teste:
+>
+> > **O que bloqueia o fechamento pleno (`DEPENDENCY_BLOCKED`, decidido no gate de 27/08):** a
+> > ancoragem decisão→fase na timeline — o critério de aceite "decisões/gates entendíveis por
+> > fase" — depende de `phase_ref` carimbado pelo **lado Pulse/Biahflow**. A heurística por
+> > `decided_on` foi **recusada** no gate (é a falsa precisão que `results.py` nega, e contradiz
+> > "o One não origina nem bifurca estado do Pulse"). Enquanto o Pulse não expõe `phase_ref`, essa
+> > superfície fica fora, por decisão registrada, não por omissão. Ver `plan.md` (rev. 2,
+> > `planning_findings`) e `evidence.md`.
 
 > **Classificação: `INTEGRATION_CHANGE` · `BROWSER_REQUIRED`.** Origem: Issue #62. Concretiza a
 > consequência escrita da ADR 0067 — "o webhook/snapshot existente evolui para **contrato de
@@ -102,9 +114,12 @@ fase que desbloquearam, não só como lista solta. Detalhe visual e estados no D
   reconciliação recusa aplicar um snapshot cuja versão/observação seja **anterior** à atual — o
   precedente é `mark_project_deleted` ("a primeira observação é a verdadeira"; só grava se ainda
   `None`), generalizado para "não regredir".
-- **Decisões na timeline:** o contrato marca quais decisões são gates client-facing e a qual fase se
-  ancoram (ou correlaciona por `decided_on` × janela da fase). Projeção read-only; One **não origina**
-  decisão (ADR 0006/0008).
+- **Decisões na timeline:** o contrato marca a qual fase cada decisão se ancora. Projeção read-only;
+  One **não origina** decisão (ADR 0006/0008). *Resolvido em 02/09/2026 (ADR 0088): a marcação é o
+  `phase_ref` que o Pulse carimba desde 31/08, resolvido na ingestão contra os ids das fases do mesmo
+  envelope. A alternativa que esta linha carregava — "ou correlaciona por `decided_on` × janela da
+  fase" — foi **recusada em dois gates humanos independentes** e não é fallback; `Decision` ganhou
+  `project_phase_id` e `DecisionOut` publica `journey_phase_name`.*
 - **Filtro por contrato e teste:** uma guarda deriva do contrato os campos client-safe e reprova se um
   campo internal-only (lista da ADR 0067) atravessar — no espírito das guardas de consumo/telemetria
   existentes. Nada de escrita nova pelo `portal_app`: a projeção é read-only; quem escreve o snapshot
@@ -146,7 +161,10 @@ fase que desbloquearam, não só como lista solta. Detalhe visual e estados no D
 - **Reconciliação sem versão na origem:** se o snapshot não trouxer versão monotônica, a defesa
   anti-regressão fica limitada ao `observed_at`; declarar o limite em vez de fingir ordenação total.
 - **Decisões×fases:** a correlação decisão→fase pode ser ambígua sem o Pulse marcar o gate; declarar a
-  heurística e o que fica de fora.
+  heurística e o que fica de fora. *Fechado em 02/09/2026 (ADR 0088): o Pulse marca, então não há
+  heurística a declarar — há um limite. O que fica de fora é a decisão que a origem **não** ancorou:
+  ela continua inteira na aba Decisões e não ganha nó na timeline, sem rótulo de "sem fase", porque o
+  DAP aprovado não desenha estado para a ausência.*
 
 ## Gates humanos
 

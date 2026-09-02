@@ -142,6 +142,7 @@
       "decided_on": "A data da decisão publicada, como a origem a registrou.",
       "meeting_title": "Rótulo da reunião em que se decidiu — rótulo e não id, porque o uuid da reunião muda a cada sync.",
       "owner_label": "Quem é dono da decisão, em rótulo. Pessoa do projeto do cliente.",
+      "journey_phase_name": "Nome da fase da jornada que esta decisão destravou (ADR 0088), resolvido na ingestão contra o `phase_ref` que o Pulse carimba (ADR 0057 de lá). Rótulo e não id, pelo motivo de meeting_title: o uuid da fase muda a cada sync, e o nome é a âncora que a timeline já usa. O nome da fase já sai por PhaseOut.name na mesma resposta, então nada de novo atravessa a fronteira — o que é novo é o vínculo. Nulo quando a origem não ancorou a decisão, e nada é inferido por data.",
       "rationale": "O porquê da decisão PUBLICADA (FDD 032 do Pulse, ADR 0049) — o que o cliente não consegue reconstituir sozinho meses depois. NÃO confundir com PriorityAssessment.rationale, que é avaliação interna e está proibida: a proibição é sobre o recurso, nunca sobre a palavra.",
       "title": "O que foi decidido, em uma linha."
     },

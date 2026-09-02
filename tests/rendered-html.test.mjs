@@ -1114,6 +1114,63 @@ test("a fase sem gate não ganha caixa de decisão", async () => {
 });
 
 /**
+ * Só os nós de decisão da timeline — o `.gate` do DAP r1 da F-028 (ADR 0088).
+ *
+ * Pelo mesmo motivo do `gateBlock` acima: as asserções abaixo são sobre **onde** o
+ * título de uma decisão pode aparecer, e não sobre ele existir. A aba Decisões
+ * renderiza os dois títulos legitimamente, e um recorte que fosse a página inteira
+ * daria a decisão sem fase por "presente na timeline" — verde em cima do defeito que
+ * esta fatia existe para não cometer.
+ */
+function decisionNodes(html) {
+  const blocks = html.matchAll(
+    /<div class="journey-decisions">[\s\S]*?<p class="journey-deliverables-label"/g,
+  );
+  return [...blocks].map((match) => match[0]).join("\n");
+}
+
+test("a decisão ancorada aparece na fase que ela destravou", async () => {
+  const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+  // `Prove` é a fase ativa da fixture, e é a que o painel seleciona sozinho — então o
+  // nó sai no HTML do SSR sem interação nenhuma, que é o que uma asserção de HTML
+  // renderizado consegue enxergar.
+  const nodes = decisionNodes(html);
+  // Recorte vazio afirmaria nada, em verde — o defeito que a ADR 0033 nomeia.
+  assert.notEqual(nodes, "");
+  assert.match(nodes, /Adotar fila gerenciada/);
+  // Os três campos client-safe que o DAP desenha: título, racional e data.
+  assert.match(nodes, /O volume previsto não paga o Memorystore/);
+  assert.match(nodes, /Decidido em 06 ago/);
+});
+
+test("a decisão que a origem não ancorou fica fora da timeline e continua na aba", async () => {
+  const html = await (await render("/", { headers: { cookie: await sessionCookie() } })).text();
+
+  // `journey_phase_name: null` na fixture. Não ganha nó — e **não ganha rótulo de "sem fase"**,
+  // que seria superfície que o gate de design não aprovou.
+  assert.doesNotMatch(decisionNodes(html), /Adiar o PROVE de cobrança/);
+  assert.doesNotMatch(html, /[Ss]em fase/);
+
+  // E não sumiu: a aba Decisões é o registro, e ela continua inteira lá.
+  const registro = await (
+    await render("/?tab=Decis%C3%B5es", { headers: { cookie: await sessionCookie() } })
+  ).text();
+  assert.match(registro, /Adiar o PROVE de cobrança/);
+  assert.match(registro, /Adotar fila gerenciada/);
+});
+
+test("o nó de decisão segue a fase selecionada, e não vaza para as outras", async () => {
+  // `Welcome` não tem decisão ancorada na fixture. Sem esta asserção, um filtro que
+  // ignorasse `journeyPhaseName` passaria nas duas acima com o nó aparecendo em toda fase —
+  // que é a tela afirmando que aquela decisão destravou uma fase que ela não destravou.
+  const markup = await anchored("Visão geral", "phase:Welcome");
+
+  assert.equal(decisionNodes(markup), "");
+  assert.doesNotMatch(markup, /Decidido em 06 ago/);
+});
+
+/**
  * O vocabulário banido do Language Map §5, na superfície que esta fatia toca.
  *
  * "POC", "piloto" e "MVP" são o que o PROVE **não** é: ele é a menor implementação

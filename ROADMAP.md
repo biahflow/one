@@ -27,7 +27,7 @@ contratos de tarefa e evidências, está em [`docs/features/README.md`](docs/fea
 | `F-025` — One: identidade e fundação de design | Selecionada em 25/08/2026 (Issue #46) | `DONE` | [FDD 025](docs/fdd/025-o-nome-que-a-tela-ainda-nao-sabia.md) | Implementada, validada (ADR 0069) e mergeada em 25/08/2026 (PR #47); Issue #46 fechada. |
 | `F-026` — Aplicar o One Design System ao shell real | Selecionada em 26/08/2026 (Issue #60) | `READY_FOR_BUILD` | [FDD 026](docs/fdd/026-a-pele-que-o-shell-ainda-nao-vestiu.md) | DAP r1 aprovado; Open questions resolvidas (nav `brand-50`, abas nesta fatia); plano `PLAN_VALID` (aprovado 26/08). Task Contracts podem ser derivados. |
 | `F-027` — Revisão e aceite do cliente | Selecionada em 26/08/2026 (Issue #61) | `READY_FOR_BUILD` | [FDD 027](docs/fdd/027-o-aceite-que-a-tela-so-desenhou.md) | DAP r1 aprovado; ADR 0077 aceita; plano `PLAN_VALID` (aprovado 26/08). Task Contracts podem ser derivados. |
-| `F-028` — Projeção Pulse→One da jornada | Selecionada em 26/08/2026 (Issue #62) | `BLOCKED` | [FDD 028](docs/fdd/028-o-frescor-que-a-jornada-nunca-teve.md) | Contrato da ADR 0076 (aceita) entregue e mergeado — T01–T05 no PR #73, T06–T08 no PR #75. Não fecha por inteiro: a ancoragem decisão→fase é `DEPENDENCY_BLOCKED` no `phase_ref` do Pulse (gate de 27/08). |
+| `F-028` — Projeção Pulse→One da jornada | Selecionada em 26/08/2026 (Issue #62) | `READY_FOR_HUMAN_REVIEW` | [FDD 028](docs/fdd/028-o-frescor-que-a-jornada-nunca-teve.md) | Contrato da ADR 0076 (aceita) entregue e mergeado — T01–T05 no PR #73, T06–T08 no PR #75. **O `DEPENDENCY_BLOCKED` da ancoragem decisão→fase caiu em 31/08/2026**, quando o Pulse passou a carimbar `phase_ref` (`biahflow/pulse#46`); a superfície saiu na ADR 0088. `DONE` é decisão humana. |
 
 `Não selecionada` não é prioridade implícita: exige seleção humana antes de especificação,
 planejamento ou execução.
@@ -1993,6 +1993,47 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       fatia não devolve resultado nenhum ao cliente — a mesma posição da `#90`; a busca segue
       lexical; e a `Evidence` fica fora do casamento por ser JSONB, com a razão escrita no código.
       Fecha `biahflow/one#102`. FDD 029.
+
+- [x] **A decisão que não sabia que fase destravou** *(ADR 0088)*: o **único critério de
+      aceite em aberto** da Issue #62 — "decisões e gates entendíveis sem termos internos" —,
+      que estava `DEPENDENCY_BLOCKED` desde 27/08 esperando o Pulse carimbar `phase_ref`. **Ele
+      carimbou em 31/08** (`biahflow/pulse#46`, ADR 0057 de lá) e ninguém deste lado percebeu:
+      o campo aparecia em **quatro documentos e em zero linhas de código**, chegando no envelope
+      e sendo descartado na ingestão — a forma da ADR 0033 girada 180 graus, com escritor do
+      outro lado e nenhum leitor deste. A superfície é a que o DAP r1 da F-028 já aprovava desde
+      26/08 e chamava de nova em negrito ("a ancoragem à fase é nova"), e o que ela devolve ao
+      cliente é o vínculo: **qual decisão destravou qual fase**, com título, racional e data
+      dentro da timeline em vez de numa lista solta. O recasamento é **na ingestão** e
+      `ProjectPhase` **não** ganha coluna — o id da origem só é necessário dentro da transação
+      que recria as duas tabelas juntas, e persistir identidade que nenhum leitor consulta é a
+      ADR 0033 na direção de entrada; o contraste que o define é o `external_ref` do entregável,
+      que existe porque um fato **fora** do read model precisa nomeá-lo meses depois (ADR 0077).
+      O contrato publica o **rótulo** e não o id, por três precedentes que dizem o mesmo — o
+      `meeting_title` ("o uuid da reunião muda a cada sync", e o da fase muda igual), o
+      `phase_name` desnormalizado da `DeliverableAcceptance`, e a tela, que já ancora a fase pelo
+      nome — e ele se chama `journey_phase_name` porque a **medição** mandou: com `phase_name`, a
+      asserção de obsolescência do `NOT_CONSUMED` cobrava a linha do `DeliverableAcceptanceOut`
+      como desnecessária, já que o corpus dela é por arquivo e `page.tsx` está nos dois esquemas;
+      apagar aquela linha deixaria a cobertura verde por coincidência com outro identificador, que
+      é o `.priority` da ADR 0033 e o `date`/`dated_at` da 0038 pela terceira vez, com a mesma
+      saída — renomear para o elo ficar verificável. **A decisão sem fase não ganha estado nenhum**, e isso é limite nomeado: o legado vem
+      com `phase_ref` nulo, continua inteiro na aba Decisões e simplesmente não tem nó — um
+      rótulo de "sem fase" seria superfície que o gate de design não aprovou, e o risco de o
+      cliente não distinguir "ninguém decidiu" de "a origem não ancorou" está escrito no ADR com
+      o conserto no lugar certo, que é backfill no Pulse. **Nada é inferido por data em camada
+      nenhuma** — a heurística por `decided_on` × janela da fase foi recusada em **dois gates
+      humanos independentes**, o nosso em 27/08 e o deles na ADR 0057 —, e o teste que fixa a
+      recusa monta o caso em que ela pareceria certa: sem ele, reintroduzir o casador deixaria a
+      suíte inteira verde. O `phase_ref` que **não resolve** grava `NULL` e emite
+      `projection.phase_ref_unresolved` com linha no runbook, porque tratá-lo como legado
+      apagaria a diferença entre *a origem não carimbou* e *a origem carimbou algo que não
+      chegou* — e a segunda é inconsistência do produtor. *De quebra, o seed:* o
+      `biahflow-snapshot.json` era cópia de envelope **anterior a 31/08** e não exercitava nem um
+      dos dois ramos, de modo que o passeio local nunca veria o caminho novo. E **cinco
+      documentos deixaram de afirmar um bloqueio que caiu** — FDD 028, `plan.md`, `evidence.md`,
+      a linha da `F-028` na tabela acima e a seção *Aberto* da ADR 0076 —, retificados com data e
+      sem apagar a história. **Fica aberto:** o backfill do legado, que é trabalho no Pulse com
+      quem sabe qual fase cada decisão destravou. Fecha `biahflow/one#62`. FDD 028.
 
 ## Ordem recomendada
 

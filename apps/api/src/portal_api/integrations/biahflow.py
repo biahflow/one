@@ -991,6 +991,15 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     session.execute(delete(PhaseDeliverable).where(PhaseDeliverable.project_id == project.id))
     session.execute(delete(ProjectPhase).where(ProjectPhase.project_id == project.id))
     session.flush()
+    # O id da fase **na origem** → a linha que este laço acabou de inserir (ADR 0088).
+    #
+    # Vive só dentro desta transação, e é isso que dispensa uma coluna em
+    # `ProjectPhase`: o vínculo decisão→fase é refeito por inteiro a cada webhook, como
+    # o `meeting_id`, então persistir a identidade de origem seria campo com escritor e
+    # sem leitor — o defeito da ADR 0033 na direção de entrada. É o mesmo padrão do
+    # `reuniao_por_id` mais abaixo, e as fases são inseridas **antes** das decisões,
+    # que é o que torna o mapa consultável quando o laço delas chega.
+    fase_por_id: dict[str, ProjectPhase] = {}
     for position, phase_data in enumerate(journey.get("phases", [])):
         target = phase_data.get("target_date")
         phase = ProjectPhase(
@@ -1012,6 +1021,13 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
         )
         session.add(phase)
         session.flush()  # precisamos do phase.id para os entregáveis
+        # O `flush` acima já dá `id` à fase, então o mapa nasce utilizável. `.get` sem
+        # default e `str()` pelo argumento do `external_ref` do entregável: um Biahflow
+        # anterior a esta fatia manda a fase sem `id`, e ali lá é chave primária do
+        # Django. Sem id a fase simplesmente não é ancorável — nenhuma decisão a
+        # alcança, e nenhuma é inventada para ela.
+        if phase_data.get("id") is not None:
+            fase_por_id[str(phase_data["id"])] = phase
         for deliverable_position, deliverable in enumerate(phase_data.get("deliverables", [])):
             session.add(
                 PhaseDeliverable(
@@ -1337,6 +1353,29 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
     # onde a extração por IA grava, não entra no snapshot de lá.
     for decision in snapshot.get("decisions", []):
         reuniao = reuniao_por_id.get(str(decision.get("meeting_id")))
+        # A fase que esta decisão destravou (ADR 0088). `phase_ref` existe **sempre** no
+        # envelope desde a ADR 0057 do Pulse, e vem `null` no legado: ausência é ausência
+        # de afirmação, e a decisão continua na aba Decisões sem nó na timeline.
+        #
+        # A distinção que a linha abaixo preserva é a que dá o evento: `phase_ref` nulo é
+        # *a origem não carimbou*; `phase_ref` presente que não casa com nenhuma fase
+        # **deste mesmo envelope** é *a origem carimbou algo que não chegou* — que é
+        # inconsistência do produtor, não legado, e alguém precisa poder vê-la. Nos dois
+        # casos grava `NULL`: em nenhum se adivinha a fase por `decided_on`.
+        phase_ref = decision.get("phase_ref")
+        fase = fase_por_id.get(str(phase_ref)) if phase_ref is not None else None
+        if phase_ref is not None and fase is None:
+            logger.warning(
+                "projection.phase_ref_unresolved",
+                extra={
+                    "project_id": str(project.id),
+                    "biahflow_project_id": project_data["id"],
+                    "phase_ref": str(phase_ref),
+                    "decision_external_id": (
+                        str(decision["id"]) if decision.get("id") is not None else None
+                    ),
+                },
+            )
         session.add(
             Decision(
                 organization_id=organization.id,
@@ -1349,6 +1388,7 @@ def sync_snapshot(session: Session, snapshot: dict[str, Any]) -> Project:
                 # perder a proveniência é melhor que perder a decisão, que é o mesmo
                 # argumento do `SET NULL` do outro lado.
                 meeting_id=reuniao.id if reuniao is not None else None,
+                project_phase_id=fase.id if fase is not None else None,
             )
         )
 
@@ -1880,9 +1920,13 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
     # importa é a do dia em que se decidiu, não a da linha — o sync recria as linhas.
     # `outerjoin` e não um relationship com carga preguiçosa: a aba mostra de qual reunião
     # cada decisão saiu, e uma consulta por linha seria N+1 num laço que já é do dashboard.
+    # O segundo `outerjoin` é a fase que a decisão destravou (ADR 0088), e está aqui pelo
+    # mesmo motivo do primeiro. `outer` também pela mesma razão: a decisão que a origem
+    # não ancorou é caso legítimo e frequente, e continua na aba sem nó na timeline.
     decisions = session.execute(
-        select(Decision, Meeting.title)
+        select(Decision, Meeting.title, ProjectPhase.name)
         .outerjoin(Meeting, Decision.meeting_id == Meeting.id)
+        .outerjoin(ProjectPhase, Decision.project_phase_id == ProjectPhase.id)
         .where(Decision.project_id == project.id)
         .order_by(Decision.decided_on.desc().nullslast(), Decision.title)
     ).all()
@@ -2130,8 +2174,14 @@ def build_dashboard(session: Session, project: Project) -> dict[str, Any]:
                 # O título da reunião e não o id: a aba mostra "saiu de tal reunião", e um
                 # uuid que muda a cada sync não serviria nem de rótulo nem de link.
                 "meeting_title": meeting_title,
+                # A fase que esta decisão destravou, **pelo nome** e pela mesma razão
+                # (ADR 0088): o uuid da fase muda a cada sync, e o nome é a identidade
+                # que a timeline já usa como âncora (`phase:<nome>`). O servidor resolve
+                # pela identidade estável — o id da origem, na ingestão — e publica a
+                # que a tela sabe casar. `None` é a decisão que a origem não ancorou.
+                "journey_phase_name": journey_phase_name,
             }
-            for decision, meeting_title in decisions
+            for decision, meeting_title, journey_phase_name in decisions
         ],
         "pendings": [
             {

@@ -286,6 +286,15 @@ function screenAnchors(overview: Overview): Set<string> {
   for (const document of overview.documents) anchors.add(`document:${document.title}`);
   for (const meeting of overview.meetings) anchors.add(`meeting:${meeting.title}`);
   for (const pending of overview.pendings) anchors.add(`pending:${pending.title}`);
+  // As quatro do Discovery ancoram pelo **id da origem** e não pelo rótulo (ADR
+  // 0087): é o que a API publica como identidade e o que estas listas já usam como
+  // chave de React. O `Finding` não tem título — tem `statement`, que é uma frase.
+  for (const process of overview.processes) anchors.add(`process:${process.id}`);
+  for (const finding of overview.findings) anchors.add(`finding:${finding.id}`);
+  for (const pain of overview.painPoints) anchors.add(`pain_point:${pain.id}`);
+  for (const improvementOpportunity of overview.improvementOpportunities) {
+    anchors.add(`improvement_opportunity:${improvementOpportunity.id}`);
+  }
   return anchors;
 }
 
@@ -469,7 +478,12 @@ export type SearchHit = {
   item_anchor: string;
 };
 
-/** Rótulo por espécie de resultado. O mesmo vocabulário de `search.py`. */
+/** Rótulo por espécie de resultado. O mesmo vocabulário de `search.py`.
+ *
+ *  As quatro do Discovery ficam **em inglês**, e não é descuido: são os títulos que
+ *  a própria aba desenha nos quatro blocos, e o Language Map §1 diz que o termo
+ *  canônico não se traduz — traduz-se o texto em volta dele. Inventar "Processo" e
+ *  "Achado" aqui criaria um segundo vocabulário para a mesma lista. */
 const searchKindLabel: Record<string, string> = {
   document: "Documento",
   meeting: "Reunião",
@@ -477,6 +491,10 @@ const searchKindLabel: Record<string, string> = {
   decision: "Decisão",
   milestone: "Marco",
   chunk: "Trecho de documento",
+  process: "Process",
+  finding: "Finding",
+  pain_point: "Pain Point",
+  improvement_opportunity: "Improvement Opportunity",
 };
 
 /** Espelha `search.MIN_QUERY_LENGTH`: abaixo disso a API devolve lista vazia, e
@@ -1419,7 +1437,7 @@ export default function DashboardClient({
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
       case "Discovery":
-        return <DiscoveryView onAsk={askAi} overview={view} />;
+        return <DiscoveryView onAsk={askAi} overview={view} focusedItem={focusedItem} />;
       case "Notificações":
         return (
           <NotificationsView
@@ -3379,8 +3397,21 @@ function impactLabel(pain: PainPointView): string {
  * A ordem do backlog não é decidida aqui: a API já entrega por Opportunity Score
  * decrescente com os não avaliados no fim. Repetir o critério deste lado seria a
  * mesma regra em dois lugares podendo divergir — o argumento do `tabs.py`.
+ *
+ * **O `data-item` das quatro listas é `<namespace>:<id da origem>`** (ADR 0087), e
+ * não o rótulo como nas outras abas: é o id que a API publica como identidade e que
+ * estas listas já usam como chave de React, e o `Finding` não tem título para servir
+ * de rótulo. `test_item_anchor.py` cobra que os quatro namespaces sejam os do Python.
  */
-function DiscoveryView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+function DiscoveryView({
+  onAsk,
+  overview,
+  focusedItem,
+}: {
+  onAsk: () => void;
+  overview: Overview;
+  focusedItem?: string | null;
+}) {
   const { processes, findings, painPoints, improvementOpportunities } = overview;
   const nothingPublished =
     processes.length === 0 &&
@@ -3419,7 +3450,11 @@ function DiscoveryView({ onAsk, overview }: { onAsk: () => void; overview: Overv
         </div>
         {processes.length === 0 && <p className="empty-state">Nenhum processo mapeado ainda.</p>}
         {processes.map((item) => (
-          <section className="discovery-process" key={item.id}>
+          <section
+            className={`discovery-process ${`process:${item.id}` === focusedItem ? "is-anchored" : ""}`}
+            data-item={`process:${item.id}`}
+            key={item.id}
+          >
             <div className="discovery-process-head">
               <strong>{item.name}</strong>
               {item.updatedAt && <span>Atualizado na origem em {longDate(item.updatedAt)}</span>}
@@ -3479,7 +3514,11 @@ function DiscoveryView({ onAsk, overview }: { onAsk: () => void; overview: Overv
               finding.stepId === null ? null : stepById.get(finding.stepId)?.name,
             ].filter(Boolean);
             return (
-              <article className="discovery-finding" key={finding.id}>
+              <article
+                className={`discovery-finding ${`finding:${finding.id}` === focusedItem ? "is-anchored" : ""}`}
+                data-item={`finding:${finding.id}`}
+                key={finding.id}
+              >
                 <div className="discovery-finding-head">
                   <StatePill variant={EPISTEMIC_TONE[finding.epistemicStatus] ?? "info"}>
                     {EPISTEMIC_LABEL[finding.epistemicStatus] ?? finding.epistemicStatus}
@@ -3525,7 +3564,11 @@ function DiscoveryView({ onAsk, overview }: { onAsk: () => void; overview: Overv
         {painPoints.length === 0 && <p className="empty-state">Nenhuma dor confirmada ainda.</p>}
         <div className="discovery-list">
           {painPoints.map((pain) => (
-            <article className="discovery-pain" key={pain.id}>
+            <article
+              className={`discovery-pain ${`pain_point:${pain.id}` === focusedItem ? "is-anchored" : ""}`}
+              data-item={`pain_point:${pain.id}`}
+              key={pain.id}
+            >
               <div className="discovery-pain-head">
                 <strong>{pain.title}</strong>
                 <span className={pain.impactEstimate === null ? "discovery-gap" : "discovery-impact"}>
@@ -3560,7 +3603,11 @@ function DiscoveryView({ onAsk, overview }: { onAsk: () => void; overview: Overv
         )}
         <div className="discovery-list">
           {improvementOpportunities.map((opportunity) => (
-            <article className="discovery-opportunity" key={opportunity.id}>
+            <article
+              className={`discovery-opportunity ${`improvement_opportunity:${opportunity.id}` === focusedItem ? "is-anchored" : ""}`}
+              data-item={`improvement_opportunity:${opportunity.id}`}
+              key={opportunity.id}
+            >
               <div className="discovery-opportunity-head">
                 <strong>{opportunity.title}</strong>
                 {opportunity.priorityAssessment ? (

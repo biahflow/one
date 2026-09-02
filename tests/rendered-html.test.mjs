@@ -1172,6 +1172,14 @@ test("o link do aviso destaca a linha do assunto em cada aba ancorável", async 
     ["Reuniões", "meeting:Comitê de projeto"],
     ["Pendências", "pending:Renovar o certificado do integrador"],
     ["Visão geral", "phase:Prove"],
+    // As quatro do Discovery ancoram pelo **id da origem** e não pelo rótulo (ADR
+    // 0087): é o que a API publica como identidade e o que a lista já usa como
+    // chave. Os ids são os da fixture, e o `finding` é o caso sem rótulo possível —
+    // ele não tem título, tem uma frase que pode ser um parágrafo.
+    ["Discovery", "process:301"],
+    ["Discovery", "finding:401"],
+    ["Discovery", "pain_point:501"],
+    ["Discovery", "improvement_opportunity:601"],
   ];
 
   for (const [tab, item] of casos) {

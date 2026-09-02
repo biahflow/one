@@ -14,6 +14,14 @@ from portal_api.repositories.conversation import (
 )
 from portal_api.repositories.decision import DecisionRepository
 from portal_api.repositories.delivery import DeliveryRepository
+from portal_api.repositories.discovery import (
+    FindingRepository,
+    ImprovementOpportunityRepository,
+    PainPointRepository,
+    ProcessRepository,
+    ProcessStepRepository,
+    SolutionHypothesisRepository,
+)
 from portal_api.repositories.document import DocumentChunkRepository, DocumentRepository
 from portal_api.repositories.drive import (
     DriveConnectionRepository,
@@ -41,15 +49,21 @@ __all__ = [
     "DriveConnectionRepository",
     "DriveDocumentRepository",
     "FinancialAssumptionRepository",
+    "FindingRepository",
+    "ImprovementOpportunityRepository",
     "MeetingRepository",
     "MembershipRepository",
     "MilestoneRepository",
     "NotificationRepository",
     "OrganizationRepository",
+    "PainPointRepository",
     "PendingItemRepository",
     "PhaseDeliverableRepository",
+    "ProcessRepository",
+    "ProcessStepRepository",
     "ProjectRepository",
     "Repository",
+    "SolutionHypothesisRepository",
     "TenantContext",
     "TenantScopedRepository",
     "UserRepository",

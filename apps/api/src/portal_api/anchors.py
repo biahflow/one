@@ -34,6 +34,18 @@ ANCHOR_DOCUMENT = "document"
 ANCHOR_MEETING = "meeting"
 ANCHOR_PENDING = "pending"
 
+#: As quatro listas da aba **Discovery** (ADR 0086, ligadas à busca na ADR 0087).
+#:
+#: São os quatro primeiros espaços de nomes cujo rótulo **não** é o texto da linha:
+#: o que vem depois do ``:`` é o ``id`` da origem, e a razão está no docstring de
+#: :data:`portal_api.search.HIT_ANCHOR`. O separador continua sem escape e quem
+#: consome continua comparando a string inteira — o que muda é de onde sai a metade
+#: da direita, não a forma dela.
+ANCHOR_PROCESS = "process"
+ANCHOR_FINDING = "finding"
+ANCHOR_PAIN_POINT = "pain_point"
+ANCHOR_IMPROVEMENT_OPPORTUNITY = "improvement_opportunity"
+
 #: Todo espaço de nomes que os dois deployables conhecem.
 #:
 #: Não é a união de ``ITEM_ANCHOR`` com ``HIT_ANCHOR`` calculada em tempo de
@@ -48,4 +60,8 @@ ALL: tuple[str, ...] = (
     ANCHOR_DOCUMENT,
     ANCHOR_MEETING,
     ANCHOR_PENDING,
+    ANCHOR_PROCESS,
+    ANCHOR_FINDING,
+    ANCHOR_PAIN_POINT,
+    ANCHOR_IMPROVEMENT_OPPORTUNITY,
 )

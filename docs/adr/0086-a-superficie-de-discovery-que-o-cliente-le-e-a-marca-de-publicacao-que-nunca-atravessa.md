@@ -211,6 +211,13 @@ ali, e nenhuma delas se parece com erro de carregamento.
   `Hit`, espaço de nomes de âncora e `data-item` nos quatro blocos, com as guardas de
   `test_item_anchor.py` junto — é fatia própria, e fica declarada como item aberto aqui em
   vez de ficar por dizer.
+
+  > **Fechado em 02/09/2026 pela [ADR 0087](0087-a-busca-que-nao-alcancava-o-discovery-e-o-corte-que-zerava-os-trechos.md).**
+  > O diagnóstico estava certo e faltava uma quarta camada que ele não nomeia: sem
+  > `TenantScopedRepository` para as seis entidades, a busca teria de montar o filtro de
+  > tenant dentro do `search.py`. E faltava um campo no `Hit` — o **estado epistêmico**,
+  > sem o qual um resultado de achado é uma afirmação sem rótulo, que é a regra 1 da §3
+  > quebrada por uma porta que esta ADR não olhou.
 - **O `UNLINTABLE` do `"Opportunity Score" de uma venda` encolheu de razão, não de
   conclusão**: a `ImprovementOpportunity` passou a existir aqui e o rótulo é aplicado a
   ela; a venda continua sem existir e tem proibição própria em `forbidden_resources`. O

@@ -1939,6 +1939,56 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       artifact —, para peça montada fora do repositório parar de redesenhar a marca à mão; o `@theme`
       segue sendo a fonte, e o kit declara isso em vez de virar a segunda.*
 
+- [x] **A busca que não alcançava o Discovery, e o corte que zerava os trechos**
+      *(ADR 0087)*: o item aberto que a ADR 0086 declarou em vez de deixar por dizer. A regra da
+      ADR 0024 §5 é que **entra na busca o que alguma aba mostra**, e a fatia anterior acrescentou
+      quatro listas à tela sem que a lupa as alcançasse — um cliente que digitasse o nome de um
+      processo mapeado não achava nada, e um que achasse cairia na aba certa e em lugar nenhum
+      dentro dela. Faltavam três camadas: repositório escopado (não havia nenhum para o Discovery,
+      e sem ele a busca teria de montar o filtro de tenant dentro do `search.py`, que é o que a ADR
+      0024 §2 proíbe **pelo motivo de a divergência com a RLS não deixar nada vermelho**), espaço
+      de nomes de âncora, e `data-item` mais `focusedItem` na aba. **A decisão que carrega a fatia
+      é o rótulo epistêmico**: o `Hit` tinha `kind`, `title`, `detail`, `location` e `tab` e nada
+      que carregasse estado epistêmico, então um resultado com o `statement` cru é uma afirmação
+      **sem rótulo** — a leitura de fato por omissão, que é o defeito exato que a ADR 0086 existe
+      para impedir reaparecendo por uma porta que ela não olhou. Hipótese e lacuna entram, sempre
+      rotuladas (excluí-las faria a busca ser uma segunda régua sobre o dado que a aba já mostra), e
+      o rótulo sai da **API** pelo argumento que a ADR 0024 escreveu para o `tab` — com o preço do
+      `textfold.py` pago no mesmo commit: `test_ready_made_labels.py` compara o mapa PT-BR do TSX com
+      o da API, **por dicionário inteiro** e não por conjunto de valores, senão trocar `hypothesis`
+      por `unknown` de um lado só daria os mesmos três textos com o significado invertido. **A
+      âncora bifurca** e sai por `id`: a ADR 0056 recusou o `id` por duas razões — o campo não
+      existia nos esquemas de lista, e o uuid é recriado a cada sync — e **as duas são nulas aqui**,
+      porque os quatro `…Out.id` são publicados e o que sai neles é o `external_id` da origem; o
+      `Finding` fecha o argumento por não ter título, só `statement`. *De quebra, um defeito
+      anterior que a fatia agravaria:* `search_project()` cortava `hits[:TOTAL_LIMIT]` **em ordem de
+      inserção** e os trechos entram por último — 25 candidatos já disputavam 20 vagas antes desta
+      fatia, e com nove espécies são 45, de modo que vinte linhas de read model casando faziam
+      sumir justamente o que a ADR 0024 §4 diz fazer a promessa valer. O corte virou **rodízio**, com
+      teste puro sem Postgres porque o defeito é aritmético e teste que pula é teste que não roda.
+      *E um segundo defeito anterior, achado ao revisar o mesmo campo:* a busca mandava
+      `detail=meeting.status` — `held`/`scheduled` — enquanto a aba Reuniões desenha "Realizada" e
+      "Agendada", traduzidas pelo BFF: **o mesmo valor com dois nomes**, conforme a porta por onde
+      o cliente chega, e nada vermelho — a ADR 0033 numa direção nova, em que o campo tem escritor
+      dos **dois** lados e os dois discordam (a guarda de consumo não pega, porque ela pergunta se
+      há consumidor). Fechado aqui porque a fatia construiu o mecanismo exato — rótulo pronto da API
+      mais guarda entre deployables —, e deixá-lo aberto seria publicar o remédio ao lado da doença;
+      a queda para o **código cru** num estado desconhecido é a do BFF, com a razão escrita, porque
+      `Meeting.status` é `String` por decisão do modelo e não há completude a enumerar. Junto veio o
+      **recorte do `detail`**: a spec mandava `pain.status` e `opportunity.status`, e a medição
+      derrubou o precedente — são código cru **que a aba não desenha**, e publicá-los faria a busca
+      mostrar mais do que a tela, que é a §5 da ADR 0024 ao contrário. As duas saem vazias, e a
+      regra ficou escrita como *não mande o que a aba não mostra* — com o par que a define no
+      processo, onde o `detail` existe porque a etapa que casou tem **nome**.
+      *E duas guardas cobraram durante a construção, as duas com razão:* o casador de `data-item`
+      era `[a-z]+` e **não casava com `snake_case`**, de modo que `pain_point` sumiria do conjunto
+      do TSX; e a guarda de vocabulário reprovou `const opportunity` e `_opportunity_hit`, que
+      viraram o termo canônico em vez de linha de allowlist. **Fica aberto:** enquanto
+      `biahflow/pulse#108` não entregar a tela de publicação, as quatro listas chegam vazias e a
+      fatia não devolve resultado nenhum ao cliente — a mesma posição da `#90`; a busca segue
+      lexical; e a `Evidence` fica fora do casamento por ser JSONB, com a razão escrita no código.
+      Fecha `biahflow/one#102`. FDD 029.
+
 ## Ordem recomendada
 
 1. Fase 1 para que dados e acesso sejam reais e seguros.

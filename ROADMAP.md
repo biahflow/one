@@ -1572,7 +1572,8 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       arquivo; e um `.env` no diretório fazia `pytest` reportar 419 pulados dizendo "PostgreSQL is
       not reachable" com o Postgres de pé. **Fica aberto:** o compose passa o remetente só ao `api`
       e quem envia e-mail é o worker, não há `apple-touch-icon`, e o anel de foco herda
-      `transition-colors`, que no Tailwind v4 inclui `outline-color`.
+      `transition-colors`, que no Tailwind v4 inclui `outline-color`. *O `apple-touch-icon`
+      foi fechado em 29/08 — ver a fatia do atalho de tela, no fim deste arquivo.*
 
 - [x] **O rename que a guarda atravessou** *(ADR 0070)*: os cinco recursos de HML do CRM
       passaram de `cockpit-*` para `pulse-*`, alinhando o nome ao do produto (ADR 0035 do
@@ -1831,6 +1832,27 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       campo que não existe** — "Evidence marcada como revisada e publicável" —, o que
       bloqueia a #90 por documento e não por código, porque `Finding.reviewed_by` só é
       obrigatório para `fact` e um `hypothesis` nasce sem revisor. Fecha `biahflow/one#91`.
+
+- [x] **O atalho de tela que o tile ainda não vestia** *(29/08/2026, mergeada em
+      01/09)*: a ADR 0069 aprovou o tile para as três superfícies fora da tela do
+      produto — aba, atalho de tela e cartão de compartilhamento — e entregou duas:
+      o `favicon.svg` e o `og.png`. O atalho ficou como ponta
+      aberta declarada, e esta fatia a fecha: `apple-touch-icon.png` (180), `icon-192.png` e
+      `icon-512.png` derivados da geometria do `favicon.svg`, e `public/manifest.webmanifest`
+      declarando-os com `theme_color` em `brand-500`. *O que quase passou em silêncio:* o
+      `matcher` do `proxy.ts` redireciona para `/login` tudo que não está na exceção — o `og.png`
+      já estava lá, e ninguém tinha notado por quê —, de modo que manifesto e ícone voltariam como
+      o HTML da tela de login **sem erro nenhum a olhar**: o navegador simplesmente não ofereceria
+      a instalação. Por isso a guarda nova é de **alcance**, sem sessão, e busca cada `src` que o
+      manifesto declara: ícone anunciado e ausente é o mesmo silêncio por outro caminho. Os
+      rasters são de sangria cheia, sem o raio de 18 do tile, porque iOS e Android aplicam a
+      própria máscara e canto transparente sob máscara vira preto — a forma aprovada é o que
+      aparece depois da máscara, não o que está no arquivo. **Fica aberto:** as outras duas pontas
+      da ADR 0069 — o remetente que o compose passa só ao `api` e o anel de foco que herda
+      `transition-colors`. *Na mesma data saiu o **kit de marca** — `docs/design/brand-kit/`, com tile e
+      wordmark em SVG (normal e invertido) e os tokens em CSS e JSON, mais a página navegável como
+      artifact —, para peça montada fora do repositório parar de redesenhar a marca à mão; o `@theme`
+      segue sendo a fonte, e o kit declara isso em vez de virar a segunda.*
 
 ## Ordem recomendada
 

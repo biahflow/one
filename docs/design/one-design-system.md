@@ -122,6 +122,41 @@ do `body`, a sombra de `.brand-mark` e a de `.ai-button` — passaram a derivar 
 `color-mix(in srgb, var(--color-…) N%, transparent)`. `color-mix` exige o espaço de cor declarado
 (`in srgb`); sem ele o navegador ignora a declaração e o efeito some sem erro.
 
+## O kit fora do repositório
+
+Peça montada fora do produto — slide, relatório, assinatura de e-mail, peça institucional que
+cite o One — não deve redesenhar nada: os arquivos estão em
+[`brand-kit/`](brand-kit/README.md) (tile e wordmark em SVG, normal e invertido, mais os tokens
+em CSS e JSON). A página navegável do kit é o artifact **Kit de Marca One**, derivado deste
+documento e do `@theme`. Nenhum deles é fonte: **o CSS do produto continua sendo**.
+
+## Os rasters do tile
+
+O tile é vetor (`public/favicon.svg`) e o vetor é a fonte. Os três PNGs em `public/` existem
+porque duas plataformas não aceitam o vetor: o Safari ignora SVG em `apple-touch-icon`, e o
+Chrome não instala um app cujo manifesto só ofereça SVG.
+
+| Arquivo | Lado | Onde |
+| --- | --- | --- |
+| `apple-touch-icon.png` | 180 | atalho de tela no iOS |
+| `icon-192.png` | 192 | `manifest.webmanifest`, `purpose: any` |
+| `icon-512.png` | 512 | `manifest.webmanifest`, `any` e `maskable` |
+
+Duas decisões, e as duas são consequência da máscara do sistema:
+
+- **Sangria cheia, sem o raio de 18.** iOS e Android recortam o ícone com a própria máscara. Um
+  canto transparente sob máscara é composto sobre preto, então o tile arredondado do arquivo
+  apareceria com quatro cantos escuros. O que o usuário vê depois da máscara é a forma aprovada;
+  o que está no arquivo é o quadrado inteiro em `brand-500`.
+- **O glifo cabe na zona segura do `maskable`.** O "O" ocupa 43% da largura, centrado — dentro do
+  círculo de 80% que a especificação reserva —, e por isso o mesmo arquivo serve `any` e
+  `maskable` sem uma segunda arte.
+
+A geometria é a do `favicon.svg`, em unidades de 64: centro em 32, elipse externa `rx 13,8` /
+`ry 14,6`, contra-forma `rx 7` / `ry 9`, branco sobre `#6e56cf`. Regerar é redesenhar essas
+elipses no lado desejado com supersampling e reduzir — o `convert` do ImageMagick **não** serve
+como atalho aqui: ele reprova o próprio `favicon.svg` porque o comentário do arquivo contém `--`.
+
 ## O que fica de fora, deliberadamente
 
 - Tema escuro — não existe neste produto e não foi proposto no DAP.

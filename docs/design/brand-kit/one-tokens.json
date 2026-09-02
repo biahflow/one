@@ -1,0 +1,120 @@
+{
+  "name": "One",
+  "version": "1",
+  "source": "app/globals.css (@theme) · DAP r3 · ADR 0069",
+  "updated": "2026-08-29",
+  "color": {
+    "brand": {
+      "50": "#f3f0fd",
+      "100": "#e5dffb",
+      "200": "#cfc4f6",
+      "300": "#b3a3ef",
+      "500": "#6e56cf",
+      "600": "#5f47c4",
+      "700": "#4f38ab",
+      "900": "#342478"
+    },
+    "ink": "#17243a",
+    "muted": "#657389",
+    "line": "#e8edf4",
+    "canvas": "#f6f8fc",
+    "surface": "#ffffff",
+    "surfaceSunken": "#f8fafc",
+    "navy": "#16233a",
+    "accentGreen": "#1c8665",
+    "state": {
+      "success": {
+        "50": "#e7f7f0",
+        "600": "#1a7e5b"
+      },
+      "warning": {
+        "50": "#fdf3e4",
+        "600": "#a16118"
+      },
+      "danger": {
+        "50": "#fdecea",
+        "600": "#c0392b"
+      },
+      "info": {
+        "50": "#e9f1fd",
+        "600": "#1d5fb4"
+      }
+    },
+    "focus": "#6e56cf"
+  },
+  "radius": {
+    "card": 16,
+    "control": 12,
+    "pill": 9999
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    36,
+    44
+  ],
+  "type": {
+    "family": "Inter, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "featureSettings": [
+      "cv02",
+      "cv03",
+      "cv11"
+    ],
+    "roles": {
+      "wordmark": {
+        "size": 19,
+        "weight": 700,
+        "tracking": "-0.03em"
+      },
+      "descender": {
+        "size": 10,
+        "weight": 600,
+        "tracking": "0.04em"
+      },
+      "body": {
+        "size": 14,
+        "weight": 400
+      },
+      "button": {
+        "size": 13,
+        "weight": 700,
+        "minHeight": 44
+      },
+      "eyebrow": {
+        "size": 10,
+        "weight": 800,
+        "tracking": "0.11em",
+        "transform": "uppercase"
+      },
+      "statePill": {
+        "size": 10.5,
+        "weight": 800
+      },
+      "meta": {
+        "size": 10,
+        "weight": 400
+      }
+    }
+  },
+  "contrast": {
+    "criterion": "WCAG 2.1 AA texto normal (4.5:1)",
+    "measured": {
+      "brand700_on_brand50": 7.52,
+      "white_on_brand500": 5.39,
+      "brand200_on_brand900": 7.71,
+      "muted_on_white": 4.81,
+      "muted_on_canvas": 4.52,
+      "info600_on_info50": 5.51,
+      "success600_on_success50": 4.54,
+      "warning600_on_warning50": 4.51,
+      "danger600_on_danger50": 4.76,
+      "brand200_on_brand600": 4.04
+    },
+    "notes": "brand200_on_brand600 só passa como texto grande — reservado ao rótulo de 10,5px em negrito."
+  },
+  "darkTheme": null
+}

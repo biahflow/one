@@ -50,6 +50,7 @@ DASHBOARD_SCHEMAS = ("DashboardOut", "MyDashboardOut")
 PROJECTION_PRODUCERS = (
     ("integrations/biahflow.py", "build_dashboard"),
     ("integrations/biahflow.py", "_journey_projection"),
+    ("integrations/biahflow.py", "_discovery_projection"),
     ("integrations/biahflow.py", "_results_projection"),
     ("results.py", "to_payload"),
 )

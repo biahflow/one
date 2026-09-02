@@ -280,3 +280,41 @@ def test_the_forbidden_lists_are_well_formed(artifact: dict[str, Any]) -> None:
         assert block["field"], f"{key} sem o campo que ele exige"
         assert isinstance(block["members"], list)
     assert artifact["account_identifier_inputs"]["forbidden_parameter_names"]
+
+
+def test_the_publication_mark_exclusion_is_a_written_decision(
+    artifact: dict[str, Any]
+) -> None:
+    """A divergência do ``reviewed_at``, afirmada como estrutura (ADR 0086).
+
+    O bloco foi escrito antecipando um campo de revisão em ``EvidenceOut``, e o
+    contrato do produtor fechou diferente: a marca de publicação existe só no modelo
+    do Pulse, o filtro é aplicado **antes** de emitir, e a presença no array é a
+    prova. Um esquema que não pode declarar o campo não fica de fora em silêncio —
+    fica de fora com a razão escrita, e a semântica (o esquema excluído **não**
+    declara nenhuma das marcas) é afirmada em `tests/api-contract.test.mjs`, que é a
+    metade que já lê o contrato publicado.
+
+    O que se afirma aqui é a integridade do artefato: um `excluded` sem razão, ou uma
+    `publication_marks` que não contenha o próprio `field`, deixaria a outra metade
+    afirmando menos do que este arquivo diz — e em JavaScript um `undefined` não
+    estoura, que é a razão de esta metade existir.
+    """
+    block = artifact["reviewed_resources"]
+    marks = block["publication_marks"]
+
+    assert marks, "sem nome de marca, a exclusão não tem o que vigiar"
+    assert block["field"] in marks, (
+        "o campo que o bloco exige tem de estar entre as marcas que a exclusão vigia,"
+        " senão a origem poderia passar a emiti-lo sem nada ficar vermelho"
+    )
+    for entry in block["excluded"]:
+        assert entry["schema"], "exclusão sem esquema"
+        assert len(entry["reason"].strip()) >= _MINIMUM_REASON, entry["schema"]
+    overlap = sorted(
+        {entry["schema"] for entry in block["excluded"]} & set(block["members"])
+    )
+    assert overlap == [], (
+        f"estes esquemas estão em `members` e em `excluded` ao mesmo tempo: {overlap}."
+        " Ou a marca atravessa e ele é membro, ou não atravessa e ele é exclusão."
+    )

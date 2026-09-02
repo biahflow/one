@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock3,
+  Compass,
   Download,
   FileText,
   FolderOpen,
@@ -111,6 +112,10 @@ const navItems = [
   { label: "Pendências", icon: Inbox },
   { label: "Decisões", icon: Scale },
   { label: "Resultados", icon: TrendingUp },
+  // O rótulo em inglês é decisão, e a razão está em `portal_api/tabs.py`: a §1 do
+  // Language Map manda não traduzir o termo canônico, e a §2 escreve "Discovery" na
+  // coluna do que o cliente vê. Trocar por "Descoberta" aqui reprova em `test_tabs.py`.
+  { label: "Discovery", icon: Compass },
 ];
 
 /** Alta antes de média antes de baixa. Desconhecida vai para o fim, não para o topo. */
@@ -576,7 +581,150 @@ export type JourneyDeliverable = {
    *  que **não** é a mesma coisa que a lista vazia de "ninguém decidiu ainda". */
   decisions: DeliverableDecision[] | null;
 };
-export type DigitalEmployeeView = { name: string; area: string | null; description: string | null; status: string; kpiLabel: string | null; kpiValue: string | null; hoursSavedMonth: number | null; roiMonth: number | null };
+export type DigitalEmployeeView = { name: string; area: string | null; description: string | null; status: string; kpiLabel: string | null; kpiValue: string | null; hoursSavedMonth: number | null; roiMonth: number | null; /** Os `KPI.id` da origem que ele move (ADR 0085); vazio é "não referencia nenhum". */ kpiIds: number[] };
+/**
+ * Uma leitura de KPI — Baseline, Outcome ou um ponto do acompanhamento (Language Map §4).
+ *
+ * `value` nulo **dentro de um objeto que existe** é "a janela existe e ninguém mediu
+ * ainda", e é outra coisa que o objeto inteiro ausente ("não há Baseline definida").
+ * Nenhuma das duas é zero, e é a tela que tem de escrever as duas frases diferentes.
+ */
+export type KpiMeasurementView = {
+  value: number | null;
+  periodStart: string;
+  periodEnd: string | null;
+  measuredAt: string | null;
+  confidence: number | null;
+};
+/** Um indicador do projeto, com Baseline e Outcome comparáveis (ADR 0085). */
+export type KpiView = {
+  /** O id da **origem**, e não um uuid: é por ele que o Value Ledger e os
+   *  Funcionários Digitais apontam para este KPI. */
+  id: number;
+  name: string;
+  definition: string | null;
+  formula: string | null;
+  unit: string | null;
+  /** `up` ou `down` — para que lado o indicador melhora. Sem ele a tela não
+   *  afirma ganho nem perda, só mostra os dois números. */
+  direction: string | null;
+  dataSource: string | null;
+  cadence: string | null;
+  target: number | null;
+  baseline: KpiMeasurementView | null;
+  /** Nunca vem preenchido com `baseline` nulo — invariante 11 do Language Map. */
+  outcome: KpiMeasurementView | null;
+  monitoring: KpiMeasurementView[];
+};
+/**
+ * Uma entrada do Value Ledger do mandato (Language Map §2, ADR 0085).
+ *
+ * É o **valor gerado**, e a §2 diz o que ele nunca é: "ROI projetado" nem "Case".
+ */
+export type ValueLedgerEntryView = {
+  id: number;
+  valueType: string;
+  amount: number;
+  quantity: number | null;
+  periodStart: string;
+  periodEnd: string;
+  /** Como o número foi atribuído — invariante 12. Sem ele a entrada não sai da API. */
+  attributionMethod: string;
+  /** O KPI de origem. **Pode não casar com nenhum item de `kpis`**: a entrada é do
+   *  mandato e o KPI pode viver num projeto irmão que este cliente não alcança. */
+  kpiId: number | null;
+  outcomeMeasuredAt: string | null;
+};
+/**
+ * O Discovery da **conta** (Language Map v1.1 §2, ADR 0086).
+ *
+ * Cinco agregados que o Pulse publica por Account: o AS-IS validado
+ * (`ProcessView`/`ProcessStepView`), os achados (`FindingView`), as dores
+ * (`PainPointView`) e o backlog de melhoria (`ImprovementOpportunityView`) com o
+ * Opportunity Score e as hipóteses de solução aninhadas.
+ *
+ * **Os ids são os da origem**, como em `KpiView`: é por eles que `processId`,
+ * `findingIds` e `painPointIds` ligam as quatro listas, sem tabela de tradução aqui.
+ */
+export type ProcessStepView = {
+  id: number;
+  position: number;
+  name: string;
+  /** As seis chaves do formulário P-S-D-T-E-R, nos nomes que o contrato do produtor
+   *  fixou em português — elas não são termos da ontologia, são as perguntas da
+   *  sessão de Discovery (ADR 0086). */
+  pessoas: string | null;
+  sistema: string | null;
+  dados: string | null;
+  tempo: string | null;
+  erro: string | null;
+  retrabalho: string | null;
+};
+export type ProcessView = {
+  id: number;
+  name: string;
+  position: number;
+  /** Quando a **origem** atualizou o processo, ou `null` quando ela não carimba. */
+  updatedAt: string | null;
+  steps: ProcessStepView[];
+};
+export type EvidenceView = {
+  id: number;
+  kind: string;
+  /** O ponteiro para a fonte, como a origem o escreve — nunca o conteúdo dela. */
+  reference: string | null;
+  capturedAt: string | null;
+};
+export type FindingView = {
+  id: number;
+  statement: string;
+  /** `fact` · `hypothesis` · `unknown`. É o campo que impede a tela de desenhar
+   *  hipótese com cara de fato (§3, regra 1), e por isso ele nunca é opcional. */
+  epistemicStatus: string;
+  confidence: number | null;
+  /** `null` é caso normal: o achado pode apontar para um processo que ninguém
+   *  publicou ainda, e a tela o mostra sem a origem em vez de escondê-lo. */
+  processId: number | null;
+  stepId: number | null;
+  evidences: EvidenceView[];
+};
+export type PainPointView = {
+  id: number;
+  title: string;
+  description: string | null;
+  impactType: string | null;
+  /** `null` é **não quantificado**, nunca zero: a tela escreve a frase da lacuna. */
+  impactEstimate: number | null;
+  findingIds: number[];
+  status: string;
+};
+export type PriorityAssessmentView = {
+  version: number | null;
+  /** O Opportunity Score (Language Map D5) — o rótulo vale só para melhoria
+   *  operacional, nunca para uma venda. */
+  score: number;
+  dimensions: Record<string, number>;
+};
+export type SolutionHypothesisView = {
+  id: number;
+  statement: string;
+  intervention: string | null;
+  /** O efeito **esperado**, não o medido: quem mede é o KPI (ADR 0085). */
+  expectedEffect: string | null;
+  status: string;
+};
+export type ImprovementOpportunityView = {
+  id: number;
+  title: string;
+  desiredChange: string | null;
+  impactHypothesis: string | null;
+  painPointIds: number[];
+  status: string;
+  /** `null` é "ninguém avaliou ainda", e não a pior nota. A lista já chega ordenada
+   *  por score decrescente com estes no fim — quem ordena é a API. */
+  priorityAssessment: PriorityAssessmentView | null;
+  solutionHypotheses: SolutionHypothesisView[];
+};
 export type JourneyPhase = {
   name: string;
   description: string;
@@ -715,6 +863,20 @@ export type Overview = {
   nextMeeting: { title: string; detail: string } | null;
   health: { label: string; level: string } | null;
   digitalEmployees: DigitalEmployeeView[];
+  /** Os KPIs deste projeto (ADR 0085). Lista vazia é "nenhum definido ainda" — a
+   *  API nunca manda `null`, para a tela não ter um terceiro caso a desenhar. */
+  kpis: KpiView[];
+  /** O Value Ledger do **mandato**, não do projeto: a mesma entrada aparece no
+   *  dashboard de todos os projetos do Engagement, porque é o programa que gera o
+   *  valor. Vazia quando o projeto ainda não tem programa. */
+  valueLedger: ValueLedgerEntryView[];
+  /** O Discovery da **conta** (ADR 0086). As quatro listas vêm sempre, e vazias é o
+   *  estado normal enquanto o Pulse não tiver tela de publicar — nada atravessa sem
+   *  publicação humana. A aba escreve "nada publicado ainda", nunca um erro. */
+  processes: ProcessView[];
+  findings: FindingView[];
+  painPoints: PainPointView[];
+  improvementOpportunities: ImprovementOpportunityView[];
   documents: ProjectDocument[];
   meetings: MeetingView[];
   decisions: DecisionView[];
@@ -1256,6 +1418,8 @@ export default function DashboardClient({
         return <DecisionsView onAsk={askAi} overview={view} />;
       case "Resultados":
         return <ResultsView onAsk={askAi} overview={view} />;
+      case "Discovery":
+        return <DiscoveryView onAsk={askAi} overview={view} />;
       case "Notificações":
         return (
           <NotificationsView
@@ -1978,7 +2142,12 @@ function compact(value: number): string {
 function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user, focusedItem }: { onAsk: () => void; onAnalyze: () => void; onNavigate: (label: string, item?: string) => void; onOpenTurn: (messageId: string, conversationId: string | null) => void; overview: Overview; user: PortalUser; focusedItem?: string | null }) {
   const timeline = overview.milestones;
   const open = openPendings(overview);
-  const roi = roiValue(overview.roi);
+  // A manchete deixou de ser a projeção da origem e passou a ser o **valor
+  // gerado** (issue #89, ADR 0085). O ROI projetado não sumiu do produto: ele
+  // continua na aba Resultados, ao lado do apurado e rotulado como tal desde a
+  // ADR 0084 — o que muda é o primeiro número que o cliente lê ao abrir o portal,
+  // que passa a ter período e método de atribuição por trás.
+  const generated = valueLedgerTotal(overview.valueLedger);
   const readOnly = readOnlyReason(overview);
   // Conhecimento do projeto: documentos e reuniões mais recentes, na mesma lista.
   const updates = [
@@ -1992,6 +2161,10 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
       <JourneyPanel journey={overview.journey} freshness={overview.freshness} focusedItem={focusedItem} onNavigate={onNavigate} />
 
       <DigitalEmployees employees={overview.digitalEmployees} />
+
+      <KpiPanel kpis={overview.kpis} employees={overview.digitalEmployees} />
+
+      <ValueLedgerPanel entries={overview.valueLedger} kpis={overview.kpis} />
 
       <section className="status-card">
         <div className="status-main">
@@ -2018,9 +2191,9 @@ function OverviewView({ onAsk, onAnalyze, onNavigate, onOpenTurn, overview, user
         </article>
         <article className="metric-card">
           <div className="metric-icon metric-icon--green"><TrendingUp size={19} /></div>
-          <p>ROI projetado</p>
-          <h3>{roi.value}</h3>
-          <span className={roi.positive ? "positive" : undefined}>{roi.note}</span>
+          <p>Valor gerado</p>
+          <h3>{generated.value}</h3>
+          <span className={generated.positive ? "positive" : undefined}>{generated.note}</span>
         </article>
         <article className="metric-card">
           <div className="metric-icon metric-icon--purple"><UsersRound size={19} /></div>
@@ -2716,6 +2889,229 @@ function DigitalEmployees({ employees }: { employees: DigitalEmployeeView[] }) {
   );
 }
 
+/**
+ * Rótulos de espécie de valor. Um valor que a origem inventar sai **cru**, no
+ * padrão de `STATUS_LABELS` e `MEETING_STATUS_LABELS` em `page.tsx`: aqui o campo
+ * é obrigatório e cair para `null` deixaria a entrada sem nome nenhum.
+ */
+const VALUE_TYPE_LABELS: Record<string, string> = {
+  cost_saving: "Economia de custo",
+  revenue: "Receita adicional",
+  risk_reduction: "Redução de risco",
+  productivity: "Ganho de produtividade",
+  quality: "Ganho de qualidade",
+};
+
+/** Sufixos de unidade de KPI. Unidade desconhecida vira sufixo vazio — o número
+ *  sai sozinho, que é honesto, em vez de ganhar uma unidade adivinhada. */
+const UNIT_SUFFIX: Record<string, string> = { hours: "h", percent: "%", days: "d" };
+
+/**
+ * O número de uma medição, ou **a frase da lacuna** (issue #89, ADR 0085).
+ *
+ * As duas nulidades chegam distintas até aqui e saem como frases distintas:
+ * `null` no lugar do objeto é "Sem baseline definida"/"Ainda não medido", e
+ * `value: null` dentro de um objeto que existe é "Ainda não medido" com a janela
+ * ao lado. **Nenhuma das duas vira "0"** — foi para isso que a API se deu ao
+ * trabalho de manter as duas, e um `?? 0` aqui apagaria o trabalho inteiro.
+ */
+function measurementValue(reading: KpiMeasurementView | null, unit: string | null): string {
+  if (!reading || reading.value === null) return "Ainda não medido";
+  return formatMeasure(reading.value, unit);
+}
+
+function formatMeasure(value: number, unit: string | null): string {
+  if (unit === "brl") return BRL.format(value);
+  const suffix = unit ? UNIT_SUFFIX[unit] ?? "" : "";
+  return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}${suffix}`;
+}
+
+/** "jul/2026", ou "jul/2026 → em aberto" quando a origem ainda não fechou a janela. */
+function measurementPeriod(reading: KpiMeasurementView | null): string {
+  if (!reading) return "";
+  const from = monthLabel(reading.periodStart);
+  const to = reading.periodEnd ? monthLabel(reading.periodEnd) : null;
+  if (to === null) return `${from} → janela em aberto`;
+  return from === to ? from : `${from} → ${to}`;
+}
+
+function monthLabel(iso: string): string {
+  const parsed = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
+}
+
+/**
+ * Um KPI com **Baseline e Outcome lado a lado**, na mesma unidade.
+ *
+ * É o critério (3) da issue #89, e a razão de os dois nunca aparecerem separados:
+ * um Outcome sozinho é um número sem régua — "21,5h" não diz nada até estar ao
+ * lado das 72h de onde se partiu. A API garante o par (invariante 11 do Language
+ * Map) e esta tela desenha o par; quando a Baseline falta, o que aparece é a
+ * frase da lacuna no lugar dela, nunca a comparação com zero.
+ */
+function KpiCard({ kpi, movedBy }: { kpi: KpiView; movedBy: string[] }) {
+  const baselineMissing = kpi.baseline === null;
+  return (
+    <article className="kpi-card">
+      <div className="kpi-head">
+        <div>
+          <strong>{kpi.name}</strong>
+          {kpi.definition && <p className="kpi-definition">{kpi.definition}</p>}
+        </div>
+        {kpi.direction === "up" || kpi.direction === "down" ? (
+          <span className="kpi-direction" title={kpi.direction === "down" ? "Quanto menor, melhor" : "Quanto maior, melhor"}>
+            {kpi.direction === "down" ? "menor é melhor" : "maior é melhor"}
+          </span>
+        ) : null}
+      </div>
+      <div className="kpi-pair">
+        <div className="kpi-measure">
+          <span>Baseline</span>
+          <strong className={baselineMissing ? "kpi-gap" : undefined}>
+            {baselineMissing ? "Sem baseline definida" : measurementValue(kpi.baseline, kpi.unit)}
+          </strong>
+          <small>{measurementPeriod(kpi.baseline)}</small>
+        </div>
+        <div className="kpi-measure">
+          <span>Outcome</span>
+          <strong className={kpi.outcome === null || kpi.outcome.value === null ? "kpi-gap" : undefined}>
+            {measurementValue(kpi.outcome, kpi.unit)}
+          </strong>
+          <small>{measurementPeriod(kpi.outcome)}</small>
+        </div>
+        <div className="kpi-measure">
+          <span>Meta</span>
+          {/* `null` é "ninguém definiu meta" e sai como travessão — não como zero,
+              que faria a tela afirmar uma meta que ninguém combinou. */}
+          <strong className={kpi.target === null ? "kpi-gap" : undefined}>
+            {kpi.target === null ? "Sem meta definida" : formatMeasure(kpi.target, kpi.unit)}
+          </strong>
+          <small>{kpi.cadence ? `Medido ${CADENCE_LABELS[kpi.cadence] ?? kpi.cadence}` : ""}</small>
+        </div>
+      </div>
+      <dl className="kpi-meta">
+        {kpi.formula && <div><dt>Como é calculado</dt><dd>{kpi.formula}</dd></div>}
+        {kpi.dataSource && <div><dt>Fonte do dado</dt><dd>{kpi.dataSource}</dd></div>}
+        {kpi.monitoring.length > 0 && (
+          <div>
+            <dt>Acompanhamento</dt>
+            <dd>
+              {kpi.monitoring.length === 1 ? "1 leitura" : `${kpi.monitoring.length} leituras`}
+              {" · última em "}
+              {measurementPeriod(kpi.monitoring[kpi.monitoring.length - 1])}
+            </dd>
+          </div>
+        )}
+        {movedBy.length > 0 && <div><dt>Movido por</dt><dd>{movedBy.join(", ")}</dd></div>}
+      </dl>
+    </article>
+  );
+}
+
+const CADENCE_LABELS: Record<string, string> = {
+  monthly: "mensalmente",
+  weekly: "semanalmente",
+  quarterly: "trimestralmente",
+  daily: "diariamente",
+};
+
+function KpiPanel({ kpis, employees }: { kpis: KpiView[]; employees: DigitalEmployeeView[] }) {
+  if (kpis.length === 0) return null;
+  return (
+    <section className="panel" aria-label="Indicadores do projeto">
+      <div className="panel-heading">
+        <div><p className="eyebrow">O QUE ESTAMOS MEDINDO</p><h2>KPIs <span>{kpis.length}</span></h2></div>
+      </div>
+      <div className="kpi-grid">
+        {kpis.map((kpi) => (
+          <KpiCard
+            key={kpi.id}
+            kpi={kpi}
+            // O casamento é pelo id **da origem**, o mesmo que os dois lados
+            // publicam: é o que dispensa uma tabela de tradução no navegador.
+            movedBy={employees.filter((employee) => employee.kpiIds.includes(kpi.id)).map((employee) => employee.name)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * O **Value Ledger** do mandato (Language Map §2, ADR 0085) — o que substituiu a
+ * manchete de projeção na visão geral.
+ *
+ * A manchete antiga imprimia um percentual projetado pela origem como primeiro
+ * número que o cliente lia, sem nada por trás dele que ele pudesse conferir. Aqui
+ * cada linha carrega período, espécie, quantia e **método de atribuição**, que é
+ * o invariante 12 — e, quando o KPI de origem está nesta resposta, o par
+ * Baseline→Outcome que sustenta a conta.
+ *
+ * **Não casar o KPI é caso normal, e não erro**: a entrada é do Engagement e o
+ * indicador pode viver num projeto irmão que este cliente não alcança. A linha
+ * aparece igual, sem o vínculo.
+ */
+function ValueLedgerPanel({ entries, kpis }: { entries: ValueLedgerEntryView[]; kpis: KpiView[] }) {
+  if (entries.length === 0) return null;
+  const byId = new Map(kpis.map((kpi) => [kpi.id, kpi]));
+  return (
+    <section className="panel" aria-label="Value Ledger">
+      <div className="panel-heading">
+        <div><p className="eyebrow">VALOR GERADO</p><h2>Value Ledger <span>{entries.length}</span></h2></div>
+      </div>
+      <div className="ledger-list">
+        {entries.map((entry) => {
+          const source = entry.kpiId === null ? undefined : byId.get(entry.kpiId);
+          return (
+            <article className="ledger-entry" key={entry.id}>
+              <div className="ledger-amount">
+                <strong>{BRL.format(entry.amount)}</strong>
+                <span>{VALUE_TYPE_LABELS[entry.valueType] ?? entry.valueType}</span>
+              </div>
+              <div className="ledger-body">
+                <p className="ledger-period">
+                  {measurementPeriod({ value: null, periodStart: entry.periodStart, periodEnd: entry.periodEnd, measuredAt: null, confidence: null })}
+                  {entry.quantity !== null && <span> · {entry.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {source?.unit ? UNIT_SUFFIX[source.unit] ?? source.unit : "un."}</span>}
+                </p>
+                <p className="ledger-method">{entry.attributionMethod}</p>
+                {source ? (
+                  <p className="ledger-source">
+                    {source.name}: {measurementValue(source.baseline, source.unit)} → {measurementValue(source.outcome, source.unit)}
+                  </p>
+                ) : (
+                  // Sem inventar rótulo para o indicador que não está aqui: dizer
+                  // "sem KPI" seria falso, e nomear um id cru não explicaria nada.
+                  <p className="ledger-source ledger-source--absent">Indicador de origem em outro projeto deste Engagement</p>
+                )}
+                {entry.outcomeMeasuredAt && (
+                  <p className="ledger-measured">Outcome medido em {new Date(entry.outcomeMeasuredAt).toLocaleDateString("pt-BR", { dateStyle: "long" })}</p>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** O total do razão para a manchete, e a frase quando não há razão nenhum. */
+function valueLedgerTotal(entries: ValueLedgerEntryView[]): { value: string; note: string; positive: boolean } {
+  if (entries.length === 0) {
+    // Zero entradas **não é R$ 0**: é "ainda não há valor apurado no mandato". A
+    // manchete diz isso, e não um número que ninguém sustentaria.
+    return { value: "—", note: "Nenhum valor registrado ainda", positive: false };
+  }
+  const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+  const latest = entries.reduce((newest, entry) => (entry.periodEnd > newest ? entry.periodEnd : newest), entries[0].periodEnd);
+  return {
+    value: BRL.format(total),
+    note: `${entries.length} ${entries.length === 1 ? "entrada" : "entradas"} · até ${monthLabel(latest)}`,
+    positive: total >= 0,
+  };
+}
+
 function ResultsView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
   const projected = roiValue(overview.roi);
   const results = overview.results;
@@ -2894,6 +3290,337 @@ function MeasurementBasis({ measured }: { measured: MeasuredResults | null }) {
         )}
       </article>
     </section>
+  );
+}
+
+/**
+ * Os três estados epistêmicos da §4 do Language Map (D6), como o cliente os lê.
+ *
+ * `unknown` **não** é "sem informação": é a pergunta que o Discovery abriu e ainda
+ * não fechou, e ela aparece na tela de propósito. Um levantamento que só mostrasse
+ * o que ficou sabido esconderia do cliente o que ainda não se sabe sobre o próprio
+ * processo — que é a regra 3 do `AGENTS.md` na voz do levantamento.
+ */
+const EPISTEMIC_LABEL: Record<string, string> = {
+  fact: "Fato",
+  hypothesis: "Hipótese",
+  unknown: "Pergunta em aberto",
+};
+
+/**
+ * E as três **com ícone**, nunca só com cor.
+ *
+ * É o critério que o `StatePill` já carrega desde a Issue #46, e aqui ele guarda
+ * uma coisa específica: a regra 1 da §3 diz que uma hipótese aparece rotulada como
+ * hipótese ou não aparece — nunca como fato. Distinguir as duas só pelo tom faria a
+ * regra depender de quem enxerga a diferença entre dois cinzas.
+ */
+const EPISTEMIC_TONE: Record<string, StatePillVariant> = {
+  fact: "success",
+  hypothesis: "warning",
+  unknown: "info",
+};
+
+/** As cinco dimensões do Opportunity Score (Language Map D5). Uma chave que a API
+ *  não conheça sai crua — a lista branca da ingestão já a teria barrado. */
+const DIMENSION_LABELS: Record<string, string> = {
+  impact: "Impacto",
+  evidence_strength: "Força da evidência",
+  feasibility: "Viabilidade",
+  time_to_value: "Tempo até o valor",
+  economics: "Economia",
+};
+
+const IMPACT_TYPE_LABELS: Record<string, string> = {
+  cost: "Custo",
+  time: "Tempo",
+  quality: "Qualidade",
+  risk: "Risco",
+  volume: "Volume",
+};
+
+/** "12 de agosto de 2026", ou vazio quando não há data para escrever. */
+function longDate(iso: string | null): string {
+  if (!iso) return "";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("pt-BR", { dateStyle: "long" });
+}
+
+/**
+ * O tamanho da dor, **sem símbolo de moeda** (ADR 0086).
+ *
+ * `impact_estimate` vem sem unidade declarada e `impact_type` diz coisas que não são
+ * dinheiro — `time`, `quality`, `volume`. Formatar tudo como BRL repetiria o defeito
+ * que a ADR 0033 achou no `money()` do outro lado: um número que não é em reais
+ * aparecendo com "R$" na frente não fica incompleto, fica **errado**.
+ *
+ * `null` é "não quantificado" e vira frase, nunca zero — a mesma regra da lacuna de
+ * medição do KPI (ADR 0085).
+ */
+function impactLabel(pain: PainPointView): string {
+  if (pain.impactEstimate === null) return "Impacto não quantificado";
+  const size = pain.impactEstimate.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const kind = pain.impactType ? IMPACT_TYPE_LABELS[pain.impactType] ?? pain.impactType : null;
+  return kind ? `${kind}: ${size}` : size;
+}
+
+/**
+ * A aba **Discovery** — o AS-IS, os achados, as dores e o backlog de melhoria
+ * (Language Map v1.1 §2, ADR 0086).
+ *
+ * **As quatro seções aparecem sempre, inclusive vazias, e isso é desenho.** Vazio é
+ * o estado normal enquanto o Pulse não tiver tela de publicar: nada atravessa sem
+ * publicação humana, e hoje a publicação é chamada de API. Uma aba que se escondesse
+ * quando não há dado faria o cliente concluir que o produto não tem a superfície; as
+ * quatro frases de ausência dizem o que **vai** aparecer ali, e nenhuma delas se
+ * parece com erro de carregamento — porque não é um.
+ *
+ * A ordem do backlog não é decidida aqui: a API já entrega por Opportunity Score
+ * decrescente com os não avaliados no fim. Repetir o critério deste lado seria a
+ * mesma regra em dois lugares podendo divergir — o argumento do `tabs.py`.
+ */
+function DiscoveryView({ onAsk, overview }: { onAsk: () => void; overview: Overview }) {
+  const { processes, findings, painPoints, improvementOpportunities } = overview;
+  const nothingPublished =
+    processes.length === 0 &&
+    findings.length === 0 &&
+    painPoints.length === 0 &&
+    improvementOpportunities.length === 0;
+
+  // O casamento entre as quatro listas é pelo id **da origem**, o mesmo que a API
+  // publica nas duas pontas — é o que dispensa uma tabela de tradução aqui.
+  const processById = new Map(processes.map((item) => [item.id, item]));
+  const stepById = new Map(
+    processes.flatMap((item) => item.steps.map((step) => [step.id, step] as const)),
+  );
+  const findingById = new Map(findings.map((finding) => [finding.id, finding]));
+  const painById = new Map(painPoints.map((pain) => [pain.id, pain]));
+
+  return (
+    <>
+      <ViewHero
+        eyebrow="DISCOVERY"
+        title="O que descobrimos sobre o seu trabalho"
+        subtitle={
+          nothingPublished
+            ? "O time publica cada processo, achado e oportunidade depois de revisar. Enquanto isso não acontece, esta aba fica vazia — e isso é esperado."
+            : "O mapa do processo como ele é hoje, os achados que sustentam cada dor e o backlog de melhoria priorizado."
+        }
+        onAsk={onAsk}
+      />
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">COMO O TRABALHO ACONTECE HOJE</p>
+            <h2>Process <span>{processes.length}</span></h2>
+          </div>
+        </div>
+        {processes.length === 0 && <p className="empty-state">Nenhum processo mapeado ainda.</p>}
+        {processes.map((item) => (
+          <section className="discovery-process" key={item.id}>
+            <div className="discovery-process-head">
+              <strong>{item.name}</strong>
+              {item.updatedAt && <span>Atualizado na origem em {longDate(item.updatedAt)}</span>}
+            </div>
+            {item.steps.length === 0 ? (
+              <p className="empty-state">Nenhuma etapa detalhada neste processo.</p>
+            ) : (
+              <div className="discovery-table">
+                <table>
+                  <thead>
+                    {/* As seis colunas são o formulário P-S-D-T-E-R da sessão de
+                        Discovery, e os nomes vêm de lá — ver `ProcessStepView`. */}
+                    <tr>
+                      <th>Etapa</th>
+                      <th>Pessoas</th>
+                      <th>Sistema</th>
+                      <th>Dados</th>
+                      <th>Tempo</th>
+                      <th>Erro</th>
+                      <th>Retrabalho</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {item.steps.map((step) => (
+                      <tr key={step.id}>
+                        <th scope="row">{step.name}</th>
+                        {/* Célula vazia é travessão: a origem não respondeu aquela
+                            pergunta do formulário, e inventar texto seria pior. */}
+                        <td>{step.pessoas ?? "—"}</td>
+                        <td>{step.sistema ?? "—"}</td>
+                        <td>{step.dados ?? "—"}</td>
+                        <td>{step.tempo ?? "—"}</td>
+                        <td>{step.erro ?? "—"}</td>
+                        <td>{step.retrabalho ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ))}
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">O QUE ENCONTRAMOS</p>
+            <h2>Findings <span>{findings.length}</span></h2>
+          </div>
+        </div>
+        {findings.length === 0 && <p className="empty-state">Nenhum achado publicado ainda.</p>}
+        <div className="discovery-list">
+          {findings.map((finding) => {
+            const origin = [
+              finding.processId === null ? null : processById.get(finding.processId)?.name,
+              finding.stepId === null ? null : stepById.get(finding.stepId)?.name,
+            ].filter(Boolean);
+            return (
+              <article className="discovery-finding" key={finding.id}>
+                <div className="discovery-finding-head">
+                  <StatePill variant={EPISTEMIC_TONE[finding.epistemicStatus] ?? "info"}>
+                    {EPISTEMIC_LABEL[finding.epistemicStatus] ?? finding.epistemicStatus}
+                  </StatePill>
+                  {origin.length > 0 && <span className="discovery-origin">{origin.join(" • ")}</span>}
+                </div>
+                <p className="discovery-statement">{finding.statement}</p>
+                {finding.evidences.length > 0 ? (
+                  <ul className="discovery-evidences">
+                    {finding.evidences.map((evidence) => (
+                      <li key={evidence.id}>
+                        <span>{evidence.kind}</span>
+                        {evidence.reference ?? "Sem referência registrada"}
+                        {evidence.capturedAt && ` • ${longDate(evidence.capturedAt)}`}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  // Sem evidência a frase diz **o que isso significa**, e não some:
+                  // é a lacuna declarada, que é o que a §3 pede que apareça.
+                  <p className="discovery-gap">
+                    {finding.epistemicStatus === "unknown"
+                      ? "Pergunta em aberto: ainda não há evidência que a responda."
+                      : "Sem evidência publicada — por isso não está registrado como fato."}
+                  </p>
+                )}
+                {finding.confidence !== null && (
+                  <p className="discovery-confidence">Confiança declarada na origem: {finding.confidence}</p>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">O QUE TRAVA O TRABALHO</p>
+            <h2>Pain Points <span>{painPoints.length}</span></h2>
+          </div>
+        </div>
+        {painPoints.length === 0 && <p className="empty-state">Nenhuma dor confirmada ainda.</p>}
+        <div className="discovery-list">
+          {painPoints.map((pain) => (
+            <article className="discovery-pain" key={pain.id}>
+              <div className="discovery-pain-head">
+                <strong>{pain.title}</strong>
+                <span className={pain.impactEstimate === null ? "discovery-gap" : "discovery-impact"}>
+                  {impactLabel(pain)}
+                </span>
+              </div>
+              {pain.description && <p className="discovery-statement">{pain.description}</p>}
+              {pain.findingIds.length > 0 && (
+                <ul className="discovery-evidences">
+                  {pain.findingIds.map((id) => (
+                    <li key={id}>
+                      <span>Achado</span>
+                      {findingById.get(id)?.statement ?? "Achado não publicado nesta lista"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">O QUE PODEMOS MELHORAR</p>
+            <h2>Improvement Opportunity Backlog <span>{improvementOpportunities.length}</span></h2>
+          </div>
+        </div>
+        {improvementOpportunities.length === 0 && (
+          <p className="empty-state">Nenhuma oportunidade de melhoria publicada ainda.</p>
+        )}
+        <div className="discovery-list">
+          {improvementOpportunities.map((opportunity) => (
+            <article className="discovery-opportunity" key={opportunity.id}>
+              <div className="discovery-opportunity-head">
+                <strong>{opportunity.title}</strong>
+                {opportunity.priorityAssessment ? (
+                  <span className="discovery-score">
+                    <strong>{opportunity.priorityAssessment.score}</strong>
+                    <span>Opportunity Score</span>
+                  </span>
+                ) : (
+                  // Sem nota **não é nota zero**: quem ainda não foi avaliado vai
+                  // para o fim da lista com a frase, e não com um número.
+                  <span className="discovery-gap">Ainda não priorizada</span>
+                )}
+              </div>
+              {opportunity.desiredChange && <p className="discovery-statement">{opportunity.desiredChange}</p>}
+              {opportunity.impactHypothesis && (
+                <p className="discovery-hypothesis">
+                  <span>Impacto esperado</span> {opportunity.impactHypothesis}
+                </p>
+              )}
+              {opportunity.priorityAssessment &&
+                Object.keys(opportunity.priorityAssessment.dimensions).length > 0 && (
+                  <dl className="discovery-dimensions">
+                    {Object.entries(opportunity.priorityAssessment.dimensions).map(([key, value]) => (
+                      <div key={key}>
+                        <dt>{DIMENSION_LABELS[key] ?? key}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              {opportunity.painPointIds.length > 0 && (
+                <ul className="discovery-evidences">
+                  {opportunity.painPointIds.map((id) => (
+                    <li key={id}>
+                      <span>Dor</span>
+                      {painById.get(id)?.title ?? "Dor não publicada nesta lista"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {opportunity.solutionHypotheses.length > 0 && (
+                <div className="discovery-solutions">
+                  {/* "Hipótese" é a palavra do contrato (§2), e o subtítulo diz por
+                      quê: o que confirma é o PROVE, não esta tela. */}
+                  <p className="eyebrow">HIPÓTESES DE SOLUÇÃO</p>
+                  <p className="discovery-gap">Ainda são hipóteses: quem confirma é o PROVE.</p>
+                  {opportunity.solutionHypotheses.map((hypothesis) => (
+                    <div className="discovery-solution" key={hypothesis.id}>
+                      <strong>{hypothesis.statement}</strong>
+                      {hypothesis.intervention && <span>{hypothesis.intervention}</span>}
+                      {hypothesis.expectedEffect && <span>Efeito esperado: {hypothesis.expectedEffect}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      </article>
+    </>
   );
 }
 

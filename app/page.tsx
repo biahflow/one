@@ -10,14 +10,24 @@ import DashboardClient, {
   type JourneyPhase,
   type DecisionView,
   type EngagementView,
+  type EvidenceView,
+  type FindingView,
   type FreshnessView,
+  type ImprovementOpportunityView,
+  type KpiMeasurementView,
+  type KpiView,
   type MeetingView,
   type NotificationCenter,
   type Overview,
+  type PainPointView,
   type PendingItemView,
   type PortalUser,
+  type ProcessStepView,
+  type ProcessView,
   type ProjectDocument,
   type ProjectSummary,
+  type SolutionHypothesisView,
+  type ValueLedgerEntryView,
 } from "./DashboardClient";
 
 // Portal status/milestone enums → rótulos PT usados na UI.
@@ -225,7 +235,21 @@ type ApiAcceptance = {
   created_at: string;
 };
 type ApiPhase = { name: string; description: string | null; state: string; target_date: string | null; canonical_stage: string | null; gate_decision: string | null; requires_gate: boolean; deliverables: ApiDeliverable[] };
-type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null };
+type ApiEmployee = { name: string; area: string | null; description: string | null; status: string; kpi_label: string | null; kpi_value: string | null; hours_saved_month: number | null; roi_month: number | null; kpi_ids: number[] };
+type ApiKpiMeasurement = { value: number | null; period_start: string; period_end: string | null; measured_at: string | null; confidence: number | null };
+type ApiKpi = { id: number; name: string; definition: string | null; formula: string | null; unit: string | null; direction: string | null; data_source: string | null; cadence: string | null; target: number | null; baseline: ApiKpiMeasurement | null; outcome: ApiKpiMeasurement | null; monitoring: ApiKpiMeasurement[] };
+type ApiValueLedgerEntry = { id: number; value_type: string; amount: number; quantity: number | null; period_start: string; period_end: string; attribution_method: string; kpi_id: number | null; outcome_measured_at: string | null };
+/** O Discovery da conta (Language Map §2, ADR 0086). Os seis nomes de etapa ficam em
+ *  português por decisão do contrato do produtor — são as chaves do formulário
+ *  P-S-D-T-E-R da sessão, não termos da ontologia. */
+type ApiProcessStep = { id: number; position: number; name: string; pessoas: string | null; sistema: string | null; dados: string | null; tempo: string | null; erro: string | null; retrabalho: string | null };
+type ApiProcess = { id: number; name: string; position: number; updated_at: string | null; steps: ApiProcessStep[] };
+type ApiEvidence = { id: number; kind: string; reference: string | null; captured_at: string | null };
+type ApiFinding = { id: number; statement: string; epistemic_status: string; confidence: number | null; process_id: number | null; step_id: number | null; evidences: ApiEvidence[] };
+type ApiPainPoint = { id: number; title: string; description: string | null; impact_type: string | null; impact_estimate: number | null; finding_ids: number[]; status: string };
+type ApiPriorityAssessment = { version: number | null; score: number; dimensions: Record<string, number> };
+type ApiSolutionHypothesis = { id: number; statement: string; intervention: string | null; expected_effect: string | null; status: string };
+type ApiImprovementOpportunity = { id: number; title: string; desired_change: string | null; impact_hypothesis: string | null; pain_point_ids: number[]; status: string; priority_assessment: ApiPriorityAssessment | null; solution_hypotheses: ApiSolutionHypothesis[] };
 type ApiMe = {
   email: string;
   full_name: string;
@@ -254,6 +278,24 @@ type ApiNotification = {
   read: boolean;
 };
 type ApiNotifications = { unread_count: number; items: ApiNotification[] };
+
+/**
+ * Uma leitura de KPI da API, ou `null` quando a API não mandou objeto nenhum.
+ *
+ * As duas nulidades da medição atravessam intactas (ADR 0085): o objeto ausente é
+ * "não definida", e `value: null` **dentro** de um objeto é "a janela existe e
+ * ninguém mediu ainda". Quem escreve as duas frases é a tela; aqui nada vira zero.
+ */
+function toMeasurement(reading: ApiKpiMeasurement | null | undefined): KpiMeasurementView | null {
+  if (!reading || typeof reading.period_start !== "string") return null;
+  return {
+    value: reading.value ?? null,
+    periodStart: reading.period_start,
+    periodEnd: reading.period_end ?? null,
+    measuredAt: reading.measured_at ?? null,
+    confidence: reading.confidence ?? null,
+  };
+}
 
 function toOverview(
   data: Record<string, unknown>,
@@ -357,7 +399,117 @@ function toOverview(
       kpiValue: employee.kpi_value,
       hoursSavedMonth: employee.hours_saved_month,
       roiMonth: employee.roi_month,
+      // Ids da origem, crus. `?? []` porque um Biahflow anterior à fatia não manda
+      // a chave, e ausência aqui é "não referencia nenhum".
+      kpiIds: employee.kpi_ids ?? [],
     })),
+    // Os KPIs do projeto (ADR 0085). Tudo atravessa **como a API entrega**: nada
+    // aqui converte lacuna em zero, e é o requisito escrito da issue #89 — um
+    // `?? 0` em `value` ou em `target` faria a tela dizer "zero horas" sobre um
+    // indicador que ninguém mediu.
+    kpis: ((data.kpis as ApiKpi[]) ?? []).map<KpiView>((kpi) => ({
+      id: kpi.id,
+      name: kpi.name,
+      definition: kpi.definition,
+      formula: kpi.formula,
+      unit: kpi.unit,
+      direction: kpi.direction,
+      dataSource: kpi.data_source,
+      cadence: kpi.cadence,
+      target: kpi.target,
+      // `?? null` e nunca um objeto vazio: o campo ausente é "não há Baseline
+      // definida", e fabricar um objeto aqui apagaria a distinção que a API
+      // se deu ao trabalho de manter.
+      baseline: toMeasurement(kpi.baseline),
+      outcome: toMeasurement(kpi.outcome),
+      monitoring: (kpi.monitoring ?? [])
+        .map(toMeasurement)
+        .filter((reading): reading is KpiMeasurementView => reading !== null),
+    })),
+    valueLedger: ((data.value_ledger as ApiValueLedgerEntry[]) ?? []).map<ValueLedgerEntryView>((entry) => ({
+      id: entry.id,
+      valueType: entry.value_type,
+      amount: entry.amount,
+      quantity: entry.quantity,
+      periodStart: entry.period_start,
+      periodEnd: entry.period_end,
+      attributionMethod: entry.attribution_method,
+      kpiId: entry.kpi_id,
+      outcomeMeasuredAt: entry.outcome_measured_at,
+    })),
+    // O Discovery da conta (ADR 0086). Tudo atravessa **como a API entrega**: um
+    // `?? 0` em `impact_estimate` faria a tela dizer que a dor não custa nada, e um
+    // `epistemic_status` com padrão faria uma hipótese virar fato no caminho. `?? []`
+    // nas quatro listas porque um Biahflow anterior à fatia não manda as chaves — e
+    // ausência aqui é "nada publicado", que é o estado normal de hoje.
+    processes: ((data.processes as ApiProcess[]) ?? []).map<ProcessView>((item) => ({
+      id: item.id,
+      name: item.name,
+      position: item.position,
+      updatedAt: item.updated_at,
+      steps: (item.steps ?? []).map<ProcessStepView>((step) => ({
+        id: step.id,
+        position: step.position,
+        name: step.name,
+        pessoas: step.pessoas,
+        sistema: step.sistema,
+        dados: step.dados,
+        tempo: step.tempo,
+        erro: step.erro,
+        retrabalho: step.retrabalho,
+      })),
+    })),
+    findings: ((data.findings as ApiFinding[]) ?? []).map<FindingView>((finding) => ({
+      id: finding.id,
+      statement: finding.statement,
+      // Sem padrão e sem tradução: o rótulo é o que a API afirmou, e um valor que
+      // esta tela não conheça cai no rótulo cru em vez de virar "fato".
+      epistemicStatus: finding.epistemic_status,
+      confidence: finding.confidence,
+      processId: finding.process_id,
+      stepId: finding.step_id,
+      evidences: (finding.evidences ?? []).map<EvidenceView>((evidence) => ({
+        id: evidence.id,
+        kind: evidence.kind,
+        reference: evidence.reference,
+        capturedAt: evidence.captured_at,
+      })),
+    })),
+    painPoints: ((data.pain_points as ApiPainPoint[]) ?? []).map<PainPointView>((pain) => ({
+      id: pain.id,
+      title: pain.title,
+      description: pain.description,
+      impactType: pain.impact_type,
+      impactEstimate: pain.impact_estimate,
+      findingIds: pain.finding_ids ?? [],
+      status: pain.status,
+    })),
+    improvementOpportunities: ((data.improvement_opportunities as ApiImprovementOpportunity[]) ?? []).map<ImprovementOpportunityView>(
+      (opportunity) => ({
+        id: opportunity.id,
+        title: opportunity.title,
+        desiredChange: opportunity.desired_change,
+        impactHypothesis: opportunity.impact_hypothesis,
+        painPointIds: opportunity.pain_point_ids ?? [],
+        status: opportunity.status,
+        // `?? null` e nunca um objeto vazio: a ausência da avaliação é "ninguém
+        // avaliou ainda", e fabricar `{score: 0}` aqui inventaria a pior nota.
+        priorityAssessment: opportunity.priority_assessment
+          ? {
+              version: opportunity.priority_assessment.version,
+              score: opportunity.priority_assessment.score,
+              dimensions: opportunity.priority_assessment.dimensions ?? {},
+            }
+          : null,
+        solutionHypotheses: (opportunity.solution_hypotheses ?? []).map<SolutionHypothesisView>((hypothesis) => ({
+          id: hypothesis.id,
+          statement: hypothesis.statement,
+          intervention: hypothesis.intervention,
+          expectedEffect: hypothesis.expected_effect,
+          status: hypothesis.status,
+        })),
+      }),
+    ),
     documents: ((data.documents as ApiDocument[]) ?? []).map<ProjectDocument>((document) => ({
       title: document.title,
       type: document.type,

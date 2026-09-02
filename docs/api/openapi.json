@@ -935,6 +935,13 @@
               }
             ]
           },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/FindingOut"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
           "health": {
             "anyOf": [
               {
@@ -945,8 +952,22 @@
               }
             ]
           },
+          "improvement_opportunities": {
+            "items": {
+              "$ref": "#/components/schemas/ImprovementOpportunityOut"
+            },
+            "title": "Improvement Opportunities",
+            "type": "array"
+          },
           "journey": {
             "$ref": "#/components/schemas/JourneyOut"
+          },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/KpiOut"
+            },
+            "title": "Kpis",
+            "type": "array"
           },
           "measured": {
             "$ref": "#/components/schemas/ResultsOut"
@@ -986,11 +1007,25 @@
             ],
             "title": "Observed At"
           },
+          "pain_points": {
+            "items": {
+              "$ref": "#/components/schemas/PainPointOut"
+            },
+            "title": "Pain Points",
+            "type": "array"
+          },
           "pendings": {
             "items": {
               "$ref": "#/components/schemas/PendingOut"
             },
             "title": "Pendings",
+            "type": "array"
+          },
+          "processes": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessOut"
+            },
+            "title": "Processes",
             "type": "array"
           },
           "project": {
@@ -1039,6 +1074,13 @@
               }
             ],
             "title": "Synced At"
+          },
+          "value_ledger": {
+            "items": {
+              "$ref": "#/components/schemas/ValueLedgerEntryOut"
+            },
+            "title": "Value Ledger",
+            "type": "array"
           }
         },
         "required": [
@@ -1054,6 +1096,12 @@
           "health",
           "journey",
           "digital_employees",
+          "kpis",
+          "value_ledger",
+          "processes",
+          "findings",
+          "pain_points",
+          "improvement_opportunities",
           "roi",
           "next_meeting",
           "milestones",
@@ -1328,6 +1376,13 @@
             ],
             "title": "Hours Saved Month"
           },
+          "kpi_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Kpi Ids",
+            "type": "array"
+          },
           "kpi_label": {
             "anyOf": [
               {
@@ -1378,7 +1433,8 @@
           "kpi_label",
           "kpi_value",
           "hours_saved_month",
-          "roi_month"
+          "roi_month",
+          "kpi_ids"
         ],
         "title": "DigitalEmployeeOut",
         "type": "object"
@@ -1892,6 +1948,50 @@
         "title": "ErrorOut",
         "type": "object"
       },
+      "EvidenceOut": {
+        "additionalProperties": false,
+        "description": "Uma evidência que sustenta um achado.\n\n**Não tem marca de revisão, e a ausência é a decisão** (ADR 0086). A §3 do\nLanguage Map diz que só a Evidence revisada atravessa, e é assim: o produtor\nfiltra por ``published_at`` **antes** de emitir, de modo que a presença aqui já\né a prova. Não há campo a declarar porque não há campo do outro lado a copiar —\ne inventá-lo seria o One afirmando por conta própria que algo foi revisado, que\né a regra 3 da §3 (\"o One nunca é fonte primária\") ao contrário.\n\nQuatro campos e nada além: nem o trecho bruto, nem o hash do conteúdo, nem a\ntranscrição de onde ela saiu. ``reference`` é o **ponteiro** para a fonte, como\na origem o escreve — nunca o conteúdo dela.",
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "reference",
+          "captured_at"
+        ],
+        "title": "EvidenceOut",
+        "type": "object"
+      },
       "FeedbackIn": {
         "properties": {
           "comment": {
@@ -1936,6 +2036,75 @@
         "title": "FeedbackOut",
         "type": "object"
       },
+      "FindingOut": {
+        "additionalProperties": false,
+        "description": "Um achado do Discovery, sempre com o estado epistêmico ao lado.\n\n``epistemic_status`` é o campo que faz a regra 1 da §3 ser desenhável: um\n``hypothesis`` aparece **rotulado** como hipótese ou não aparece, nunca como\nfato. Ele é exigido deste esquema pelo ``epistemic_resources`` do\n``docs/contracts/one-visibility.json``, e tirá-lo daqui reprova.\n\n``unknown`` também atravessa, e não é omissão: um levantamento que só mostrasse\no que ficou sabido esconderia do cliente o que ainda não se sabe.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "epistemic_status": {
+            "title": "Epistemic Status",
+            "type": "string"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceOut"
+            },
+            "title": "Evidences",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "process_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Id"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          }
+        },
+        "required": [
+          "id",
+          "statement",
+          "epistemic_status",
+          "confidence",
+          "process_id",
+          "step_id",
+          "evidences"
+        ],
+        "title": "FindingOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1966,6 +2135,82 @@
           "service"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "ImprovementOpportunityOut": {
+        "additionalProperties": false,
+        "description": "Um item do backlog de melhoria da conta.\n\n``Improvement`` não é enfeite no nome (§5, invariante 1): ``Opportunity``\nsozinho colide entre venda e melhoria operacional, e a venda —\n``CommercialOpportunity`` — é proibida no One por escrito.\n\nA lista chega **ordenada por score decrescente, com quem não tem avaliação no\nfim**; quem ordena é a API (ver ``_discovery_projection``), e a tela não repete\no critério.",
+        "properties": {
+          "desired_change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Change"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "impact_hypothesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Hypothesis"
+          },
+          "pain_point_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Pain Point Ids",
+            "type": "array"
+          },
+          "priority_assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriorityAssessmentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "solution_hypotheses": {
+            "items": {
+              "$ref": "#/components/schemas/SolutionHypothesisOut"
+            },
+            "title": "Solution Hypotheses",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "desired_change",
+          "impact_hypothesis",
+          "pain_point_ids",
+          "status",
+          "priority_assessment",
+          "solution_hypotheses"
+        ],
+        "title": "ImprovementOpportunityOut",
         "type": "object"
       },
       "InvitationIn": {
@@ -2022,6 +2267,203 @@
           "phases"
         ],
         "title": "JourneyOut",
+        "type": "object"
+      },
+      "KpiMeasurementOut": {
+        "additionalProperties": false,
+        "description": "Uma leitura de KPI — Baseline, Outcome ou um ponto do acompanhamento.\n\nUm modelo só para as três porque são a mesma coisa no Language Map §4: espécies\nde ``Measurement``, distinguidas por ``kind``. Aqui o ``kind`` é a **posição** —\no campo em que a leitura aparece —, então repeti-lo dentro do objeto seria o\nmesmo dado em dois lugares podendo divergir.\n\n**``value`` nulo dentro de um objeto que existe é \"a janela existe e ninguém\nmediu ainda\"**, e é outra coisa que o campo inteiro ausente (\"não há Baseline\ndefinida\"). Nenhuma das duas é zero: a AC da issue #89 exige que lacuna de\nmedição apareça como lacuna.\n\nAs datas são ``str`` pela regra 1 do módulo — o produtor já entregou texto.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "measured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured At"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "period_start",
+          "period_end",
+          "measured_at",
+          "confidence"
+        ],
+        "title": "KpiMeasurementOut",
+        "type": "object"
+      },
+      "KpiOut": {
+        "additionalProperties": false,
+        "description": "Um indicador do projeto, com Baseline e Outcome comparáveis (ADR 0085).\n\nO ``id`` é o **``external_id`` do Pulse**, e não o uuid local: é ele que\n``ValueLedgerEntryOut.kpi_id`` e ``DigitalEmployeeOut.kpi_ids`` carregam, e o\nuuid é recriado a cada webhook — publicá-lo obrigaria a tela a traduzir três\nlistas que já falam a mesma língua.",
+        "properties": {
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiMeasurementOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cadence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cadence"
+          },
+          "data_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Source"
+          },
+          "definition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "monitoring": {
+            "items": {
+              "$ref": "#/components/schemas/KpiMeasurementOut"
+            },
+            "title": "Monitoring",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KpiMeasurementOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "definition",
+          "formula",
+          "unit",
+          "direction",
+          "data_source",
+          "cadence",
+          "target",
+          "baseline",
+          "outcome",
+          "monitoring"
+        ],
+        "title": "KpiOut",
         "type": "object"
       },
       "MeOut": {
@@ -2424,6 +2866,13 @@
               }
             ]
           },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/FindingOut"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
           "health": {
             "anyOf": [
               {
@@ -2434,8 +2883,22 @@
               }
             ]
           },
+          "improvement_opportunities": {
+            "items": {
+              "$ref": "#/components/schemas/ImprovementOpportunityOut"
+            },
+            "title": "Improvement Opportunities",
+            "type": "array"
+          },
           "journey": {
             "$ref": "#/components/schemas/JourneyOut"
+          },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/KpiOut"
+            },
+            "title": "Kpis",
+            "type": "array"
           },
           "measured": {
             "$ref": "#/components/schemas/ResultsOut"
@@ -2486,11 +2949,25 @@
             ],
             "title": "Organization"
           },
+          "pain_points": {
+            "items": {
+              "$ref": "#/components/schemas/PainPointOut"
+            },
+            "title": "Pain Points",
+            "type": "array"
+          },
           "pendings": {
             "items": {
               "$ref": "#/components/schemas/PendingOut"
             },
             "title": "Pendings",
+            "type": "array"
+          },
+          "processes": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessOut"
+            },
+            "title": "Processes",
             "type": "array"
           },
           "project": {
@@ -2543,6 +3020,13 @@
               }
             ],
             "title": "Synced At"
+          },
+          "value_ledger": {
+            "items": {
+              "$ref": "#/components/schemas/ValueLedgerEntryOut"
+            },
+            "title": "Value Ledger",
+            "type": "array"
           }
         },
         "required": [
@@ -2558,6 +3042,12 @@
           "health",
           "journey",
           "digital_employees",
+          "kpis",
+          "value_ledger",
+          "processes",
+          "findings",
+          "pain_points",
+          "improvement_opportunities",
           "roi",
           "next_meeting",
           "milestones",
@@ -2804,6 +3294,75 @@
         ],
         "title": "OnboardingStepName",
         "type": "string"
+      },
+      "PainPointOut": {
+        "additionalProperties": false,
+        "description": "Uma dor confirmada da conta, com os achados que a sustentam.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "finding_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "impact_estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Estimate"
+          },
+          "impact_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Type"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "impact_type",
+          "impact_estimate",
+          "finding_ids",
+          "status"
+        ],
+        "title": "PainPointOut",
+        "type": "object"
       },
       "PendingCommentIn": {
         "properties": {
@@ -3151,6 +3710,183 @@
           "phone_hint"
         ],
         "title": "PreferencesOut",
+        "type": "object"
+      },
+      "PriorityAssessmentOut": {
+        "additionalProperties": false,
+        "description": "O **Opportunity Score** de uma oportunidade de melhoria (Language Map D5).\n\nO rótulo que o cliente lê é \"Opportunity Score\", e ele se aplica **só** a\n``ImprovementOpportunity`` — nunca a uma venda (§5).\n\n**O ``rationale`` não está aqui, e não pode passar a estar**: é o par proibido\nda §3 (`PriorityAssessment.rationale`), o racional interno que o time escreve\npara si. `tests/api-contract.test.mjs` reprova se alguém o declarar.",
+        "properties": {
+          "dimensions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Dimensions",
+            "type": "object"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "version",
+          "score",
+          "dimensions"
+        ],
+        "title": "PriorityAssessmentOut",
+        "type": "object"
+      },
+      "ProcessOut": {
+        "additionalProperties": false,
+        "description": "Um processo mapeado da conta — o AS-IS que o Discovery validou.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessStepOut"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "updated_at",
+          "steps"
+        ],
+        "title": "ProcessOut",
+        "type": "object"
+      },
+      "ProcessStepOut": {
+        "additionalProperties": false,
+        "description": "Uma etapa do processo, com as seis chaves do formulário P-S-D-T-E-R.\n\n**Os seis nomes ficam em português por decisão do contrato** (fechamento de\n`biahflow/pulse#106`), e não por descuido: eles não são termos da ontologia —\nsão as perguntas que o time faz na sessão de Discovery. A §5 do Language Map\nbane nome de **modelo** em português, e o modelo aqui é ``ProcessStep``.",
+        "properties": {
+          "dados": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dados"
+          },
+          "erro": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Erro"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pessoas": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pessoas"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "retrabalho": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrabalho"
+          },
+          "sistema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sistema"
+          },
+          "tempo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tempo"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "name",
+          "pessoas",
+          "sistema",
+          "dados",
+          "tempo",
+          "erro",
+          "retrabalho"
+        ],
+        "title": "ProcessStepOut",
         "type": "object"
       },
       "ProjectHealthOut": {
@@ -3663,6 +4399,55 @@
         "title": "SearchOut",
         "type": "object"
       },
+      "SolutionHypothesisOut": {
+        "additionalProperties": false,
+        "description": "Uma hipótese de solução para uma oportunidade de melhoria.\n\n**Hipótese, e a palavra é o contrato** (§2): o que se acha que resolveria,\nantes de a Feasibility dizer se dá e de o PROVE dizer se funciona. A tela a\nrotula como hipótese pela mesma razão que rotula um ``Finding`` não provado.",
+        "properties": {
+          "expected_effect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Effect"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "intervention": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervention"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "statement",
+          "intervention",
+          "expected_effect",
+          "status"
+        ],
+        "title": "SolutionHypothesisOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -3694,6 +4479,82 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValueLedgerEntryOut": {
+        "additionalProperties": false,
+        "description": "Uma entrada do Value Ledger do mandato (Language Map §2, ADR 0085).\n\nÉ o **valor gerado**, e a §2 diz o que ele nunca é: \"ROI projetado\" nem \"Case\".\nO que o separa de um número solto na tela é o par período + método de\natribuição — o invariante 12.\n\nSem moeda: tudo é BRL e o produtor não emite a coluna. Um ``currency`` aqui\nseria campo que ninguém escreve e que a tela leria como se significasse algo.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "attribution_method": {
+            "title": "Attribution Method",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kpi_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kpi Id"
+          },
+          "outcome_measured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Measured At"
+          },
+          "period_end": {
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "value_type": {
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "value_type",
+          "amount",
+          "quantity",
+          "period_start",
+          "period_end",
+          "attribution_method",
+          "kpi_id",
+          "outcome_measured_at"
+        ],
+        "title": "ValueLedgerEntryOut",
         "type": "object"
       },
       "WebhookReceivedOut": {

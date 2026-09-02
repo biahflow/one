@@ -19,6 +19,17 @@ from portal_api.models.conversation import (
     MessageResponder,
 )
 from portal_api.models.decision import Decision
+from portal_api.models.discovery import (
+    EpistemicStatus,
+    Finding,
+    ImprovementOpportunity,
+    PainPoint,
+    Process,
+    ProcessStep,
+    SolutionHypothesis,
+    improvement_opportunity_pain_point,
+    pain_point_finding,
+)
 from portal_api.models.document import (
     EMBEDDING_DIMENSIONS,
     Document,
@@ -35,6 +46,7 @@ from portal_api.models.drive import (
 from portal_api.models.engagement import Engagement, EngagementStatus
 from portal_api.models.financial import ProjectFinancialAssumption
 from portal_api.models.identity import MemberRole, Membership, User
+from portal_api.models.kpi import Kpi
 from portal_api.models.meeting import Meeting
 from portal_api.models.notification import Notification, NotificationKind
 from portal_api.models.onboarding import OnboardingStep, OnboardingStepName
@@ -67,6 +79,7 @@ from portal_api.models.retention import (
     ErasureState,
     OrganizationRetentionPolicy,
 )
+from portal_api.models.value_ledger import ValueLedgerEntry
 
 __all__ = [
     "DRIVE_READONLY_SCOPE",
@@ -102,8 +115,12 @@ __all__ = [
     "DriveSyncState",
     "Engagement",
     "EngagementStatus",
+    "EpistemicStatus",
     "ErasureState",
+    "Finding",
     "GateDecision",
+    "ImprovementOpportunity",
+    "Kpi",
     "Meeting",
     "MemberRole",
     "Membership",
@@ -119,6 +136,7 @@ __all__ = [
     "Organization",
     "OrganizationAiQuota",
     "OrganizationRetentionPolicy",
+    "PainPoint",
     "PendingItem",
     "PendingItemComment",
     "PendingOrigin",
@@ -126,10 +144,16 @@ __all__ = [
     "PendingState",
     "PhaseDeliverable",
     "PhaseState",
+    "Process",
+    "ProcessStep",
     "Project",
     "ProjectDriveConnection",
     "ProjectFinancialAssumption",
     "ProjectPhase",
     "ProjectStatus",
+    "SolutionHypothesis",
     "User",
+    "ValueLedgerEntry",
+    "improvement_opportunity_pain_point",
+    "pain_point_finding",
 ]

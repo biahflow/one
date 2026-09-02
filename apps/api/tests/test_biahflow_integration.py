@@ -91,10 +91,114 @@ def _snapshot(*, biahflow_project_id: int = 7, client_id: int = 3) -> dict[str, 
         "next_meeting": {"id": 5, "title": "Revisão de fase", "date": "2026-08-20"},
         "health": {"label": "No prazo", "level": "green"},
         "digital_employees": [
+            # `kpi_ids` é **aditivo** (ADR 0085): os quatro campos legados
+            # continuam vindo ao lado dele, e nenhum sai.
             {"id": 1, "name": "Agente Financeiro", "area": "Financeiro",
              "description": "Concilia contas.", "status": "active",
              "kpi_label": "Conciliação", "kpi_value": "80%",
-             "hours_saved_month": 120.0, "roi_month": 14000.0},
+             "hours_saved_month": 120.0, "roi_month": 14000.0,
+             "kpi_ids": [12, 15]},
+        ],
+        # Dois KPIs, e a diferença entre eles é a das **duas nulidades** (ADR 0085):
+        # o 12 está medido dos dois lados; o 15 tem janela de Outcome **sem número**,
+        # que é "existe e ninguém mediu ainda" e nunca zero.
+        "kpis": [
+            {"id": 12, "name": "Horas de conciliação", "definition": "Horas do time contábil.",
+             "formula": "Soma das horas apontadas", "unit": "hours", "direction": "down",
+             "data_source": "Apontamento de horas", "cadence": "monthly", "target": 20.0,
+             "baseline": {"value": 72.0, "period_start": "2026-03-01",
+                          "period_end": "2026-03-31",
+                          "measured_at": "2026-04-02T14:00:00-03:00", "confidence": 80},
+             "outcome": {"value": 21.5, "period_start": "2026-07-01",
+                         "period_end": "2026-07-31",
+                         "measured_at": "2026-08-02T11:00:00-03:00", "confidence": 90},
+             "monitoring": [
+                 {"value": 38.0, "period_start": "2026-05-01", "period_end": "2026-05-31",
+                  "measured_at": "2026-06-02T10:00:00-03:00", "confidence": 70},
+             ]},
+            {"id": 15, "name": "Divergências reabertas", "definition": "",
+             "formula": "", "unit": "count", "direction": "down",
+             "data_source": "Fila de exceções", "cadence": "monthly", "target": None,
+             "baseline": {"value": 34.0, "period_start": "2026-03-01",
+                          "period_end": "2026-03-31",
+                          "measured_at": "2026-04-02T14:00:00-03:00", "confidence": 70},
+             "outcome": {"value": None, "period_start": "2026-07-01", "period_end": None,
+                         "measured_at": None, "confidence": None},
+             "monitoring": []},
+        ],
+        # O razão é lido por **Engagement** e sai em fan-out no snapshot de todo
+        # projeto do mandato; a segunda entrada aponta para um KPI que pode não
+        # existir neste projeto, que é o caso normal descrito na ADR 0085.
+        "value_ledger": [
+            {"id": 3, "value_type": "cost_saving", "amount": 48000.0, "quantity": 606.0,
+             "period_start": "2026-07-01", "period_end": "2026-07-31",
+             "attribution_method": "Diferença Baseline→Outcome do KPI 12 × custo-hora",
+             "kpi_id": 12, "outcome_measured_at": "2026-08-02T11:00:00-03:00"},
+            {"id": 4, "value_type": "revenue", "amount": 12500.0, "quantity": None,
+             "period_start": "2026-06-01", "period_end": "2026-06-30",
+             "attribution_method": "Receita adicional do atendimento fora do horário",
+             "kpi_id": 41, "outcome_measured_at": None},
+        ],
+        # O Discovery da **conta** (ADR 0086), com os casos que a fatia precisa
+        # exercitar em toda passagem: um achado `fact` com evidência e um `unknown`
+        # (a lacuna declarada, que atravessa e não é omitida); uma dor com impacto
+        # quantificado e outra **sem**, que é `None` e nunca zero; e duas
+        # oportunidades, uma avaliada e outra não — a segunda é a que prova que o
+        # backlog não quebra nem se reordena por falta de nota.
+        "processes": [
+            {"id": 301, "name": "Conciliação de contas a pagar", "position": 0,
+             "updated_at": "2026-08-10T09:00:00+00:00",
+             "steps": [
+                 {"id": 3101, "position": 0, "name": "Receber a nota",
+                  "pessoas": "2 analistas", "sistema": "ERP", "dados": "XML da NF-e",
+                  "tempo": "4h/dia", "erro": "Nota em duplicidade",
+                  "retrabalho": "Refazer o lançamento"},
+                 {"id": 3102, "position": 1, "name": "Conferir o pedido",
+                  "pessoas": "1 analista", "sistema": "Planilha", "dados": "Pedido de compra",
+                  "tempo": "2h/dia", "erro": "", "retrabalho": ""},
+             ]},
+        ],
+        "findings": [
+            {"id": 401, "statement": "A conferência é feita duas vezes pela mesma pessoa.",
+             "epistemic_status": "fact", "confidence": 90,
+             "process_id": 301, "step_id": 3102,
+             "evidences": [
+                 {"id": 5001, "kind": "observation",
+                  "reference": "Sessão de Discovery de 12/08",
+                  "captured_at": "2026-08-12T15:00:00+00:00"},
+             ]},
+            {"id": 402, "statement": "Não se sabe quantas notas chegam fora do padrão.",
+             "epistemic_status": "unknown", "confidence": None,
+             "process_id": 301, "step_id": None, "evidences": []},
+        ],
+        "pain_points": [
+            {"id": 501, "title": "Retrabalho na conferência",
+             "description": "A mesma nota é conferida duas vezes.",
+             "impact_type": "time", "impact_estimate": 32000.0,
+             "finding_ids": [401, 402], "status": "confirmed"},
+            {"id": 502, "title": "Fila de exceções sem dono",
+             "description": "", "impact_type": None, "impact_estimate": None,
+             "finding_ids": [], "status": "confirmed"},
+        ],
+        "improvement_opportunities": [
+            {"id": 601, "title": "Automatizar a conferência de notas",
+             "desired_change": "Conferir por regra, com exceção para pessoa.",
+             "impact_hypothesis": "Devolve 4h/dia ao time contábil.",
+             "pain_point_ids": [501], "status": "backlog",
+             "priority_assessment": {
+                 "version": 2, "score": 82,
+                 "dimensions": {"impact": 5, "evidence_strength": 4, "feasibility": 3,
+                                "time_to_value": 4, "economics": 5}},
+             "solution_hypotheses": [
+                 {"id": 701, "statement": "Um agente concilia por regra.",
+                  "intervention": "Regras no ERP + fila de exceção",
+                  "expected_effect": "70% das notas sem toque humano",
+                  "status": "proposed"},
+             ]},
+            {"id": 602, "title": "Dar dono à fila de exceções",
+             "desired_change": "", "impact_hypothesis": "",
+             "pain_point_ids": [502], "status": "backlog",
+             "priority_assessment": None, "solution_hypotheses": []},
         ],
         "documents": [
             {"id": 41, "name": "Plano de implantação.pdf", "type": "PDF",

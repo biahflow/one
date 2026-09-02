@@ -22,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -515,7 +516,24 @@ class DigitalEmployee(Base, _ProjectChildMixin, TimestampMixin):
         nullable=False,
         default=DigitalEmployeeStatus.building,
     )
+    #: Os quatro campos legados do indicador, anteriores ao ``Kpi`` da Language
+    #: Map v1.1. Continuam vindo no snapshot e continuam sendo exibidos: a fatia
+    #: que introduziu ``kpi_external_ids`` é **aditiva**, e nenhum deles tem data
+    #: de morte marcada — quem a marca é o dia em que a origem parar de emiti-los.
     kpi_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     kpi_value: Mapped[str | None] = mapped_column(String(80), nullable=True)
     hours_saved_month: Mapped[Decimal | None] = mapped_column(Numeric(10, 1), nullable=True)
     roi_month: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    #: Os ``KPI.id`` do Pulse que este funcionário move, **crus**. Não é tabela
+    #: associativa e não é FK, e a razão é a mesma que faz ``kpi.external_id``
+    #: existir: o sync substitui os KPIs do projeto a cada passagem, então o uuid
+    #: local de um KPI não sobrevive ao webhook seguinte e uma FK apontaria para
+    #: linha apagada. A resolução é por junção na leitura
+    #: (``kpi.project_id == X AND kpi.external_id IN (…)``), e um id que não casa
+    #: com nenhum KPI local é caso normal, não erro.
+    #:
+    #: ``NOT NULL`` com default ``[]``: lista vazia é "não referencia nenhum",
+    #: que é o estado de toda linha anterior a esta coluna.
+    kpi_external_ids: Mapped[list[int]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )

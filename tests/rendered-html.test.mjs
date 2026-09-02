@@ -474,7 +474,16 @@ test("server-renders the dashboard for an authenticated session", async () => {
   assert.match(html, /Bom dia, Marina\./);
   assert.match(html, /Acme Brasil/);
   assert.match(html, /Automação Financeira/);
-  assert.match(html, /ROI projetado/);
+  // A manchete deixou de ser a projeção da origem e passou a ser o **valor
+  // gerado** (issue #89, ADR 0085): R$ 48.000 + R$ 12.500 do razão do mandato.
+  // O ROI projetado não sumiu do produto — continua na aba Resultados, rotulado
+  // desde a ADR 0084 —, e é por isso que a asserção mudou de lugar em vez de sumir.
+  assert.match(html, /Valor gerado/);
+  assert.match(html, /Value Ledger/);
+  // O recorte é o **card de manchete** (`<p>ROI projetado</p>`), e não a palavra:
+  // "ROI projetado/mês" continua no card do Funcionário Digital, que é outro
+  // número, de outro produtor, e que esta fatia não toca.
+  assert.doesNotMatch(html, /<p>ROI projetado<\/p>/);
   assert.match(html, /Você está aqui/);
   assert.match(html, /SUA JORNADA/);
   assert.match(html, /No prazo/);
@@ -518,6 +527,136 @@ test("server-renders the dashboard for an authenticated session", async () => {
   // E dentro do limiar não há aviso de velho — sem isto, o teste do stale passaria com o
   // aviso aparecendo sempre.
   assert.doesNotMatch(html, /Pode estar desatualizado/);
+});
+
+test("o KPI mostra Baseline e Outcome lado a lado, e a lacuna não vira zero", async () => {
+  // Os critérios (3) e (4) da issue #89 (ADR 0085), no HTML do servidor.
+  //
+  // A fixture traz dois KPIs de propósito: o `12` medido dos dois lados, e o `15`
+  // com **janela sem número** no Outcome. O segundo é o que importa — é o caso em
+  // que um `?? 0` no mapeamento ou no componente faria a tela do cliente afirmar
+  // "0" sobre um indicador que ninguém mediu.
+  const response = await render("/", { headers: { cookie: await sessionCookie() } });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  assert.match(html, /O QUE ESTAMOS MEDINDO/);
+  assert.match(html, /Horas de conciliação por mês/);
+  // O par, na mesma unidade: 72h de onde se partiu e 21,5h de onde se chegou.
+  assert.match(html, /Baseline/);
+  assert.match(html, /Outcome/);
+  assert.match(html, /72h/);
+  assert.match(html, /21,5h/);
+  // A lacuna é frase, nunca número.
+  assert.match(html, /Divergências reabertas/);
+  assert.match(html, /Ainda não medido/);
+  assert.match(html, /Sem meta definida/);
+  // E o Digital Employee que move os dois indicadores aparece ligado a eles pelo
+  // id da origem — é o que `kpi_ids` existe para dizer.
+  assert.match(html, /Movido por/);
+
+  // O Value Ledger: quantia, período e **método de atribuição** (invariante 12).
+  assert.match(html, /Diferença Baseline→Outcome do KPI 12/);
+  // A entrada cujo KPI de origem não está nesta resposta continua aparecendo — é
+  // caso normal, não erro, porque o razão é do mandato e o KPI é do projeto.
+  assert.match(html, /Receita adicional atribuída ao atendimento/);
+  assert.match(html, /Indicador de origem em outro projeto deste Engagement/);
+});
+
+test("sem KPI e sem razão, a manchete declara a ausência em vez de imprimir R$ 0", async () => {
+  // O outro lado do critério (4): mandato sem entrada nenhuma. "Nenhum valor
+  // registrado ainda" e "R$ 0,00" dizem coisas opostas ao cliente, e só a
+  // primeira é verdadeira num projeto que acabou de começar.
+  dashboardOverride = { ...DASHBOARD, kpis: [], value_ledger: [] };
+  try {
+    const response = await render("/", { headers: { cookie: await sessionCookie() } });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /Valor gerado/);
+    assert.match(html, /Nenhum valor registrado ainda/);
+    assert.doesNotMatch(html, /R\$&nbsp;0,00/);
+    // Sem KPI não há painel de KPI: o componente devolve `null` em vez de um
+    // cabeçalho vazio, como `DigitalEmployees` já fazia.
+    assert.doesNotMatch(html, /O QUE ESTAMOS MEDINDO/);
+    assert.doesNotMatch(html, /Value Ledger/);
+  } finally {
+    dashboardOverride = null;
+  }
+});
+
+test("a aba Discovery desenha o AS-IS, o achado e o backlog priorizado", async () => {
+  // A issue #90 (ADR 0086) no HTML do servidor. A fixture traz os três casos que a
+  // aba existe para saber desenhar, e cada asserção abaixo é um deles.
+  const response = await render("/?tab=Discovery", {
+    headers: { cookie: await sessionCookie() },
+  });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  // 1. o AS-IS, com as seis colunas do formulário P-S-D-T-E-R — os seis nomes ficam
+  //    em português por decisão do contrato do produtor, e a tela os usa como
+  //    cabeçalho porque são as perguntas da sessão.
+  assert.match(html, /Conciliação de contas a pagar/);
+  for (const column of ["Pessoas", "Sistema", "Dados", "Tempo", "Erro", "Retrabalho"]) {
+    assert.match(html, new RegExp(`<th>${column}</th>`), column);
+  }
+  assert.match(html, /XML da NF-e/);
+
+  // 2. o achado **rotulado**: fato com a evidência que o sustenta, e a pergunta em
+  //    aberto aparecendo como lacuna em vez de sumir (§3, regra 1).
+  assert.match(html, /A conferência do pedido é feita duas vezes/);
+  assert.match(html, /Fato/);
+  assert.match(html, /Sessão de Discovery de 12\/08/);
+  assert.match(html, /Pergunta em aberto/);
+  assert.match(html, /ainda não há evidência que a responda/);
+
+  // 3. a dor sem impacto medido: frase, nunca zero — e a que tem, com o tipo ao
+  //    lado do número, sem símbolo de moeda que a origem não declarou.
+  assert.match(html, /Impacto não quantificado/);
+  assert.match(html, /Tempo: 120/);
+  assert.doesNotMatch(html, /R\$&nbsp;0/);
+
+  // 4. o backlog: a nota com o rótulo canônico, e quem não tem nota com a frase.
+  assert.match(html, /Improvement Opportunity Backlog/);
+  assert.match(html, /Opportunity Score/);
+  assert.match(html, />82</);
+  assert.match(html, /Ainda não priorizada/);
+  assert.match(html, /Força da evidência/);
+  // A hipótese de solução é dita hipótese, e a tela diz quem confirma.
+  assert.match(html, /HIPÓTESES DE SOLUÇÃO/);
+  assert.match(html, /quem confirma é o PROVE/);
+});
+
+test("sem nada publicado, a aba Discovery diz que é esperado e não parece erro", async () => {
+  // O estado **normal** de hoje: o Pulse ainda não tem tela de publicar, e nada
+  // atravessa sem publicação humana. As quatro seções continuam de pé com as quatro
+  // frases de ausência — uma aba que se escondesse faria o cliente concluir que o
+  // produto não tem a superfície.
+  dashboardOverride = {
+    ...DASHBOARD,
+    processes: [],
+    findings: [],
+    pain_points: [],
+    improvement_opportunities: [],
+  };
+  try {
+    const response = await render("/?tab=Discovery", {
+      headers: { cookie: await sessionCookie() },
+    });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+
+    assert.match(html, /Nenhum processo mapeado ainda/);
+    assert.match(html, /Nenhum achado publicado ainda/);
+    assert.match(html, /Nenhuma dor confirmada ainda/);
+    assert.match(html, /Nenhuma oportunidade de melhoria publicada ainda/);
+    // E o texto diz que é esperado, em vez de falar de carregamento ou de falha.
+    assert.match(html, /isso é esperado/);
+    assert.doesNotMatch(html, /Erro ao carregar/);
+    assert.doesNotMatch(html, /não consegui/i);
+  } finally {
+    dashboardOverride = null;
+  }
 });
 
 test("o projeto encerrado é marcado na tela e fecha a pergunta", async () => {
@@ -891,6 +1030,20 @@ test("o programa pausado é dito, e o rótulo vem do dashboard mesmo fora da lis
 });
 
 /**
+ * Só os blocos `journey-gate` do HTML — o selo da decisão de fase e o que está
+ * dentro dele (ADR 0081/0085).
+ *
+ * Existe porque a asserção abaixo é sobre **onde** a palavra "Outcome" pode
+ * aparecer, e não sobre ela existir: desde a ADR 0085 o Outcome de negócio tem
+ * produtor e é renderizado na mesma página, legitimamente.
+ */
+function gateBlock(html) {
+  return [...html.matchAll(/<div class="journey-gate">[\s\S]*?<\/div>\s*<\/div>/g)]
+    .map((match) => match[0])
+    .join("\n");
+}
+
+/**
  * O degrau da FDE e a decisão da fase, na jornada (ADR 0081).
  *
  * A fase servida pela fixture é `Prove`, com `requires_gate: true` e sem decisão — o
@@ -910,7 +1063,18 @@ test("a fase mostra o degrau da FDE e diz que o gate está por decidir", async (
   // E não é Outcome: a decisão de gate mora na jornada, e a palavra "Outcome"
   // pertence a `Measurement(kind=outcome)` (decisão D7 do Language Map). Sem esta
   // asserção o selo poderia estar certo e o vocabulário errado.
-  assert.doesNotMatch(html, /Outcome/);
+  //
+  // **O recorte deixou de ser a página inteira na ADR 0085, e a mudança é do
+  // mundo, não da asserção**: até ali `Outcome` não tinha produtor neste
+  // repositório, então "a palavra não aparece em lugar nenhum" e "a palavra não
+  // aparece no selo do gate" eram a mesma afirmação. O KPI trouxe o Outcome de
+  // verdade para a visão geral, e a asserção larga passaria a proibir justamente o
+  // uso **certo** do termo. O que ela sempre quis dizer é o bloco do gate.
+  const gate = gateBlock(html);
+  // Recorte vazio afirmaria nada, em verde — o defeito que a ADR 0033 nomeia. O
+  // rótulo tem de estar dentro do que o recorte devolveu.
+  assert.match(gate, /Decisão da fase/);
+  assert.doesNotMatch(gate, /Outcome/);
 });
 
 test("a fase decidida mostra o rótulo canônico da decisão", async () => {

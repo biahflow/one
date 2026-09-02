@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import Engine, select
@@ -763,6 +763,162 @@ def test_the_erasure_removes_the_contact_history_too(
             ).scalars().all()
             == []
         )
+
+
+@pytest.mark.integration
+def test_the_erasure_removes_the_value_ledger_of_the_engagement(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """A **quarta** exclusão escrita à mão (ADR 0085), e a armadilha é do Engagement.
+
+    O razão é escopado por mandato e não por projeto, e a linha ``engagement`` fica de
+    pé depois do apagamento — como a ``organization``. Então nem o CASCADE do projeto
+    nem o da organização o alcançam, e o que sobreviveria é quantia, período e o
+    **método de atribuição em prosa da origem**: dado do cliente por definição.
+
+    A asserção cobra também a **fronteira**: o razão do outro tenant continua lá. Sem
+    ela, um ``delete`` sem ``where`` passaria por apagamento bem-feito.
+    """
+    from portal_api.models import Engagement, ValueLedgerEntry
+
+    programas: dict[str, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for label in ("acme", "globex"):
+            programa = Engagement(
+                organization_id=tenants[f"{label}_org"],
+                name=f"Programa {label}",
+                slug=f"biahflow-engagement-{uuid.uuid4().hex[:8]}",
+            )
+            session.add(programa)
+            session.flush()
+            programas[label] = programa.id
+            session.add(
+                ValueLedgerEntry(
+                    organization_id=tenants[f"{label}_org"],
+                    engagement_id=programa.id,
+                    external_id=3,
+                    value_type="cost_saving",
+                    amount=48000,
+                    period_start=date(2026, 7, 1),
+                    period_end=date(2026, 7, 31),
+                    attribution_method="Diferença Baseline→Outcome do KPI 12",
+                )
+            )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.run_erasure(session, tenants["acme_org"])
+        session.commit()
+
+    assert outcome.removed["value_ledger_entry"] == 1
+    with Session(migrated_engine) as session:
+        sobrou = session.execute(
+            select(ValueLedgerEntry.organization_id).where(
+                ValueLedgerEntry.engagement_id.in_(programas.values())
+            )
+        ).scalars().all()
+    assert sobrou == [tenants["globex_org"]]
+
+
+@pytest.mark.integration
+def test_the_erasure_removes_the_discovery_of_the_account(
+    migrated_engine: Engine, tenants: dict[str, uuid.UUID]
+) -> None:
+    """A **quinta** exclusão escrita à mão (ADR 0086), e a mais cara delas.
+
+    O Discovery é escopado por organização e descreve como a empresa do cliente
+    trabalha por dentro — processos, gargalos, quem faz o quê, quanto tempo leva.
+    Nada disso vem no CASCADE do projeto, e sobreviveria ao apagamento do tenant.
+
+    A asserção cobre também o que **não** tem linha própria em ``run_erasure``: a
+    etapa, a ligação e a hipótese de solução saem por CASCADE dos pais. Sem elas na
+    conta, um CASCADE que alguém tirasse da migração passaria despercebido — a
+    contagem de ``process`` continuaria certa com as etapas de pé.
+    """
+    from portal_api.models import (
+        Finding,
+        ImprovementOpportunity,
+        PainPoint,
+        Process,
+        ProcessStep,
+        SolutionHypothesis,
+        pain_point_finding,
+    )
+
+    with Session(migrated_engine) as session:
+        for label in ("acme", "globex"):
+            organization_id = tenants[f"{label}_org"]
+            processo = Process(
+                organization_id=organization_id, external_id=301, name="Conciliação",
+                position=0,
+            )
+            session.add(processo)
+            session.flush()
+            session.add(
+                ProcessStep(
+                    organization_id=organization_id, process_id=processo.id,
+                    external_id=3101, position=0, name="Receber a nota",
+                    pessoas="2 analistas",
+                )
+            )
+            achado = Finding(
+                organization_id=organization_id, external_id=401,
+                statement="A conferência é feita duas vezes.",
+                process_id=processo.id,
+            )
+            dor = PainPoint(
+                organization_id=organization_id, external_id=501,
+                title="Retrabalho", status="confirmed",
+            )
+            session.add_all([achado, dor])
+            session.flush()
+            session.execute(
+                pain_point_finding.insert(),
+                [{"pain_point_id": dor.id, "finding_id": achado.id}],
+            )
+            oportunidade = ImprovementOpportunity(
+                organization_id=organization_id, external_id=601,
+                title="Automatizar a conferência", status="backlog",
+            )
+            session.add(oportunidade)
+            session.flush()
+            session.add(
+                SolutionHypothesis(
+                    organization_id=organization_id,
+                    improvement_opportunity_id=oportunidade.id,
+                    external_id=701, statement="Um agente concilia por regra.",
+                    status="proposed",
+                )
+            )
+        session.commit()
+
+    with Session(migrated_engine) as session:
+        outcome = retention.run_erasure(session, tenants["acme_org"])
+        session.commit()
+
+    for table in ("process", "finding", "pain_point", "improvement_opportunity"):
+        assert outcome.removed[table] == 1, table
+
+    # As consultas são escopadas aos dois tenants deste teste, e não globais: o banco
+    # da bateria é compartilhado, e um `select` sem `where` veria as linhas que
+    # `test_discovery.py` deixou — a asserção passaria a ser sobre a suíte inteira.
+    escopo = [tenants["acme_org"], tenants["globex_org"]]
+    with Session(migrated_engine) as session:
+        # O que saiu por CASCADE não é contado, e é justamente por isso que ele é
+        # conferido aqui: a contagem de `process` ficaria em 1 com as etapas de pé.
+        for model in (ProcessStep, SolutionHypothesis, Process, Finding, PainPoint,
+                      ImprovementOpportunity):
+            sobrou = session.execute(
+                select(model.organization_id).where(model.organization_id.in_(escopo))
+            ).scalars().all()
+            # E a fronteira, na mesma asserção: o Discovery do outro tenant fica inteiro.
+            assert sobrou == [tenants["globex_org"]], model.__tablename__
+        ligacoes = session.execute(
+            select(pain_point_finding.c.pain_point_id).join(
+                PainPoint, PainPoint.id == pain_point_finding.c.pain_point_id
+            ).where(PainPoint.organization_id.in_(escopo))
+        ).scalars().all()
+        assert len(ligacoes) == 1
 
 
 @pytest.mark.integration

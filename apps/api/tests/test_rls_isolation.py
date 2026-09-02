@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 from sqlalchemy import Engine, delete, insert, select, text, update
@@ -1603,3 +1603,441 @@ def test_the_app_role_cannot_originate_an_engagement(
             )
         )
     assert "permission denied" in str(denied.value).lower()
+
+
+# 12 — o KPI do projeto e o Value Ledger do mandato (ADR 0085) --------------------
+#
+# **As duas tabelas nascem juntas e com predicados diferentes**, e é essa diferença que
+# este bloco prova. `kpi` é escopo de projeto e usa o predicado simples da 0007 — as
+# duas colunas denormalizadas contra as GUCs de segundo estágio. `value_ledger_entry`
+# **não tem `project_id`**: a entrada pertence ao Engagement, e o predicado liga o
+# mandato dela ao projeto corrente por um `EXISTS` sobre `project`.
+#
+# O caso que separa os dois desenhos é o vizinho de dentro: o segundo mandato da mesma
+# conta. Um predicado de tenant puro (`organization_id = portal.current_org()`) passaria
+# nos dois primeiros testes abaixo e **falharia** no terceiro, deixando o valor gerado de
+# um programa vazar para quem só foi convidado para o outro.
+
+
+@pytest.fixture
+def kpis(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    from portal_api.models import Kpi
+
+    tenant_a, tenant_b = tenants
+    ids: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in (tenant_a, tenant_b):
+            record = Kpi(
+                organization_id=tenant.organization_id,
+                project_id=tenant.project_id,
+                external_id=901,
+                name=f"Indicador {tenant.organization_id}",
+            )
+            session.add(record)
+            session.flush()
+            ids[tenant.organization_id] = record.id
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        session.execute(delete(Kpi).where(Kpi.id.in_(ids.values())))
+        session.commit()
+
+
+@pytest.fixture
+def ledgers(
+    migrated_engine: Engine,
+    tenants: tuple[Tenant, Tenant],
+    engagements: dict[uuid.UUID, uuid.UUID],
+) -> Iterator[dict[uuid.UUID, uuid.UUID]]:
+    """Uma entrada de razão por mandato — e ``engagements`` já ligou cada um ao projeto.
+
+    A dependência da fixture não é conveniência: sem o projeto apontando para o
+    programa, o ``EXISTS`` da policy não teria por onde alcançar a linha, e o teste
+    passaria por ausência de dado em vez de por isolamento.
+    """
+    from portal_api.models import ValueLedgerEntry
+
+    tenant_a, tenant_b = tenants
+    ids: dict[uuid.UUID, uuid.UUID] = {}
+    with Session(migrated_engine) as session:
+        for tenant in (tenant_a, tenant_b):
+            record = ValueLedgerEntry(
+                organization_id=tenant.organization_id,
+                engagement_id=engagements[tenant.organization_id],
+                external_id=901,
+                value_type="cost_saving",
+                amount=1000,
+                period_start=date(2026, 7, 1),
+                period_end=date(2026, 7, 31),
+                attribution_method="Diferença Baseline→Outcome",
+            )
+            session.add(record)
+            session.flush()
+            ids[tenant.organization_id] = record.id
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        session.execute(delete(ValueLedgerEntry).where(ValueLedgerEntry.id.in_(ids.values())))
+        session.commit()
+
+
+def test_the_app_role_reads_only_the_kpi_of_its_own_project(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    kpis: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Regra 1 do `AGENTS.md` na tabela nova: o indicador do outro tenant não existe."""
+    from portal_api.models import Kpi
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = set(rls_session.execute(select(Kpi.id)).scalars())
+
+    assert kpis[tenant_a.organization_id] in visible
+    assert kpis[tenant_b.organization_id] not in visible
+
+
+def test_the_kpi_is_invisible_without_the_tenant_gucs(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    kpis: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    """Contexto ausente devolve zero linhas, nunca leitura sem escopo (0007).
+
+    É o oposto do ``engagement``, que é legível só com a identidade fixada: aquele é
+    lido por ``GET /me``, que atravessa projetos; o KPI é lido pelo dashboard de **um**
+    projeto, que sempre fixa tenant.
+    """
+    from portal_api.models import Kpi
+
+    tenant_a, _ = tenants
+    bind_context(subject=tenant_a.subject, email=tenant_a.email, user_id=tenant_a.user_id)
+
+    assert set(rls_session.execute(select(Kpi.id)).scalars()) == set()
+
+
+def test_the_app_role_reads_only_the_value_ledger_of_its_own_engagement(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    ledgers: dict[uuid.UUID, uuid.UUID],
+) -> None:
+    from portal_api.models import ValueLedgerEntry
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = set(rls_session.execute(select(ValueLedgerEntry.id)).scalars())
+
+    assert ledgers[tenant_a.organization_id] in visible
+    assert ledgers[tenant_b.organization_id] not in visible
+
+
+@pytest.fixture
+def sibling_ledger_entry(
+    migrated_engine: Engine,
+    tenants: tuple[Tenant, Tenant],
+    sibling_engagement: uuid.UUID,
+) -> Iterator[uuid.UUID]:
+    """A entrada de razão do **segundo** programa da mesma conta.
+
+    Par exato do ``sibling_engagement``: mesma organização, mandato que a pessoa não
+    alcança. É a linha que separa o predicado desta tabela de um de tenant puro.
+    """
+    from portal_api.models import ValueLedgerEntry
+
+    tenant_a, _ = tenants
+    with Session(migrated_engine) as session:
+        record = ValueLedgerEntry(
+            organization_id=tenant_a.organization_id,
+            engagement_id=sibling_engagement,
+            external_id=902,
+            value_type="revenue",
+            amount=500,
+            period_start=date(2026, 6, 1),
+            period_end=date(2026, 6, 30),
+            attribution_method="Método do programa vizinho",
+        )
+        session.add(record)
+        session.flush()
+        entry_id = record.id
+        session.commit()
+    yield entry_id
+    with Session(migrated_engine) as session:
+        session.execute(delete(ValueLedgerEntry).where(ValueLedgerEntry.id == entry_id))
+        session.commit()
+
+
+def test_the_app_role_does_not_read_the_value_ledger_of_the_other_programme(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    ledgers: dict[uuid.UUID, uuid.UUID],
+    sibling_ledger_entry: uuid.UUID,
+) -> None:
+    """O vizinho de dentro, que é o caso que o predicado de tenant puro deixaria passar.
+
+    Numa conta com dois programas, quem foi convidado para um projeto lê o valor gerado
+    **daquele** mandato e de nenhum outro — a distinção que a 0007 fez entre projetos,
+    transposta para o razão. Sem esta asserção, ``organization_id = portal.current_org()``
+    sozinho passaria por isolamento e vazaria o número do programa vizinho.
+    """
+    from portal_api.models import ValueLedgerEntry
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = set(rls_session.execute(select(ValueLedgerEntry.id)).scalars())
+
+    assert ledgers[tenant_a.organization_id] in visible
+    assert sibling_ledger_entry not in visible
+
+
+def test_the_app_role_cannot_originate_a_kpi_or_a_value_ledger_entry(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Sem GRANT de escrita nas duas: KPI e valor gerado nascem do snapshot.
+
+    É a ADR 0006/0008 outra vez, e aqui ela guarda uma coisa específica — um caminho de
+    requisição capaz de escrever o próprio Outcome é um caminho capaz de falsear o
+    próprio resultado, que é o argumento que a ADR 0039 escreveu para o funil.
+    """
+    from portal_api.models import Kpi, ValueLedgerEntry
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError) as denied:
+        rls_session.execute(
+            insert(Kpi).values(
+                id=uuid.uuid4(),
+                organization_id=tenant_a.organization_id,
+                project_id=tenant_a.project_id,
+                external_id=999,
+                name="Indicador inventado",
+                monitoring=[],
+            )
+        )
+    assert "permission denied" in str(denied.value).lower()
+    rls_session.rollback()
+
+    with pytest.raises(ProgrammingError) as refused:
+        rls_session.execute(
+            insert(ValueLedgerEntry).values(
+                id=uuid.uuid4(),
+                organization_id=tenant_a.organization_id,
+                engagement_id=uuid.uuid4(),
+                external_id=999,
+                value_type="revenue",
+                amount=1,
+                period_start=date(2026, 7, 1),
+                period_end=date(2026, 7, 31),
+                attribution_method="inventado",
+            )
+        )
+    assert "permission denied" in str(refused.value).lower()
+
+
+# 13 — a superfície de Discovery da conta (ADR 0086) -----------------------------
+#
+# **O predicado aqui é o mais curto do repositório**, e é isso que este bloco prova:
+# `organization_id = portal.current_org()`, sem o par com `project_id` da 0007. O
+# Discovery é lido por Account no Pulse e sai em fan-out no snapshot de todo projeto
+# dela — não há coluna de projeto com que comparar, e o limite (duas pessoas de
+# projetos diferentes da mesma conta veem o mesmo Discovery) está declarado na
+# migração.
+#
+# As duas tabelas de **ligação** não têm chave de tenant nenhuma, e a policy alcança
+# a linha pelo pai. É o caso que um predicado copiado do vizinho não cobriria: sem o
+# `EXISTS`, ou a ligação seria ilegível (e a dor apareceria sem os achados que a
+# sustentam) ou seria legível por todo mundo.
+
+
+@pytest.fixture
+def discovery(
+    migrated_engine: Engine, tenants: tuple[Tenant, Tenant]
+) -> Iterator[dict[uuid.UUID, dict[str, uuid.UUID]]]:
+    from portal_api.models import (
+        Finding,
+        ImprovementOpportunity,
+        PainPoint,
+        Process,
+        pain_point_finding,
+    )
+
+    tenant_a, tenant_b = tenants
+    ids: dict[uuid.UUID, dict[str, uuid.UUID]] = {}
+    with Session(migrated_engine) as session:
+        for tenant in (tenant_a, tenant_b):
+            processo = Process(
+                organization_id=tenant.organization_id,
+                external_id=301,
+                name=f"Processo {tenant.organization_id}",
+                position=0,
+            )
+            achado = Finding(
+                organization_id=tenant.organization_id,
+                external_id=401,
+                statement="A conferência é feita duas vezes.",
+            )
+            dor = PainPoint(
+                organization_id=tenant.organization_id,
+                external_id=501,
+                title="Retrabalho",
+                status="confirmed",
+            )
+            oportunidade = ImprovementOpportunity(
+                organization_id=tenant.organization_id,
+                external_id=601,
+                title="Automatizar a conferência",
+                status="backlog",
+            )
+            session.add_all([processo, achado, dor, oportunidade])
+            session.flush()
+            session.execute(
+                pain_point_finding.insert(),
+                [{"pain_point_id": dor.id, "finding_id": achado.id}],
+            )
+            ids[tenant.organization_id] = {
+                "process": processo.id,
+                "finding": achado.id,
+                "pain_point": dor.id,
+                "improvement_opportunity": oportunidade.id,
+            }
+        session.commit()
+    yield ids
+    with Session(migrated_engine) as session:
+        for model, key in (
+            (ImprovementOpportunity, "improvement_opportunity"),
+            (PainPoint, "pain_point"),
+            (Finding, "finding"),
+            (Process, "process"),
+        ):
+            session.execute(
+                delete(model).where(model.id.in_([row[key] for row in ids.values()]))
+            )
+        session.commit()
+
+
+def test_the_app_role_reads_only_the_discovery_of_its_own_account(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    discovery: dict[uuid.UUID, dict[str, uuid.UUID]],
+) -> None:
+    """Regra 1 do `AGENTS.md` nas quatro tabelas novas de uma vez.
+
+    O Discovery descreve como a empresa do cliente trabalha por dentro — processos,
+    gargalos, quem faz o quê. É o dado mais sensível que esta fatia traz, e o que o
+    outro tenant vê dele é nada.
+    """
+    from portal_api.models import Finding, ImprovementOpportunity, PainPoint, Process
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    for model, key in (
+        (Process, "process"),
+        (Finding, "finding"),
+        (PainPoint, "pain_point"),
+        (ImprovementOpportunity, "improvement_opportunity"),
+    ):
+        visible = set(rls_session.execute(select(model.id)).scalars())
+        assert discovery[tenant_a.organization_id][key] in visible, key
+        assert discovery[tenant_b.organization_id][key] not in visible, key
+
+
+def test_the_discovery_is_invisible_without_the_tenant_gucs(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    discovery: dict[uuid.UUID, dict[str, uuid.UUID]],
+) -> None:
+    """Contexto ausente devolve zero linhas, nunca leitura sem escopo (0007).
+
+    Vale para as tabelas de ligação também, e ali por outro caminho: o `EXISTS` só
+    acha o pai se o pai for legível, e sem GUC nenhum pai é.
+    """
+    from portal_api.models import Finding, Process, pain_point_finding
+
+    tenant_a, _ = tenants
+    bind_context(subject=tenant_a.subject, email=tenant_a.email, user_id=tenant_a.user_id)
+
+    assert set(rls_session.execute(select(Process.id)).scalars()) == set()
+    assert set(rls_session.execute(select(Finding.id)).scalars()) == set()
+    assert (
+        set(rls_session.execute(select(pain_point_finding.c.finding_id)).scalars()) == set()
+    )
+
+
+def test_the_link_between_a_pain_and_its_findings_is_scoped_by_the_pain(
+    rls_session: Session,
+    bind_context,
+    tenants: tuple[Tenant, Tenant],
+    discovery: dict[uuid.UUID, dict[str, uuid.UUID]],
+) -> None:
+    """A tabela de ligação não tem chave de tenant, e mesmo assim não vaza.
+
+    É a asserção que separa o `EXISTS` de duas alternativas erradas. **Sem policy
+    nenhuma** a linha seria ilegível e a dor apareceria sem os achados que a
+    sustentam — a tela mentiria por omissão. **Com `USING (true)`** — que é o que
+    "não tem tenant, então não tem o que filtrar" produziria — um par de outro
+    cliente sairia daqui: dois uuids, sim, mas que respondem "esta dor tem N achados"
+    sobre uma conta que não é a de quem perguntou.
+    """
+    from portal_api.models import pain_point_finding
+
+    tenant_a, tenant_b = tenants
+    _bind_full(bind_context, tenant_a)
+
+    visible = set(rls_session.execute(select(pain_point_finding.c.pain_point_id)).scalars())
+
+    assert discovery[tenant_a.organization_id]["pain_point"] in visible
+    assert discovery[tenant_b.organization_id]["pain_point"] not in visible
+
+
+def test_the_app_role_cannot_originate_a_finding(
+    rls_session: Session, bind_context, tenants: tuple[Tenant, Tenant]
+) -> None:
+    """Sem GRANT de escrita: o Discovery nasce do snapshot, e só dele.
+
+    Aqui a ausência guarda uma coisa específica e nomeada na §3 do Language Map
+    ("nada aparece no One antes de ser revisado por humano"): um caminho de
+    requisição capaz de escrever um `Finding` é um caminho capaz de promover a
+    própria hipótese a fato.
+    """
+    from portal_api.models import Finding, ImprovementOpportunity
+
+    tenant_a, _ = tenants
+    _bind_full(bind_context, tenant_a)
+
+    with pytest.raises(ProgrammingError) as denied:
+        rls_session.execute(
+            insert(Finding).values(
+                id=uuid.uuid4(),
+                organization_id=tenant_a.organization_id,
+                external_id=999,
+                statement="Isto é um fato porque eu digo que é.",
+                epistemic_status="fact",
+                evidences=[],
+            )
+        )
+    assert "permission denied" in str(denied.value).lower()
+    rls_session.rollback()
+
+    with pytest.raises(ProgrammingError) as refused:
+        rls_session.execute(
+            insert(ImprovementOpportunity).values(
+                id=uuid.uuid4(),
+                organization_id=tenant_a.organization_id,
+                external_id=999,
+                title="Oportunidade inventada",
+                status="backlog",
+            )
+        )
+    assert "permission denied" in str(refused.value).lower()

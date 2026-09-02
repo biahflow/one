@@ -79,11 +79,31 @@ Você deve ver **"Bom dia, Marina."** e quatro cartões com dado real do snapsho
 
 - Status do projeto — "Em implementação", selo "No prazo", 68% concluído
 - Próxima entrega — "Treinamento da operação · 18 set"
-- ROI do projeto — "+142% · R$ 214.000 de retorno"
+- Valor gerado — o total do **Value Ledger** do mandato (ADR 0085)
 - Próxima reunião — "Comitê de projeto · 28 ago"
 
 Nenhum desses números é fixo no código. Se a API cair, a tela mostra um painel de erro — nunca
 um dashboard inventado.
+
+Abaixo dos cartões, a seção **KPIs** mostra dois indicadores do snapshot semeado, com Baseline e
+Outcome lado a lado na mesma unidade: "Horas de conciliação por mês" com 72h → 21,5h, e
+"Divergências reabertas" com a Baseline medida e o **Outcome em branco**. O segundo é o caso que
+importa olhar: ele diz *"Ainda não medido"* e *"Sem meta definida"*, e **não "0"** — é a lacuna
+de medição aparecendo como lacuna, que é o critério que a ADR 0085 existe para não perder.
+
+Na barra lateral, **Discovery** é a aba nova (ADR 0086) e o snapshot semeado a preenche: o
+processo "Conciliação de contas a pagar" com as seis colunas do formulário P-S-D-T-E-R, dois
+achados, duas dores e duas oportunidades de melhoria. Vale olhar três coisas, porque são as que
+a fatia existe para não perder:
+
+- o achado **"Não se sabe quantas notas chegam fora do padrão"** aparece marcado como *Pergunta
+  em aberto* — a lacuna do levantamento é mostrada, não omitida;
+- a dor **"Fila de exceções sem dono"** diz *"Impacto não quantificado"*, e **não "0"**;
+- a oportunidade **"Dar dono à fila de exceções"** diz *"Ainda não priorizada"* e fica **no fim**
+  da lista, atrás da que tem Opportunity Score 82 — ausência de nota não é a pior nota.
+
+O rótulo da aba fica em inglês de propósito: a §1 do Language Map manda não traduzir o termo
+canônico, e a §2 escreve "Discovery" na coluna do que o cliente vê.
 
 ### 3.3 A busca (Fase 6)
 
@@ -326,6 +346,16 @@ Nada disto é defeito; é o ambiente local dizendo a verdade sobre si mesmo.
 - **Sem `CLAMAV_HOST`**, todo arquivo bom fica `skipped`, e a tela diz isso (ver 3.8).
 - **Decisões não aparecem na busca**: o modelo existe desde a Fase 1 e não há aba que as mostre,
   então um resultado levaria a lugar nenhum (ADR 0024).
+- **O Value Ledger fica vazio no passeio local**, e a manchete diz "Nenhum valor registrado
+  ainda" — que é a resposta certa, não um defeito. O razão é escopado por **Engagement**
+  (ADR 0085) e o `seed_data/biahflow-snapshot.json` não carrega a chave `engagement`: ela chegou
+  com a ADR 0079 e o snapshot semeado nunca a ganhou. Para ver o razão de pé, mande um snapshot
+  com `project.engagement` e `value_ledger` pela porta do webhook (a mesma de 3.10). Os **KPIs**
+  aparecem normalmente, porque são escopo de projeto.
+- **A busca não alcança o Discovery**, e é decisão desta fatia (ADR 0086): a regra da ADR 0024 é
+  que entra na busca o que **alguma aba mostra**, e agora quatro listas novas passaram a ser
+  mostradas. Ligá-las à busca é fatia própria — ela pede `Hit`, espaço de nomes de âncora e
+  `data-item` nos quatro blocos —, e está registrada como item aberto na ADR.
 - **O banco local acumula.** Uploads, convites e conexões de Drive de execuções anteriores —
   suas e do `npx playwright test` — ficam. Buscar "contrato" pode devolver meia dúzia de
   arquivos de teste, e é isso que produz a armadilha de 3.6.

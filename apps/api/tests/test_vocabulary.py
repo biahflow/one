@@ -967,8 +967,13 @@ UNLINTABLE: dict[str, str] = {
     '"Opportunity Score" de uma venda': (
         "É afirmação sobre **a que entidade** um rótulo foi aplicado, não sobre o "
         "léxico: o mesmo identificador está certo sobre uma ImprovementOpportunity e "
-        "errado sobre uma venda. Nenhuma varredura de fonte decide isso, e as duas "
-        "entidades da frase não existem neste repositório — quem as terá é a Issue #90."
+        "errado sobre uma venda. Nenhuma varredura de fonte decide isso, e o motivo "
+        "encolheu na ADR 0086 sem mudar a conclusão: a `ImprovementOpportunity` "
+        "**passou a existir** aqui e o rótulo é aplicado a ela; a venda continua sem "
+        "existir e não pode passar a existir — `commercial_opportunity` é termo "
+        "proibido em `forbidden_resources` do `one-visibility.json`, com guarda "
+        "própria. As duas metades da frase têm portão; o que nenhuma varredura decide "
+        "é a terceira, que é alguém aplicar o rótulo certo à entidade errada."
     ),
     "`Lead.ai_score` como qualificação": (
         "Campo do Pulse. `Lead` é a primeira linha da §3 (\"nunca no One\") e já tem "

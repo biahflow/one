@@ -31,6 +31,20 @@ TAB_REVIEW = "Revisão"
 TAB_PENDINGS = "Pendências"
 TAB_DECISIONS = "Decisões"
 TAB_RESULTS = "Resultados"
+#: O AS-IS, os achados, as dores e o backlog de melhoria da conta (ADR 0086).
+#:
+#: **O rótulo fica em inglês, e é o único da barra que fica** — não é descuido nem
+#: incoerência com as oito abas em português. A §1 do Language Map é normativa e
+#: explícita: *"termos canônicos em inglês nas quatro superfícies… não se traduz o
+#: termo, traduz-se o texto em volta dele"*, e a §2 escreve **Discovery** na coluna
+#: "O One (o cliente vê)". "Descoberta" seria traduzir um termo canônico, que é o
+#: erro que aquela seção nomeia com um exemplo ("A Conta tem três Compromissos").
+#:
+#: As outras oito não passam por isso porque nenhuma delas nomeia um termo do mapa:
+#: "Cronograma", "Documentos" e "Pendências" são áreas da tela, não entidades da
+#: ontologia. O precedente do rótulo em inglês na tela já existe e é o Engagement
+#: (ADR 0079), que o topo mostra sem traduzir.
+TAB_DISCOVERY = "Discovery"
 
 #: Na ordem em que a barra lateral as mostra, que é a ordem do ``navItems``.
 ALL: tuple[str, ...] = (
@@ -42,4 +56,5 @@ ALL: tuple[str, ...] = (
     TAB_PENDINGS,
     TAB_DECISIONS,
     TAB_RESULTS,
+    TAB_DISCOVERY,
 )

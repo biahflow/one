@@ -116,21 +116,27 @@
       "digital_employees": "Os Digital Employees do projeto do cliente, com o que cada um faz.",
       "documents": "Os documentos do projeto, como a aba Documentos os lista.",
       "engagement": "O programa a que o projeto pertence: nome e estado, nada comercial (ADR 0079). O Engagement é o agrupamento, não o contrato.",
+      "findings": "Os achados do Discovery da própria Account, revisados e publicados no Pulse (Language Map §2, ADR 0086). Cada um carrega o `epistemic_status`, que é o que impede uma hipótese de aparecer com cara de fato.",
       "health": "A saúde do projeto em rótulo e nível — e nunca o Health Score nem os sinais internos que o produziram.",
+      "improvement_opportunities": "O backlog de melhoria da própria Account, com o Opportunity Score de cada item (D5). É melhoria operacional — nunca CommercialOpportunity, que a §3 proíbe no One.",
       "journey": "A jornada de fases do projeto, projetada do Biahflow.",
+      "kpis": "Os KPIs do projeto do próprio cliente, com Baseline e Outcome comparáveis (Language Map §2, ADR 0085). Medição do projeto dele — nunca de outra Account, e nunca a série de outro mandato.",
       "measured": "O apurado dos eventos de agente do próprio projeto (ResultsOut), embutido para o SSR não fazer segunda ida à rede.",
       "meetings": "As reuniões do projeto, com o cliente presente. Nenhuma delas é de outra Account.",
       "milestones": "Os marcos do projeto e seus prazos.",
       "next_meeting": "A próxima reunião agendada do projeto.",
       "observed_at": "Quando a origem observou este estado. Frescor da projeção (ADR 0076/F-028).",
+      "pain_points": "As dores confirmadas da própria Account, com os achados que as sustentam. É o gargalo do processo do cliente, nunca objeção de venda.",
       "pendings": "As pendências abertas do projeto — o que trava o trabalho, do lado de quem for.",
+      "processes": "Os processos mapeados da própria Account — o AS-IS validado no Discovery (ADR 0086). Escopo de conta e não de projeto: a mesma lista sai no dashboard de todos os projetos dela.",
       "project": "Nome do projeto do cliente. Projeção do Biahflow.",
       "projection_version": "Versão da projeção aplicada (ADR 0076). Não é para a tela; existe para 'o Biahflow parou de avançar' ser respondível, e está declarada como não consumida em NOT_CONSUMED pelo mesmo motivo.",
       "results": "Contagem dos marcos: feitos, totais, atrasados e percentual no prazo. Derivado na leitura.",
       "roi": "O ROI projetado que vem do Biahflow — do próprio projeto —, rotulado na tela como diferente do apurado.",
       "source_deleted_at": "Quando o projeto foi excluído na origem (ADR 0037). Porta diferente do arquivamento, coluna diferente.",
       "status": "Estado do projeto, projetado da origem.",
-      "synced_at": "Quando este lado gravou a projeção. Frescor do nosso lado, par do observed_at."
+      "synced_at": "Quando este lado gravou a projeção. Frescor do nosso lado, par do observed_at.",
+      "value_ledger": "O Value Ledger do mandato deste projeto (ADR 0085): valor gerado com período, espécie e método de atribuição. É valor entregue ao cliente, nunca preço, margem ou valor de pipeline."
     },
     "DecisionOut": {
       "decided_on": "A data da decisão publicada, como a origem a registrou.",
@@ -164,6 +170,7 @@
       "area": "Área do projeto em que o Digital Employee atua.",
       "description": "O que ele faz, em prosa da origem.",
       "hours_saved_month": "Horas poupadas por mês, do projeto do próprio cliente.",
+      "kpi_ids": "Os KPI.id da origem que este Digital Employee move (ADR 0085). São ids do projeto do próprio cliente, e servem só para casar com a lista `kpis` da mesma resposta.",
       "kpi_label": "Rótulo do indicador que ele move.",
       "kpi_value": "Valor do indicador dele. É medição do projeto do cliente — não é valor comercial nem de pipeline.",
       "name": "Nome do Digital Employee.",
@@ -182,16 +189,62 @@
     "ErrorOut": {
       "detail": "A mensagem de erro, a mesma para 401, 404, 409, 422 e 503. É opaca de propósito: a negação de vínculo responde 404 e nunca conta que o recurso existe."
     },
+    "EvidenceOut": {
+      "captured_at": "Quando a evidência foi capturada na origem. `null` é ausência de afirmação, nunca 'hoje'.",
+      "id": "O Evidence.id da origem — a identidade que sobrevive à substituição do sync, na forma do KpiOut.id.",
+      "kind": "Que espécie de evidência é (observação, documento, medição…), como a origem a nomeia. É o rótulo, nunca o conteúdo.",
+      "reference": "O PONTEIRO para a fonte, em prosa da origem ('Sessão de Discovery de 12/08'). É o endereço da evidência do próprio cliente, nunca o trecho bruto nem a transcrição — esses estão proibidos por nome inteiro."
+    },
     "FeedbackOut": {
       "feedback": "O polegar gravado, devolvido para a tela confirmar o que foi registrado.",
       "id": "Identificador da mensagem avaliada."
     },
+    "FindingOut": {
+      "confidence": "A confiança que a origem declara no achado. `null` é 'não declarada' — nunca zero, que seria a origem desconfiando do próprio levantamento.",
+      "epistemic_status": "Se o achado é fato, hipótese ou lacuna declarada (Language Map §4, D6). É o campo que faz a regra 1 da §3 ser desenhável: hipótese aparece ROTULADA como hipótese, ou não aparece. Exigido deste esquema por `epistemic_resources`.",
+      "evidences": "As evidências revisadas que sustentam o achado. Só a publicada atravessa — o produtor filtra antes de emitir —, e o que sai de cada uma é ponteiro e espécie, nunca o trecho bruto.",
+      "id": "O Finding.id da origem, que é por onde `pain_points[].finding_ids` aponta para ele.",
+      "process_id": "O processo do próprio cliente de onde o achado saiu, pelo id da origem. `null` é caso normal: o produtor publica processo e achado separadamente.",
+      "statement": "O achado em si, em prosa da origem — o que se descobriu sobre o processo do próprio cliente. É levantamento revisado, nunca avaliação comercial dele.",
+      "step_id": "A etapa exata de onde ele saiu, pelo mesmo motivo e com a mesma nulidade."
+    },
     "HTTPValidationError": {
       "detail": "O envelope de erro de validação do FastAPI. Carrega só onde e o quê — o `input` que ecoaria o corpo enviado é removido no handler e no esquema (ADR 0023)."
+    },
+    "ImprovementOpportunityOut": {
+      "desired_change": "O que muda se a oportunidade for perseguida, em prosa da origem. É melhoria operacional do cliente, nunca escopo de proposta comercial.",
+      "id": "O ImprovementOpportunity.id da origem.",
+      "impact_hypothesis": "O impacto que se ESPERA — hipótese, e a tela a rotula como tal. Não é resultado medido: quem mede é o KPI (ADR 0085).",
+      "pain_point_ids": "As dores que ela endereça, pelos ids da origem, para a tela ligar o backlog ao que o justifica.",
+      "priority_assessment": "O Opportunity Score vigente (D5). `null` é 'ninguém avaliou ainda', que não é a pior nota.",
+      "solution_hypotheses": "As hipóteses de solução daquela oportunidade, rotuladas como hipótese até haver PROVE.",
+      "status": "Em que ponto do backlog ela está, como a origem o nomeia. Não é estágio de pipeline comercial.",
+      "title": "A oportunidade de melhoria em uma linha."
     },
     "JourneyOut": {
       "current_phase": "A fase corrente do projeto, projetada da origem.",
       "phases": "As fases da jornada do projeto, na ordem da origem."
+    },
+    "KpiMeasurementOut": {
+      "confidence": "A confiança que a origem declara na medição. `null` é 'não declarada' — nunca zero, que seria a origem desconfiando do próprio número.",
+      "measured_at": "Quando a origem mediu. É a idade do número, e o que impede a tela de mostrar uma leitura velha como se fosse de hoje.",
+      "period_end": "Fim da janela; `null` é a janela ainda aberta, e quem a fecha é a origem.",
+      "period_start": "Início da janela a que a medição se refere. É a janela que faz a medição existir, e é o que torna Baseline e Outcome comparáveis.",
+      "value": "O número medido do KPI do próprio projeto. `null` dentro de um objeto que existe é 'a janela existe e ninguém mediu ainda' — lacuna de medição, nunca zero."
+    },
+    "KpiOut": {
+      "baseline": "A medição de partida do indicador. `null` é 'não há Baseline definida', que é outra coisa que uma janela sem número.",
+      "cadence": "Com que frequência o indicador é medido, como a origem a declara.",
+      "data_source": "De onde o número sai, em prosa da origem. É a fonte do indicador do projeto do cliente, nunca credencial nem endereço de sistema.",
+      "definition": "O que o indicador significa, em prosa da origem. É a definição do KPI, não avaliação interna.",
+      "direction": "Para que lado o indicador melhora (`up`/`down`). Sem ele a tela não sabe se cair de 72 para 21 é ganho.",
+      "formula": "Como o indicador é calculado, em prosa da origem — o cliente conferindo a conta, no precedente do bloco 'Como calculamos' da ADR 0033.",
+      "id": "O KPI.id da origem, publicado no lugar do uuid local: é ele que value_ledger[].kpi_id e digital_employees[].kpi_ids carregam, e o uuid é recriado a cada webhook.",
+      "monitoring": "A série de acompanhamento do indicador, sempre lista. Vazia é o estado comum.",
+      "name": "O nome do indicador do projeto do próprio cliente.",
+      "outcome": "O resultado medido do indicador (Language Map §4). Nunca vem sem `baseline` do mesmo KPI — é o invariante 11, e é o que impede um número sem régua na tela do cliente.",
+      "target": "A meta do indicador, quando há uma. `null` é 'ninguém definiu meta', nunca zero.",
+      "unit": "A unidade do indicador. É o que torna Baseline e Outcome comparáveis lado a lado (invariante 11 do Language Map)."
     },
     "MeOut": {
       "email": "O e-mail do próprio chamador.",
@@ -247,15 +300,20 @@
       "digital_employees": "O mesmo campo de DashboardOut.digital_employees, na rota que o BFF chama de fato.",
       "documents": "O mesmo campo de DashboardOut.documents, na rota que o BFF chama de fato.",
       "engagement": "O mesmo campo de DashboardOut.engagement, na rota que o BFF chama de fato.",
+      "findings": "O mesmo campo de DashboardOut.findings, na rota que o BFF chama de fato.",
       "health": "O mesmo campo de DashboardOut.health, na rota que o BFF chama de fato.",
+      "improvement_opportunities": "O mesmo campo de DashboardOut.improvement_opportunities, na rota que o BFF chama de fato.",
       "journey": "O mesmo campo de DashboardOut.journey, na rota que o BFF chama de fato.",
+      "kpis": "O mesmo campo de DashboardOut.kpis, na rota que o BFF chama de fato.",
       "measured": "O mesmo campo de DashboardOut.measured, na rota que o BFF chama de fato.",
       "meetings": "O mesmo campo de DashboardOut.meetings, na rota que o BFF chama de fato.",
       "milestones": "O mesmo campo de DashboardOut.milestones, na rota que o BFF chama de fato.",
       "next_meeting": "O mesmo campo de DashboardOut.next_meeting, na rota que o BFF chama de fato.",
       "observed_at": "O mesmo campo de DashboardOut.observed_at, na rota que o BFF chama de fato.",
       "organization": "O nome da Account do próprio chamador, resolvida do vínculo. A chave que esta rota acrescenta ao dashboard.",
+      "pain_points": "O mesmo campo de DashboardOut.pain_points, na rota que o BFF chama de fato.",
       "pendings": "O mesmo campo de DashboardOut.pendings, na rota que o BFF chama de fato.",
+      "processes": "O mesmo campo de DashboardOut.processes, na rota que o BFF chama de fato.",
       "project": "O mesmo campo de DashboardOut.project, na rota que o BFF chama de fato.",
       "project_id": "O id do projeto efetivamente servido, para a tela saber qual contexto está aberto.",
       "projection_version": "O mesmo campo de DashboardOut.projection_version, na rota que o BFF chama de fato.",
@@ -263,7 +321,8 @@
       "roi": "O mesmo campo de DashboardOut.roi, na rota que o BFF chama de fato.",
       "source_deleted_at": "O mesmo campo de DashboardOut.source_deleted_at, na rota que o BFF chama de fato.",
       "status": "O mesmo campo de DashboardOut.status, na rota que o BFF chama de fato.",
-      "synced_at": "O mesmo campo de DashboardOut.synced_at, na rota que o BFF chama de fato."
+      "synced_at": "O mesmo campo de DashboardOut.synced_at, na rota que o BFF chama de fato.",
+      "value_ledger": "O mesmo campo de DashboardOut.value_ledger, na rota que o BFF chama de fato."
     },
     "NextMeetingOut": {
       "date": "Quando é a próxima reunião do projeto.",
@@ -284,6 +343,15 @@
     },
     "NotificationsReadOut": {
       "marked": "Quantas linhas o PATCH marcou. Eco da própria escrita; declarado em NOT_CONSUMED."
+    },
+    "PainPointOut": {
+      "description": "A dor em prosa da origem — o que trava o trabalho do próprio cliente.",
+      "finding_ids": "Os achados que a sustentam, pelos ids da origem. É o que impede a dor de ser afirmação sem levantamento por trás.",
+      "id": "O PainPoint.id da origem, que é por onde `improvement_opportunities[].pain_point_ids` aponta para ela.",
+      "impact_estimate": "O tamanho do impacto, quando alguém o quantificou. `null` é NÃO QUANTIFICADO e nunca zero — a tela escreve a frase da lacuna, e 'R$ 0' seria a afirmação que ninguém fez.",
+      "impact_type": "Que espécie de impacto a dor causa (tempo, custo, qualidade…), como a origem a nomeia.",
+      "status": "Se a dor está confirmada, como a origem o nomeia.",
+      "title": "A dor em uma linha."
     },
     "PendingCommentOut": {
       "author_is_internal": "De que lado está quem comentou, congelado na linha — quem deixa de ser interno não muda o lado de quem falou naquele dia.",
@@ -330,6 +398,29 @@
       "notify_by_whatsapp": "A preferência de WhatsApp do próprio chamador; nasce desligada, ao contrário do e-mail (ADR 0043).",
       "phone_hint": "Os últimos dígitos do telefone dele, derivados no servidor porque é lá que o número é normalizado."
     },
+    "PriorityAssessmentOut": {
+      "dimensions": "As cinco dimensões que compõem a nota (D5), como a origem as pontuou. A ingestão aplica lista branca sobre elas porque este objeto é JSONB e a cobertura por campo não enxerga dentro dele — é o que mantém o `rationale` fora mesmo que ele chegue aqui dentro.",
+      "score": "O Opportunity Score da oportunidade de melhoria (D5). O rótulo se aplica só a ImprovementOpportunity, nunca a uma venda.",
+      "version": "A versão da avaliação vigente, para cliente e time falarem da mesma nota. `null` quando a origem não a manda: a nota aparece sem a versão, em vez de sumir por falta do rótulo."
+    },
+    "ProcessOut": {
+      "id": "O Process.id da origem, que é por onde `findings[].process_id` aponta para ele.",
+      "name": "O nome do processo do próprio cliente, como quem o mapeou o chamou.",
+      "position": "A ordem em que a origem lista os processos. É afirmação de quem os mapeou, não derivada aqui.",
+      "steps": "As etapas do processo, na ordem da origem.",
+      "updated_at": "Quando a ORIGEM atualizou o processo. `null` é ausência de afirmação, nunca a hora da cópia (ADR 0038)."
+    },
+    "ProcessStepOut": {
+      "dados": "Que dados a etapa consome ou produz, em prosa da origem. Uma das seis chaves do formulário P-S-D-T-E-R, que ficam em português por decisão do contrato.",
+      "erro": "Que erro acontece nela, em prosa da origem. Idem.",
+      "id": "O ProcessStep.id da origem, que é por onde `findings[].step_id` aponta para ela.",
+      "name": "O nome da etapa, como quem mapeou o processo a chamou.",
+      "pessoas": "Quem executa a etapa, em prosa da origem. É a descrição do processo do próprio cliente — papel e quantidade, não cadastro de pessoa.",
+      "position": "A ordem da etapa dentro do processo, afirmada pela origem.",
+      "retrabalho": "Que retrabalho ela gera, em prosa da origem. Idem.",
+      "sistema": "Que sistema é usado nela, em prosa da origem. É o sistema do cliente, nunca credencial nem endereço dele.",
+      "tempo": "Quanto tempo ela leva, em prosa da origem. Idem."
+    },
     "ProjectHealthOut": {
       "label": "A saúde do projeto em rótulo amigável.",
       "level": "O nível dela. Nunca o Health Score numérico nem os sinais internos que o produziram."
@@ -369,10 +460,28 @@
     "SearchOut": {
       "results": "Os resultados da busca NO PRÓPRIO PROJETO. O filtro de tenant é aplicado por dentro do repositório, e a busca vazia é 200 — nunca o resultado mais próximo."
     },
+    "SolutionHypothesisOut": {
+      "expected_effect": "O efeito ESPERADO da intervenção, não o medido: quem mede é o KPI (ADR 0085).",
+      "id": "O SolutionHypothesis.id da origem.",
+      "intervention": "O que se faria, em prosa da origem. É a hipótese de intervenção, nunca proposta comercial nem escopo contratado.",
+      "statement": "A hipótese de solução em uma linha. Hipótese é a palavra do contrato (§2): antes de a Feasibility dizer se dá e de o PROVE dizer se funciona.",
+      "status": "Em que ponto a hipótese está, como a origem o nomeia."
+    },
     "ValidationError": {
       "loc": "Onde no corpo enviado está o erro. Aponta o caminho, nunca o valor.",
       "msg": "O que está errado, em texto genérico do validador.",
       "type": "A espécie do erro de validação."
+    },
+    "ValueLedgerEntryOut": {
+      "amount": "A quantia gerada, em BRL. É o valor que o mandato do próprio cliente afirma ter produzido — não é preço de tabela, margem nem Service.price.",
+      "attribution_method": "Como aquele número foi atribuído a este mandato, em prosa da origem. É o invariante 12 do Language Map, e é o que separa um Value Ledger de um número solto na tela.",
+      "id": "O ValueLedgerEntry.id da origem — a identidade que sobrevive à substituição do sync, na forma do KpiOut.id.",
+      "kpi_id": "O KPI.id de origem que sustenta a entrada. Pode não casar com nenhum item de `kpis` desta resposta — a entrada é do mandato e o KPI pode viver num projeto irmão —, e não casar é caso normal.",
+      "outcome_measured_at": "Quando o Outcome que sustenta a entrada foi medido. `null` é ausência de afirmação da origem, nunca 'hoje'.",
+      "period_end": "Fim do período a que a entrada se refere.",
+      "period_start": "Início do período a que a entrada se refere. Sem período, valor gerado é afirmação sem janela.",
+      "quantity": "A quantidade física por trás da quantia (horas, chamados…), quando houver. `null` é 'a origem não a declarou'.",
+      "value_type": "A espécie de valor gerado (`cost_saving`, `revenue`…), como a origem a nomeia. É o valor entregue a esta Account, nunca receita de venda nem valor de proposta."
     }
   },
 
@@ -505,19 +614,19 @@
       "Finding com epistemic_status=hypothesis aparece ROTULADO como hipótese ou",
       "não aparece — nunca como fato.",
       "",
-      "Hoje `members` está VAZIA porque nenhum recurso carrega epistemic_status:",
-      "Finding é a issue #90. O que dá para escrever agora, e é honesto, é a",
-      "regra pela qual o campo não pode ser esquecido no dia em que o recurso",
-      "chegar: esquema listado aqui TEM de declarar o campo. Tirar o campo da",
-      "resposta reprova.",
+      "`members` deixou de ser vazia na ADR 0086: FindingOut existe, atravessa o",
+      "snapshot e declara o campo. A regra escrita quando ela era vazia — 'esquema",
+      "listado aqui TEM de declarar o campo' — passou a morder de verdade: tirar",
+      "`epistemic_status` de FindingOut reprova, e é isso que impede a tela de",
+      "receber um achado sem saber se ele é fato, hipótese ou lacuna.",
       "",
-      "Lista vazia não percorre ramo nenhum, então a guarda tem um caso com",
-      "esquema sintético em memória que a faz morder — a lição do",
-      "_TEMPLATE_SAMPLE (ADR 0038): a cobertura de um portão é a dos ramos que a",
-      "amostra percorre."
+      "A amostra sintética da guarda FICA, mesmo com a lista povoada. Ela não era",
+      "um remendo para lista vazia: é o par que prova que a regra é estreita — o",
+      "esquema sem o campo reprova, o mesmo esquema com o campo passa. Sem ela, um",
+      "casador quebrado passaria verde sobre o membro real."
     ],
     "field": "epistemic_status",
-    "members": []
+    "members": ["FindingOut"]
   },
 
   "reviewed_resources": {
@@ -527,14 +636,40 @@
       "",
       "A transcrição bruta é proibição de campo, acima. A evidência não revisada",
       "não é: ela é a MESMA entidade da revisada, e o que a separa é uma marca.",
-      "Daí a forma positiva — esquema listado aqui tem de declarar a marca —, e",
-      "não um banimento, que baniria a evidência revisada junto.",
+      "Daí a forma positiva — esquema listado aqui tem de declarar a marca.",
       "",
-      "Vazia hoje pelo mesmo motivo do epistemic_resources: Evidence não existe",
-      "neste repositório (issue #90). Mesma amostra sintética a faz morder."
+      "DIVERGÊNCIA REGISTRADA (ADR 0086, e a §9 do Language Map manda registrar",
+      "antes de corrigir). Este bloco foi escrito antecipando um campo",
+      "`reviewed_at` em EvidenceOut. O contrato do produtor fechou diferente",
+      "(pulse#106): a marca de publicação existe SÓ NO MODELO do Pulse",
+      "(published_at/published_by em Process, Evidence, Finding, PainPoint e",
+      "ImprovementOpportunity) e o filtro é aplicado ANTES de emitir. O payload",
+      "não carrega marca nenhuma — A PRESENÇA NO ARRAY É A PROVA.",
+      "",
+      "Então EvidenceOut não declara `reviewed_at`, e não é omissão: declarar um",
+      "campo que não vem de lugar nenhum seria o One AFIRMANDO por conta própria",
+      "que algo foi revisado, que é a regra 3 da §3 ('o One nunca é fonte",
+      "primária') ao contrário — e o defeito da ADR 0033 na direção de entrada,",
+      "um campo publicado sem produtor.",
+      "",
+      "Por isso `members` fica vazia e EvidenceOut entra em `excluded`, com razão",
+      "escrita. A exclusão não é allowlist: `publication_marks` lista os quatro",
+      "nomes que a marca teria se um dia atravessasse, e a guarda reprova o",
+      "esquema excluído que passe a declarar QUALQUER um deles. É o dia em que a",
+      "decisão do produtor muda — e nele a linha sai daqui e entra em `members`,",
+      "em vez de a divergência ficar em silêncio.",
+      "",
+      "A amostra sintética da guarda fica, pela razão escrita no bloco acima."
     ],
     "field": "reviewed_at",
-    "members": []
+    "publication_marks": ["reviewed_at", "reviewed_by", "published_at", "published_by"],
+    "members": [],
+    "excluded": [
+      {
+        "schema": "EvidenceOut",
+        "reason": "O produtor não emite marca de publicação nenhuma: ele filtra por published_at antes de montar o payload, e a presença da evidência no array já prova que ela foi revisada e publicada (pulse#106, ADR 0086). Não há campo do outro lado a copiar, e inventar um faria o One afirmar a revisão em vez de projetá-la. Esta linha vence sozinha: se a origem passar a emitir a marca, a asserção de `publication_marks` reprova e EvidenceOut muda de lista."
+      }
+    ]
   },
 
   "account_identifier_inputs": {

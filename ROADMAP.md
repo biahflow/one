@@ -1833,6 +1833,91 @@ repetiram por um dia: nasceram sem linha aqui e com o status escrito em inglês,
       bloqueia a #90 por documento e não por código, porque `Finding.reviewed_by` só é
       obrigatório para `fact` e um `hypothesis` nasce sem revisor. Fecha `biahflow/one#91`.
 
+- [x] **O Value Ledger que a manchete não era, e o KPI cuja lacuna não é zero**
+      *(ADR 0085)*: a ADR 0084 fechou a metade pequena da #89 e registrou esta como
+      **bloqueada no produtor** — `KPI`, `Measurement` e `ValueLedgerEntry` existiam no
+      Pulse e nenhum era emitido. O bloqueio caiu (`biahflow/pulse#105`, PR `pulse#107`
+      mergeado), e esta fatia constrói o que o contrato destravou. **A manchete da visão
+      geral deixou de ser a projeção da origem**: o card que imprimia o `roi` do snapshot
+      — número que o Biahflow afirma, sem período, sem método e sem nada que o cliente
+      possa conferir — virou **Valor gerado**, e abaixo dele entraram duas seções, KPIs com
+      Baseline e Outcome lado a lado e o Value Ledger entrada por entrada. O "ROI
+      projetado" da aba Resultados **fica**: ele já estava correto desde a ADR 0084, e a AC
+      pede que a manchete troque, não que o ROI suma do produto. **A decisão que carrega a
+      fatia é o escopo, e ele é do produtor:** `kpis[]` é lido por projeto e
+      `value_ledger[]` por **Engagement**, em fan-out — a mesma entrada sai no snapshot de
+      todo projeto do mandato. Guardar o razão por projeto duplicaria cada real uma vez por
+      irmão. Daí `value_ledger_entry` sem `project_id`, e uma policy que **nenhum dos dois
+      predicados existentes servia**: tenant puro vazaria o valor do programa vizinho da
+      mesma conta (o argumento da 0037), e o vínculo por `membership` da 0037 é largo pelo
+      outro lado, porque quem lê aqui é o dashboard de um projeto com tenant fixado. O
+      predicado é `EXISTS` do projeto corrente sobre o mandato da entrada, e a diferença foi
+      **medida**: com tenant puro no lugar, a asserção do programa vizinho reprova e as
+      outras duas passam. **O critério que mais poderia passar em silêncio é o (4)**, e ele
+      é uma frase: lacuna de medição aparece como lacuna, **nunca como zero**. O produtor
+      manda duas ausências distintas — `"baseline": null` (não definida) e
+      `{"value": null, …}` (a janela existe, ninguém mediu) —, e um `?? 0` no BFF, um
+      `NOT NULL DEFAULT 0` na coluna ou um `float(value or 0)` na projeção faria a tela
+      afirmar "0 horas" sobre indicador que ninguém mediu, que é o `answerFor()` da ADR 0021
+      por outro caminho. A regra que preserva as duas sem coluna extra: **o objeto existe
+      sse há janela**. Os invariantes 11 e 12 do Language Map ganharam teste pela primeira
+      vez, e a recusa deles é **assimétrica** — Outcome sem Baseline derruba só o Outcome
+      (o KPI continua na tela), entrada sem método de atribuição derruba a linha inteira,
+      porque quantia sem a conta que a atribui é o número solto que a §5 bane. *De quebra,
+      a guarda de SSR mudou de recorte:* `doesNotMatch(html, /Outcome/)` provava que a
+      decisão de gate não se chama Outcome, e funcionava porque **`Outcome` não tinha
+      produtor neste repositório** — agora tem, legitimamente, na mesma página; a asserção
+      passou a recortar o bloco `journey-gate`, com uma segunda provando que o recorte não é
+      vazio. **Fica aberto:** a #90 inteira segue bloqueada em `biahflow/pulse#106` com a
+      ressalva de documento da ADR 0084; `KPI.owner` e `Measurement.source_evidence` não
+      atravessam por decisão do contrato; não há `currency` porque tudo é BRL e o produtor
+      não emite a coluna; e `hours_saved_month`/`roi_month` continuam sendo projeção da
+      origem ao lado de KPI medido no mesmo card — rotulados, mas sem separação visual, o
+      que é decisão de desenho e não de dado. Fecha a metade grande de `biahflow/one#89`.
+
+- [x] **A superfície de Discovery que o cliente lê, e a marca de publicação que nunca
+      atravessa** *(ADR 0086)*: a última das duas issues que a ADR 0084 registrou como
+      bloqueadas no produtor, e o bloqueio caiu junto do da #89 (`biahflow/pulse#106`, PR
+      `pulse#107` mergeado). A §3 do Language Map tinha **cinco linhas na coluna "No One"
+      sem código deste lado** — Process/ProcessStep, Finding, Evidence, ImprovementOpportunity
+      com Opportunity Score, SolutionHypothesis —, e não era lacuna de vocabulário: era a
+      metade do produto que responde *"o que vocês descobriram sobre a nossa operação?"*. O
+      cliente via o resultado do trabalho e não via o levantamento de onde ele saiu. Oito
+      tabelas novas, **escopo de conta** como o razão da ADR 0085 é de mandato, RLS com o
+      predicado mais curto do repositório e **nenhuma escrita para `portal_app`** — aqui a
+      ausência guarda uma coisa nomeada na §3: um caminho de requisição capaz de escrever um
+      `Finding` é um caminho capaz de promover a própria hipótese a fato. **A decisão que
+      carrega a fatia é a divergência que este repositório já tinha escrita:** a ADR 0082
+      criou `reviewed_resources` com `field: "reviewed_at"` antecipando um campo de revisão
+      em `Evidence`, e o contrato fechou pelo outro lado — a marca (`published_at`/
+      `published_by`) existe **só no modelo do Pulse** e o filtro é aplicado antes de emitir,
+      de modo que *a presença no array é a prova*. Declarar o campo aqui seria o One
+      **afirmando** a revisão (a regra 3 da §3 ao contrário, e a ADR 0033 na direção de
+      entrada); deixar `members` vazia seria a allowlist que segue verde porque nada a
+      consulta. A saída é a terceira: registrar a divergência e **dar-lhe portão** —
+      `publication_marks` com os quatro nomes que a marca teria e um `excluded` cuja guarda
+      reprova se `EvidenceOut` passar a declarar qualquer um deles, o que faz a mudança de
+      decisão do outro lado chegar vermelha em vez de em silêncio. **O que o guard da ADR
+      0082 não alcançava** são os dois JSONB (`evidences`, `priority_dimensions`): ele
+      classifica campo de esquema e não enxerga dentro de objeto sem propriedades, então
+      `raw_excerpt`, `content_hash` e o `rationale` da priorização entrariam por ali — a
+      proteção equivalente é **lista branca na ingestão**, com a asserção injetando os três.
+      O **invariante 9** ganhou teste (fato sem evidência é rebaixado a hipótese, e cai o
+      rótulo e não o achado, no desenho do `outcome_without_baseline` da 0085), e o mapa de
+      vocabulário tem o padrão **invertido** em relação ao `PROJECT_STATUS_MAP`: estado
+      epistêmico desconhecido cai em `unknown`, nunca em `fact` — o degrau seguro é a
+      lacuna. *De quebra, três coisas medidas:* a policy das duas tabelas de ligação, que o
+      meta-teste de RLS **não** cobra por não terem `organization_id`, ficou vermelha em duas
+      asserções sob `USING (true)`; **ausência das quatro chaves é silêncio e lista vazia é
+      afirmação**, sem o que despublicar no Pulse nunca chegaria aqui; e o `NULLS LAST` do
+      backlog não é detalhe, porque sem ele o Postgres põe o **não avaliado em primeiro** num
+      `ORDER BY … DESC`. **Fica aberto:** a busca não alcança o Discovery (a regra da ADR
+      0024 é que entra o que alguma aba mostra, e ligá-lo pede `Hit`, âncora e `data-item` nos
+      quatro blocos — fatia própria); não há tela de publicar, que é trabalho do lado do
+      Pulse, então na prática os quatro blocos chegam **vazios** e a aba diz isso; e
+      `Discovery`/`DiscoverySession`/`ProcessObservation` continuam sem atravessar por decisão
+      do contrato. Fecha `biahflow/one#90`.
+
 - [x] **O atalho de tela que o tile ainda não vestia** *(29/08/2026, mergeada em
       01/09)*: a ADR 0069 aprovou o tile para as três superfícies fora da tela do
       produto — aba, atalho de tela e cartão de compartilhamento — e entregou duas:

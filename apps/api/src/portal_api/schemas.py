@@ -273,6 +273,264 @@ class DigitalEmployeeOut(Out):
     kpi_value: str | None
     hours_saved_month: float | None
     roi_month: float | None
+    #: Os ``KPI.id`` do Pulse que este Digital Employee move (ADR 0085). **Aditivo**:
+    #: os quatro campos acima continuam vindo e continuam sendo exibidos, e nenhum
+    #: deles tem data de morte marcada. Lista vazia é "não referencia nenhum" —
+    #: nunca ``null``, para a tela não ter um terceiro caso a desenhar.
+    #:
+    #: São os ids **da origem**, os mesmos que ``KpiOut.id`` publica, para o
+    #: casamento entre as duas listas ser direto.
+    kpi_ids: list[int]
+
+
+class KpiMeasurementOut(Out):
+    """Uma leitura de KPI — Baseline, Outcome ou um ponto do acompanhamento.
+
+    Um modelo só para as três porque são a mesma coisa no Language Map §4: espécies
+    de ``Measurement``, distinguidas por ``kind``. Aqui o ``kind`` é a **posição** —
+    o campo em que a leitura aparece —, então repeti-lo dentro do objeto seria o
+    mesmo dado em dois lugares podendo divergir.
+
+    **``value`` nulo dentro de um objeto que existe é "a janela existe e ninguém
+    mediu ainda"**, e é outra coisa que o campo inteiro ausente ("não há Baseline
+    definida"). Nenhuma das duas é zero: a AC da issue #89 exige que lacuna de
+    medição apareça como lacuna.
+
+    As datas são ``str`` pela regra 1 do módulo — o produtor já entregou texto.
+    """
+
+    value: float | None
+    period_start: str
+    #: ``None`` é a janela ainda aberta; quem a fecha é a origem.
+    period_end: str | None
+    measured_at: str | None
+    #: A confiança da medição, como a origem a declara. ``None`` é "não declarada",
+    #: nunca zero — zero seria a origem dizendo que não confia no próprio número.
+    confidence: int | None
+
+
+class KpiOut(Out):
+    """Um indicador do projeto, com Baseline e Outcome comparáveis (ADR 0085).
+
+    O ``id`` é o **``external_id`` do Pulse**, e não o uuid local: é ele que
+    ``ValueLedgerEntryOut.kpi_id`` e ``DigitalEmployeeOut.kpi_ids`` carregam, e o
+    uuid é recriado a cada webhook — publicá-lo obrigaria a tela a traduzir três
+    listas que já falam a mesma língua.
+    """
+
+    id: int
+    name: str
+    definition: str | None
+    formula: str | None
+    #: A unidade. É o que torna Baseline e Outcome comparáveis lado a lado, que é o
+    #: invariante 11 do Language Map.
+    unit: str | None
+    #: ``up`` ou ``down`` — para que lado o indicador melhora. Sem ele a tela não sabe
+    #: se cair de 72 para 21 é ganho.
+    direction: str | None
+    data_source: str | None
+    cadence: str | None
+    target: float | None
+    #: ``None`` é "não há Baseline definida". Ver ``KpiMeasurementOut``.
+    baseline: KpiMeasurementOut | None
+    #: ``None`` é "ainda não medido". **Nunca vem preenchido com ``baseline`` nulo**:
+    #: é o invariante 11, garantido pelo produtor e conferido na ingestão.
+    outcome: KpiMeasurementOut | None
+    #: Sempre lista, nunca ``null`` — vazia é o estado comum.
+    monitoring: list[KpiMeasurementOut]
+
+
+class ValueLedgerEntryOut(Out):
+    """Uma entrada do Value Ledger do mandato (Language Map §2, ADR 0085).
+
+    É o **valor gerado**, e a §2 diz o que ele nunca é: "ROI projetado" nem "Case".
+    O que o separa de um número solto na tela é o par período + método de
+    atribuição — o invariante 12.
+
+    Sem moeda: tudo é BRL e o produtor não emite a coluna. Um ``currency`` aqui
+    seria campo que ninguém escreve e que a tela leria como se significasse algo.
+    """
+
+    id: int
+    value_type: str
+    amount: float
+    quantity: float | None
+    period_start: str
+    period_end: str
+    attribution_method: str
+    #: O KPI de origem, pelo id do Pulse. **Pode não casar com nenhum item de
+    #: ``kpis``**: a entrada é do mandato e o KPI pode viver num projeto irmão que
+    #: este cliente não alcança. Não casar é caso normal, e a tela mostra a entrada
+    #: sem o vínculo em vez de escondê-la.
+    kpi_id: int | None
+    outcome_measured_at: str | None
+
+
+# --- Discovery (Language Map v1.1 §2, ADR 0086) -----------------------------
+#
+# Cinco agregados de escopo de **conta**: o AS-IS validado, os achados, as dores e
+# o backlog de melhoria. Como em ``KpiOut``, o ``id`` publicado é o **da origem** e
+# nunca o uuid local — é ele que ``finding_ids``, ``pain_point_ids``,
+# ``process_id`` e ``step_id`` carregam, e o uuid é recriado a cada webhook.
+
+
+class ProcessStepOut(Out):
+    """Uma etapa do processo, com as seis chaves do formulário P-S-D-T-E-R.
+
+    **Os seis nomes ficam em português por decisão do contrato** (fechamento de
+    `biahflow/pulse#106`), e não por descuido: eles não são termos da ontologia —
+    são as perguntas que o time faz na sessão de Discovery. A §5 do Language Map
+    bane nome de **modelo** em português, e o modelo aqui é ``ProcessStep``.
+    """
+
+    id: int
+    position: int
+    name: str
+    pessoas: str | None
+    sistema: str | None
+    dados: str | None
+    tempo: str | None
+    erro: str | None
+    retrabalho: str | None
+
+
+class ProcessOut(Out):
+    """Um processo mapeado da conta — o AS-IS que o Discovery validou."""
+
+    id: int
+    name: str
+    position: int
+    #: Quando a **origem** atualizou o processo, ou ``None`` quando ela não carimba.
+    #: ``str`` e não ``datetime`` pela regra 1 deste módulo.
+    updated_at: str | None
+    steps: list[ProcessStepOut]
+
+
+class EvidenceOut(Out):
+    """Uma evidência que sustenta um achado.
+
+    **Não tem marca de revisão, e a ausência é a decisão** (ADR 0086). A §3 do
+    Language Map diz que só a Evidence revisada atravessa, e é assim: o produtor
+    filtra por ``published_at`` **antes** de emitir, de modo que a presença aqui já
+    é a prova. Não há campo a declarar porque não há campo do outro lado a copiar —
+    e inventá-lo seria o One afirmando por conta própria que algo foi revisado, que
+    é a regra 3 da §3 ("o One nunca é fonte primária") ao contrário.
+
+    Quatro campos e nada além: nem o trecho bruto, nem o hash do conteúdo, nem a
+    transcrição de onde ela saiu. ``reference`` é o **ponteiro** para a fonte, como
+    a origem o escreve — nunca o conteúdo dela.
+    """
+
+    id: int
+    kind: str
+    reference: str | None
+    captured_at: str | None
+
+
+class FindingOut(Out):
+    """Um achado do Discovery, sempre com o estado epistêmico ao lado.
+
+    ``epistemic_status`` é o campo que faz a regra 1 da §3 ser desenhável: um
+    ``hypothesis`` aparece **rotulado** como hipótese ou não aparece, nunca como
+    fato. Ele é exigido deste esquema pelo ``epistemic_resources`` do
+    ``docs/contracts/one-visibility.json``, e tirá-lo daqui reprova.
+
+    ``unknown`` também atravessa, e não é omissão: um levantamento que só mostrasse
+    o que ficou sabido esconderia do cliente o que ainda não se sabe.
+    """
+
+    id: int
+    statement: str
+    #: ``fact`` · ``hypothesis`` · ``unknown`` (Language Map §4, D6).
+    epistemic_status: str
+    #: A confiança que a origem declara. ``None`` é "não declarada", nunca zero.
+    confidence: int | None
+    #: O processo e a etapa de onde o achado saiu, pelos ids da origem. ``None`` é
+    #: caso normal: o produtor publica processo e achado separadamente, e o achado
+    #: pode apontar para um processo que ninguém publicou.
+    process_id: int | None
+    step_id: int | None
+    evidences: list[EvidenceOut]
+
+
+class PainPointOut(Out):
+    """Uma dor confirmada da conta, com os achados que a sustentam."""
+
+    id: int
+    title: str
+    description: str | None
+    #: Que espécie de impacto ela causa, como a origem a nomeia.
+    impact_type: str | None
+    #: ``None`` é **não quantificado**, nunca zero — a mesma regra do ``target`` do
+    #: KPI, e a razão de a tela dizer "Impacto não quantificado" em vez de "R$ 0".
+    impact_estimate: float | None
+    #: Os achados de origem, pelos ids da origem. Já vêm filtrados aos publicados e
+    #: vivos; um id que não resolveu na ingestão não chega aqui.
+    finding_ids: list[int]
+    status: str
+
+
+class PriorityAssessmentOut(Out):
+    """O **Opportunity Score** de uma oportunidade de melhoria (Language Map D5).
+
+    O rótulo que o cliente lê é "Opportunity Score", e ele se aplica **só** a
+    ``ImprovementOpportunity`` — nunca a uma venda (§5).
+
+    **O ``rationale`` não está aqui, e não pode passar a estar**: é o par proibido
+    da §3 (`PriorityAssessment.rationale`), o racional interno que o time escreve
+    para si. `tests/api-contract.test.mjs` reprova se alguém o declarar.
+    """
+
+    #: A versão da avaliação vigente — o que faz cliente e time falarem da mesma
+    #: nota. ``None`` quando a origem não a manda: a nota aparece sem a versão, em
+    #: vez de a nota desaparecer por falta do rótulo.
+    version: int | None
+    score: int
+    #: As cinco dimensões da D5, e nada além delas: a ingestão aplica lista branca,
+    #: porque este objeto é JSONB e o guard de visibilidade não enxerga dentro dele.
+    #: Dicionário vazio é "a origem mandou a nota sem abrir a conta".
+    dimensions: dict[str, int]
+
+
+class SolutionHypothesisOut(Out):
+    """Uma hipótese de solução para uma oportunidade de melhoria.
+
+    **Hipótese, e a palavra é o contrato** (§2): o que se acha que resolveria,
+    antes de a Feasibility dizer se dá e de o PROVE dizer se funciona. A tela a
+    rotula como hipótese pela mesma razão que rotula um ``Finding`` não provado.
+    """
+
+    id: int
+    statement: str
+    intervention: str | None
+    #: O efeito **esperado**, não o medido: quem mede é o KPI (ADR 0085).
+    expected_effect: str | None
+    status: str
+
+
+class ImprovementOpportunityOut(Out):
+    """Um item do backlog de melhoria da conta.
+
+    ``Improvement`` não é enfeite no nome (§5, invariante 1): ``Opportunity``
+    sozinho colide entre venda e melhoria operacional, e a venda —
+    ``CommercialOpportunity`` — é proibida no One por escrito.
+
+    A lista chega **ordenada por score decrescente, com quem não tem avaliação no
+    fim**; quem ordena é a API (ver ``_discovery_projection``), e a tela não repete
+    o critério.
+    """
+
+    id: int
+    title: str
+    desired_change: str | None
+    #: O impacto que se **espera** — hipótese, e a tela a rotula como tal.
+    impact_hypothesis: str | None
+    #: As dores que ela endereça, pelos ids da origem.
+    pain_point_ids: list[int]
+    status: str
+    #: ``None`` é "ninguém avaliou ainda", e não a pior nota.
+    priority_assessment: PriorityAssessmentOut | None
+    solution_hypotheses: list[SolutionHypothesisOut]
 
 
 class RoiOut(Out):
@@ -416,6 +674,27 @@ class DashboardOut(Out):
     health: ProjectHealthOut | None
     journey: JourneyOut
     digital_employees: list[DigitalEmployeeOut]
+    #: Os KPIs deste projeto (ADR 0085). **Sempre presente, vazia quando não há** —
+    #: "nada definido ainda" e "não sei" dizem coisas diferentes, e só a primeira a
+    #: tela sabe desenhar.
+    kpis: list[KpiOut]
+    #: O Value Ledger do **mandato**, não do projeto (ADR 0085). A mesma entrada
+    #: aparece no dashboard de todos os projetos do Engagement, porque é o programa
+    #: que gera o valor. Vazia quando o projeto ainda não tem programa.
+    value_ledger: list[ValueLedgerEntryOut]
+    #: O Discovery da **conta** (Language Map §2, ADR 0086), nas quatro listas que a
+    #: aba desenha. Escopo de conta e não de projeto: as quatro aparecem iguais no
+    #: dashboard de todos os projetos dela, porque o AS-IS, os achados e o backlog de
+    #: melhoria são da conta.
+    #:
+    #: **Sempre presentes, vazias por padrão** — e vazias é o estado normal hoje, não
+    #: falha: o Pulse ainda não tem tela de publicar, e nada atravessa sem publicação
+    #: humana. A tela diz "nada publicado ainda"; nenhuma delas é ``null``, para não
+    #: haver um terceiro caso a desenhar.
+    processes: list[ProcessOut]
+    findings: list[FindingOut]
+    pain_points: list[PainPointOut]
+    improvement_opportunities: list[ImprovementOpportunityOut]
     roi: RoiOut
     next_meeting: NextMeetingOut | None
     milestones: list[MilestoneOut]

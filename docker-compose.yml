@@ -80,9 +80,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-portal-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-portal-minio-local-only}
+    # Porta do host parametrizada, mesmo motivo do `mailpit` e da `api`. O `healthcheck` abaixo e
+    # os clientes de dentro da rede continuam em `minio:9000` — só o mapeamento externo muda.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -130,9 +132,15 @@ services:
 
   mailpit:
     image: axllent/mailpit:v1.22@sha256:f7f7c31de4de59540ad6515a0ca057a77525bca2069b6e747d873ca66c10fe08
+    # Porta do **host** parametrizada, com o padrão de sempre: quem não definir nada continua
+    # abrindo 1025/8025, e os runbooks que citam `:8025` seguem valendo palavra por palavra. A
+    # variável existe porque o Mailpit é o serviço que mais colide numa máquina que roda várias
+    # pilhas — cada projeto tem o seu, e todos querem a mesma porta.
+    # As portas de **dentro** do contêiner não mudam, então `SMTP_HOST`/`SMTP_PORT` da `api`
+    # continuam apontando para `mailpit:1025` e nada na aplicação enxerga esta troca.
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_HTTP_PORT:-8025}:8025"
 
   api:
     build:
@@ -239,8 +247,12 @@ services:
       DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-cG9ydGFsLWxhYnMtbG9jYWwtb25seS1kcml2ZS1rZXk}
       # A chave anterior, para a rotação não obrigar todo projeto a reconsentir.
       DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS: ${DRIVE_TOKEN_ENCRYPTION_KEY_PREVIOUS:-}
+    # Porta do **host** parametrizada, mesmo motivo e mesmo padrão do `mailpit` acima: quem não
+    # definir nada continua em 8000. Só o mapeamento externo muda — dentro da rede do Compose a
+    # `api` segue em `api:8000`, que é o que `API_BASE_URL` e o proxy do `web` usam.
+    # Quem aponta para cá de fora (o `PORTAL_WEBHOOK_URL` do Pulse) precisa acompanhar.
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-8000}:8000"
     # Prontidão, não vivacidade (ADR 0018): `/health` sempre diria "ok", porque
     # não toca em nada. `/health/ready` fala com o Postgres e com o Redis, que é
     # a diferença entre "o processo subiu" e "dá para mandar tráfego".
